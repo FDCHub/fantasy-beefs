@@ -1,0 +1,50 @@
+{
+  "sugar": {
+    "category": "Sugars",
+    "density_g_per_cup": 200,
+    "units": {
+      "cup": 200,
+      "tablespoon": 12.5,
+      "teaspoon": 4.2,
+      "gram": 1,
+      "pinch": 0.36
+    },
+    "variants": ["white sugar", "brown sugar", "powdered sugar"]
+  },
+  "olive oil": {
+    "category": "Oils",
+    "density_g_per_cup": 216,
+    "units": {
+      "cup": 216,
+      "tablespoon": 13.5,
+      "teaspoon": 4.5,
+      "gram": 1,
+      "splash": 6
+    },
+    "variants": ["extra virgin olive oil"]
+  },
+  "all-purpose flour": {
+    "category": "Flours",
+    "density_g_per_cup": 120,
+    "units": {
+      "cup": 120,
+      "tablespoon": 7.5,
+      "teaspoon": 2.5,
+      "gram": 1,
+      "dash": 0.5
+    },
+    "variants": ["sifted flour", "whole wheat flour"]
+  },
+  "butter": {
+    "category": "Dairy",
+    "density_g_per_cup": 227,
+    "units": {
+      "cup": 227,
+      "tablespoon": 14.2,
+      "teaspoon": 4.7,
+      "gram": 1,
+      "knob": 5
+    },
+    "variants": ["unsalted butter", "salted butter"]
+  }
+}
