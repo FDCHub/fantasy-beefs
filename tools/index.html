@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Odds Calculator · Rev 1.0</title>
+<title>Odds Calculator · Rev 1.1</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -495,14 +495,14 @@ input.si:focus { border-color: var(--blue); }
 
 <div class="header">
   <div class="header-title">Odds <em id="title-accent">Calculator</em></div>
-  <div class="header-sub">American Odds · Rev 1.0 · Fraser D Coleman · 5/30/26</div>
+  <div class="header-sub">American Odds · Rev 1.1 · Fraser D Coleman · 5/31/26</div>
 </div>
 
 <!-- MODE SWITCHER -->
 <div class="mode-bar">
   <button class="mode-btn orange" id="btn-0" onclick="switchMode(0)">Prob<br>→ Odds</button>
   <button class="mode-btn" id="btn-1" onclick="switchMode(1)">Odds<br>→ Prob</button>
-  <button class="mode-btn" id="btn-2" onclick="switchMode(2)">Vig<br>Detection</button>
+  <button class="mode-btn" id="btn-2" onclick="switchMode(2)">Vig<br>Solver</button>
   <button class="mode-btn" id="btn-3" onclick="switchMode(3)">Escrow<br>Recalc</button>
 </div>
 
@@ -581,11 +581,11 @@ input.si:focus { border-color: var(--blue); }
 </div>
 
 <!-- ══════════════════════════════════════════ -->
-<!-- MODE 2: VIG DETECTION                      -->
+<!-- MODE 2: VIG SOLVER                      -->
 <!-- ══════════════════════════════════════════ -->
 <div class="mode-panel" id="mode-2">
   <div class="formula-strip strip-white">
-    <div class="fs-label">Method — Vig Detection</div>
+    <div class="fs-label">Method — Vig Solver</div>
     <div class="fs-row"><span class="fs-formula">Convert both sides &rarr; sum implied probabilities<br>Sum &minus; 100% = <span style="font-weight:700;">vig %</span></span></div>
   </div>
 
@@ -616,12 +616,12 @@ input.si:focus { border-color: var(--blue); }
   <div class="sv-row">
     <span class="sv-lbl">$ Stake</span>
     <input class="si" type="number" id="m2-stake" value="100" min="1">
-    <span class="sv-lbl" style="margin-left:4px;">Known Vig %</span>
+    <span class="sv-lbl" style="margin-left:4px;">Override Vig %</span>
     <input class="si narrow" type="number" id="m2-vig" placeholder="—" min="0" max="30" step="0.1">
     <span class="sv-opt">(optional)</span>
   </div>
 
-  <button class="calc-btn white-btn" onclick="calcM2()">Calculate Vig</button>
+  <button class="calc-btn white-btn" onclick="calcM2()">Solve for Vig</button>
   <button class="clear-btn white-reset" onclick="resetM2()">Reset</button>
 
   <div class="result" id="m2-result">
@@ -1047,8 +1047,11 @@ function calcM2() {
   var lA = (isNegOdds('m2-a','m2a-fav-cb') ? '-' : '+') + Math.abs(rA);
   var lB = (isNegOdds('m2-b','m2b-fav-cb') ? '-' : '+') + Math.abs(rB);
 
-  var truePA = hasKnown ? (pA * 100 / (pA + pB)).toFixed(1) : null;
-  var truePB = hasKnown ? (pB * 100 / (pA + pB)).toFixed(1) : null;
+  // Use known vig if entered, otherwise use auto-detected vig
+  var vigForBase = hasKnown ? knownVig : vig;
+  var hasBase = vigForBase > 0.1;
+  var truePA = hasBase ? (pA * 100 / (pA + pB)).toFixed(1) : null;
+  var truePB = hasBase ? (pB * 100 / (pA + pB)).toFixed(1) : null;
   var fairA  = truePA ? fmtO(p2o(parseFloat(truePA) / 100)) : '-';
   var fairB  = truePB ? fmtO(p2o(parseFloat(truePB) / 100)) : '-';
   vig = (pA + pB) - 100;
@@ -1060,15 +1063,15 @@ function calcM2() {
   var house = pot * (vig / (pA + pB));
 
   var rows = [
-    { label: 'Base probability (no vig)', yours: truePA ? truePA + '%' : '-', theirs: truePB ? truePB + '%' : '-', dim: !hasKnown, alt: true,
-      note: hasKnown ? null : 'Enter a known vig % to calculate true underlying probabilities.' },
-    { label: 'Probability after vig', yours: pA.toFixed(1) + '%', theirs: pB.toFixed(1) + '%',
-      note: 'Both sides inflated by the vig. Excess above 100% (' + vigDisplay + '%) is the book rake.' },
-    { label: 'Detected vig', yours: vigDisplay + '%', theirs: '', gold: true, alt: true,
-      note: vig <= 0.5 ? 'Near-zero vig — fair market.' : vig <= 5 ? 'Standard sportsbook juice.' : 'High juice — recreational book.' },
-    { label: 'Base odds (no vig)', yours: fairA, theirs: fairB, dim: !hasKnown, alt: true,
-      note: hasKnown ? null : 'Enter a known vig % to see fair market odds.' },
     { label: 'Posted odds', yours: lA, theirs: lB },
+    { label: 'Probability after vig', yours: pA.toFixed(1) + '%', theirs: pB.toFixed(1) + '%', alt: true,
+      note: 'Both sides inflated by the vig. Excess above 100% (' + vigDisplay + '%) is the book rake.' },
+    { label: 'Detected vig', yours: vigDisplay + '%', theirs: '', gold: true,
+      note: vig <= 0.5 ? 'Near-zero vig — fair market.' : vig <= 5 ? 'Standard sportsbook juice.' : 'High juice — recreational book.' },
+    { label: 'Base probability (no vig)', yours: truePA ? truePA + '%' : '-', theirs: truePB ? truePB + '%' : '-', dim: !hasBase, alt: true,
+      note: hasBase && !hasKnown ? 'Auto-derived using detected vig (' + vigDisplay + '%). Enter an override vig % to use a different value.' : hasBase ? null : 'Enter an override vig % to calculate true underlying probabilities.' },
+    { label: 'Base odds (no vig)', yours: fairA, theirs: fairB, dim: !hasBase,
+      note: hasBase ? null : 'Enter an override vig % to see fair market odds.' },
     { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY), alt: true },
     { label: 'Profit if win', yours: fmtD(profY), theirs: fmtD(stake) },
     { label: 'Total return', yours: fmtD(pot), theirs: fmtD(pot), alt: true },
