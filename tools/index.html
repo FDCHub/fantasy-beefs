@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Odds Calculator · Rev 1.1</title>
+<title>Odds Calculator · Rev 1.5</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -495,7 +495,7 @@ input.si:focus { border-color: var(--blue); }
 
 <div class="header">
   <div class="header-title">Odds <em id="title-accent">Calculator</em></div>
-  <div class="header-sub">American Odds · Rev 1.1 · Fraser D Coleman · 5/31/26</div>
+  <div class="header-sub">American Odds · Rev 1.5 · Fraser D Coleman · 6/2/26</div>
 </div>
 
 <!-- MODE SWITCHER -->
@@ -898,8 +898,10 @@ function calcM0() {
 
   if (hasVig) {
     var vf = vigRaw / 100;
-    var pY = Math.min(p + vf / 2, 0.98);
-    var pT = Math.min(cp + vf / 2, 0.98);
+    var pY = p * (1 + vf);
+    var pT = cp * (1 + vf);
+    var clamped = pY >= 1 || pT >= 1;
+    if (clamped) { alert('Warning: vig too high for these odds — one side exceeds 100%. Try a lower vig %.'); return; }
     var sY = p2o(pY); var sYStr = fmtO(sY);
     var sT = p2o(pT); var sTStr = fmtO(sT);
     var pctY = (pY * 100).toFixed(1); var pctT = (pT * 100).toFixed(1);
@@ -913,7 +915,7 @@ function calcM0() {
       { label: 'Base probability (no vig)', yours: raw + '%', theirs: (100-raw) + '%', alt: true },
       { label: 'Base odds (no vig)', yours: fOStr, theirs: fCStr },
       { label: 'Probability after vig', yours: pctY + '%', theirs: pctT + '%', alt: true,
-        note: 'Book adds half vig (' + (vigRaw/2).toFixed(2).replace(/\.?0+$/,'') + '%) to each side. Base probability unchanged.' },
+        note: 'Vig applied proportionally (' + vigRaw + '%). Each side scaled by (1 + vig). Base probability ratio unchanged.' },
       { label: 'Odds after vig', yours: sYStr, theirs: sTStr,
         note: 'Posted odds with vig baked in. Your win chances unchanged - you get paid less.' },
       { label: 'Profit lost to vig', yours: '-' + fmtD(lost), theirs: '-', alt: true,
@@ -921,8 +923,8 @@ function calcM0() {
       { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY) },
       { label: 'Profit if win', yours: fmtD(profY), theirs: fmtD(stake), alt: true },
       { label: 'Total return (escrowed)', yours: fmtD(pot), theirs: fmtD(pot) },
-      { label: 'House payout', yours: fmtD(house), theirs: '', gold: true, alt: true,
-        note: 'Book guaranteed take. Grows with vig %.' }
+      { label: 'Vig cost', yours: fmtD(house), theirs: '', gold: true, alt: true,
+        note: 'Estimated cost of vig on this bet. Grows with vig %.' }
     ];
     work = '';
   } else {
@@ -936,8 +938,8 @@ function calcM0() {
       { label: 'Stake', yours: fmtD(stake), theirs: fmtD(fp), alt: true },
       { label: 'Profit if win', yours: fmtD(fp), theirs: fmtD(stake) },
       { label: 'Total return (escrowed)', yours: fmtD(pot0), theirs: fmtD(pot0), alt: true },
-      { label: 'House payout', yours: '$0.00', theirs: '', gold: true,
-        note: 'No vig - fair market. Enter a vig % to see the book take.' }
+      { label: 'Vig cost', yours: '$0.00', theirs: '', gold: true,
+        note: 'No vig - fair market. Enter a vig % to see your cost.' }
     ];
     work = '';
   }
@@ -973,10 +975,12 @@ function calcM1() {
   var rows, work;
 
   if (hasVig) {
-    var bY  = (yProb * 100 - vigRaw / 2).toFixed(1);
-    var bT  = (tProb * 100 - vigRaw / 2).toFixed(1);
-    var bOY = p2o(parseFloat(bY) / 100); var bOYStr = fmtO(bOY);
-    var bOT = p2o(parseFloat(bT) / 100); var bOTStr = fmtO(bOT);
+    var bYraw = yProb / (1 + vigRaw/100);
+    var bTraw = tProb / (1 + vigRaw/100);
+    var bY  = (bYraw * 100).toFixed(1);
+    var bT  = (bTraw * 100).toFixed(1);
+    var bOY = p2o(bYraw); var bOYStr = fmtO(bOY);
+    var bOT = p2o(bTraw); var bOTStr = fmtO(bOT);
     var profY = calcProfit(stake, raw, isNeg);
     var fairY = calcProfit(stake, bOY.val, bOY.neg);
     var lost  = fairY - profY;
@@ -987,7 +991,7 @@ function calcM1() {
       { label: 'Base probability (no vig)', yours: bY + '%', theirs: bT + '%', alt: true },
       { label: 'Base odds (no vig)', yours: bOYStr, theirs: bOTStr },
       { label: 'Probability after vig', yours: yPct + '%', theirs: tPct + '%', alt: true,
-        note: 'Book adds half vig (' + (vigRaw/2).toFixed(2).replace(/\.?0+$/,'') + '%) to each side.' },
+        note: 'Vig applied proportionally (' + vigRaw + '%). Each side scaled by (1 + vig).' },
       { label: 'Odds after vig', yours: oddsLabel, theirs: bOTStr,
         note: 'Posted odds with vig embedded. Payout reduced vs base odds.' },
       { label: 'Profit lost to vig', yours: '-' + fmtD(Math.max(0, lost)), theirs: '-', alt: true,
@@ -995,8 +999,8 @@ function calcM1() {
       { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY) },
       { label: 'Profit if win', yours: fmtD(profY), theirs: fmtD(stake), alt: true },
       { label: 'Total return (escrowed)', yours: fmtD(pot), theirs: fmtD(pot) },
-      { label: 'House payout', yours: fmtD(house), theirs: '', gold: true, alt: true,
-        note: 'Book guaranteed take. Increases as vig % rises.' }
+      { label: 'Vig cost', yours: fmtD(house), theirs: '', gold: true, alt: true,
+        note: 'Estimated cost of vig on this bet. Increases as vig % rises.' }
     ];
     work = '';
   } else {
@@ -1011,8 +1015,8 @@ function calcM1() {
       { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY0), alt: true },
       { label: 'Profit if win', yours: fmtD(profY0), theirs: fmtD(stake) },
       { label: 'Total return (escrowed)', yours: fmtD(pot0), theirs: fmtD(pot0), alt: true },
-      { label: 'House payout', yours: '$0.00', theirs: '', gold: true,
-        note: 'No vig - fair market. Enter a vig % to see the book take.' }
+      { label: 'Vig cost', yours: '$0.00', theirs: '', gold: true,
+        note: 'No vig - fair market. Enter a vig % to see your cost.' }
     ];
     work = '';
   }
@@ -1075,21 +1079,21 @@ function calcM2() {
     { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY), alt: true },
     { label: 'Profit if win', yours: fmtD(profY), theirs: fmtD(stake) },
     { label: 'Total return', yours: fmtD(pot), theirs: fmtD(pot), alt: true },
-    { label: 'House payout', yours: fmtD(Math.max(0, house)), theirs: '', gold: true,
-      note: vig <= 0.5 ? 'Near-zero vig - effectively a fair market.' : 'Book guaranteed take from this bet.' }
+    { label: 'Vig cost (est.)', yours: fmtD(Math.max(0, house)), theirs: '', gold: true,
+      note: vig <= 0.5 ? 'Near-zero vig - effectively a fair market.' : 'Estimated vig cost across both sides of this bet.' }
   ];
 
   document.getElementById('m2-table').innerHTML = baHTML(rows);
 
-  var fill = Math.min(100, (vig / 12) * 100);
+  var fill = Math.min(100, (vig / 15) * 100); // 15% = full bar (recreational book ceiling)
   var bar  = document.getElementById('m2-bar');
   bar.style.width = fill + '%';
   bar.className = 'vig-fill ' + (vig <= 0.5 ? 'vig-none' : vig <= 5 ? 'vig-low' : 'vig-high');
 
   var v = document.getElementById('m2-verdict');
-  if (vig <= 0.5) { v.className = 'verdict verdict-fair'; v.textContent = 'Near-zero vig - fair market or sharp book'; }
-  else if (vig <= 5) { v.className = 'verdict verdict-med'; v.textContent = vigDisplay + '% vig - standard sportsbook'; }
-  else { v.className = 'verdict verdict-high'; v.textContent = vigDisplay + '% vig - high juice, recreational book'; }
+  if (vig <= 0.5) { v.className = 'verdict verdict-fair'; v.textContent = 'Near-zero vig - fair market or sharp book (scale: 0-15%)'; }
+  else if (vig <= 5) { v.className = 'verdict verdict-med'; v.textContent = vigDisplay + '% vig - standard sportsbook (scale: 0-15%)'; }
+  else { v.className = 'verdict verdict-high'; v.textContent = vigDisplay + '% vig - high juice, recreational book (scale: 0-15%)'; }
 
   document.getElementById('m2-work').innerHTML =
     (hasKnown ? '<div class="ws"><span class="wn">→</span> True prob A: <span class="we">' + truePA + '%</span> / B: <span class="we">' + truePB + '%</span></div>' : '');
@@ -1150,6 +1154,7 @@ function calcM3step1() {
 
   if (isNaN(origOdds) || origOdds < 100) { alert('Enter your original odds (100+)'); return; }
   if (isNaN(origStake) || origStake <= 0) { alert('Enter your original stake'); return; }
+  if (!isNaN(theirOdds) && theirOdds > 0 && theirOdds < 100) { alert('Their odds must be 100 or higher. American odds are always 100+.'); return; }
 
   var yourOddsStr  = (isNegY ? '-' : '+') + origOdds;
   var enteredVig   = parseFloat(document.getElementById('e-orig-vig').value);
@@ -1169,12 +1174,13 @@ function calcM3step1() {
   } else if (hasVigEntry) {
     // Your odds + vig % — strip half-vig to get true prob, derive their odds
     var rawYvig  = o2p(origOdds, isNegY) * 100;          // implied prob with vig
-    var trueYpct = rawYvig - enteredVig / 2;              // strip half-vig
+    var trueYpct = rawYvig / (1 + enteredVig / 100);     // strip vig proportionally
     var trueTpct = 100 - trueYpct;                        // complement
     yourProb     = trueYpct / 100;
     theirProb    = trueTpct / 100;
-    // Re-add half-vig to get their posted odds
-    var theirPosted = Math.min(trueTpct + enteredVig / 2, 99);
+    // Re-add vig proportionally to get their posted odds
+    var theirPosted = trueTpct * (1 + enteredVig / 100);
+    if (theirPosted >= 100) { alert('Vig too high for these odds — their side exceeds 100%. Try a lower vig %.'); return; }
     var theirO   = p2o(theirPosted / 100);
     theirOddsStr = fmtO(theirO);
     detectedVig  = enteredVig;
@@ -1186,10 +1192,11 @@ function calcM3step1() {
     theirOddsStr = fmtO(p2o(theirProb));
   }
 
-  // Their implied stake based on your odds and stake
-  var theirStake = isNegY
-    ? (origStake / origOdds) * 100
-    : (origStake * origOdds) / 100;
+  // Option C: size both stakes on fair (devigged) prob basis for consistent redistribution
+  // yourStake is fixed; their stake = yourStake * (theirProb / yourProb)
+  // This ensures zero-move recalc is a true no-op and pot drop = total refunds exactly
+  var fairPot    = origStake / yourProb;          // total pot implied by your stake at fair prob
+  var theirStake = fairPot * theirProb;           // their fair share of the pot
 
   var origPot  = origStake + theirStake;
   var isFavY   = yourProb >= 0.5;
@@ -1217,7 +1224,7 @@ function calcM3step1() {
   var noteEl = document.getElementById('e-novig-note-text');
   if (noteEl) {
     if (hasVigEntry) {
-      noteEl.textContent = 'Their odds derived as complement with original vig (' + enteredVig.toFixed(2) + '%) applied.';
+      noteEl.textContent = 'Their odds derived as complement with original vig (' + enteredVig.toFixed(2) + '%) applied proportionally.';
     } else {
       noteEl.textContent = 'Their odds derived as complement (zero vig assumed).';
     }
@@ -1225,8 +1232,8 @@ function calcM3step1() {
 
   var potEq = fmtD(origStake) + ' + ' + fmtD(theirStake) + ' = ' + fmtD(origPot);
   var vigNote = hasTheirs ? null
-    : hasVigEntry ? 'Their odds derived from complement with ' + enteredVig.toFixed(2) + '% vig applied.'
-    : 'Their odds derived as complement (zero vig assumed). Enter their posted odds for true implied probabilities.';
+    : hasVigEntry ? 'Their odds derived from complement with ' + enteredVig.toFixed(2) + '% vig applied proportionally. Stakes sized on fair prob basis.'
+    : '⚠ Their odds estimated as complement (zero vig assumed). Stakes sized on fair prob basis. Enter their posted odds for real figures.';
 
   // ── Build Step 1 rows ────────────────────────────────
   var rows = [
@@ -1261,12 +1268,12 @@ function calcM3step1() {
       yours: enteredVig.toFixed(2) + '%',
       theirs: '',
       gold: true,
-      note: 'Half-vig (' + (enteredVig/2).toFixed(2) + '%) stripped from your implied prob. Their odds derived from the complement.'
+      note: 'Vig (' + enteredVig.toFixed(2) + '%) stripped proportionally from your implied prob. Their odds derived from the complement.'
     });
   }
 
-  var vigAmt  = (detectedVig && detectedVig > 0.1) ? origPot * (detectedVig / (100 + detectedVig)) : 0;
-  var fairPot = origPot - vigAmt;
+  var vigAmt      = (detectedVig && detectedVig > 0.1) ? origPot * (detectedVig / (100 + detectedVig)) : 0;
+  var vigDisplayPot = origPot - vigAmt; // renamed to avoid shadowing Option C fairPot
 
   rows = rows.concat([
     { label: 'Stake escrowed',
@@ -1274,19 +1281,10 @@ function calcM3step1() {
       theirs: fmtD(theirStake), alt: !hasTheirs },
     { label: 'Total pot held in escrow',
       yours: potEq, theirs: '', gold: true, alt: hasTheirs,
-      note: 'Both stakes locked at acceptance. Neither GM can be asked for more.' }
+      note: 'Both stakes sized on fair (devigged) probability basis. Pot drop always equals total refunds exactly.' }
   ]);
 
-  if (vigAmt > 0.005) {
-    rows = rows.concat([
-      { label: 'Fair-market pot',
-        yours: fmtD(fairPot), theirs: '', gold: true,
-        note: 'Pot minus vig. What both GMs are wagering on the outcome.' },
-      { label: 'Vig portion',
-        yours: fmtD(vigAmt), theirs: '', gold: true, alt: true,
-        note: 'Vig embedded in posted odds. Stays in escrow and is paid to the winner as part of the pot.' }
-    ]);
-  }
+  // Option C: pot is already fair (devigged before sizing) — no vig portion to display
 
   document.getElementById('m3-step1-table').innerHTML = baHTML(rows);
   document.getElementById('m3-step1-result').classList.add('show');
@@ -1325,13 +1323,14 @@ function calcM3step2() {
     newYOddsStr = (newIsNeg ? '-' : '+') + newOdds;
     newTOddsStr = (newBNeg  ? '-' : '+') + newB;
   } else if (hasOrigVig) {
-    // Original vig was entered — strip half-vig from new odds, derive their complement
+    // Original vig was entered — strip vig proportionally, derive their complement
     var rawYnew   = o2p(newOdds, newIsNeg) * 100;
-    var trueYnew  = rawYnew - origVig / 2;
+    var trueYnew  = rawYnew / (1 + origVig / 100);
     var trueTnew  = 100 - trueYnew;
     newYProb      = trueYnew / 100;
     newTProb      = trueTnew / 100;
-    var theirPostedNew = Math.min(trueTnew + origVig / 2, 99);
+    var theirPostedNew = trueTnew * (1 + origVig / 100);
+    if (theirPostedNew >= 100) { alert('Vig too high for these odds — their side exceeds 100%. Try a lower vig %.'); return; }
     var theirOnew = p2o(theirPostedNew / 100);
     newYOddsStr   = (newIsNeg ? '-' : '+') + newOdds;
     newTOddsStr   = fmtO(theirOnew);
@@ -1343,29 +1342,37 @@ function calcM3step2() {
     newTOddsStr = fmtO(p2o(newTProb));
   }
 
-  var newYStake = Math.min(origPot * newYProb,  eState.yourStake);
-  var newTStake = Math.min(origPot * newTProb, eState.theirStake);
-  var refY      = eState.yourStake  - newYStake;
-  var refT      = eState.theirStake - newTStake;
+  // newYStake/newTStake/refY/refT already computed above for rule derivation
   var newPot    = newYStake + newTStake;
   var potDrop   = origPot - newPot;
 
   var origYFav = eState.isFavY;
   var newYFav  = newYProb >= 0.5;
   var rule, ruleNote;
+  var probDiff = Math.abs(newYProb - eState.yourProb);
 
-  if (origYFav && newYFav && newYProb > eState.yourProb) {
-    rule = 'Rule A';
-    ruleNote = 'Rule A - Fav improves, underdog stake down, refund underdog';
-  } else if (origYFav && newYFav && newYProb < eState.yourProb) {
+  // Derive rule label from actual computed refunds — not independent prob classification
+  // Calculate stakes first (needed for label derivation)
+  var newYStake = Math.min(origPot * newYProb, eState.yourStake);
+  var newTStake = Math.min(origPot * newTProb, eState.theirStake);
+  var refY = eState.yourStake - newYStake;
+  var refT = eState.theirStake - newTStake;
+
+  if (probDiff < 0.0001) {
+    rule = 'No Change';
+    ruleNote = 'No Change — odds are effectively unchanged. No refunds issued.';
+  } else if (refY > 0.005 && refT <= 0.005) {
     rule = 'Rule B';
-    ruleNote = 'Rule B - Fav declines, favorite stake down, refund favorite';
-  } else if (!origYFav && newYFav || origYFav && !newYFav) {
+    ruleNote = 'Rule B — Your stake reduced, refund issued to you.';
+  } else if (refT > 0.005 && refY <= 0.005) {
+    rule = 'Rule A';
+    ruleNote = 'Rule A — Their stake reduced, refund issued to them.';
+  } else if (refY > 0.005 && refT > 0.005) {
     rule = 'Rule C';
-    ruleNote = 'Rule C - Underdog became new fav, roles reverse, refund old fav';
+    ruleNote = 'Rule C — Both stakes reduced, refunds issued to both sides.';
   } else {
-    rule = 'Rule D';
-    ruleNote = 'Rule D - Each stake = pot x new prob, capped at original';
+    rule = 'No Change';
+    ruleNote = 'No Change — stakes unchanged at new odds.';
   }
 
   var rows = [
