@@ -236,5 +236,16 @@ Qwen-able. Each Rev spec marks every task `[QWEN]` or `[CLAUDE-CODE]`.
 
 ---
 
+## Post-MVP Upgrades
+
+**Projection source — upgrade to Fantasy Nerds API ($400/yr)**
+MVP ships using FantasyPros CSV scrape (free, current-week projections only).
+Post-MVP: swap in Fantasy Nerds behind the DataProvider seam. Fantasy Nerds offers
+a documented REST API with weekly projections, rest-of-season projections, and
+playoff projections — direct matches to the three-horizon heat map. Swap is one
+provider file; engine is untouched.
+
+---
+
 *Fantasy Beefs — Decision Engine Roadmap · June 7, 2026*
 *Our Thing. Your League.*
