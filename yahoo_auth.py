@@ -1,91 +1,64 @@
 import base64
-import hashlib
 import json
 import secrets
-import threading
 import time
 import urllib.parse
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import requests
 
-CLIENT_ID    = "dj0yJmk9VDJSWHpmWmw5TWtUJmQ9WVdrOVpYVTVSelV5TW5ZbWNHbzlNQT09JnM9Y29uc3VtZXJzZWNyZXQmc3Y9MCZ4PWUx"
-REDIRECT_URI = "http://localhost:8000/callback"
+# ── Credentials ───────────────────────────────────────────────────────────────
+with open("secrets/yahoo_oauth.json") as _f:
+    _creds          = json.load(_f)
+    CONSUMER_KEY    = _creds["consumer_key"]
+    CONSUMER_SECRET = _creds["consumer_secret"]
+
 AUTH_URL     = "https://api.login.yahoo.com/oauth2/request_auth"
 TOKEN_URL    = "https://api.login.yahoo.com/oauth2/get_token"
+REDIRECT_URI = "https://localhost:8000/callback"
 PRIVATE_FILE = "secrets/private.json"
 
-# ── PKCE ─────────────────────────────────────────────────────────────────────
-code_verifier  = secrets.token_urlsafe(64)          # 86 URL-safe chars
-code_challenge = base64.urlsafe_b64encode(
-    hashlib.sha256(code_verifier.encode()).digest()
-).rstrip(b"=").decode()                             # BASE64URL(SHA256(verifier))
-state = secrets.token_urlsafe(16)
-
-# ── Local callback server ─────────────────────────────────────────────────────
-auth_code = None
-done      = threading.Event()
-
-
-class CallbackHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        global auth_code
-        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        if "code" in params:
-            auth_code = params["code"][0]
-            body = b"<h2>Authorization complete! You can close this tab.</h2>"
-            self.send_response(200)
-        else:
-            error = params.get("error", ["unknown"])[0]
-            body  = f"<h2>Error: {error}</h2>".encode()
-            self.send_response(400)
-        self.send_header("Content-Type", "text/html")
-        self.end_headers()
-        self.wfile.write(body)
-        done.set()
-
-    def log_message(self, format, *args):
-        pass
-
-
-server = HTTPServer(("localhost", 8000), CallbackHandler)
-t = threading.Thread(target=server.handle_request, daemon=True)
-t.start()
-
-# ── Open browser ──────────────────────────────────────────────────────────────
+# ── Step 1: open browser ──────────────────────────────────────────────────────
+state    = secrets.token_urlsafe(16)
 auth_url = f"{AUTH_URL}?{urllib.parse.urlencode({
-    'client_id':             CLIENT_ID,
-    'redirect_uri':          REDIRECT_URI,
-    'response_type':         'code',
-    'code_challenge':        code_challenge,
-    'code_challenge_method': 'S256',
-    'state':                 state,
+    'client_id':     CONSUMER_KEY,
+    'redirect_uri':  REDIRECT_URI,
+    'response_type': 'code',
+    'state':         state,
 })}"
 
-print("Opening browser for Yahoo PKCE authorization...")
-print(f"\n{auth_url}\n")
+print("Opening browser for Yahoo authorization...")
 webbrowser.open(auth_url)
-print("Listening on http://localhost:8000/callback ...")
+print(f"If the browser did not open, visit:\n{auth_url}")
 
-done.wait(timeout=120)
+# ── Step 2: user pastes the redirected URL ────────────────────────────────────
+print("\nAfter clicking Agree, Yahoo redirects to https://localhost:8000/callback")
+print("The page will fail to load — that is expected.")
+redirected = input("Paste the full URL from your browser address bar: ").strip()
 
-if not auth_code:
-    print("ERROR: Timed out waiting for authorization code.")
+params    = urllib.parse.parse_qs(urllib.parse.urlparse(redirected).query)
+if params.get("state", [None])[0] != state:
+    print("ERROR: state mismatch — possible CSRF. Aborting.")
     exit(1)
 
-# ── Exchange code for token (no client secret — verifier proves identity) ─────
-print("Code received — exchanging for token...")
+auth_code = params.get("code", [None])[0]
+if not auth_code:
+    print("ERROR: no 'code' parameter found in the pasted URL.")
+    exit(1)
+
+# ── Step 3: exchange code for token ───────────────────────────────────────────
+_basic = base64.b64encode(f"{CONSUMER_KEY}:{CONSUMER_SECRET}".encode()).decode()
 
 resp = requests.post(
     TOKEN_URL,
-    headers={"Content-Type": "application/x-www-form-urlencoded"},
+    headers={
+        "Authorization": f"Basic {_basic}",
+        "Content-Type":  "application/x-www-form-urlencoded",
+    },
     data={
-        "grant_type":    "authorization_code",
-        "code":          auth_code,
-        "redirect_uri":  REDIRECT_URI,
-        "client_id":     CLIENT_ID,
-        "code_verifier": code_verifier,
+        "grant_type":   "authorization_code",
+        "redirect_uri": REDIRECT_URI,
+        "code":         auth_code,
     },
 )
 
@@ -96,8 +69,9 @@ if not resp.ok:
 token = resp.json()
 print("Token received!")
 
+# ── Step 4: persist ───────────────────────────────────────────────────────────
 private = {
-    "consumer_key":  CLIENT_ID,
+    "consumer_key":  CONSUMER_KEY,
     "access_token":  token["access_token"],
     "refresh_token": token.get("refresh_token", ""),
     "token_type":    token.get("token_type", "bearer"),

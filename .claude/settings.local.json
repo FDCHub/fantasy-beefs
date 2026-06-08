@@ -65,7 +65,8 @@
       "Bash(pip install *)",
       "Bash(Get-Process python*)",
       "Bash(Stop-Process -Force)",
-      "Bash(pkill -f \"tuesday_sync\")"
+      "Bash(pkill -f \"tuesday_sync\")",
+      "Bash(git grep *)"
     ]
   }
 }
