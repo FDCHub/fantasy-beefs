@@ -182,7 +182,7 @@ class Bet(Base):
     placed_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     settled_at     = Column(DateTime, nullable=True)
 
-    beef_challenge_id = Column(Integer, ForeignKey("beef_challenges.id"), nullable=True)
+    beef_challenge_id = Column(Integer, ForeignKey("beef_challenges.id", use_alter=True, name="fk_beef_challenge_id"), nullable=True)
 
     matchup        = relationship("Matchup", back_populates="bets")
     wallet         = relationship("Wallet",  back_populates="bets")
@@ -268,8 +268,8 @@ class BeefChallenge(Base):
     created_at           = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     responded_at         = Column(DateTime, nullable=True)
     # Populated on acceptance
-    challenger_bet_id    = Column(Integer, ForeignKey("bets.id"), nullable=True)
-    challenged_bet_id    = Column(Integer, ForeignKey("bets.id"), nullable=True)
+    challenger_bet_id    = Column(Integer, ForeignKey("bets.id", use_alter=True, name="fk_challenger_bet_id"), nullable=True)
+    challenged_bet_id    = Column(Integer, ForeignKey("bets.id", use_alter=True, name="fk_challenged_bet_id"), nullable=True)
     # Projection snapshot taken at challenge creation; used for staleness detection on accept
     projection_snapshot  = Column(String,  nullable=True)
     staleness_warning    = Column(Integer, nullable=False, default=0)  # 1 if any proj shifted >10%
