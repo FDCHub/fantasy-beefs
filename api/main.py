@@ -2610,3 +2610,9 @@ def reports_rankings_team_history(
     if not out:
         raise HTTPException(404, f"No rankings found for team {team_id} in league {league_id}")
     return out
+
+
+# ── Decision Engine health routes ─────────────────────────────────────────────
+
+from api.health_routes import router as health_router  # noqa: E402
+app.include_router(health_router)
