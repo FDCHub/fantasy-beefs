@@ -51,7 +51,7 @@ class ScoringSettings:
 
 
 STANDARD = ScoringSettings("standard", 0.0, 4.0, 6.0, 6.0, 0.0, 0.0)
-HALF_PPR = ScoringSettings("half_ppr", 0.5, 4.0, 6.0, 6.0, 0.0, 0.0)
+HALF_PPR = ScoringSettings("half_ppr", 0.5, 5.0, 6.0, 6.0, 0.0, 0.0)
 PPR      = ScoringSettings("ppr",      1.0, 4.0, 6.0, 6.0, 0.0, 0.0)
 
 _SCORING_PRESETS = {
@@ -96,11 +96,12 @@ def load_scoring_from_db(league_id: int, db) -> ScoringSettings:
     """Load scoring settings for a league; falls back to HALF_PPR if not found."""
     row = db.query(LeagueScoring).filter_by(league_id=league_id).first()
     if row is None:
-        return HALF_PPR
+        raise ValueError(f"No LeagueScoring row found for league_id={league_id}. Scoring must be configured in the DB before running odds calculations.")
     if row.scoring_type in _SCORING_PRESETS:
         preset = _SCORING_PRESETS[row.scoring_type]
         # Check if any custom values deviate from the preset
-        if (row.pass_td_points != preset.pass_td_points
+        if (row.rec_points != preset.rec_points
+                or row.pass_td_points != preset.pass_td_points
                 or row.rush_td_points != preset.rush_td_points
                 or row.rec_td_points  != preset.rec_td_points
                 or row.bonus_100yd_rush != preset.bonus_100yd_rush
@@ -196,7 +197,7 @@ def _starters(
     and adjusted_points for the given scoring system.
     """
     if scoring is None:
-        scoring = PPR
+        raise ValueError("scoring is required — pass the league's ScoringSettings explicitly. Use load_scoring_from_db() or a verified preset.")
     slots = (
         db.query(Roster)
         .filter(Roster.team_id == team.id)
@@ -247,7 +248,7 @@ def run(
 ) -> OddsResult:
     """Run Monte Carlo simulation and return OddsResult."""
     if scoring is None:
-        scoring = PPR
+        raise ValueError("scoring is required — pass the league's ScoringSettings explicitly. Use load_scoring_from_db() or a verified preset.")
     home_lines = _starters(home_team, week, db, scoring)
     away_lines = _starters(away_team, week, db, scoring)
 
@@ -298,7 +299,7 @@ def simulate_scores(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return (home_scores, away_scores) arrays of shape (n_sims,)."""
     if scoring is None:
-        scoring = PPR
+        raise ValueError("scoring is required — pass the league's ScoringSettings explicitly. Use load_scoring_from_db() or a verified preset.")
     home_lines = _starters(home_team, week, db, scoring)
     away_lines = _starters(away_team, week, db, scoring)
     home_pts   = np.array([s.adjusted_points for s in home_lines])
@@ -320,7 +321,7 @@ def bench_players(
     """
     from db.schema import Roster as _Roster
     if scoring is None:
-        scoring = PPR
+        raise ValueError("scoring is required — pass the league's ScoringSettings explicitly. Use load_scoring_from_db() or a verified preset.")
     slots = (
         db.query(_Roster)
         .filter(_Roster.team_id == team.id)
