@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Health — Fantasy Beefs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── Design system ───────────────────────────────────────────── */
+
+    :root {
+      --slate:     #f5f2ec;
+      --ink:       #1a1a2e;
+      --orange:    #c4501a;
+      --gold:      #8a6a20;
+      --green:     #1e6b46;
+      --red:       #8a2020;
+      --blur-near: 0px;
+      --blur-mid:  2px;
+      --blur-far:  5px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--slate);
+      color: var(--ink);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 0 16px 52px;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 480px;
+      padding-top: 36px;
+    }
+
+    /* ─── Header ──────────────────────────────────────────────────── */
+
+    header {
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 1.5px solid rgba(26, 26, 46, 0.11);
+    }
+
+    .eyebrow {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--orange);
+      margin-bottom: 6px;
+    }
+
+    .team-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 30px;
+      font-weight: 700;
+      color: var(--ink);
+      line-height: 1.15;
+    }
+
+    /* ─── Horizon sections ────────────────────────────────────────── */
+
+    .horizon {
+      margin-bottom: 28px;
+    }
+
+    .horizon-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 0.20em;
+      text-transform: uppercase;
+      color: rgba(26, 26, 46, 0.40);
+      margin-bottom: 10px;
+    }
+
+    /* ─── Cell row ────────────────────────────────────────────────── */
+
+    .cell-row {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+    .cell-row::-webkit-scrollbar { display: none; }
+
+    /* ─── Heat-map cells ──────────────────────────────────────────── */
+
+    .cell {
+      flex-shrink: 0;
+      width: 72px;
+      height: 82px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* This Week cell is wider and taller */
+    .cell--lg {
+      width: 152px;
+      height: 100px;
+    }
+
+    .cell--win    { background-color: var(--green); }
+    .cell--loss   { background-color: var(--red); }
+    .cell--tossup { background-color: var(--gold); }
+
+    /* blur is applied inline via JS on this element */
+    .cell-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .cell-wk {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: rgba(255, 255, 255, 0.68);
+    }
+
+    .cell-margin {
+      font-family: 'DM Mono', monospace;
+      font-size: 20px;
+      font-weight: 500;
+      color: #ffffff;
+      line-height: 1;
+    }
+
+    .cell--lg .cell-wk    { font-size: 11px; }
+    .cell--lg .cell-margin { font-size: 32px; }
+
+    /* ─── Diagnostics card ────────────────────────────────────────── */
+
+    .diagnostics {
+      background: rgba(26, 26, 46, 0.04);
+      border: 1px solid rgba(26, 26, 46, 0.08);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 36px;
+    }
+
+    .diagnostics-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.20em;
+      text-transform: uppercase;
+      color: rgba(26, 26, 46, 0.40);
+      margin-bottom: 12px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .badge {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      padding: 4px 11px;
+      border-radius: 20px;
+      color: #ffffff;
+    }
+
+    .badge--orange { background: var(--orange); }
+    .badge--gold   { background: var(--gold); }
+    .badge--red    { background: var(--red); }
+
+    /* ─── Footer ──────────────────────────────────────────────────── */
+
+    footer {
+      text-align: center;
+      padding-top: 20px;
+      border-top: 1px solid rgba(26, 26, 46, 0.10);
+    }
+
+    .tagline {
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 14px;
+      color: rgba(26, 26, 46, 0.36);
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script>
+    // ── Mock data ──────────────────────────────────────────────────────────────
+
+    const MOCK_DATA = {
+      team_name: "Mahomes Alone",
+      this_week: {week:1, win_prob:0.68, point_margin:4.2,
+                  opponent_team_id:2, confidence:1.0},
+      rest_of_season: [
+        {week:2, win_prob:0.55, point_margin:1.1,
+         opponent_team_id:3, confidence:1.0},
+        {week:3, win_prob:0.71, point_margin:6.3,
+         opponent_team_id:4, confidence:0.8},
+        {week:4, win_prob:0.44, point_margin:-2.1,
+         opponent_team_id:5, confidence:0.8},
+        {week:5, win_prob:0.38, point_margin:-5.4,
+         opponent_team_id:6, confidence:0.6},
+      ],
+      playoffs: [
+        {week:15, win_prob:0.52, point_margin:0.9,
+         opponent_team_id:99, confidence:0.6},
+        {week:16, win_prob:0.48, point_margin:-1.2,
+         opponent_team_id:99, confidence:0.6},
+      ],
+      weakest_position: "TE",
+      bye_clusters: [9],
+      future_weakness_flags: ["RB"]
+    };
+
+    // API SWAP POINT
+    // Replace the line below with:
+    // const data = await fetch('/health/team/1?week=1').then(r => r.json());
+    const data = MOCK_DATA;
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    function cellColorClass(winProb) {
+      if (winProb > 0.55) return 'cell--win';
+      if (winProb < 0.45) return 'cell--loss';
+      return 'cell--tossup';
+    }
+
+    function blurPx(confidence) {
+      if (confidence >= 1.0) return 0;  // --blur-near: 0px
+      if (confidence >= 0.8) return 2;  // --blur-mid:  2px
+      return 5;                          // --blur-far:  5px
+    }
+
+    function fmtMargin(m) {
+      return (m >= 0 ? '+' : '') + m.toFixed(1);
+    }
+
+    function el(tag, cls) {
+      const node = document.createElement(tag);
+      if (cls) node.className = cls;
+      return node;
+    }
+
+    // ── Build one heat-map cell ────────────────────────────────────────────────
+
+    function makeCell(weekData, large) {
+      const classes = 'cell ' + cellColorClass(weekData.win_prob) + (large ? ' cell--lg' : '');
+      const cell = el('div', classes);
+
+      const inner = el('div', 'cell-inner');
+      const blur = blurPx(weekData.confidence);
+      if (blur > 0) inner.style.filter = 'blur(' + blur + 'px)';
+
+      const wkLabel = el('span', 'cell-wk');
+      wkLabel.textContent = 'Wk ' + weekData.week;
+
+      const margin = el('span', 'cell-margin');
+      margin.textContent = fmtMargin(weekData.point_margin);
+
+      inner.appendChild(wkLabel);
+      inner.appendChild(margin);
+      cell.appendChild(inner);
+      return cell;
+    }
+
+    // ── Build one horizon section ──────────────────────────────────────────────
+
+    function makeHorizon(labelText, weeks, large) {
+      const section = el('section', 'horizon');
+
+      const label = el('h2', 'horizon-label');
+      label.textContent = labelText;
+      section.appendChild(label);
+
+      const row = el('div', 'cell-row');
+      weeks.forEach(function(w) { row.appendChild(makeCell(w, large)); });
+      section.appendChild(row);
+
+      return section;
+    }
+
+    // ── Build diagnostics card ─────────────────────────────────────────────────
+
+    function makeDiagnostics(weakestPos, byeClusters, futureFlags) {
+      const section = el('section', 'diagnostics');
+
+      const title = el('div', 'diagnostics-title');
+      title.textContent = 'Roster Signals';
+      section.appendChild(title);
+
+      const row = el('div', 'badge-row');
+
+      if (weakestPos) {
+        const b = el('span', 'badge badge--orange');
+        b.textContent = 'Weakest: ' + weakestPos;
+        row.appendChild(b);
+      }
+
+      (byeClusters || []).forEach(function(wk) {
+        const b = el('span', 'badge badge--gold');
+        b.textContent = 'Bye Wk ' + wk;
+        row.appendChild(b);
+      });
+
+      (futureFlags || []).forEach(function(pos) {
+        const b = el('span', 'badge badge--red');
+        b.textContent = 'Watch: ' + pos;
+        row.appendChild(b);
+      });
+
+      section.appendChild(row);
+      return section;
+    }
+
+    // ── Render ─────────────────────────────────────────────────────────────────
+
+    function render(d) {
+      const app = document.getElementById('app');
+
+      // Header
+      const header = el('header', null);
+      const eyebrow = el('div', 'eyebrow');
+      eyebrow.textContent = 'Team Health';
+      const teamName = el('h1', 'team-name');
+      teamName.textContent = d.team_name;
+      header.appendChild(eyebrow);
+      header.appendChild(teamName);
+      app.appendChild(header);
+
+      // Three horizons
+      if (d.this_week) {
+        app.appendChild(makeHorizon('This Week', [d.this_week], true));
+      }
+      if (d.rest_of_season && d.rest_of_season.length) {
+        app.appendChild(makeHorizon('Rest of Season', d.rest_of_season, false));
+      }
+      if (d.playoffs && d.playoffs.length) {
+        app.appendChild(makeHorizon('Playoffs', d.playoffs, false));
+      }
+
+      // Diagnostics
+      app.appendChild(makeDiagnostics(
+        d.weakest_position,
+        d.bye_clusters,
+        d.future_weakness_flags
+      ));
+
+      // Footer
+      const footer = el('footer', null);
+      const tagline = el('p', 'tagline');
+      tagline.textContent = 'Our Thing. Your League.';
+      footer.appendChild(tagline);
+      app.appendChild(footer);
+    }
+
+    render(data);
+  </script>
+</body>
+</html>
