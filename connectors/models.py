@@ -56,5 +56,6 @@ class NormalizedLeague:
         return max(self.teams, key=lambda t: t.week_score)
 
     @property
+
     def lowest_scorer(self) -> NormalizedRoster:
         return min(self.teams, key=lambda t: t.week_score)
