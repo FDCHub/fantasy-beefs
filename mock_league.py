@@ -16,7 +16,7 @@ TEAMS = [
             {"name": "CeeDee Lamb",        "pos": "WR"},
             {"name": "Justin Jefferson",   "pos": "WR"},
             {"name": "Sam LaPorta",        "pos": "TE"},
-            {"name": "Puka Nacua",         "pos": "FLEX"},
+            {"name": "Puka Nacua",         "pos": "WR"},
             {"name": "Harrison Butker",    "pos": "K"},
             {"name": "Dallas Cowboys",     "pos": "DEF"},
             {"name": "Kyren Williams",     "pos": "RB"},
