@@ -1,3 +1,12 @@
 .venv/
 
 secrets/
+
+# database — never commit or deploy the local SQLite file
+db/fantasy.db
+*.db
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo

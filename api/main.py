@@ -141,6 +141,12 @@ app = FastAPI(
 )
 
 
+@app.on_event("startup")
+def _create_tables() -> None:
+    from db.schema import Base, engine
+    Base.metadata.create_all(engine)
+
+
 # ── Auth schemas & endpoints ──────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):

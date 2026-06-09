@@ -21,8 +21,13 @@ from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 # ── Engine / session ──────────────────────────────────────────────────────────
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "fantasy.db")
-DB_URL  = f"sqlite:///{DB_PATH}"
+_ENV_URL = os.environ.get("DATABASE_URL", "")
+if _ENV_URL:
+    # Railway provides postgres:// (legacy Heroku format); SQLAlchemy 1.4+ requires postgresql://
+    DB_URL = _ENV_URL.replace("postgres://", "postgresql://", 1)
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), "fantasy.db")
+    DB_URL  = f"sqlite:///{DB_PATH}"
 
 engine       = create_engine(DB_URL, echo=False)
 SessionLocal = sessionmaker(bind=engine)
