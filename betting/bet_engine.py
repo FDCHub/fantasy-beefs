@@ -29,6 +29,7 @@ from odds.odds_engine_headless import (
     PlayerProj,
     ScoringSettings,
     HALF_PPR,
+    INJURY_MULTIPLIERS,
     simulate_player_scores,
     simulate_scores,
 )
@@ -160,6 +161,10 @@ def _position_player(team_id: int, position: str, week: int, db: Session) -> tup
             ).first()
             return slot.player, (proj.projected_points if proj else 0.0)
     raise ValueError(f"No {position} player found for team {team_id}")
+
+
+def _inj_adjusted(s: PlayerProj) -> float:
+    return s.projected_points * INJURY_MULTIPLIERS.get(s.injury_status or "", 1.0)
 
 
 # ── Bet type functions ────────────────────────────────────────────────────────
@@ -375,6 +380,259 @@ def place_prop_bet(
 
     return BetResult(
         bet_id=bet.id, bet_type="prop", description=desc,
+        amount=amount, odds_dec=dec, moneyline=ml,
+        win_prob=round(win_prob, 4), to_win=round(amount * dec - amount, 2),
+        status="pending",
+    )
+
+
+def place_more_overs(
+    matchup_id:     int,
+    wallet_id:      int,
+    picked_team_id: int,
+    amount:         float,
+    week:           int,
+    db:             Session,
+) -> BetResult:
+    """Win if more of your starters beat their projections than opponent's starters."""
+    matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
+    if not matchup:
+        raise ValueError(f"Matchup {matchup_id} not found")
+    if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
+        raise ValueError("picked_team_id must be one of the two teams in this matchup")
+
+    wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
+    if not wallet:
+        raise ValueError(f"Wallet {wallet_id} not found")
+    if wallet.balance < amount:
+        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
+
+    _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    home_starters, away_starters = [], []
+    for _s in _h_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        home_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    for _s in _a_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+
+    home_over_count = np.zeros(N_SIMS, dtype=int)
+    for s in home_starters:
+        sim_pts = _inj_adjusted(s)
+        scores  = simulate_player_scores(sim_pts, s.player_id, week)
+        home_over_count += (scores > s.projected_points).astype(int)
+
+    away_over_count = np.zeros(N_SIMS, dtype=int)
+    for s in away_starters:
+        sim_pts = _inj_adjusted(s)
+        scores  = simulate_player_scores(sim_pts, s.player_id, week)
+        away_over_count += (scores > s.projected_points).astype(int)
+
+    home_win_prob = float((home_over_count > away_over_count).mean())
+    win_prob = home_win_prob if picked_team_id == matchup.home_team_id else 1.0 - home_win_prob
+
+    ml     = _prob_to_american(win_prob)
+    dec    = _ml_to_decimal(ml)
+    picked = matchup.home_team if picked_team_id == matchup.home_team_id else matchup.away_team
+    opp    = matchup.away_team if picked_team_id == matchup.home_team_id else matchup.home_team
+    desc   = f"More Overs: {picked.team_name} vs {opp.team_name} (week {week})"
+
+    bet = _place_bet(db, wallet, amount, "more_overs", matchup_id,
+                     picked_team_id, None, None, None, desc, dec)
+
+    return BetResult(
+        bet_id=bet.id, bet_type="more_overs", description=desc,
+        amount=amount, odds_dec=dec, moneyline=ml,
+        win_prob=round(win_prob, 4), to_win=round(amount * dec - amount, 2),
+        status="pending",
+    )
+
+
+def place_closest_to_projection(
+    matchup_id:     int,
+    wallet_id:      int,
+    picked_team_id: int,
+    amount:         float,
+    week:           int,
+    db:             Session,
+) -> BetResult:
+    """Win if your lineup finishes nearer its projected team total than opponent's."""
+    matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
+    if not matchup:
+        raise ValueError(f"Matchup {matchup_id} not found")
+    if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
+        raise ValueError("picked_team_id must be one of the two teams in this matchup")
+
+    wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
+    if not wallet:
+        raise ValueError(f"Wallet {wallet_id} not found")
+    if wallet.balance < amount:
+        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
+
+    _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    home_starters, away_starters = [], []
+    for _s in _h_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        home_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    for _s in _a_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+
+    home_proj_total = sum(_inj_adjusted(s) for s in home_starters)
+    away_proj_total = sum(_inj_adjusted(s) for s in away_starters)
+
+    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week)
+
+    home_diff = np.abs(home_scores - home_proj_total)
+    away_diff = np.abs(away_scores - away_proj_total)
+
+    home_win_prob = float((home_diff < away_diff).mean())
+    win_prob = home_win_prob if picked_team_id == matchup.home_team_id else 1.0 - home_win_prob
+
+    ml  = _prob_to_american(win_prob)
+    dec = _ml_to_decimal(ml)
+    if picked_team_id == matchup.home_team_id:
+        picked, opp = matchup.home_team, matchup.away_team
+        picked_proj, opp_proj = home_proj_total, away_proj_total
+    else:
+        picked, opp = matchup.away_team, matchup.home_team
+        picked_proj, opp_proj = away_proj_total, home_proj_total
+    desc = (f"Closest to Proj: {picked.team_name} ({picked_proj:.1f}pt) "
+            f"vs {opp.team_name} ({opp_proj:.1f}pt) (week {week})")
+
+    bet = _place_bet(db, wallet, amount, "closest_to_proj", matchup_id,
+                     picked_team_id, None, None, None, desc, dec)
+
+    return BetResult(
+        bet_id=bet.id, bet_type="closest_to_proj", description=desc,
+        amount=amount, odds_dec=dec, moneyline=ml,
+        win_prob=round(win_prob, 4), to_win=round(amount * dec - amount, 2),
+        status="pending",
+    )
+
+
+def place_position_group_wins(
+    matchup_id:     int,
+    wallet_id:      int,
+    picked_team_id: int,
+    amount:         float,
+    week:           int,
+    db:             Session,
+) -> BetResult:
+    """Win if your team wins more position group matchups: QB vs QB, RB vs RB, WR vs WR, TE vs TE."""
+    matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
+    if not matchup:
+        raise ValueError(f"Matchup {matchup_id} not found")
+    if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
+        raise ValueError("picked_team_id must be one of the two teams in this matchup")
+
+    wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
+    if not wallet:
+        raise ValueError(f"Wallet {wallet_id} not found")
+    if wallet.balance < amount:
+        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
+
+    _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    home_starters, away_starters = [], []
+    for _s in _h_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        home_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    for _s in _a_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+
+    home_groups_won = np.zeros(N_SIMS, dtype=int)
+    for pos in ("QB", "RB", "WR", "TE"):
+        h_group = [s for s in home_starters if s.position == pos]
+        a_group = [s for s in away_starters if s.position == pos]
+        h_group_scores = np.zeros(N_SIMS)
+        for s in h_group:
+            h_group_scores += simulate_player_scores(_inj_adjusted(s), s.player_id, week)
+        a_group_scores = np.zeros(N_SIMS)
+        for s in a_group:
+            a_group_scores += simulate_player_scores(_inj_adjusted(s), s.player_id, week)
+        home_groups_won += (h_group_scores > a_group_scores).astype(int)
+
+    if picked_team_id == matchup.home_team_id:
+        win_prob = float((home_groups_won > 2).mean())
+        picked, opp = matchup.home_team, matchup.away_team
+    else:
+        win_prob = float((home_groups_won < 2).mean())
+        picked, opp = matchup.away_team, matchup.home_team
+
+    ml   = _prob_to_american(win_prob)
+    dec  = _ml_to_decimal(ml)
+    desc = f"Position Groups: {picked.team_name} vs {opp.team_name} (week {week})"
+
+    bet = _place_bet(db, wallet, amount, "position_group_wins", matchup_id,
+                     picked_team_id, None, None, None, desc, dec)
+
+    return BetResult(
+        bet_id=bet.id, bet_type="position_group_wins", description=desc,
+        amount=amount, odds_dec=dec, moneyline=ml,
+        win_prob=round(win_prob, 4), to_win=round(amount * dec - amount, 2),
+        status="pending",
+    )
+
+
+def place_most_offensive_tds(
+    matchup_id:     int,
+    wallet_id:      int,
+    picked_team_id: int,
+    amount:         float,
+    week:           int,
+    db:             Session,
+) -> BetResult:
+    """Win if your starters score more offensive TDs than opponent's starters."""
+    matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
+    if not matchup:
+        raise ValueError(f"Matchup {matchup_id} not found")
+    if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
+        raise ValueError("picked_team_id must be one of the two teams in this matchup")
+
+    wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
+    if not wallet:
+        raise ValueError(f"Wallet {wallet_id} not found")
+    if wallet.balance < amount:
+        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
+
+    _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    home_starters, away_starters = [], []
+    for _s in _h_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        home_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    for _s in _a_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+
+    home_tds = np.zeros(N_SIMS, dtype=float)
+    for s in home_starters:
+        td_proj = max(_inj_adjusted(s) / 6.0, 0.0)
+        home_tds += np.random.default_rng(seed=s.player_id * 1_000 + week).poisson(td_proj, N_SIMS).astype(float)
+
+    away_tds = np.zeros(N_SIMS, dtype=float)
+    for s in away_starters:
+        td_proj = max(_inj_adjusted(s) / 6.0, 0.0)
+        away_tds += np.random.default_rng(seed=s.player_id * 1_000 + week).poisson(td_proj, N_SIMS).astype(float)
+
+    home_win_prob = float((home_tds > away_tds).mean())
+    win_prob = home_win_prob if picked_team_id == matchup.home_team_id else 1.0 - home_win_prob
+
+    ml     = _prob_to_american(win_prob)
+    dec    = _ml_to_decimal(ml)
+    picked = matchup.home_team if picked_team_id == matchup.home_team_id else matchup.away_team
+    opp    = matchup.away_team if picked_team_id == matchup.home_team_id else matchup.home_team
+    desc   = f"Most Offensive TDs: {picked.team_name} vs {opp.team_name} (week {week})"
+
+    bet = _place_bet(db, wallet, amount, "most_offensive_tds", matchup_id,
+                     picked_team_id, None, None, None, desc, dec)
+
+    return BetResult(
+        bet_id=bet.id, bet_type="most_offensive_tds", description=desc,
         amount=amount, odds_dec=dec, moneyline=ml,
         win_prob=round(win_prob, 4), to_win=round(amount * dec - amount, 2),
         status="pending",
