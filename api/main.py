@@ -2628,3 +2628,5 @@ app.include_router(health_router)
 
 from api.war_room_routes import router as war_room_router  # noqa: E402
 app.include_router(war_room_router)
+from api.bet_routes import router as bet_router  # noqa: E402
+app.include_router(bet_router)
