@@ -24,13 +24,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import Bet, Matchup, Player, Projection, Roster, Transaction, Wallet
 from wallet.wallet_manager import validate_bet_amount
-from odds.monte_carlo import (
+from odds.odds_engine_headless import (
     N_SIMS,
-    SEASON,
-    SOURCE,
+    PlayerProj,
+    ScoringSettings,
+    HALF_PPR,
     simulate_player_scores,
     simulate_scores,
 )
+
+SEASON = 2024
+SOURCE = "fantasypros"
 
 _STARTER_SLOTS = 9   # first 9 roster rows are starters
 _BENCH_START   = 9   # roster rows offset _BENCH_START+ are bench
@@ -199,7 +203,16 @@ def place_straight_bet(
     if wallet.balance < amount:
         raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
 
-    home_scores, away_scores = simulate_scores(matchup.home_team, matchup.away_team, week, db)
+    _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    home_starters, away_starters = [], []
+    for _s in _h_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        home_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    for _s in _a_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week)
     home_win_prob = float((home_scores > away_scores).mean())
     win_prob = home_win_prob if picked_team_id == matchup.home_team_id else 1 - home_win_prob
 
@@ -245,7 +258,16 @@ def place_spread_bet(
     if wallet.balance < amount:
         raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
 
-    home_scores, away_scores = simulate_scores(matchup.home_team, matchup.away_team, week, db)
+    _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    home_starters, away_starters = [], []
+    for _s in _h_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        home_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    for _s in _a_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week)
 
     if picked_team_id == matchup.home_team_id:
         covers = home_scores - away_scores > spread
@@ -294,7 +316,16 @@ def place_over_under(
     if wallet.balance < amount:
         raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
 
-    home_scores, away_scores = simulate_scores(matchup.home_team, matchup.away_team, week, db)
+    _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
+    home_starters, away_starters = [], []
+    for _s in _h_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        home_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    for _s in _a_slots:
+        _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+        away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
+    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week)
     combined = home_scores + away_scores
 
     win_prob = float((combined > total_line).mean()) if pick == "over" \
