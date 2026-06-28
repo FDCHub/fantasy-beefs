@@ -162,24 +162,6 @@ def _position_player(team_id: int, position: str, week: int, db: Session) -> tup
     raise ValueError(f"No {position} player found for team {team_id}")
 
 
-def _bench_projected_score(team_id: int, week: int, db: Session) -> float:
-    """Sum projected points for bench players (slots _BENCH_START+1 onward)."""
-    slots = (
-        db.query(Roster)
-        .filter(Roster.team_id == team_id)
-        .order_by(Roster.id)
-        .offset(_BENCH_START)
-        .all()
-    )
-    total = 0.0
-    for slot in slots:
-        proj = db.query(Projection).filter_by(
-            player_id=slot.player_id, week=week, season=SEASON, source=SOURCE
-        ).first()
-        total += proj.projected_points if proj else 0.0
-    return total
-
-
 # ── Bet type functions ────────────────────────────────────────────────────────
 
 def place_straight_bet(
@@ -399,96 +381,6 @@ def place_prop_bet(
     )
 
 
-def place_full_beef(
-    matchup_id:     int,
-    wallet_id:      int,
-    picked_team_id: int,
-    amount:         float,
-    week:           int,
-    db:             Session,
-) -> BetResult:
-    """Best-of-3 structured matchup: DEF vs DEF, K vs K, Bench vs Bench. Win 2+ legs."""
-    matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
-    if not matchup:
-        raise ValueError(f"Matchup {matchup_id} not found")
-    if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
-        raise ValueError("picked_team_id must be one of the two teams in this matchup")
-
-    wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
-    if not wallet:
-        raise ValueError(f"Wallet {wallet_id} not found")
-    if wallet.balance < amount:
-        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
-
-    h_id = matchup.home_team_id
-    a_id = matchup.away_team_id
-
-    h_def_player, h_def_proj = _position_player(h_id, "DEF", week, db)
-    a_def_player, a_def_proj = _position_player(a_id, "DEF", week, db)
-    h_k_player,   h_k_proj   = _position_player(h_id, "K",   week, db)
-    a_k_player,   a_k_proj   = _position_player(a_id, "K",   week, db)
-    h_bench_proj = _bench_projected_score(h_id, week, db)
-    a_bench_proj = _bench_projected_score(a_id, week, db)
-
-    # Simulate each leg independently
-    h_def_scores   = simulate_player_scores(h_def_proj, h_def_player.id, week)
-    a_def_scores   = simulate_player_scores(a_def_proj, a_def_player.id, week)
-    h_k_scores     = simulate_player_scores(h_k_proj,   h_k_player.id,   week)
-    a_k_scores     = simulate_player_scores(a_k_proj,   a_k_player.id,   week)
-    h_bench_scores = np.random.normal(h_bench_proj, _BENCH_STD, N_SIMS)
-    a_bench_scores = np.random.normal(a_bench_proj, _BENCH_STD, N_SIMS)
-
-    h_legs_won = (
-        (h_def_scores   > a_def_scores).astype(int) +
-        (h_k_scores     > a_k_scores).astype(int) +
-        (h_bench_scores > a_bench_scores).astype(int)
-    )
-
-    if picked_team_id == h_id:
-        win_prob = float((h_legs_won >= 2).mean())
-        picked   = matchup.home_team.team_name
-        opp      = matchup.away_team.team_name
-    else:
-        win_prob = float((h_legs_won <= 1).mean())
-        picked   = matchup.away_team.team_name
-        opp      = matchup.home_team.team_name
-
-    ml  = _prob_to_american(win_prob)
-    dec = _ml_to_decimal(ml)
-    desc = (f"Full Beef: {picked} vs {opp} — "
-            f"DEF {h_def_proj:.1f}/{a_def_proj:.1f} "
-            f"K {h_k_proj:.1f}/{a_k_proj:.1f} "
-            f"Bench {h_bench_proj:.1f}/{a_bench_proj:.1f} (week {week})")
-
-    legs = [
-        {
-            "leg": "DEF",
-            "home_player": h_def_player.name, "home_proj": round(h_def_proj, 1),
-            "away_player": a_def_player.name, "away_proj": round(a_def_proj, 1),
-        },
-        {
-            "leg": "K",
-            "home_player": h_k_player.name, "home_proj": round(h_k_proj, 1),
-            "away_player": a_k_player.name, "away_proj": round(a_k_proj, 1),
-        },
-        {
-            "leg": "Bench",
-            "home_proj": round(h_bench_proj, 1),
-            "away_proj": round(a_bench_proj, 1),
-        },
-    ]
-
-    bet = _place_bet(db, wallet, amount, "full_beef", matchup_id,
-                     picked_team_id, None, None, None, desc, dec)
-
-    return BetResult(
-        bet_id=bet.id, bet_type="full_beef", description=desc,
-        amount=amount, odds_dec=dec, moneyline=ml,
-        win_prob=round(win_prob, 4), to_win=round(amount * dec - amount, 2),
-        status="pending", legs=legs,
-    )
-
-
 # ── CLI smoke test ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -518,8 +410,7 @@ if __name__ == "__main__":
         r2 = place_spread_bet(MATCHUP_ID, WALLET_ID, home.id, 5.0, 10.0, WEEK, db)
         r3 = place_over_under(MATCHUP_ID, WALLET_ID, 240.0, "over", 10.0, WEEK, db)
         r4 = place_prop_bet(MATCHUP_ID, WALLET_ID, home.id, 10.0, WEEK, db)
-        r5 = place_full_beef(MATCHUP_ID, WALLET_ID, home.id, 10.0, WEEK, db)
-        results = [r1, r2, r3, r4, r5]
+        results = [r1, r2, r3, r4]
 
         print("┌────────┬────────────┬──────────────────────────────────────────────┬────────┬──────────┬────────┬─────────┐")
         print("│ Bet ID │ Type       │ Description                                  │  Stake │ Moneyline│ Prob   │ Status  │")
@@ -528,13 +419,6 @@ if __name__ == "__main__":
             print(f"│ {r.bet_id:<6} │ {r.bet_type:<10} │ {r.description:<44} │ "
                   f"${r.amount:>5.2f} │ {r.moneyline:>+8,} │ {r.win_prob:>5.1%} │ {r.status:<7} │")
         print("└────────┴────────────┴──────────────────────────────────────────────┴────────┴──────────┴────────┴─────────┘")
-
-        if r5.legs:
-            print("\n  Full Beef legs:")
-            for leg in r5.legs:
-                home_p = leg.get("home_player", "Bench")
-                away_p = leg.get("away_player", "Bench")
-                print(f"    {leg['leg']:<6}  {home_p} {leg['home_proj']}pt  vs  {away_p} {leg['away_proj']}pt")
 
         db.expire_all()
         w = db.query(Wallet).filter(Wallet.id == WALLET_ID).first()
