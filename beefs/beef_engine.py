@@ -41,12 +41,20 @@ from db.schema import (
     Bet, BeefChallenge, Matchup, Player, Projection, Roster,
     Transaction, Wallet, Team,
 )
-from odds.monte_carlo import (
-    N_START, SEASON, SOURCE,
-    INJURY_MULTIPLIERS, MIN_HEALTHY_BENCH,
-    bench_players, simulate_scores, simulate_bench_scores, simulate_player_scores,
+from odds.odds_engine_headless import (
+    N_SIMS,
+    PlayerProj,
+    HALF_PPR,
+    INJURY_MULTIPLIERS,
+    simulate_player_scores,
+    simulate_scores,
     _prob_to_american,
 )
+
+N_START           = 9
+SEASON            = 2024
+SOURCE            = "fantasypros"
+MIN_HEALTHY_BENCH = 6
 from wallet.wallet_manager import MIN_BET
 from feed.league_feed import (
     log_challenge_issued,
@@ -118,19 +126,43 @@ def _compute_odds(
     Simulate both teams and return (ch_dec, ch_ml, cd_dec, cd_ml).
     challenger_scores corresponds to challenger_team, regardless of matchup.
     """
-    if bet_type == "bench_battle":
-        ch_scores, cd_scores = simulate_bench_scores(challenger_team, challenged_team, week, db)
-        p_ch = float((ch_scores > cd_scores).mean())
-
-    elif bet_type in ("straight", "spread"):
-        ch_scores, cd_scores = simulate_scores(challenger_team, challenged_team, week, db)
+    if bet_type in ("straight", "spread"):
+        _ch_slots = db.query(Roster).filter(Roster.team_id == challenger_team.id).order_by(Roster.id).limit(N_START).all()
+        _cd_slots = db.query(Roster).filter(Roster.team_id == challenged_team.id).order_by(Roster.id).limit(N_START).all()
+        ch_starters: list[PlayerProj] = []
+        for _s in _ch_slots:
+            _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+            ch_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position,
+                                          projected_points=_p.projected_points if _p else 0.0,
+                                          injury_status=_p.injury_status if _p else None))
+        cd_starters: list[PlayerProj] = []
+        for _s in _cd_slots:
+            _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+            cd_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position,
+                                          projected_points=_p.projected_points if _p else 0.0,
+                                          injury_status=_p.injury_status if _p else None))
+        ch_scores, cd_scores = simulate_scores(challenger_team.id, challenged_team.id, ch_starters, cd_starters, week)
         if bet_type == "straight":
             p_ch = float((ch_scores > cd_scores).mean())
         else:
             p_ch = float(((ch_scores - cd_scores) > (line or 0.0)).mean())
 
     elif bet_type == "over_under":
-        ch_scores, cd_scores = simulate_scores(challenger_team, challenged_team, week, db)
+        _ch_slots = db.query(Roster).filter(Roster.team_id == challenger_team.id).order_by(Roster.id).limit(N_START).all()
+        _cd_slots = db.query(Roster).filter(Roster.team_id == challenged_team.id).order_by(Roster.id).limit(N_START).all()
+        ch_starters = []
+        for _s in _ch_slots:
+            _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+            ch_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position,
+                                          projected_points=_p.projected_points if _p else 0.0,
+                                          injury_status=_p.injury_status if _p else None))
+        cd_starters = []
+        for _s in _cd_slots:
+            _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
+            cd_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position,
+                                          projected_points=_p.projected_points if _p else 0.0,
+                                          injury_status=_p.injury_status if _p else None))
+        ch_scores, cd_scores = simulate_scores(challenger_team.id, challenged_team.id, ch_starters, cd_starters, week)
         combined = ch_scores + cd_scores
         if side == "over":
             p_ch = float((combined > (line or 0.0)).mean())
@@ -170,11 +202,6 @@ def _build_description(
     side:            str | None,
     player:          Player | None,
 ) -> str:
-    if bet_type == "bench_battle":
-        return (
-            f"{challenger_name} vs {challenged_name} — "
-            f"bench battle (week {week})"
-        )
     if bet_type == "straight":
         return (
             f"{challenger_name} vs {challenged_name} — "
@@ -224,29 +251,6 @@ def _to_out(c: BeefChallenge, direction: str = "any") -> ChallengeOut:
     )
 
 
-# ── Bench battle helpers ──────────────────────────────────────────────────────
-
-def _validate_bench_battle(
-    challenger_team: Team,
-    challenged_team: Team,
-    week: int,
-    db: Session,
-) -> None:
-    """Raise ValueError if either team has fewer than MIN_HEALTHY_BENCH non-Out/IR bench players."""
-    for team in (challenger_team, challenged_team):
-        bench = bench_players(team, week, db)
-        healthy = sum(
-            1 for b in bench
-            if b.injury_status not in ("out", "ir")
-        )
-        if healthy < MIN_HEALTHY_BENCH:
-            raise ValueError(
-                f"{team.team_name} has only {healthy} healthy bench player(s) "
-                f"(minimum {MIN_HEALTHY_BENCH} required for bench_battle — "
-                f"{len(bench) - healthy} player(s) are Out/IR)"
-            )
-
-
 def _snapshot_projections(
     bet_type:           str,
     challenger_team_id: int,
@@ -263,12 +267,6 @@ def _snapshot_projections(
             player_id=player_id, week=week, season=SEASON, source=SOURCE
         ).first()
         snapshot[str(player_id)] = proj.projected_points if proj else 0.0
-
-    elif bet_type == "bench_battle":
-        for team_id in (challenger_team_id, challenged_team_id):
-            team = db.query(Team).filter(Team.id == team_id).first()
-            for b in bench_players(team, week, db):
-                snapshot[str(b.player_id)] = b.raw_points
 
     else:  # straight | spread | over_under — snapshot starters
         for team_id in (challenger_team_id, challenged_team_id):
@@ -405,7 +403,7 @@ def issue_challenge(
     if not challenged_team:
         raise ValueError(f"Team {challenged_team_id} not found")
 
-    if bet_type not in ("straight", "spread", "over_under", "prop", "bench_battle"):
+    if bet_type not in ("straight", "spread", "over_under", "prop"):
         raise ValueError(f"Unknown bet_type {bet_type!r}")
     if bet_type == "spread" and line is None:
         raise ValueError("spread bets require line")
@@ -420,9 +418,6 @@ def issue_challenge(
     if not challenger_wallet or challenger_wallet.balance < amount:
         bal = challenger_wallet.balance if challenger_wallet else 0.0
         raise ValueError(f"Challenger wallet has insufficient funds: ${bal:.2f} < ${amount:.2f}")
-
-    if bet_type == "bench_battle":
-        _validate_bench_battle(challenger_team, challenged_team, week, db)
 
     player = db.query(Player).filter(Player.id == player_id).first() if player_id else None
 
@@ -577,7 +572,7 @@ def _challenger_side_params(
     c: BeefChallenge,
 ) -> tuple[int | None, float | None, str | None]:
     """(picked_team_id, line, side) for the challenger's Bet row."""
-    if c.bet_type in ("straight", "bench_battle"):
+    if c.bet_type == "straight":
         return c.challenger_team_id, None, None
     if c.bet_type == "spread":
         return c.challenger_team_id, c.line, None
@@ -589,7 +584,7 @@ def _challenged_side_params(
     c: BeefChallenge,
 ) -> tuple[int | None, float | None, str | None]:
     """(picked_team_id, line, side) for the challenged party's Bet row."""
-    if c.bet_type in ("straight", "bench_battle"):
+    if c.bet_type == "straight":
         return c.challenged_team_id, None, None
     if c.bet_type == "spread":
         # Challenged wins if challenger fails to cover, so their effective line is negated
@@ -622,111 +617,20 @@ if __name__ == "__main__":
         t1 = db.query(Team).filter(Team.id == T1).first()
         t2 = db.query(Team).filter(Team.id == T2).first()
 
-        # ── Inject injuries for testing ──────────────────────────────────────
-        print(f"\nBench Battle — week {WEEK}:  {t1.team_name}  vs  {t2.team_name}")
+        print(f"\nStraight challenge — week {WEEK}: {t1.team_name} vs {t2.team_name}")
         print("─" * 60)
 
-        # Team 3 bench: slots 10-15 (Jahmyr Gibbs, DJ Moore, David Njoku,
-        #   Tua Tagovailoa, Jonathan Taylor, Mike Evans)
-        # Set Jahmyr Gibbs → 'out' and DJ Moore → 'questionable'
-        bench_t1 = bench_players(t1, WEEK, db)
-        bench_t2 = bench_players(t2, WEEK, db)
-
-        if bench_t1:
-            # Mark first bench player as 'out'
-            p0 = db.query(Projection).filter_by(
-                player_id=bench_t1[0].player_id, week=WEEK, season=SEASON, source=SOURCE
-            ).first()
-            if p0:
-                p0.injury_status = "out"
-            # Mark second bench player as 'questionable'
-            p1 = db.query(Projection).filter_by(
-                player_id=bench_t1[1].player_id, week=WEEK, season=SEASON, source=SOURCE
-            ).first()
-            if p1:
-                p1.injury_status = "questionable"
-            db.commit()
-            print(f"\nInjuries injected on {t1.team_name}:")
-            print(f"  {bench_t1[0].name} → OUT")
-            print(f"  {bench_t1[1].name} → QUESTIONABLE")
-
-        # ── Show bench rosters with injury status ────────────────────────────
-        def _print_bench(team_name: str, bench: list) -> None:
-            print(f"\n{team_name} bench (week {WEEK})\n")
-            print("  ┌────────────────────────────┬──────┬──────────────┬──────────┬──────────┐")
-            print("  │ Player                     │ Pos  │ Injury       │ FP (PPR) │ Eff. Pts │")
-            print("  ├────────────────────────────┼──────┼──────────────┼──────────┼──────────┤")
-            for b in bench:
-                inj  = b.injury_status or "healthy"
-                flag = " ⚠" if b.injury_status in ("out", "ir") else (
-                       " ~" if b.injury_status in ("doubtful", "questionable") else "  ")
-                print(f"  │ {b.name:<26} │ {b.position:<4} │ {inj:<10}{flag} │ "
-                      f"{b.raw_points:>8.2f} │ {b.adjusted_points:>8.2f} │")
-            healthy = sum(1 for b in bench if b.injury_status not in ("out", "ir"))
-            print("  ├────────────────────────────┼──────┼──────────────┼──────────┼──────────┤")
-            print(f"  │ {'Healthy / total':26} │ {healthy}/{len(bench):<3}  │              │          │          │")
-            print("  └────────────────────────────┴──────┴──────────────┴──────────┴──────────┘")
-
-        # Re-fetch with updated injury statuses
-        bench_t1_fresh = bench_players(t1, WEEK, db)
-        bench_t2_fresh = bench_players(t2, WEEK, db)
-        _print_bench(t1.team_name, bench_t1_fresh)
-        _print_bench(t2.team_name, bench_t2_fresh)
-
-        # ── Attempt 1: should BLOCK (Out player reduces healthy count to 5) ──
-        print(f"\n{'─'*60}")
-        print(f"Attempt 1: issue bench_battle (expect BLOCKED — "
-              f"{bench_t1[0].name} is Out)")
-        try:
-            issue_challenge(T1, T2, WEEK, "bench_battle", 75.0, db=db)
-            print("  ERROR: should have been blocked!")
-        except ValueError as e:
-            print(f"  Blocked as expected: {e}")
-
-        # ── Change Out → 'doubtful' so healthy count is 6 again ─────────────
-        if bench_t1:
-            p0 = db.query(Projection).filter_by(
-                player_id=bench_t1[0].player_id, week=WEEK, season=SEASON, source=SOURCE
-            ).first()
-            if p0:
-                p0.injury_status = "doubtful"
-                db.commit()
-            print(f"\n  {bench_t1[0].name} status updated: OUT → DOUBTFUL")
-            print(f"  (doubtful counts as healthy for roster purposes, projects 0.25×)")
-
-        # ── Attempt 2: should SUCCEED (all 6 bench players available) ────────
-        print(f"\n{'─'*60}")
-        print(f"Attempt 2: issue bench_battle (expect SUCCESS)")
-        c = issue_challenge(T1, T2, WEEK, "bench_battle", 75.0, db=db)
+        c = issue_challenge(T1, T2, WEEK, "straight", 50.0, db=db)
         print(f"  Challenge #{c.challenge_id} issued  status={c.status}")
         print(f"  {c.description}")
         print(f"  {c.challenger_name}: {c.challenger_moneyline:+,}   "
               f"{c.challenged_name}: {c.challenged_moneyline:+,}")
 
-        # ── Simulate a projection shift AFTER challenge was issued ───────────
-        # Bump one bench player's projection by 20% → triggers staleness
-        proj_row = db.query(Projection).filter_by(
-            player_id=bench_t2_fresh[0].player_id, week=WEEK, season=SEASON, source=SOURCE
-        ).first()
-        old_pts = proj_row.projected_points if proj_row else 0.0
-        new_pts = round(old_pts * 1.22, 2)  # +22% shift
-        if proj_row:
-            proj_row.projected_points = new_pts
-            db.commit()
-        print(f"\n  Projection shift injected on {bench_t2_fresh[0].name}: "
-              f"{old_pts:.2f} → {new_pts:.2f}  (+22%, triggers staleness)")
-
-        # ── Respond: accept and check staleness_warning ───────────────────────
-        print(f"\n{'─'*60}")
-        print(f"Respond: accept challenge #{c.challenge_id}")
         result = respond_to_challenge(c.challenge_id, accept=True, db=db)
-        print(f"  status         : accepted")
-        print(f"  challenger_bet : #{result.challenger_bet_id}")
-        print(f"  challenged_bet : #{result.challenged_bet_id}")
-        print(f"  staleness_warning: {result.staleness_warning}  "
-              f"{'← WARN: odds may be stale' if result.staleness_warning else '← projections stable'}")
+        print(f"\nAccepted: challenger_bet=#{result.challenger_bet_id}  "
+              f"challenged_bet=#{result.challenged_bet_id}  "
+              f"staleness={result.staleness_warning}")
 
-        # ── Wallet balances post-accept ───────────────────────────────────────
         print()
         for tid, name in [(T1, t1.team_name), (T2, t2.team_name)]:
             w = db.query(Wallet).filter(Wallet.team_id == tid).first()
