@@ -6,7 +6,6 @@ For each pending bet whose matchup falls in the requested week:
   - spread     : won if picked team's actual margin > line
   - over_under : won if (home+away) > line (side="over") or < line (side="under")
   - prop       : won if picked team's top starter outscores opponent's top starter
-  - full_beef  : win 2 of 3 legs (DEF vs DEF, K vs K, Bench vs Bench)
 
 On settlement:
   - Won  → status="won", settled_at=now, credit wallet (payout tx)
@@ -27,9 +26,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from db.schema import Bet, BeefChallenge, Matchup, Projection, Roster, Transaction, Wallet
 from feed.league_feed import log_settlement_events
 
-SEASON       = 2024
-SOURCE       = "fantasypros"
-_BENCH_START = 9   # roster slots 10+ are bench
+SEASON = 2024
+SOURCE = "fantasypros"
 
 
 # ── Result dataclasses ────────────────────────────────────────────────────────
@@ -137,24 +135,6 @@ def _position_actual(team_id: int, position: str, week: int, db: Session) -> flo
     return 0.0
 
 
-def _eval_full_beef_bet(bet: Bet, db: Session) -> bool:
-    """Win 2 of 3 legs (DEF, K, Bench) to win The Full Beef."""
-    matchup = bet.matchup
-    week    = matchup.week
-    h_id    = matchup.home_team_id
-    a_id    = matchup.away_team_id
-
-    h_def   = _position_actual(h_id, "DEF", week, db)
-    a_def   = _position_actual(a_id, "DEF", week, db)
-    h_k     = _position_actual(h_id, "K",   week, db)
-    a_k     = _position_actual(a_id, "K",   week, db)
-    h_bench = _bench_actual_score(h_id, week, db)
-    a_bench = _bench_actual_score(a_id, week, db)
-
-    h_legs = sum([h_def > a_def, h_k > a_k, h_bench > a_bench])
-    return (h_legs >= 2) if bet.picked_team_id == h_id else (h_legs <= 1)
-
-
 def _team_score_for_week(team_id: int, week: int, db: Session) -> float:
     """Actual weekly score for a team from their own scheduled matchup."""
     m = (
@@ -168,24 +148,6 @@ def _team_score_for_week(team_id: int, week: int, db: Session) -> float:
     if not m:
         return 0.0
     return m.home_score if m.home_team_id == team_id else m.away_score
-
-
-def _bench_actual_score(team_id: int, week: int, db: Session) -> float:
-    """Sum actual_points for bench players (slots _BENCH_START+1 onwards) from Projection."""
-    slots = (
-        db.query(Roster)
-        .filter(Roster.team_id == team_id)
-        .order_by(Roster.id)
-        .offset(_BENCH_START)
-        .all()
-    )
-    total = 0.0
-    for slot in slots:
-        proj = db.query(Projection).filter_by(
-            player_id=slot.player_id, week=week, season=SEASON, source=SOURCE
-        ).first()
-        total += (proj.actual_points if proj else 0.0)
-    return total
 
 
 def _eval_beef(bet: Bet, db: Session) -> bool:
@@ -217,18 +179,8 @@ def _eval_beef(bet: Bet, db: Session) -> bool:
         return (combined > (bet.line or 0.0)) if bet.side == "over" \
                else (combined < (bet.line or 0.0))
 
-    if bet.bet_type == "bench_battle":
-        my_score  = _bench_actual_score(bet.picked_team_id, week, db)
-        opp_id    = (c.challenged_team_id if bet.picked_team_id == c.challenger_team_id
-                     else c.challenger_team_id)
-        opp_score = _bench_actual_score(opp_id, week, db)
-        return my_score > opp_score
-
     if bet.bet_type == "prop":
         return _eval_prop(bet, db)
-
-    if bet.bet_type == "full_beef":
-        return _eval_full_beef_bet(bet, db)
 
     return False
 
@@ -238,7 +190,6 @@ _EVALUATORS = {
     "spread":     lambda bet, matchup, db: _eval_spread(bet, matchup),
     "over_under": lambda bet, matchup, db: _eval_over_under(bet, matchup),
     "prop":       lambda bet, matchup, db: _eval_prop(bet, db),
-    "full_beef":  lambda bet, matchup, db: _eval_full_beef_bet(bet, db),
 }
 
 
