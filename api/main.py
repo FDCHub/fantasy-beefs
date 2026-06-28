@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -139,6 +140,8 @@ app = FastAPI(
     description="Fantasy football league data, projections, and betting.",
     version="1.0.0",
 )
+
+app.mount("/tools", StaticFiles(directory="tools"), name="tools")
 
 
 @app.on_event("startup")
@@ -2622,3 +2625,6 @@ def reports_rankings_team_history(
 
 from api.health_routes import router as health_router  # noqa: E402
 app.include_router(health_router)
+
+from api.war_room_routes import router as war_room_router  # noqa: E402
+app.include_router(war_room_router)

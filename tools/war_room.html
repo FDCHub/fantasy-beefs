@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>War Room</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: #f5f0eb;
+            color: #1a1a2e;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 520px;
+            margin: 0 auto;
+            padding: 8px 12px 12px;
+            gap: 10px;
+        }
+
+        /* ── Header ── */
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 40px;
+            flex-shrink: 0;
+            border-bottom: 1px solid #d8d0c8;
+        }
+
+        .header-label {
+            font-family: monospace;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #888;
+            width: 80px;
+        }
+
+        .header-label:last-child { text-align: right; }
+
+        .header-center { flex: 1; text-align: center; }
+
+        select.team-select {
+            font-family: monospace;
+            font-size: 11px;
+            background: transparent;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 2px 6px;
+            color: #1a1a2e;
+        }
+
+        /* ── Section labels ── */
+        .section-label {
+            font-family: monospace;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        /* ── Move builder ── */
+        .move-builder { flex-shrink: 0; }
+
+        .move-cols {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        select.player-select {
+            width: 100%;
+            font-family: monospace;
+            font-size: 10px;
+            background: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 5px 6px;
+            color: #1a1a2e;
+        }
+
+        .btn-evaluate {
+            width: 100%;
+            background: #2d5a3d;
+            color: #ffffff;
+            font-family: monospace;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: none;
+            border-radius: 4px;
+            padding: 8px;
+            cursor: pointer;
+        }
+
+        .btn-evaluate:hover    { background: #3a7050; }
+        .btn-evaluate:disabled { background: #aaa; cursor: default; }
+
+        /* ── Decision value ── */
+        .decision-value { flex-shrink: 0; }
+
+        .dv-row {
+            display: flex;
+            align-items: stretch;
+            gap: 6px;
+        }
+
+        .verdict {
+            font-family: monospace;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 4px;
+            color: #ffffff;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .verdict--upgrade   { background: #4caf7d; }
+        .verdict--neutral   { background: #888888; }
+        .verdict--downgrade { background: #e57373; }
+
+        .metric {
+            flex: 1;
+            background: #ffffff;
+            border: 1px solid #e0d8d0;
+            border-radius: 4px;
+            padding: 4px 6px;
+            text-align: center;
+        }
+
+        .metric-label {
+            font-family: monospace;
+            font-size: 8px;
+            text-transform: uppercase;
+            color: #888;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .metric-value {
+            font-family: monospace;
+            font-size: 12px;
+            font-weight: 700;
+            display: block;
+        }
+
+        .metric-value.positive { color: #2d5a3d; }
+        .metric-value.negative { color: #8a2020; }
+        .metric-value.neutral  { color: #888888; }
+
+        /* ── Weekly impact ── */
+        .weekly-impact {
+            flex: 1;
+            min-height: 0;
+        }
+
+        .tile-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+        }
+
+        .tile {
+            width: 30px;
+            height: 42px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-family: monospace;
+            font-size: 7px;
+            color: #ffffff;
+            flex-shrink: 0;
+        }
+
+        .tile--win     { background: #4caf7d; }
+        .tile--loss    { background: #e57373; }
+        .tile--neutral { background: #bbbbbb; color: #1a1a2e; }
+
+        .tile-inner { line-height: 1.4; }
+
+        /* ── Utility ── */
+        .hidden { display: none !important; }
+
+        .status-text {
+            font-family: monospace;
+            font-size: 10px;
+            color: #c4501a;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header class="page-header">
+            <span class="header-label">War Room</span>
+            <div class="header-center">
+                <select class="team-select" id="team-select">
+                    <option value="1">Team 1</option>
+                </select>
+            </div>
+            <span class="header-label" id="week-label">Week 1</span>
+        </header>
+
+        <section class="move-builder">
+            <div class="move-cols">
+                <div>
+                    <div class="section-label">Drop</div>
+                    <select class="player-select" id="drop-select">
+                        <option value="">Loading…</option>
+                    </select>
+                </div>
+                <div>
+                    <div class="section-label">Add</div>
+                    <select class="player-select" id="add-select">
+                        <option value="">Select drop first</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-evaluate" id="evaluate-btn" disabled>Evaluate</button>
+        </section>
+
+        <section class="decision-value hidden" id="decision-section">
+            <div class="section-label">Decision</div>
+            <div class="dv-row" id="dv-row"></div>
+        </section>
+
+        <section class="weekly-impact hidden" id="impact-section">
+            <div class="section-label">Weekly Impact</div>
+            <div class="tile-row" id="tile-row"></div>
+        </section>
+    </div>
+
+    <script>
+        const WEEK = 1;
+        let teamId = 1;
+
+        // ── Init ──────────────────────────────────────────────────────────────
+
+        async function init() {
+            document.getElementById('week-label').textContent = `Week ${WEEK}`;
+            document.getElementById('drop-select').addEventListener('change', onDropChange);
+            document.getElementById('add-select').addEventListener('change', onAddChange);
+            document.getElementById('evaluate-btn').addEventListener('click', onEvaluate);
+            await loadRoster();
+        }
+
+        // ── Roster load ───────────────────────────────────────────────────────
+
+        async function loadRoster() {
+            const dropSel = document.getElementById('drop-select');
+            try {
+                const data = await fetch(`/health/team/${teamId}/lineup?week=${WEEK}`)
+                    .then(r => r.json());
+
+                dropSel.innerHTML = '<option value="">— select player to drop —</option>';
+
+                const starterGroup = document.createElement('optgroup');
+                starterGroup.label = 'Starters';
+                data.starters.forEach(p => starterGroup.appendChild(makePlayerOpt(p)));
+
+                const benchGroup = document.createElement('optgroup');
+                benchGroup.label = 'Bench';
+                data.bench.forEach(p => benchGroup.appendChild(makePlayerOpt(p)));
+
+                dropSel.appendChild(starterGroup);
+                dropSel.appendChild(benchGroup);
+            } catch (e) {
+                dropSel.innerHTML = '<option value="">Error loading roster</option>';
+            }
+        }
+
+        function makePlayerOpt(p) {
+            const opt = document.createElement('option');
+            opt.value = p.player_id;
+            opt.dataset.position = p.position;
+            opt.textContent = `${p.position}  ${p.name}  (${p.projected_pts.toFixed(1)})`;
+            return opt;
+        }
+
+        // ── Drop change → load free agents ────────────────────────────────────
+
+        async function onDropChange() {
+            const dropSel = document.getElementById('drop-select');
+            const addSel  = document.getElementById('add-select');
+            const btn     = document.getElementById('evaluate-btn');
+
+            btn.disabled = true;
+            hideResults();
+
+            const selectedOpt = dropSel.options[dropSel.selectedIndex];
+            const position    = selectedOpt?.dataset?.position;
+
+            if (!dropSel.value || !position) {
+                addSel.innerHTML = '<option value="">Select drop first</option>';
+                return;
+            }
+
+            addSel.innerHTML = '<option value="">Loading…</option>';
+
+            try {
+                const data = await fetch(
+                    `/war-room/free-agents?team_id=${teamId}&position=${position}&week=${WEEK}`
+                ).then(r => r.json());
+
+                if (data.length === 0) {
+                    addSel.innerHTML = '<option value="">No free agents at this position</option>';
+                    return;
+                }
+
+                addSel.innerHTML = '<option value="">— select player to add —</option>';
+                data.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.player_id;
+                    opt.textContent = `${p.position}  ${p.name}  (${p.projected_points.toFixed(1)})`;
+                    addSel.appendChild(opt);
+                });
+            } catch (e) {
+                addSel.innerHTML = '<option value="">Error loading free agents</option>';
+            }
+        }
+
+        // ── Add change → enable evaluate button ───────────────────────────────
+
+        function onAddChange() {
+            const addSel = document.getElementById('add-select');
+            document.getElementById('evaluate-btn').disabled = !addSel.value;
+            hideResults();
+        }
+
+        // ── Evaluate ──────────────────────────────────────────────────────────
+
+        async function onEvaluate() {
+            const dropSel = document.getElementById('drop-select');
+            const addSel  = document.getElementById('add-select');
+            const btn     = document.getElementById('evaluate-btn');
+
+            btn.disabled = true;
+            btn.textContent = 'Evaluating…';
+            hideResults();
+
+            try {
+                const result = await fetch('/war-room/evaluate', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        team_id:        teamId,
+                        move_type:      'waiver_add',
+                        week:           WEEK,
+                        drop_player_id: parseInt(dropSel.value),
+                        add_player_id:  parseInt(addSel.value),
+                    }),
+                }).then(r => r.json());
+
+                renderDecision(result);
+                renderWeeklyImpact(result.weekly_deltas);
+            } catch (e) {
+                const section = document.getElementById('decision-section');
+                document.getElementById('dv-row').innerHTML =
+                    '<span class="status-text">Evaluation failed — check server logs</span>';
+                section.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Evaluate';
+            }
+        }
+
+        // ── Render: decision value ─────────────────────────────────────────────
+
+        function renderDecision(result) {
+            const section = document.getElementById('decision-section');
+            const row     = document.getElementById('dv-row');
+
+            const verdictClass = {
+                upgrade:   'verdict--upgrade',
+                neutral:   'verdict--neutral',
+                downgrade: 'verdict--downgrade',
+            }[result.verdict] ?? 'verdict--neutral';
+
+            const wpd  = result.win_prob_delta     * 100;
+            const pod  = result.playoff_odds_delta * 100;
+            const conf = result.confidence;
+
+            row.innerHTML = `
+                <span class="verdict ${verdictClass}">${result.verdict}</span>
+                ${metricHTML('Win Prob',  fmtDelta(wpd,  '%'))}
+                ${metricHTML('Playoff',   fmtDelta(pod,  '%'))}
+                ${metricHTML('Confidence', conf.toFixed(2))}
+            `;
+
+            section.classList.remove('hidden');
+        }
+
+        function metricHTML(label, value) {
+            const cls = value.startsWith('+') ? 'positive'
+                      : value.startsWith('−') ? 'negative'
+                      : 'neutral';
+            return `
+                <div class="metric">
+                    <span class="metric-label">${label}</span>
+                    <span class="metric-value ${cls}">${value}</span>
+                </div>
+            `;
+        }
+
+        function fmtDelta(val, suffix = '') {
+            if (val > 0)  return `+${val.toFixed(1)}${suffix}`;
+            if (val < 0)  return `−${Math.abs(val).toFixed(1)}${suffix}`;
+            return `0.0${suffix}`;
+        }
+
+        // ── Render: weekly impact tiles ────────────────────────────────────────
+
+        function renderWeeklyImpact(deltas) {
+            const section = document.getElementById('impact-section');
+            const row     = document.getElementById('tile-row');
+
+            if (!deltas || deltas.length === 0) return;
+
+            row.innerHTML = deltas.map((d, i) => {
+                const pct = d * 100;
+                const cls = d >  0.01 ? 'tile--win'
+                          : d < -0.01 ? 'tile--loss'
+                          :              'tile--neutral';
+                return `
+                    <div class="tile ${cls}">
+                        <div class="tile-inner">
+                            <div>W${i + 1}</div>
+                            <div>${fmtDelta(pct)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            section.classList.remove('hidden');
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        function hideResults() {
+            document.getElementById('decision-section').classList.add('hidden');
+            document.getElementById('impact-section').classList.add('hidden');
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
