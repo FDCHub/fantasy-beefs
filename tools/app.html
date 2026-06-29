@@ -220,6 +220,20 @@ html, body {
         <button class="bet-slip__btn confirm" onclick="placeBetConsole()">Place Beef</button>
       </div>
 
+      <!-- VP2: My Record -->
+      <div class="section-label" style="margin-top:16px;">My Record</div>
+      <div id="vp-my-record">
+        <div class="vp-status">Loading record...</div>
+      </div>
+
+      <!-- VP3: My History -->
+      <div class="section-label" style="margin-top:16px;">My History</div>
+      <div id="vp-my-history">
+        <div class="stat-card">
+          <span class="text-muted text-mono">Bet history coming in Phase 3.</span>
+        </div>
+      </div>
+
     </div>
 
     <div id="tab-team" class="tab-view">
@@ -637,6 +651,50 @@ async function loadTheBook() {
 }
 
 loadTheBook();
+
+/* ── My Record VP ───────────────────────────────────────────────── */
+
+async function loadMyRecord() {
+  var el = document.getElementById('vp-my-record');
+  el.innerHTML = '<div class="vp-status">Loading record...</div>';
+
+  try {
+    var res = await fetchAuth(API_BASE + '/faab/wallet/' + GM_TEAM_ID);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var w = await res.json();
+
+    function fmtR(v) { return '$' + (v || 0).toFixed(2); }
+    var available = (w.bet_balance || 0) - (w.bet_pending_exposure || 0);
+
+    el.innerHTML = [
+      '<div class="stat-card">',
+        '<div class="stat-card__grid" style="grid-template-columns:repeat(2,1fr);gap:12px 8px;">',
+          '<div class="stat-card__cell">',
+            '<span class="stat-card__cell-label">Bet Balance</span>',
+            '<span class="stat-card__cell-value bankroll">' + fmtR(w.bet_balance) + '</span>',
+          '</div>',
+          '<div class="stat-card__cell">',
+            '<span class="stat-card__cell-label">Pending Exposure</span>',
+            '<span class="stat-card__cell-value negative">' + fmtR(w.bet_pending_exposure) + '</span>',
+          '</div>',
+          '<div class="stat-card__cell">',
+            '<span class="stat-card__cell-label">Available</span>',
+            '<span class="stat-card__cell-value positive">' + fmtR(available) + '</span>',
+          '</div>',
+          '<div class="stat-card__cell">',
+            '<span class="stat-card__cell-label">Frozen</span>',
+            '<span class="stat-card__cell-value">' + (w.bet_frozen ? 'Yes' : 'No') + '</span>',
+          '</div>',
+        '</div>',
+      '</div>',
+    ].join('');
+
+  } catch (e) {
+    el.innerHTML = '<div class="vp-status error">Could not load record.</div>';
+  }
+}
+
+loadMyRecord();
 
 /* ── Wallet VP ──────────────────────────────────────────────────── */
 
