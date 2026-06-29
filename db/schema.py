@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -197,7 +198,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint(
-            "type IN ('deposit','withdrawal','bet','payout')",
+            "type IN ('deposit','withdrawal','bet','payout','pool_entry','pool_payout')",
             name="ck_tx_type",
         ),
     )
@@ -758,6 +759,59 @@ class PowerRanking(Base):
     created_at           = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     team   = relationship("Team")
+    league = relationship("League")
+
+
+# ── Pool (Mode 3) ─────────────────────────────────────────────────────────────
+
+class PoolConfig(Base):
+    """Commissioner configures the weekly pool for a league."""
+    __tablename__ = "pool_config"
+
+    id                      = Column(Integer, primary_key=True, autoincrement=True)
+    league_id               = Column(Integer, ForeignKey("leagues.id"), unique=True)
+    weekly_entry            = Column(Float,   default=10.0)
+    worst_beat_rollover     = Column(Boolean, default=True)
+    created_at              = Column(DateTime(timezone=True),
+                                     default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+
+
+class PoolPrediction(Base):
+    """Per-GM worst-beat prediction for a week (one per team per week)."""
+    __tablename__ = "pool_predictions"
+    __table_args__ = (
+        UniqueConstraint("league_id", "team_id", "week", name="uq_pool_pred_team_week"),
+    )
+
+    id                           = Column(Integer, primary_key=True, autoincrement=True)
+    league_id                    = Column(Integer, ForeignKey("leagues.id"))
+    team_id                      = Column(Integer, ForeignKey("teams.id"))
+    week                         = Column(Integer)
+    predicted_worst_beat_team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    submitted_at                 = Column(DateTime(timezone=True))
+
+    team             = relationship("Team", foreign_keys=[team_id])
+    predicted_team   = relationship("Team", foreign_keys=[predicted_worst_beat_team_id])
+    league           = relationship("League")
+
+
+class PoolPot(Base):
+    """One row per league per week — tracks collection and settlement state."""
+    __tablename__ = "pool_pots"
+    __table_args__ = (
+        UniqueConstraint("league_id", "week", name="uq_pool_pot_league_week"),
+    )
+
+    id                         = Column(Integer,  primary_key=True, autoincrement=True)
+    league_id                  = Column(Integer,  ForeignKey("leagues.id"))
+    week                       = Column(Integer)
+    worst_beat_rollover_amount = Column(Float,   default=0.0)
+    entries_collected          = Column(Boolean,  default=False)
+    settled                    = Column(Boolean,  default=False)
+    settled_at                 = Column(DateTime(timezone=True), nullable=True)
+
     league = relationship("League")
 
 
