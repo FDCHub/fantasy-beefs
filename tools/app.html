@@ -121,6 +121,30 @@ html, body {
 .bs-stake-input::-webkit-inner-spin-button,
 .bs-stake-input::-webkit-outer-spin-button { -webkit-appearance: none; }
 
+/* VP: Wallet */
+.wallet-bucket {
+  padding: 4px 0 8px;
+}
+.wallet-amount {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 2px;
+  color: var(--ink);
+}
+.wallet-amount.faab     { color: var(--blue); }
+.wallet-amount.bankroll { color: var(--orange-dk); }
+.wallet-amount.real     { color: var(--green); }
+.wallet-sublabel {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -206,7 +230,10 @@ html, body {
     </div>
 
     <div id="tab-account" class="tab-view">
-      <div class="placeholder-vp">My Account — VP content coming</div>
+      <div class="section-label">My Wallet</div>
+      <div id="vp-wallet">
+        <div class="vp-status">Loading wallet...</div>
+      </div>
     </div>
 
     <div id="tab-commish" class="tab-view">
@@ -584,6 +611,76 @@ async function loadTheBook() {
 }
 
 loadTheBook();
+
+/* ── Wallet VP ──────────────────────────────────────────────────── */
+
+async function loadWallet() {
+  var el = document.getElementById('vp-wallet');
+  el.innerHTML = '<div class="vp-status">Loading wallet...</div>';
+
+  try {
+    var res = await fetch(API_BASE + '/faab/wallet/' + GM_TEAM_ID);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var w = await res.json();
+
+    function fmt(v) { return '$' + (v || 0).toFixed(2); }
+
+    el.innerHTML = [
+      '<div class="stat-card">',
+        '<div class="stat-card__header">',
+          '<span class="stat-card__name">FAAB</span>',
+        '</div>',
+        '<div class="wallet-bucket">',
+          '<div class="wallet-amount faab">' + fmt(w.faab_balance) + '</div>',
+          '<div class="wallet-sublabel">Waiver Budget</div>',
+        '</div>',
+      '</div>',
+
+      '<div class="stat-card">',
+        '<div class="stat-card__header">',
+          '<span class="stat-card__name">Betting Bankroll</span>',
+        '</div>',
+        '<div class="wallet-bucket">',
+          '<div class="wallet-amount bankroll">' + fmt(w.betting_bankroll) + '</div>',
+          '<div class="wallet-sublabel">Season Bankroll</div>',
+        '</div>',
+      '</div>',
+
+      '<div class="stat-card">',
+        '<div class="stat-card__header">',
+          '<span class="stat-card__name">Real Money</span>',
+        '</div>',
+        '<div class="wallet-bucket">',
+          '<div class="wallet-amount real">' + fmt(w.real_money_balance) + '</div>',
+          '<div class="wallet-sublabel">Versus Balance</div>',
+        '</div>',
+      '</div>',
+
+      '<div class="section-label" style="margin-top:16px;">Record</div>',
+      '<div class="stat-card">',
+        '<div class="stat-card__grid" style="grid-template-columns:repeat(3,1fr);">',
+          '<div class="stat-card__cell">',
+            '<span class="stat-card__cell-label">Wagered</span>',
+            '<span class="stat-card__cell-value">' + fmt(w.total_wagered) + '</span>',
+          '</div>',
+          '<div class="stat-card__cell">',
+            '<span class="stat-card__cell-label">Won</span>',
+            '<span class="stat-card__cell-value positive">' + fmt(w.total_won) + '</span>',
+          '</div>',
+          '<div class="stat-card__cell">',
+            '<span class="stat-card__cell-label">Lost</span>',
+            '<span class="stat-card__cell-value negative">' + fmt(w.total_lost) + '</span>',
+          '</div>',
+        '</div>',
+      '</div>',
+    ].join('');
+
+  } catch (e) {
+    el.innerHTML = '<div class="vp-status error">Could not load wallet.</div>';
+  }
+}
+
+loadWallet();
 </script>
 
 </body>
