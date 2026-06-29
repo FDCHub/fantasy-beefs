@@ -1019,25 +1019,28 @@ async function loadTheBook() {
   el.innerHTML = '<div class="vp-status">Loading The Book...</div>';
 
   try {
-    // Step 1: standings → matchup pairs + GM's matchup_id
-    var sRes = await fetch(API_BASE + '/league/standings');
-    if (!sRes.ok) throw new Error('HTTP ' + sRes.status);
-    var teams = await sRes.json();
+    var mRes = await fetch(API_BASE + '/league/matchups/' + CURRENT_WEEK);
+    if (!mRes.ok) throw new Error('HTTP ' + mRes.status);
+    var raw = await mRes.json();
 
-    var gmTeam      = teams.find(function(t) { return t.team_id === GM_TEAM_ID; });
-    var gmMatchupId = (gmTeam && gmTeam.matchup_id) ? gmTeam.matchup_id : 1;
-
-    var byMid = {};
-    teams.forEach(function(t) {
-      var mid = t.matchup_id || gmMatchupId;
-      if (!byMid[mid]) byMid[mid] = [];
-      byMid[mid].push(t);
-    });
-    var matchups = Object.keys(byMid).map(function(mid) {
-      return { matchup_id: parseInt(mid, 10), teams: byMid[mid] };
+    // Normalize to the shape _matchupCardHtml and _betChips expect
+    var matchups = raw.map(function(m) {
+      return {
+        matchup_id: m.matchup_id,
+        teams: [
+          { team_id: m.home_team_id, team_name: m.home_team_name },
+          { team_id: m.away_team_id, team_name: m.away_team_name },
+        ],
+      };
     });
 
-    // Step 2: bets for GM's matchup + pool predictions (parallel, non-fatal)
+    // Find GM's matchup by team membership
+    var gmMatchup   = matchups.find(function(m) {
+      return m.teams.some(function(t) { return t.team_id === GM_TEAM_ID; });
+    });
+    var gmMatchupId = gmMatchup ? gmMatchup.matchup_id : matchups[0].matchup_id;
+
+    // Bets for GM's matchup + pool predictions (parallel, non-fatal)
     var parallel = await Promise.all([
       fetch(API_BASE + '/bets/' + gmMatchupId)
         .then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
