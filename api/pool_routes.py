@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db.deps import get_db
+from auth.jwt_auth import require_commissioner, get_current_gm, User
 from betting.pool_engine import (
     setup_pool_config,
     get_pool_config,
@@ -50,7 +51,11 @@ class SettleRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/config", response_model=PoolConfigOut)
-def create_pool_config(req: PoolConfigRequest, db: Session = Depends(get_db)) -> PoolConfigOut:
+def create_pool_config(
+    req:   PoolConfigRequest,
+    db:    Session = Depends(get_db),
+    _comm: User    = Depends(require_commissioner),
+) -> PoolConfigOut:
     try:
         return setup_pool_config(
             league_id           = req.league_id,
@@ -71,7 +76,11 @@ def read_pool_config(league_id: int, db: Session = Depends(get_db)) -> PoolConfi
 
 
 @router.post("/collect", response_model=PoolEntryResult)
-def collect_entries(req: CollectEntriesRequest, db: Session = Depends(get_db)) -> PoolEntryResult:
+def collect_entries(
+    req:   CollectEntriesRequest,
+    db:    Session = Depends(get_db),
+    _comm: User    = Depends(require_commissioner),
+) -> PoolEntryResult:
     try:
         return collect_weekly_entries(league_id=req.league_id, week=req.week, db=db)
     except ValueError as e:
@@ -79,7 +88,11 @@ def collect_entries(req: CollectEntriesRequest, db: Session = Depends(get_db)) -
 
 
 @router.post("/predict", response_model=PoolPredictionOut)
-def submit_prediction(req: PredictionRequest, db: Session = Depends(get_db)) -> PoolPredictionOut:
+def submit_prediction(
+    req:         PredictionRequest,
+    db:          Session = Depends(get_db),
+    current_gm:  User    = Depends(get_current_gm),
+) -> PoolPredictionOut:
     try:
         return submit_worst_beat_prediction(
             league_id         = req.league_id,
@@ -103,7 +116,11 @@ def read_predictions(
 
 
 @router.post("/settle", response_model=PoolSettlementResult)
-def settle_weekly_pool(req: SettleRequest, db: Session = Depends(get_db)) -> PoolSettlementResult:
+def settle_weekly_pool(
+    req:   SettleRequest,
+    db:    Session = Depends(get_db),
+    _comm: User    = Depends(require_commissioner),
+) -> PoolSettlementResult:
     try:
         return settle_pool(league_id=req.league_id, week=req.week, db=db)
     except ValueError as e:
