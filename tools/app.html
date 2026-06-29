@@ -12,6 +12,25 @@ html, body {
   overflow: hidden;
 }
 
+/* VP: Standings */
+.stat-card--mine {
+  border-color: var(--orange);
+  border-left: 3px solid var(--orange);
+}
+.vp-status {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-lt);
+  padding: 40px 0;
+}
+.vp-status.error { color: var(--red); }
+
 #app {
   display: flex;
   flex-direction: column;
@@ -50,7 +69,10 @@ html, body {
   <div class="tab-views">
 
     <div id="tab-league" class="tab-view active">
-      <div class="placeholder-vp">My League — VP content coming</div>
+      <div class="section-label" id="standings-label">Standings</div>
+      <div id="vp-standings">
+        <div class="vp-status">Loading standings...</div>
+      </div>
     </div>
 
     <div id="tab-action" class="tab-view">
@@ -127,6 +149,70 @@ document.querySelectorAll('.bottom-nav__item').forEach(function(btn) {
     showTab(btn.dataset.tab);
   });
 });
+
+/* ── Standings VP ───────────────────────────────────────────────── */
+
+const CURRENT_WEEK = 1;
+
+async function loadStandings() {
+  const el    = document.getElementById('vp-standings');
+  const label = document.getElementById('standings-label');
+
+  el.innerHTML = '<div class="vp-status">Loading standings...</div>';
+
+  try {
+    const res = await fetch(API_BASE + '/league/standings');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const teams = await res.json();
+
+    label.textContent = 'Standings — Week ' + CURRENT_WEEK;
+
+    if (!teams.length) {
+      el.innerHTML = '<div class="vp-status">No standings data.</div>';
+      return;
+    }
+
+    el.innerHTML = teams.map(function(team) {
+      var mine        = team.team_id === GM_TEAM_ID;
+      var streakStart = team.streak ? team.streak[0] : '';
+      var streakClass = streakStart === 'W' ? 'positive' : streakStart === 'L' ? 'negative' : '';
+      return [
+        '<div class="stat-card' + (mine ? ' stat-card--mine' : '') + '">',
+          '<div class="stat-card__header">',
+            '<div style="display:flex;align-items:center;gap:8px;">',
+              '<span class="stat-card__rank">#' + team.rank + '</span>',
+              '<span class="stat-card__name">' + team.team_name + '</span>',
+            '</div>',
+            mine ? '<span class="badge your-game">You</span>' : '',
+          '</div>',
+          '<div class="stat-card__grid">',
+            '<div class="stat-card__cell">',
+              '<span class="stat-card__cell-label">W‑L</span>',
+              '<span class="stat-card__cell-value">' + team.wins + '‑' + team.losses + '</span>',
+            '</div>',
+            '<div class="stat-card__cell">',
+              '<span class="stat-card__cell-label">PF</span>',
+              '<span class="stat-card__cell-value">' + team.points_for.toFixed(1) + '</span>',
+            '</div>',
+            '<div class="stat-card__cell">',
+              '<span class="stat-card__cell-label">PA</span>',
+              '<span class="stat-card__cell-value">' + team.points_against.toFixed(1) + '</span>',
+            '</div>',
+            '<div class="stat-card__cell">',
+              '<span class="stat-card__cell-label">Streak</span>',
+              '<span class="stat-card__cell-value ' + streakClass + '">' + (team.streak || '—') + '</span>',
+            '</div>',
+          '</div>',
+        '</div>',
+      ].join('');
+    }).join('');
+
+  } catch (e) {
+    el.innerHTML = '<div class="vp-status error">Could not load standings.</div>';
+  }
+}
+
+loadStandings();
 </script>
 
 </body>
