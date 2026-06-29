@@ -218,6 +218,31 @@ html, body {
   color: var(--muted);
 }
 
+/* VP: My Outlook */
+.outlook-banner {
+  background: var(--navy);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.outlook-banner__label {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--navy-lt);
+}
+.outlook-banner__pct {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--orange-lt);
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -319,6 +344,12 @@ html, body {
       <div class="section-label" style="margin-top:16px;" id="war-room-label">War Room</div>
       <div id="vp-war-room">
         <div class="vp-status">Loading War Room...</div>
+      </div>
+
+      <!-- VP3: My Outlook -->
+      <div class="section-label" style="margin-top:16px;">My Outlook</div>
+      <div id="vp-my-outlook">
+        <div class="vp-status">Loading outlook...</div>
       </div>
     </div>
 
@@ -775,6 +806,95 @@ async function loadWarRoom() {
 }
 
 loadWarRoom();
+
+/* ── My Outlook VP ──────────────────────────────────────────────── */
+
+async function loadMyOutlook() {
+  var el = document.getElementById('vp-my-outlook');
+  el.innerHTML = '<div class="vp-status">Loading outlook...</div>';
+
+  try {
+    var res = await fetch(API_BASE + '/health/team/' + GM_TEAM_ID + '?week=' + CURRENT_WEEK);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var d = await res.json();
+
+    var playoffs = d.playoffs              || [];
+    var ros      = d.rest_of_season        || [];
+    var weakest  = d.weakest_position      || '';
+    var flags    = d.future_weakness_flags || [];
+
+    var playoffOdds = playoffs.length
+      ? Math.round(playoffs.reduce(function(s, w) { return s + w.win_prob; }, 0) / playoffs.length * 100)
+      : null;
+
+    function makeTiles(weeks) {
+      return weeks.map(function(w) {
+        var cls    = w.win_prob > 0.55 ? 'cell--win' : w.win_prob < 0.45 ? 'cell--loss' : 'cell--tossup';
+        var margin = (w.point_margin >= 0 ? '+' : '') + w.point_margin.toFixed(1);
+        return [
+          '<div class="th-cell ' + cls + '">',
+            '<div class="th-cell-inner">',
+              '<div>Wk ' + w.week + '</div>',
+              '<div>' + margin + '</div>',
+            '</div>',
+          '</div>',
+        ].join('');
+      }).join('');
+    }
+
+    var html = '';
+
+    // The Path banner
+    html += [
+      '<div class="outlook-banner">',
+        '<span class="outlook-banner__label">The Path</span>',
+        '<span class="outlook-banner__pct">',
+          playoffOdds !== null ? 'Playoff odds: ' + playoffOdds + '%' : 'Playoff odds: —',
+        '</span>',
+      '</div>',
+    ].join('');
+
+    // Rest of Season
+    if (ros.length) {
+      html += [
+        '<div class="stat-card">',
+          '<div class="section-label">Rest of Season</div>',
+          '<div class="th-tile-row">' + makeTiles(ros) + '</div>',
+        '</div>',
+      ].join('');
+    }
+
+    // Playoffs
+    html += '<div class="stat-card">';
+    html += '<div class="section-label">Playoffs</div>';
+    if (playoffs.length) {
+      html += '<div class="th-tile-row">' + makeTiles(playoffs) + '</div>';
+    } else {
+      html += '<span class="text-muted text-mono">Playoff picture not yet determined.</span>';
+    }
+    html += '</div>';
+
+    // Future flags
+    var pills = [];
+    if (weakest) pills.push('<span class="th-pill th-pill--weak">Weakest: ' + weakest + '</span>');
+    flags.forEach(function(f) { pills.push('<span class="th-pill th-pill--watch">' + f + '</span>'); });
+    if (pills.length) {
+      html += [
+        '<div class="stat-card">',
+          '<div class="section-label">Future Flags</div>',
+          '<div class="th-signals">' + pills.join('') + '</div>',
+        '</div>',
+      ].join('');
+    }
+
+    el.innerHTML = html;
+
+  } catch (e) {
+    el.innerHTML = '<div class="vp-status error">Could not load outlook.</div>';
+  }
+}
+
+loadMyOutlook();
 
 /* ── The Book VP ────────────────────────────────────────────────── */
 
