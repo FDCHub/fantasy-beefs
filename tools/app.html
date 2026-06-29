@@ -687,51 +687,20 @@ async function loadCommishSettings() {
     var c = await res.json();
 
     var rollover = c.worst_beat_rollover ? 'Yes' : 'No';
-    var bwPct    = ((c.biggest_winner_pct || 0) * 100).toFixed(0) + '%';
-    var wbPct    = ((c.worst_beat_pct     || 0) * 100).toFixed(0) + '%';
-    var stPct    = ((c.special_teams_pct  || 0) * 100).toFixed(0) + '%';
 
     el.innerHTML = [
       '<div class="stat-card">',
         '<div class="stat-card__header">',
           '<span class="stat-card__name">Pool Config</span>',
         '</div>',
-        '<div class="stat-card__grid" style="grid-template-columns:repeat(2,1fr);gap:12px 8px;">',
+        '<div class="stat-card__grid" style="grid-template-columns:repeat(2,1fr);">',
           '<div class="stat-card__cell">',
             '<span class="stat-card__cell-label">Weekly Buy-In</span>',
-            '<span class="stat-card__cell-value">$' + (c.weekly_pool_buy_in || 0).toFixed(2) + '</span>',
+            '<span class="stat-card__cell-value">$' + (c.weekly_entry || 0).toFixed(2) + '</span>',
           '</div>',
           '<div class="stat-card__cell">',
             '<span class="stat-card__cell-label">Worst Beat Rollover</span>',
             '<span class="stat-card__cell-value">' + rollover + '</span>',
-          '</div>',
-          '<div class="stat-card__cell">',
-            '<span class="stat-card__cell-label">Biggest Winner</span>',
-            '<span class="stat-card__cell-value">' + bwPct + '</span>',
-          '</div>',
-          '<div class="stat-card__cell">',
-            '<span class="stat-card__cell-label">Worst Beat</span>',
-            '<span class="stat-card__cell-value">' + wbPct + '</span>',
-          '</div>',
-          '<div class="stat-card__cell">',
-            '<span class="stat-card__cell-label">Spec Teams</span>',
-            '<span class="stat-card__cell-value">' + stPct + '</span>',
-          '</div>',
-        '</div>',
-      '</div>',
-
-      '<div class="stat-card">',
-        '<div class="stat-card__header">',
-          '<span class="stat-card__name">Bet Limits</span>',
-        '</div>',
-        '<div class="stat-card__grid" style="grid-template-columns:repeat(2,1fr);">',
-          '<div class="stat-card__cell">',
-            '<span class="stat-card__cell-label">Min Bet</span>',
-            '<span class="stat-card__cell-value">$' + (c.min_vs_bet || 0).toFixed(2) + '</span>',
-          '</div>',
-          '<div class="stat-card__cell">',
-            '<span class="stat-card__cell-label">Max Bet</span>',
-            '<span class="stat-card__cell-value">$' + (c.max_vs_bet || 0).toFixed(2) + '</span>',
           '</div>',
         '</div>',
       '</div>',
