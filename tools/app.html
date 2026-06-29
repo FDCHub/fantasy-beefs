@@ -85,6 +85,79 @@ html, body {
 .th-pill--bye   { background: var(--gold); }
 .th-pill--watch { background: var(--red); }
 
+/* VP: War Room */
+.wr-move-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.wr-player-select {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 5px 6px;
+  color: var(--ink);
+}
+#wr-evaluate-btn:disabled { opacity: 0.5; cursor: default; }
+.wr-dv-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 6px;
+}
+.wr-verdict {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.wr-verdict--upgrade   { background: #4caf7d; }
+.wr-verdict--neutral   { background: var(--muted); }
+.wr-verdict--downgrade { background: var(--red); }
+.wr-metric {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  text-align: center;
+}
+.wr-metric-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 2px;
+}
+.wr-metric-value {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  display: block;
+}
+.wr-metric-value.positive { color: var(--green); }
+.wr-metric-value.negative { color: var(--red); }
+.wr-metric-value.neutral  { color: var(--muted); }
+.wr-tile-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 6px;
+}
+
 /* VP: The Book */
 .book-pick-note {
   font-family: var(--mono);
@@ -240,6 +313,12 @@ html, body {
       <div class="section-label" id="team-health-label">My Team</div>
       <div id="vp-team-health">
         <div class="vp-status">Loading team health...</div>
+      </div>
+
+      <!-- VP2: War Room -->
+      <div class="section-label" style="margin-top:16px;" id="war-room-label">War Room</div>
+      <div id="vp-war-room">
+        <div class="vp-status">Loading War Room...</div>
       </div>
     </div>
 
@@ -479,6 +558,223 @@ async function loadTeamHealth() {
 }
 
 loadTeamHealth();
+
+/* ── War Room VP ────────────────────────────────────────────────── */
+
+async function _wrOnDropChange() {
+  var dropSel = document.getElementById('wr-drop-select');
+  var addSel  = document.getElementById('wr-add-select');
+  var btn     = document.getElementById('wr-evaluate-btn');
+
+  btn.disabled = true;
+  _wrHideResults();
+
+  var selectedOpt = dropSel.options[dropSel.selectedIndex];
+  var position    = selectedOpt && selectedOpt.dataset && selectedOpt.dataset.position;
+
+  if (!dropSel.value || !position) {
+    addSel.innerHTML = '<option value="">Select drop first</option>';
+    return;
+  }
+
+  addSel.innerHTML = '<option value="">Loading…</option>';
+
+  try {
+    var data = await fetch(
+      API_BASE + '/war-room/free-agents?team_id=' + GM_TEAM_ID + '&position=' + position + '&week=' + CURRENT_WEEK
+    ).then(function(r) { return r.json(); });
+
+    if (!data.length) {
+      addSel.innerHTML = '<option value="">No free agents at this position</option>';
+      return;
+    }
+
+    addSel.innerHTML = '<option value="">— select player to add —</option>';
+    data.forEach(function(p) {
+      var opt = document.createElement('option');
+      opt.value = p.player_id;
+      opt.textContent = p.position + '  ' + p.name + '  (' + (p.projected_points || 0).toFixed(1) + ')';
+      addSel.appendChild(opt);
+    });
+  } catch (e) {
+    addSel.innerHTML = '<option value="">Error loading free agents</option>';
+  }
+}
+
+function _wrOnAddChange() {
+  var addSel = document.getElementById('wr-add-select');
+  document.getElementById('wr-evaluate-btn').disabled = !addSel.value;
+  _wrHideResults();
+}
+
+async function _wrOnEvaluate() {
+  var dropSel = document.getElementById('wr-drop-select');
+  var addSel  = document.getElementById('wr-add-select');
+  var btn     = document.getElementById('wr-evaluate-btn');
+
+  btn.disabled = true;
+  btn.textContent = 'Evaluating…';
+  _wrHideResults();
+
+  try {
+    var result = await fetch(API_BASE + '/war-room/evaluate', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        team_id:        GM_TEAM_ID,
+        move_type:      'waiver_add',
+        week:           CURRENT_WEEK,
+        drop_player_id: parseInt(dropSel.value, 10),
+        add_player_id:  parseInt(addSel.value,  10),
+      }),
+    }).then(function(r) { return r.json(); });
+
+    _wrRenderDecision(result);
+    _wrRenderWeeklyImpact(result.weekly_deltas);
+  } catch (e) {
+    var section = document.getElementById('wr-decision-section');
+    document.getElementById('wr-dv-row').innerHTML =
+      '<span style="font-family:var(--mono);font-size:10px;color:var(--red);">Evaluation failed — check server logs</span>';
+    section.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Evaluate';
+  }
+}
+
+function _wrFmtDelta(val, suffix) {
+  suffix = suffix || '';
+  if (val > 0)  return '+' + val.toFixed(1) + suffix;
+  if (val < 0)  return '−' + Math.abs(val).toFixed(1) + suffix;
+  return '0.0' + suffix;
+}
+
+function _wrMetricHTML(label, value) {
+  var cls = value.charAt(0) === '+' ? 'positive'
+          : value.charAt(0) === '−' ? 'negative'
+          : 'neutral';
+  return [
+    '<div class="wr-metric">',
+      '<span class="wr-metric-label">' + label + '</span>',
+      '<span class="wr-metric-value ' + cls + '">' + value + '</span>',
+    '</div>',
+  ].join('');
+}
+
+function _wrRenderDecision(result) {
+  var section = document.getElementById('wr-decision-section');
+  var row     = document.getElementById('wr-dv-row');
+
+  var verdictMap = { upgrade: 'wr-verdict--upgrade', neutral: 'wr-verdict--neutral', downgrade: 'wr-verdict--downgrade' };
+  var verdictClass = verdictMap[result.verdict] || 'wr-verdict--neutral';
+
+  var wpd  = result.win_prob_delta     * 100;
+  var pod  = result.playoff_odds_delta * 100;
+  var conf = result.confidence;
+
+  row.innerHTML = [
+    '<span class="wr-verdict ' + verdictClass + '">' + result.verdict + '</span>',
+    _wrMetricHTML('Win Prob',   _wrFmtDelta(wpd, '%')),
+    _wrMetricHTML('Playoff',    _wrFmtDelta(pod, '%')),
+    _wrMetricHTML('Confidence', conf.toFixed(2)),
+  ].join('');
+
+  section.style.display = '';
+}
+
+function _wrRenderWeeklyImpact(deltas) {
+  var section = document.getElementById('wr-impact-section');
+  var row     = document.getElementById('wr-tile-row');
+
+  if (!deltas || !deltas.length) return;
+
+  row.innerHTML = deltas.map(function(d, i) {
+    var pct = d * 100;
+    var cls = d >  0.01 ? 'cell--win'
+            : d < -0.01 ? 'cell--loss'
+            :              'cell--tossup';
+    return [
+      '<div class="th-cell ' + cls + '">',
+        '<div class="th-cell-inner">',
+          '<div>W' + (i + 1) + '</div>',
+          '<div>' + _wrFmtDelta(pct) + '</div>',
+        '</div>',
+      '</div>',
+    ].join('');
+  }).join('');
+
+  section.style.display = '';
+}
+
+function _wrHideResults() {
+  var dec = document.getElementById('wr-decision-section');
+  var imp = document.getElementById('wr-impact-section');
+  if (dec) dec.style.display = 'none';
+  if (imp) imp.style.display = 'none';
+}
+
+async function loadWarRoom() {
+  var el    = document.getElementById('vp-war-room');
+  var label = document.getElementById('war-room-label');
+
+  el.innerHTML = '<div class="vp-status">Loading War Room...</div>';
+
+  try {
+    var res = await fetch(API_BASE + '/health/team/' + GM_TEAM_ID + '/lineup?week=' + CURRENT_WEEK);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    var data = await res.json();
+
+    label.textContent = 'War Room — Week ' + CURRENT_WEEK;
+
+    var starterOpts = data.starters.map(function(p) {
+      return '<option value="' + p.player_id + '" data-position="' + p.position + '">' +
+             p.position + '  ' + p.name + '  (' + (p.projected_pts || 0).toFixed(1) + ')</option>';
+    }).join('');
+    var benchOpts = data.bench.map(function(p) {
+      return '<option value="' + p.player_id + '" data-position="' + p.position + '">' +
+             p.position + '  ' + p.name + '  (' + (p.projected_pts || 0).toFixed(1) + ')</option>';
+    }).join('');
+
+    el.innerHTML = [
+      '<div class="stat-card">',
+        '<div class="wr-move-cols">',
+          '<div>',
+            '<div class="section-label">Drop</div>',
+            '<select class="wr-player-select" id="wr-drop-select">',
+              '<option value="">— select player to drop —</option>',
+              '<optgroup label="Starters">' + starterOpts + '</optgroup>',
+              '<optgroup label="Bench">'    + benchOpts   + '</optgroup>',
+            '</select>',
+          '</div>',
+          '<div>',
+            '<div class="section-label">Add</div>',
+            '<select class="wr-player-select" id="wr-add-select">',
+              '<option value="">Select drop first</option>',
+            '</select>',
+          '</div>',
+        '</div>',
+        '<button class="bet-slip__btn" id="wr-evaluate-btn" disabled>Evaluate</button>',
+      '</div>',
+      '<div class="stat-card" id="wr-decision-section" style="display:none;">',
+        '<div class="section-label">Decision</div>',
+        '<div class="wr-dv-row" id="wr-dv-row"></div>',
+      '</div>',
+      '<div class="stat-card" id="wr-impact-section" style="display:none;">',
+        '<div class="section-label">Weekly Impact</div>',
+        '<div class="wr-tile-row" id="wr-tile-row"></div>',
+      '</div>',
+    ].join('');
+
+    document.getElementById('wr-drop-select').addEventListener('change', _wrOnDropChange);
+    document.getElementById('wr-add-select').addEventListener('change', _wrOnAddChange);
+    document.getElementById('wr-evaluate-btn').addEventListener('click', _wrOnEvaluate);
+
+  } catch (e) {
+    el.innerHTML = '<div class="vp-status error">Could not load War Room.</div>';
+  }
+}
+
+loadWarRoom();
 
 /* ── The Book VP ────────────────────────────────────────────────── */
 
