@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Fantasy Beefs</title>
+<link rel="stylesheet" href="components.css">
+<style>
+/* Shell-only overrides — nothing component-level goes here */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.tab-views {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.tab-view {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 14px calc(var(--nav-h) + 16px);
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Auth Header ─────────────────────────────────────────────── -->
+  <header class="auth-header">
+    <div class="auth-header__title">Fantasy <em>Beefs</em></div>
+    <div class="auth-header__gm" id="header-gm">GM · Team 1</div>
+  </header>
+
+  <!-- ── Tab Content ────────────────────────────────────────────── -->
+  <div class="tab-views">
+
+    <div id="tab-league" class="tab-view active">
+      <div class="placeholder-vp">My League — VP content coming</div>
+    </div>
+
+    <div id="tab-action" class="tab-view">
+      <div class="placeholder-vp">My Action — VP content coming</div>
+    </div>
+
+    <div id="tab-team" class="tab-view">
+      <div class="placeholder-vp">My Team — VP content coming</div>
+    </div>
+
+    <div id="tab-account" class="tab-view">
+      <div class="placeholder-vp">My Account — VP content coming</div>
+    </div>
+
+    <div id="tab-commish" class="tab-view">
+      <div class="placeholder-vp">My Commish — VP content coming</div>
+    </div>
+
+  </div>
+
+  <!-- ── Bottom Nav ─────────────────────────────────────────────── -->
+  <nav class="bottom-nav">
+    <button class="bottom-nav__item active" data-tab="tab-league">
+      <span class="bottom-nav__icon">🏆</span>
+      My League
+    </button>
+    <button class="bottom-nav__item" data-tab="tab-action">
+      <span class="bottom-nav__icon">🎰</span>
+      My Action
+    </button>
+    <button class="bottom-nav__item" data-tab="tab-team">
+      <span class="bottom-nav__icon">🏈</span>
+      My Team
+    </button>
+    <button class="bottom-nav__item" data-tab="tab-account">
+      <span class="bottom-nav__icon">💰</span>
+      My Account
+    </button>
+    <button class="bottom-nav__item" data-tab="tab-commish">
+      <span class="bottom-nav__icon">⚙️</span>
+      My Commish
+    </button>
+  </nav>
+
+</div><!-- /#app -->
+
+<script>
+const API_BASE   = 'https://fantasy-beefs-production.up.railway.app';
+const GM_TEAM_ID = 1;
+
+/* ── Tab switching ──────────────────────────────────────────────── */
+
+var _activeTab = 'tab-league';
+
+function showTab(tabId) {
+  document.querySelectorAll('.tab-view').forEach(function(el) {
+    el.classList.remove('active');
+  });
+  document.querySelectorAll('.bottom-nav__item').forEach(function(btn) {
+    btn.classList.remove('active');
+  });
+
+  var view = document.getElementById(tabId);
+  if (view) view.classList.add('active');
+
+  var btn = document.querySelector('[data-tab="' + tabId + '"]');
+  if (btn) btn.classList.add('active');
+
+  _activeTab = tabId;
+}
+
+document.querySelectorAll('.bottom-nav__item').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    showTab(btn.dataset.tab);
+  });
+});
+</script>
+
+</body>
+</html>
