@@ -231,7 +231,7 @@ async function loadStandings() {
 
     el.innerHTML = teams.map(function(team) {
       var mine        = team.team_id === GM_TEAM_ID;
-      var streakStart = team.streak ? team.streak[0] : '';
+      var streakStart = '';
       var streakClass = streakStart === 'W' ? 'positive' : streakStart === 'L' ? 'negative' : '';
       return [
         '<div class="stat-card' + (mine ? ' stat-card--mine' : '') + '">',
@@ -249,15 +249,15 @@ async function loadStandings() {
             '</div>',
             '<div class="stat-card__cell">',
               '<span class="stat-card__cell-label">PF</span>',
-              '<span class="stat-card__cell-value">' + team.points_for.toFixed(1) + '</span>',
+              '<span class="stat-card__cell-value">' + (team.pf || 0).toFixed(1) + '</span>',
             '</div>',
             '<div class="stat-card__cell">',
               '<span class="stat-card__cell-label">PA</span>',
-              '<span class="stat-card__cell-value">' + team.points_against.toFixed(1) + '</span>',
+              '<span class="stat-card__cell-value">' + (team.pa || 0).toFixed(1) + '</span>',
             '</div>',
             '<div class="stat-card__cell">',
               '<span class="stat-card__cell-label">Streak</span>',
-              '<span class="stat-card__cell-value ' + streakClass + '">' + (team.streak || '—') + '</span>',
+              '<span class="stat-card__cell-value">' + (team.streak || '—') + '</span>',
             '</div>',
           '</div>',
         '</div>',
