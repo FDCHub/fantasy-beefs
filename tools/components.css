@@ -408,6 +408,7 @@ html, body {
 /* ── 10. BET SLIP ────────────────────────────────────────────────────── */
 
 .bet-slip {
+  display: none;
   position: fixed;
   bottom: var(--nav-h);
   left: 0;
@@ -425,6 +426,7 @@ html, body {
 }
 
 .bet-slip.open {
+  display: block;
   transform: translateY(0);
 }
 
