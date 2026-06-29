@@ -2630,3 +2630,6 @@ from api.war_room_routes import router as war_room_router  # noqa: E402
 app.include_router(war_room_router)
 from api.bet_routes import router as bet_router  # noqa: E402
 app.include_router(bet_router)
+
+from api.pool_routes import router as pool_router  # noqa: E402
+app.include_router(pool_router)
