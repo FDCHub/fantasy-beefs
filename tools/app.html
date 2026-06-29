@@ -85,6 +85,42 @@ html, body {
 .th-pill--bye   { background: var(--gold); }
 .th-pill--watch { background: var(--red); }
 
+/* VP: The Book */
+.book-pick-note {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--navy-lt);
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.12);
+}
+
+.bet-slip-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 150;
+}
+.bet-slip-backdrop.open { display: block; }
+
+.bs-stake-input {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  border-bottom: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  width: 72px;
+  text-align: right;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.bs-stake-input::-webkit-inner-spin-button,
+.bs-stake-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
 #app {
   display: flex;
   flex-direction: column;
@@ -130,7 +166,36 @@ html, body {
     </div>
 
     <div id="tab-action" class="tab-view">
-      <div class="placeholder-vp">My Action — VP content coming</div>
+
+      <!-- Pool card render target -->
+      <div id="vp-pool-header"></div>
+
+      <!-- Bet matrix -->
+      <div class="section-label" id="book-label">The Book</div>
+      <div id="vp-the-book">
+        <div class="vp-status">Loading The Book...</div>
+      </div>
+
+      <!-- Bet slip — position:fixed, viewport-anchored while tab is active -->
+      <div class="bet-slip-backdrop" id="bet-slip-backdrop" onclick="closeBetSlip()"></div>
+      <div class="bet-slip" id="bet-slip">
+        <div class="bet-slip__handle"></div>
+        <div class="bet-slip__title" id="bs-title">Bet</div>
+        <div class="bet-slip__matchup" id="bs-matchup"></div>
+        <div class="bet-slip__row">
+          <span class="bet-slip__label">Line</span>
+          <span class="bet-slip__value odds" id="bs-line">—</span>
+        </div>
+        <div class="bet-slip__row">
+          <span class="bet-slip__label">Stake ($)</span>
+          <span class="bet-slip__value">
+            <input class="bs-stake-input" type="number" id="bs-stake"
+                   value="10" min="5" max="500">
+          </span>
+        </div>
+        <button class="bet-slip__btn confirm" onclick="placeBetConsole()">Place Beef</button>
+      </div>
+
     </div>
 
     <div id="tab-team" class="tab-view">
@@ -347,6 +412,178 @@ async function loadTeamHealth() {
 }
 
 loadTeamHealth();
+
+/* ── The Book VP ────────────────────────────────────────────────── */
+
+const LEAGUE_ID = 1;
+
+var _bookCtx = { matchupId: null, betType: null, line: null, label: null };
+
+function toggleCard(id) {
+  var card = document.getElementById(id);
+  if (card) card.classList.toggle('expanded');
+}
+
+function openBetSlip(matchupLabel, betType, line, matchupId) {
+  _bookCtx = { matchupId: matchupId, betType: betType, line: line, label: matchupLabel };
+  document.getElementById('bs-title').textContent   = betType;
+  document.getElementById('bs-matchup').textContent = matchupLabel;
+  document.getElementById('bs-line').textContent    = line;
+  document.getElementById('bs-stake').value         = '10';
+  document.getElementById('bet-slip').classList.add('open');
+  document.getElementById('bet-slip-backdrop').classList.add('open');
+}
+
+function closeBetSlip() {
+  document.getElementById('bet-slip').classList.remove('open');
+  document.getElementById('bet-slip-backdrop').classList.remove('open');
+}
+
+function placeBetConsole() {
+  var stake = parseFloat(document.getElementById('bs-stake').value) || 0;
+  console.log('[Place Beef]', _bookCtx.betType, '| matchup', _bookCtx.matchupId,
+              '| line:', _bookCtx.line, '| stake: $' + stake.toFixed(2));
+  closeBetSlip();
+}
+
+function _poolCardHtml(predictions) {
+  var myPick = (predictions || []).find(function(p) { return p.team_id === GM_TEAM_ID; });
+  var pickNote = myPick
+    ? 'Your Worst Beat pick: <strong>' + (myPick.predicted_worst_beat_name || 'Team ' + myPick.predicted_worst_beat_team_id) + '</strong>'
+    : 'No Worst Beat pick submitted yet.';
+  return [
+    '<div class="pool-card">',
+      '<div class="pool-card__title">The Pool — Week ' + CURRENT_WEEK + '</div>',
+      '<div class="pool-card__pots">',
+        '<div class="pool-card__pot">',
+          '<div class="pool-card__pot-label">Biggest Winner</div>',
+          '<div class="pool-card__pot-value">$—</div>',
+        '</div>',
+        '<div class="pool-card__pot">',
+          '<div class="pool-card__pot-label">Worst Beat</div>',
+          '<div class="pool-card__pot-value">$—</div>',
+        '</div>',
+        '<div class="pool-card__pot">',
+          '<div class="pool-card__pot-label">Spec Teams</div>',
+          '<div class="pool-card__pot-value">$—</div>',
+        '</div>',
+      '</div>',
+      '<div class="book-pick-note">' + pickNote + '</div>',
+    '</div>',
+  ].join('');
+}
+
+var _BET_TYPES = [
+  { key: 'straight',   label: 'Moneyline' },
+  { key: 'spread',     label: 'Spread'    },
+  { key: 'over_under', label: 'O/U'       },
+  { key: 'prop',       label: 'Prop'      },
+];
+
+function _betChips(matchup, bets) {
+  var teamLabel = matchup.teams.map(function(t) { return t.team_name; }).join(' vs ');
+  return _BET_TYPES.map(function(type) {
+    var hit  = (bets || []).find(function(b) { return b.bet_type === type.key; });
+    var ml   = hit && hit.moneyline != null ? hit.moneyline : null;
+    var line = ml != null ? (ml > 0 ? '+' : '') + ml : '—';
+    var lineFrag = ml != null
+      ? ' <span style="opacity:0.7;font-size:9px;font-weight:700;">' + line + '</span>'
+      : '';
+    return [
+      '<button class="bet-chip" onclick="openBetSlip(',
+        '\'' + teamLabel.replace(/'/g, "\\'") + '\',',
+        '\'' + type.label + '\',',
+        '\'' + line + '\',',
+        matchup.matchup_id,
+      ')">',
+        type.label, lineFrag,
+      '</button>',
+    ].join('');
+  }).join('');
+}
+
+function _matchupCardHtml(matchup, gmMatchupId, gmBets) {
+  var isGm  = matchup.matchup_id === gmMatchupId;
+  var t1    = matchup.teams[0] || { team_name: '—' };
+  var t2    = matchup.teams[1] || { team_name: '—' };
+  var cid   = 'mc-' + matchup.matchup_id;
+  var badge = isGm ? '<span class="badge your-game">Your Game</span>' : '';
+  return [
+    '<div class="opponent-card' + (isGm ? ' expanded' : '') + '" id="' + cid + '">',
+      '<div class="opponent-card__header" onclick="toggleCard(\'' + cid + '\')">',
+        '<div>',
+          '<div class="opponent-card__name">' + t1.team_name + ' vs ' + t2.team_name + '</div>',
+        '</div>',
+        '<div class="opponent-card__odds">',
+          badge,
+          '<span class="opponent-card__chevron">▾</span>',
+        '</div>',
+      '</div>',
+      '<div class="opponent-card__body">',
+        '<div class="bet-chips">',
+          _betChips(matchup, isGm ? gmBets : []),
+        '</div>',
+      '</div>',
+    '</div>',
+  ].join('');
+}
+
+async function loadTheBook() {
+  var el        = document.getElementById('vp-the-book');
+  var poolEl    = document.getElementById('vp-pool-header');
+  var bookLabel = document.getElementById('book-label');
+
+  el.innerHTML = '<div class="vp-status">Loading The Book...</div>';
+
+  try {
+    // Step 1: standings → matchup pairs + GM's matchup_id
+    var sRes = await fetch(API_BASE + '/league/standings');
+    if (!sRes.ok) throw new Error('HTTP ' + sRes.status);
+    var teams = await sRes.json();
+
+    var gmTeam      = teams.find(function(t) { return t.team_id === GM_TEAM_ID; });
+    var gmMatchupId = (gmTeam && gmTeam.matchup_id) ? gmTeam.matchup_id : 1;
+
+    var byMid = {};
+    teams.forEach(function(t) {
+      var mid = t.matchup_id || gmMatchupId;
+      if (!byMid[mid]) byMid[mid] = [];
+      byMid[mid].push(t);
+    });
+    var matchups = Object.keys(byMid).map(function(mid) {
+      return { matchup_id: parseInt(mid, 10), teams: byMid[mid] };
+    });
+
+    // Step 2: bets for GM's matchup + pool predictions (parallel, non-fatal)
+    var parallel = await Promise.all([
+      fetch(API_BASE + '/bets/' + gmMatchupId)
+        .then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
+      fetch(API_BASE + '/pool/predictions/' + LEAGUE_ID + '/' + CURRENT_WEEK)
+        .then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
+    ]);
+    var gmBets      = parallel[0];
+    var predictions = parallel[1];
+
+    bookLabel.textContent = 'The Book — Week ' + CURRENT_WEEK;
+    poolEl.innerHTML = _poolCardHtml(predictions);
+
+    // GM's matchup first, then rest sorted by matchup_id
+    matchups.sort(function(a, b) {
+      if (a.matchup_id === gmMatchupId) return -1;
+      if (b.matchup_id === gmMatchupId) return  1;
+      return a.matchup_id - b.matchup_id;
+    });
+
+    el.innerHTML = matchups.map(function(m) {
+      return _matchupCardHtml(m, gmMatchupId, gmBets);
+    }).join('');
+
+  } catch (e) {
+    el.innerHTML = '<div class="vp-status error">Could not load The Book.</div>';
+  }
+}
+
+loadTheBook();
 </script>
 
 </body>
