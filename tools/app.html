@@ -31,6 +31,60 @@ html, body {
 }
 .vp-status.error { color: var(--red); }
 
+/* VP: Team Health */
+.th-team-name {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+
+.player-row--starter { border-left: 3px solid var(--green); }
+.player-row--bench   { background: var(--bg); opacity: 0.8; }
+
+.th-tile-row {
+  display: flex;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  gap: 3px;
+  padding-bottom: 4px;
+  margin-bottom: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+.th-tile-row::-webkit-scrollbar { height: 3px; }
+.th-tile-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.th-cell {
+  flex-shrink: 0;
+  width: 30px;
+  height: 42px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 7px;
+  color: #fff;
+}
+.th-cell.cell--win    { background: #4caf7d; }
+.th-cell.cell--loss   { background: #e57373; }
+.th-cell.cell--tossup { background: #f5c842; color: #1a1a1a; }
+.th-cell-inner { line-height: 1.4; }
+
+.th-signals { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.th-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: #fff;
+}
+.th-pill--weak  { background: var(--orange-dk); }
+.th-pill--bye   { background: var(--gold); }
+.th-pill--watch { background: var(--red); }
+
 #app {
   display: flex;
   flex-direction: column;
@@ -80,7 +134,10 @@ html, body {
     </div>
 
     <div id="tab-team" class="tab-view">
-      <div class="placeholder-vp">My Team — VP content coming</div>
+      <div class="section-label" id="team-health-label">My Team</div>
+      <div id="vp-team-health">
+        <div class="vp-status">Loading team health...</div>
+      </div>
     </div>
 
     <div id="tab-account" class="tab-view">
@@ -213,6 +270,83 @@ async function loadStandings() {
 }
 
 loadStandings();
+
+/* ── Team Health VP ─────────────────────────────────────────────── */
+
+function _healthPlayerRow(player, isStarter) {
+  var inj = (player.injury_status || '').toLowerCase();
+  var injClass = '', injLabel = '';
+  if      (inj === 'out')          { injClass = 'out';      injLabel = 'OUT'; }
+  else if (inj === 'ir')           { injClass = 'ir';       injLabel = 'IR';  }
+  else if (inj === 'doubtful')     { injClass = 'doubtful'; injLabel = 'D';   }
+  else if (inj === 'questionable') { injClass = 'question'; injLabel = 'Q';   }
+  return [
+    '<div class="player-row ' + (isStarter ? 'player-row--starter' : 'player-row--bench') + '">',
+      '<span class="player-row__pos">'  + player.position + '</span>',
+      '<span class="player-row__name">' + player.name + '</span>',
+      '<span class="player-row__proj">' + player.projected_pts.toFixed(1) + '</span>',
+      injClass ? '<span class="player-row__injury ' + injClass + '">' + injLabel + '</span>' : '',
+    '</div>',
+  ].join('');
+}
+
+function _horizonRow(label, weeks) {
+  if (!weeks || !weeks.length) return '';
+  var tiles = weeks.map(function(w) {
+    var cls    = w.win_prob > 0.55 ? 'cell--win' : w.win_prob < 0.45 ? 'cell--loss' : 'cell--tossup';
+    var margin = (w.point_margin >= 0 ? '+' : '') + w.point_margin.toFixed(1);
+    return '<div class="th-cell ' + cls + '"><div class="th-cell-inner"><div>Wk ' + w.week + '</div><div>' + margin + '</div></div></div>';
+  }).join('');
+  return '<div class="section-label">' + label + '</div><div class="th-tile-row">' + tiles + '</div>';
+}
+
+function _diagnostics(weakest, bye, flags) {
+  var pills = [];
+  if (weakest) pills.push('<span class="th-pill th-pill--weak">Weakest: ' + weakest + '</span>');
+  (bye   || []).forEach(function(w) { pills.push('<span class="th-pill th-pill--bye">Bye Wk ' + w + '</span>'); });
+  (flags || []).forEach(function(f) { pills.push('<span class="th-pill th-pill--watch">Watch: ' + f + '</span>'); });
+  if (!pills.length) return '';
+  return '<div class="section-label">Signals</div><div class="th-signals">' + pills.join('') + '</div>';
+}
+
+async function loadTeamHealth() {
+  var el    = document.getElementById('vp-team-health');
+  var label = document.getElementById('team-health-label');
+
+  el.innerHTML = '<div class="vp-status">Loading team health...</div>';
+
+  try {
+    var base = API_BASE + '/health/team/' + GM_TEAM_ID;
+    var results = await Promise.all([
+      fetch(base + '/lineup?week=' + CURRENT_WEEK).then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
+      fetch(base + '?week=' + CURRENT_WEEK).then(function(r)        { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }),
+    ]);
+    var lineupData = results[0];
+    var healthData = results[1];
+
+    label.textContent = 'My Team — Week ' + CURRENT_WEEK;
+
+    var html = '';
+    html += '<div class="th-team-name">' + lineupData.team_name + '</div>';
+
+    html += '<div class="section-label">Starters</div>';
+    html += lineupData.starters.map(function(p) { return _healthPlayerRow(p, true);  }).join('');
+
+    html += '<div class="section-label">Bench</div>';
+    html += lineupData.bench.map(function(p)    { return _healthPlayerRow(p, false); }).join('');
+
+    html += _horizonRow('Season Outlook', healthData.rest_of_season);
+    html += _horizonRow('Playoffs',       healthData.playoffs);
+    html += _diagnostics(healthData.weakest_position, healthData.bye_clusters, healthData.future_weakness_flags);
+
+    el.innerHTML = html;
+
+  } catch (e) {
+    el.innerHTML = '<div class="vp-status error">Could not load team.</div>';
+  }
+}
+
+loadTeamHealth();
 </script>
 
 </body>
