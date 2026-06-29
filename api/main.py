@@ -1924,12 +1924,10 @@ def faab_init_season(
 
 @app.get("/faab/wallet/{team_id}", response_model=FaabWalletOut)
 def faab_get_wallet(
-    team_id:      int,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
+    team_id: int,
+    db:      Session = Depends(get_db),
 ):
     """Get combined bet + waiver wallet state for a team."""
-    assert_own_team(team_id, current_user)
     try:
         state = get_faab_wallet(team_id, db)
     except ValueError as e:
