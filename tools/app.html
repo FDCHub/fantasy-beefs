@@ -241,6 +241,22 @@ html, body {
       <div id="vp-commish-settings">
         <div class="vp-status">Loading settings...</div>
       </div>
+
+      <div class="section-label" style="margin-top:16px;">Operations</div>
+      <div id="vp-commish-ops">
+        <div class="stat-card">
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div>
+              <button class="bet-slip__btn" onclick="commishCollect()">Collect Pool</button>
+              <div id="ops-collect-status" style="margin-top:6px;min-height:16px;"></div>
+            </div>
+            <div>
+              <button class="bet-slip__btn" onclick="commishSettle()">Settle Pool</button>
+              <div id="ops-settle-status" style="margin-top:6px;min-height:16px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -276,10 +292,10 @@ const API_BASE   = 'https://fantasy-beefs-production.up.railway.app';
 const GM_TEAM_ID = 1;
 const AUTH_TOKEN = 'dev-stub-token';
 
-function fetchAuth(url) {
-  return fetch(url, {
-    headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN }
-  });
+function fetchAuth(url, opts) {
+  var options = Object.assign({}, opts || {});
+  options.headers = Object.assign({ 'Authorization': 'Bearer ' + AUTH_TOKEN }, opts && opts.headers);
+  return fetch(url, options);
 }
 
 /* ── Tab switching ──────────────────────────────────────────────── */
@@ -712,6 +728,45 @@ async function loadCommishSettings() {
 }
 
 loadCommishSettings();
+
+/* ── Commish Operations VP ──────────────────────────────────────── */
+
+function _opsStatus(elId, ok, msg) {
+  var el = document.getElementById(elId);
+  el.textContent = msg;
+  el.style.fontFamily  = 'var(--mono)';
+  el.style.fontSize    = '11px';
+  el.style.fontWeight  = '700';
+  el.style.color       = ok ? 'var(--green)' : 'var(--red)';
+}
+
+async function commishCollect() {
+  if (!confirm('Collect pool entries for Week ' + CURRENT_WEEK + '?')) return;
+  try {
+    var res = await fetchAuth(API_BASE + '/pool/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ league_id: LEAGUE_ID, week: CURRENT_WEEK }),
+    });
+    _opsStatus('ops-collect-status', res.ok, res.ok ? 'Done.' : 'Failed. (' + res.status + ')');
+  } catch (e) {
+    _opsStatus('ops-collect-status', false, 'Failed.');
+  }
+}
+
+async function commishSettle() {
+  if (!confirm('Settle pool for Week ' + CURRENT_WEEK + '?')) return;
+  try {
+    var res = await fetchAuth(API_BASE + '/pool/settle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ league_id: LEAGUE_ID, week: CURRENT_WEEK }),
+    });
+    _opsStatus('ops-settle-status', res.ok, res.ok ? 'Done.' : 'Failed. (' + res.status + ')');
+  } catch (e) {
+    _opsStatus('ops-settle-status', false, 'Failed.');
+  }
+}
 </script>
 
 </body>
