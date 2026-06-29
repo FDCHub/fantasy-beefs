@@ -271,6 +271,13 @@ html, body {
 <script>
 const API_BASE   = 'https://fantasy-beefs-production.up.railway.app';
 const GM_TEAM_ID = 1;
+const AUTH_TOKEN = 'dev-stub-token';
+
+function fetchAuth(url) {
+  return fetch(url, {
+    headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN }
+  });
+}
 
 /* ── Tab switching ──────────────────────────────────────────────── */
 
@@ -619,7 +626,7 @@ async function loadWallet() {
   el.innerHTML = '<div class="vp-status">Loading wallet...</div>';
 
   try {
-    var res = await fetch(API_BASE + '/faab/wallet/' + GM_TEAM_ID);
+    var res = await fetchAuth(API_BASE + '/faab/wallet/' + GM_TEAM_ID);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     var w = await res.json();
 
@@ -631,7 +638,7 @@ async function loadWallet() {
           '<span class="stat-card__name">FAAB</span>',
         '</div>',
         '<div class="wallet-bucket">',
-          '<div class="wallet-amount faab">' + fmt(w.faab_balance) + '</div>',
+          '<div class="wallet-amount faab">' + fmt(w.waiver_balance) + '</div>',
           '<div class="wallet-sublabel">Waiver Budget</div>',
         '</div>',
       '</div>',
@@ -641,7 +648,7 @@ async function loadWallet() {
           '<span class="stat-card__name">Betting Bankroll</span>',
         '</div>',
         '<div class="wallet-bucket">',
-          '<div class="wallet-amount bankroll">' + fmt(w.betting_bankroll) + '</div>',
+          '<div class="wallet-amount bankroll">' + fmt(w.bet_balance) + '</div>',
           '<div class="wallet-sublabel">Season Bankroll</div>',
         '</div>',
       '</div>',
@@ -649,28 +656,11 @@ async function loadWallet() {
       '<div class="stat-card">',
         '<div class="stat-card__header">',
           '<span class="stat-card__name">Real Money</span>',
+          w.bet_frozen ? '<span class="badge injury-out">Frozen</span>' : '',
         '</div>',
         '<div class="wallet-bucket">',
-          '<div class="wallet-amount real">' + fmt(w.real_money_balance) + '</div>',
+          '<div class="wallet-amount real">' + fmt(w.bet_balance - w.bet_pending_exposure) + '</div>',
           '<div class="wallet-sublabel">Versus Balance</div>',
-        '</div>',
-      '</div>',
-
-      '<div class="section-label" style="margin-top:16px;">Record</div>',
-      '<div class="stat-card">',
-        '<div class="stat-card__grid" style="grid-template-columns:repeat(3,1fr);">',
-          '<div class="stat-card__cell">',
-            '<span class="stat-card__cell-label">Wagered</span>',
-            '<span class="stat-card__cell-value">' + fmt(w.total_wagered) + '</span>',
-          '</div>',
-          '<div class="stat-card__cell">',
-            '<span class="stat-card__cell-label">Won</span>',
-            '<span class="stat-card__cell-value positive">' + fmt(w.total_won) + '</span>',
-          '</div>',
-          '<div class="stat-card__cell">',
-            '<span class="stat-card__cell-label">Lost</span>',
-            '<span class="stat-card__cell-value negative">' + fmt(w.total_lost) + '</span>',
-          '</div>',
         '</div>',
       '</div>',
     ].join('');
