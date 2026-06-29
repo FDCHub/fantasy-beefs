@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -142,6 +143,13 @@ app = FastAPI(
     title="Fantasy Beefs API",
     description="Fantasy football league data, projections, and betting.",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.mount("/tools", StaticFiles(directory="tools"), name="tools")
