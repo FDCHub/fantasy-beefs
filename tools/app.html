@@ -319,6 +319,34 @@ html, body {
 }
 .book-toast.show { opacity: 1; pointer-events: auto; }
 
+/* ── Matchup Carousel (Section 2) ──────────────────────────────── */
+.matchup-carousel {
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+  height: 154px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.matchup-carousel::-webkit-scrollbar { display: none; }
+
+.matchup-carousel .opponent-card {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  height: 154px;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Always show body in carousel — overrides the expand/collapse hidden state;
+   flex:1 fills remaining card height after header so chips never clip at the snap boundary */
+.matchup-carousel .opponent-card .opponent-card__body {
+  display: block;
+  flex: 1;
+  padding-top: 14px;
+  overflow: hidden;
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -368,7 +396,7 @@ html, body {
       <!-- Section 1: Pool Card (VP2) -->
       <div id="vp-pool-header"></div>
 
-      <!-- TODO: Section 2 — Matchup Cards (added in next prompt) -->
+      <!-- Section 2: Matchup Cards — scroll-snap carousel rendered into #vp-the-book -->
 
       <!-- Bet matrix -->
       <div class="section-label" id="book-label">The Book</div>
@@ -1235,9 +1263,9 @@ async function loadTheBook() {
       return a.matchup_id - b.matchup_id;
     });
 
-    el.innerHTML = matchups.map(function(m) {
+    el.innerHTML = '<div class="matchup-carousel">' + matchups.map(function(m) {
       return _matchupCardHtml(m, gmMatchupId, gmBets);
-    }).join('');
+    }).join('') + '</div>';
 
   } catch (e) {
     el.innerHTML = '<div class="vp-status error">Could not load The Book.</div>';
