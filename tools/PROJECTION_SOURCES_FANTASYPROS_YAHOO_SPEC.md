@@ -175,6 +175,82 @@ source-agnostic and never reads this preference directly.
 
 ---
 
+## Player ID Crosswalk (dynastyprocess)
+
+### Problem
+FantasyPros API does not return `player_yahoo_id` in its response payload.
+Confirmed absent from both top-level player object and stats{} sub-object
+(verified June 30, 2026). ConsensusSource cannot match players across
+FantasyPros and Yahoo sources without an external bridge.
+
+### Solution
+dynastyprocess/data maintains `db_playerids.csv` — an open, community-
+maintained crosswalk of 11,000+ NFL players across 35 platform IDs,
+including `fantasypros_id` and `yahoo_id`. Updated regularly during the
+season. Last confirmed update: January 2026.
+
+Raw CSV URL (no auth required):
+https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_playerids.csv
+
+### Storage
+DB table: `player_id_map`
+
+| Column | Type | Notes |
+|---|---|---|
+| fantasypros_id | VARCHAR PK | FantasyPros numeric ID |
+| yahoo_id | VARCHAR | Yahoo numeric player ID |
+| name | VARCHAR | Player name (from dynastyprocess) |
+| position | VARCHAR | QB/RB/WR/TE/K/DST |
+| team | VARCHAR | NFL team abbreviation |
+| last_updated | TIMESTAMP | UTC timestamp of last upsert |
+
+Rationale for DB over flat CSV: Railway containers have ephemeral 
+filesystems — a CSV would be lost on every redeploy. The DB table 
+survives restarts and is queryable directly from FantasyProsSource 
+and ConsensusSource without file I/O.
+
+### Refresh Logic
+- Download `db_playerids.csv` from the raw GitHub URL
+- Select columns: `fantasypros_id`, `yahoo_id`, `name`, `position`, 
+  `team`
+- Filter rows where `fantasypros_id` IS NOT NULL
+- UPSERT on `fantasypros_id` (primary key) — updates existing, 
+  inserts new, nothing deleted
+- Write `last_updated = UTC now` on every upserted row
+- Auto-refresh: weekly background task (e.g. every Monday 6am UTC)
+- Manual refresh: Commish tab force-refresh button (see below)
+
+### Updated FantasyProsSource matching
+Replace any reference to `player_yahoo_id` from the API payload.
+Player matching now uses:
+  1. Query `player_id_map` WHERE `fantasypros_id = fpid`
+  2. Return `yahoo_id` from the crosswalk row
+  3. If no crosswalk match: set `yahoo_player_id = None`, log warning
+
+### Updated ConsensusSource join
+Match FantasyPros and Yahoo players via `yahoo_id` (the common key).
+Unmatched players fall back to single-source at full weight (unchanged).
+
+### Commish Tab — Crosswalk Status UI
+Section label: "Player ID Crosswalk"
+Display:
+- Last refreshed: {last_updated timestamp or "Never"}
+- Players mapped: {COUNT of rows in player_id_map}
+- Button: "Refresh Now" → POST /commish/crosswalk/refresh
+- On success: show new timestamp and count
+- On failure: show error message inline
+
+### Build Assignment
+| Module | Owner |
+|---|---|
+| DB migration (player_id_map table) | Claude Code |
+| crosswalk/download.py (fetch + upsert) | Qwen |
+| Weekly scheduler hook | Claude Code |
+| Commish tab UI + endpoint | Claude Code |
+| Updated FantasyProsSource (crosswalk lookup) | Qwen |
+
+---
+
 ## Field Audit Required (YahooSource gate)
 
 Before building `YahooSource`, run one live call against the Yahoo
