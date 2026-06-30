@@ -23,8 +23,33 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from db.schema import LeagueScoring, Matchup, Projection, Roster, SessionLocal, Team
 
 N_SIMS           = 10_000
-STD_PCT          = 0.20   # 20 % of projected points as σ
 MIN_STD          = 0.5    # floor so zero-projection players still vary
+
+# Position-specific standard deviation as a fraction of projected points.
+# Values are reasonable estimates drawn from public fantasy football variance
+# literature (e.g. FTN, FantasyPros positional consistency studies), NOT
+# empirically calibrated against this league's actual-vs-projected history.
+# FLAG: once enough seasons of this league's own data exist, replace these
+# with position-specific σ fitted to (projected − actual) residuals.
+STD_PCT_BY_POSITION: dict[str, float] = {
+    "QB":   0.18,   # most consistent skill position
+    "RB":   0.28,   # usage/game-script volatility
+    "WR":   0.30,   # target-share + boom/bust variance
+    "TE":   0.25,   # role-dependent, tighter than WR
+    "FLEX": 0.28,   # default for unknown or flex-eligible positions
+    "K":    0.35,   # high situational variance
+    "DEF":  0.40,   # very wide distribution; still drawn as Normal here —
+                    # FLAG: DEF true distribution is right-skewed (sacks/TDs
+                    # are discrete count events), not Normal. Switching to a
+                    # mixed/Poisson model is a future improvement.
+}
+
+# Approximate same-team player correlation (QB-pass-catcher stacks, game-script
+# effects lift/suppress entire lineup together). Scaling each player's σ by this
+# factor increases effective team-total variance by ~MULTIPLIER² on average.
+# This is a fixed, documented simplification — NOT a calibrated covariance model.
+# Revisit with real historical covariance data post-launch.
+CORRELATION_VARIANCE_MULTIPLIER: float = 1.15
 N_START          = 9      # QB RB RB WR WR TE FLEX K DEF
 SEASON           = 2024
 SOURCE           = "fantasypros"
@@ -144,8 +169,9 @@ class StarterLine:
     player_id:        int
     name:             str
     position:         str
-    projected_points: float   # raw FantasyPros PPR projection
-    adjusted_points:  float   # after scoring-system conversion
+    injury_status:    str | None   # None = healthy; mirrors BenchPlayerLine pattern
+    projected_points: float        # raw FantasyPros PPR projection (pre-injury)
+    adjusted_points:  float        # after injury multiplier + scoring-system conversion
 
 
 @dataclass
@@ -213,24 +239,46 @@ def _starters(
             .filter_by(player_id=p.id, week=week, season=SEASON, source=SOURCE)
             .first()
         )
-        raw = proj.projected_points if proj else 0.0
+        raw        = proj.projected_points if proj else 0.0
+        inj_status = proj.injury_status    if proj else None
+        inj_mult   = INJURY_MULTIPLIERS.get(inj_status or "", 1.0)
         lines.append(StarterLine(
             player_id        = p.id,
             name             = p.name,
             position         = p.position,
+            injury_status    = inj_status,
             projected_points = raw,
-            adjusted_points  = _adjust_for_scoring(raw, p.position, scoring),
+            adjusted_points  = _adjust_for_scoring(raw * inj_mult, p.position, scoring),
         ))
     return lines
 
 
-def _simulate_team(pts: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+def _simulate_team(
+    pts:       np.ndarray,
+    positions: list[str],
+    rng:       np.random.Generator,
+    n_sims:    int = N_SIMS,
+) -> np.ndarray:
     """
-    pts: shape (n_starters,) — projected points per starter
-    Returns shape (N_SIMS,) — simulated team total per trial.
+    pts:       shape (n_starters,) — adjusted projected points per starter
+    positions: shape (n_starters,) — roster position per player (for σ lookup)
+    Returns    shape (n_sims,)     — simulated team total per trial.
+
+    Per-player σ is looked up from STD_PCT_BY_POSITION then scaled by
+    CORRELATION_VARIANCE_MULTIPLIER. Multiplying each player's individual σ
+    by the multiplier inflates team-total variance by ~MULTIPLIER² on average,
+    approximating positive intra-team correlation (QB-stack, game-script effects)
+    without a full multivariate normal draw. Do not apply this multiplier outside
+    _simulate_team — single-player draws (simulate_player_scores) have no
+    same-team correlation component.
     """
-    sigma = np.maximum(np.abs(pts) * STD_PCT, MIN_STD)
-    draws = rng.normal(loc=pts, scale=sigma, size=(N_SIMS, len(pts)))
+    std_pcts = np.array([
+        STD_PCT_BY_POSITION.get(pos, STD_PCT_BY_POSITION["FLEX"])
+        for pos in positions
+    ])
+    sigma = np.maximum(np.abs(pts) * std_pcts, MIN_STD)
+    sigma = sigma * CORRELATION_VARIANCE_MULTIPLIER   # intra-team correlation approx
+    draws = rng.normal(loc=pts, scale=sigma, size=(n_sims, len(pts)))
     draws = np.maximum(draws, 0.0)   # no negative scores
     return draws.sum(axis=1)
 
@@ -253,13 +301,15 @@ def run(
     away_lines = _starters(away_team, week, db, scoring)
 
     home_pts = np.array([s.adjusted_points for s in home_lines])
+    home_pos = [s.position for s in home_lines]
     away_pts = np.array([s.adjusted_points for s in away_lines])
+    away_pos = [s.position for s in away_lines]
 
     # Seed from matchup + week → same inputs always produce same odds
     rng = np.random.default_rng(seed=matchup_id * 1_000 + week)
 
-    home_scores = _simulate_team(home_pts, rng)
-    away_scores = _simulate_team(away_pts, rng)
+    home_scores = _simulate_team(home_pts, home_pos, rng, n_sims)
+    away_scores = _simulate_team(away_pts, away_pos, rng, n_sims)
 
     home_wins     = int((home_scores > away_scores).sum())
     home_win_prob = home_wins / n_sims
@@ -303,10 +353,12 @@ def simulate_scores(
     home_lines = _starters(home_team, week, db, scoring)
     away_lines = _starters(away_team, week, db, scoring)
     home_pts   = np.array([s.adjusted_points for s in home_lines])
+    home_pos   = [s.position for s in home_lines]
     away_pts   = np.array([s.adjusted_points for s in away_lines])
+    away_pos   = [s.position for s in away_lines]
     # Seed consistent with run() so straight/spread/ou share the same game sim
     rng = np.random.default_rng(seed=home_team.id * 10_000 + away_team.id * 100 + week)
-    return _simulate_team(home_pts, rng), _simulate_team(away_pts, rng)
+    return _simulate_team(home_pts, home_pos, rng, n_sims), _simulate_team(away_pts, away_pos, rng, n_sims)
 
 
 def bench_players(
@@ -371,13 +423,15 @@ def simulate_bench_scores(
 
     if home_lines:
         home_pts    = np.array([b.adjusted_points for b in home_lines])
-        home_scores = _simulate_team(home_pts, rng)
+        home_pos    = [b.position for b in home_lines]
+        home_scores = _simulate_team(home_pts, home_pos, rng, n_sims)
     else:
         home_scores = np.zeros(n_sims)
 
     if away_lines:
         away_pts    = np.array([b.adjusted_points for b in away_lines])
-        away_scores = _simulate_team(away_pts, rng)
+        away_pos    = [b.position for b in away_lines]
+        away_scores = _simulate_team(away_pts, away_pos, rng, n_sims)
     else:
         away_scores = np.zeros(n_sims)
 
@@ -389,10 +443,16 @@ def simulate_player_scores(
     player_id: int,
     week: int,
     n_sims: int = N_SIMS,
+    position: str = "FLEX",
 ) -> np.ndarray:
-    """Return score array of shape (n_sims,) for a single player."""
+    """
+    Return score array of shape (n_sims,) for a single player.
+    Single-player draws do NOT apply CORRELATION_VARIANCE_MULTIPLIER — that
+    adjustment is only meaningful for a full team lineup draw in _simulate_team.
+    """
     rng   = np.random.default_rng(seed=player_id * 1_000 + week)
-    sigma = max(abs(projected_points) * STD_PCT, MIN_STD)
+    std   = STD_PCT_BY_POSITION.get(position, STD_PCT_BY_POSITION["FLEX"])
+    sigma = max(abs(projected_points) * std, MIN_STD)
     draws = rng.normal(loc=projected_points, scale=sigma, size=n_sims)
     return np.maximum(draws, 0.0)
 
