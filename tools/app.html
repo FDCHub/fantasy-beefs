@@ -294,6 +294,31 @@ html, body {
   padding: 4px 7px;
 }
 
+/* Book toast — non-participant bet-chip feedback */
+.book-toast {
+  position: fixed;
+  bottom: calc(var(--nav-h) + 12px);
+  left: 14px;
+  right: 14px;
+  max-width: 452px;
+  margin: 0 auto;
+  background: var(--slate);
+  color: var(--navy-lt);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.12);
+  z-index: 150;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s;
+  text-align: center;
+}
+.book-toast.show { opacity: 1; pointer-events: auto; }
+
 #app {
   display: flex;
   flex-direction: column;
@@ -461,6 +486,9 @@ html, body {
       My Commish
     </button>
   </nav>
+
+  <!-- Book toast: non-blocking message for non-participant matchup taps -->
+  <div id="book-toast" class="book-toast"></div>
 
 </div><!-- /#app -->
 
@@ -1091,14 +1119,31 @@ async function submitPoolPick(betType, reset) {
   }
 }
 
+// Locked 4-bet roster for The Book matchup cards
 var _BET_TYPES = [
-  { key: 'straight',   label: 'Moneyline' },
-  { key: 'spread',     label: 'Spread'    },
-  { key: 'over_under', label: 'O/U'       },
-  { key: 'prop',       label: 'Prop'      },
+  { key: 'straight',   label: 'Moneyline'  },
+  { key: 'spread',     label: 'Spread'     },
+  { key: 'over_under', label: 'O/U'        },
+  { key: 'the_lineup', label: 'The Lineup' },  // pricing wired in Section 3
 ];
 
-function _betChips(matchup, bets) {
+var _toastTimer = null;
+function _showBookToast(msg) {
+  var el = document.getElementById('book-toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function() { el.classList.remove('show'); }, 3500);
+}
+
+// Called when a non-participant taps a bet cell in someone else's matchup
+function _notYourGame() {
+  _showBookToast('Fantasy Beefs is GM vs GM only — this bet needs someone to take the other side, and we don’t have a house.');
+}
+
+// isGm: true if the viewing GM is a participant in this matchup
+function _betChips(matchup, bets, isGm) {
   var teamLabel = matchup.teams.map(function(t) { return t.team_name; }).join(' vs ');
   return _BET_TYPES.map(function(type) {
     var hit  = (bets || []).find(function(b) { return b.bet_type === type.key; });
@@ -1107,16 +1152,10 @@ function _betChips(matchup, bets) {
     var lineFrag = ml != null
       ? ' <span style="opacity:0.7;font-size:9px;font-weight:700;">' + line + '</span>'
       : '';
-    return [
-      '<button class="bet-chip" onclick="openBetSlip(',
-        '\'' + teamLabel.replace(/'/g, "\\'") + '\',',
-        '\'' + type.label + '\',',
-        '\'' + line + '\',',
-        matchup.matchup_id,
-      ')">',
-        type.label, lineFrag,
-      '</button>',
-    ].join('');
+    var onclick = isGm
+      ? 'openBetSlip(\'' + teamLabel.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\',\'' + type.label + '\',\'' + line + '\',' + matchup.matchup_id + ')'
+      : '_notYourGame()';
+    return '<button class="bet-chip" onclick="' + onclick + '">' + type.label + lineFrag + '</button>';
   }).join('');
 }
 
@@ -1130,7 +1169,7 @@ function _matchupCardHtml(matchup, gmMatchupId, gmBets) {
     '<div class="opponent-card' + (isGm ? ' expanded' : '') + '" id="' + cid + '">',
       '<div class="opponent-card__header" onclick="toggleCard(\'' + cid + '\')">',
         '<div>',
-          '<div class="opponent-card__name">' + t1.team_name + ' vs ' + t2.team_name + '</div>',
+          '<div class="opponent-card__name">' + _esc(t1.team_name) + ' vs ' + _esc(t2.team_name) + '</div>',
         '</div>',
         '<div class="opponent-card__odds">',
           badge,
@@ -1139,7 +1178,7 @@ function _matchupCardHtml(matchup, gmMatchupId, gmBets) {
       '</div>',
       '<div class="opponent-card__body">',
         '<div class="bet-chips">',
-          _betChips(matchup, isGm ? gmBets : []),
+          _betChips(matchup, isGm ? gmBets : [], isGm),
         '</div>',
       '</div>',
     '</div>',
