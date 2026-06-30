@@ -420,7 +420,7 @@ class FaabConfig(Base):
     id                   = Column(Integer,  primary_key=True, autoincrement=True)
     league_id            = Column(Integer,  ForeignKey("leagues.id"), nullable=False, unique=True)
     opening_bet          = Column(Float,    nullable=False, default=50.00)
-    opening_waiver       = Column(Float,    nullable=False, default=50.00)
+    opening_waiver       = Column(Float,    nullable=False, default=100.00)
     allow_bet_to_waiver  = Column(Integer,  nullable=False, default=1)   # 1 = allowed
     allow_waiver_to_bet  = Column(Integer,  nullable=False, default=1)   # 1 = allowed
     season_initialized   = Column(Integer,  nullable=False, default=0)   # 1 after init_season_wallets
