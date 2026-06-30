@@ -389,11 +389,8 @@ html, body {
       <div id="vp-standings">
         <div class="vp-status">Loading standings...</div>
       </div>
-    </div>
 
-    <div id="tab-action" class="tab-view">
-
-      <!-- Section 1: Pool Card (VP2) -->
+      <!-- Section 1: Pool Card -->
       <div id="vp-pool-header"></div>
 
       <!-- Section 2: Matchup Cards — scroll-snap carousel rendered into #vp-the-book -->
@@ -404,7 +401,7 @@ html, body {
         <div class="vp-status">Loading The Book...</div>
       </div>
 
-      <!-- Bet slip — position:fixed, viewport-anchored while tab is active -->
+      <!-- Bet slip — position:fixed, viewport-anchored -->
       <div class="bet-slip-backdrop" id="bet-slip-backdrop" onclick="closeBetSlip()"></div>
       <div class="bet-slip" id="bet-slip">
         <div class="bet-slip__handle"></div>
@@ -423,14 +420,17 @@ html, body {
         </div>
         <button class="bet-slip__btn confirm" onclick="placeBetConsole()">Place Beef</button>
       </div>
+    </div>
 
-      <!-- VP2: My Record -->
-      <div class="section-label" style="margin-top:16px;">My Record</div>
+    <div id="tab-action" class="tab-view">
+
+      <!-- VP1: My Record -->
+      <div class="section-label">My Record</div>
       <div id="vp-my-record">
         <div class="vp-status">Loading record...</div>
       </div>
 
-      <!-- VP3: My History -->
+      <!-- VP2: My History -->
       <div class="section-label" style="margin-top:16px;">My History</div>
       <div id="vp-my-history">
         <div class="stat-card">
@@ -521,9 +521,9 @@ html, body {
 </div><!-- /#app -->
 
 <script>
-const API_BASE   = 'https://fantasy-beefs-production.up.railway.app';
-const GM_TEAM_ID = 1;
-const AUTH_TOKEN = 'dev-stub-token';
+const API_BASE = 'https://fantasy-beefs-production.up.railway.app';
+var AUTH_TOKEN = localStorage.getItem('fb_auth_token') || 'dev-stub-token';
+var GM_TEAM_ID = null;  // set by initApp() via /auth/me
 
 function fetchAuth(url, opts) {
   var options = Object.assign({}, opts || {});
@@ -620,7 +620,7 @@ async function loadStandings() {
   }
 }
 
-loadStandings();
+// loadStandings() — called by initApp()
 
 /* ── Team Health VP ─────────────────────────────────────────────── */
 
@@ -697,7 +697,7 @@ async function loadTeamHealth() {
   }
 }
 
-loadTeamHealth();
+// loadTeamHealth() — called by initApp()
 
 /* ── War Room VP ────────────────────────────────────────────────── */
 
@@ -914,7 +914,7 @@ async function loadWarRoom() {
   }
 }
 
-loadWarRoom();
+// loadWarRoom() — called by initApp()
 
 /* ── My Outlook VP ──────────────────────────────────────────────── */
 
@@ -1003,7 +1003,7 @@ async function loadMyOutlook() {
   }
 }
 
-loadMyOutlook();
+// loadMyOutlook() — called by initApp()
 
 /* ── The Book VP ────────────────────────────────────────────────── */
 
@@ -1272,7 +1272,7 @@ async function loadTheBook() {
   }
 }
 
-loadTheBook();
+// loadTheBook() — called by initApp()
 
 /* ── My Record VP ───────────────────────────────────────────────── */
 
@@ -1316,7 +1316,7 @@ async function loadMyRecord() {
   }
 }
 
-loadMyRecord();
+// loadMyRecord() — called by initApp()
 
 /* ── Wallet VP ──────────────────────────────────────────────────── */
 
@@ -1369,7 +1369,7 @@ async function loadWallet() {
   }
 }
 
-loadWallet();
+// loadWallet() — called by initApp()
 
 /* ── Commish Settings VP ────────────────────────────────────────── */
 
@@ -1407,7 +1407,30 @@ async function loadCommishSettings() {
   }
 }
 
-loadCommishSettings();
+// loadCommishSettings() — called by initApp()
+
+/* ── App init: resolve GM identity then fire all loaders ────────── */
+
+(async function initApp() {
+  try {
+    var meRes = await fetchAuth(API_BASE + '/auth/me');
+    if (meRes.ok) {
+      var me = await meRes.json();
+      GM_TEAM_ID = me.team_id;
+      var gmEl = document.getElementById('header-gm');
+      if (gmEl && me.team_name) gmEl.textContent = 'GM · ' + me.team_name;
+    }
+  } catch (e) {}
+
+  loadStandings();
+  loadTeamHealth();
+  loadWarRoom();
+  loadMyOutlook();
+  loadTheBook();
+  loadMyRecord();
+  loadWallet();
+  loadCommishSettings();
+}());
 
 /* ── Commish Operations VP ──────────────────────────────────────── */
 
