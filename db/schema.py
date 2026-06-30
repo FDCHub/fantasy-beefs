@@ -222,8 +222,8 @@ class Projection(Base):
     player_id        = Column(Integer, ForeignKey("players.id"), nullable=False)
     week             = Column(Integer, nullable=False)
     season           = Column(Integer, nullable=False)
-    projected_points = Column(Float,   nullable=False)
-    actual_points    = Column(Float,   nullable=False)
+    projected_points = Column(Float,   nullable=True)   # NULL = no pre-week projection available
+    actual_points    = Column(Float,   nullable=True)   # NULL until the week settles
     source           = Column(String,  nullable=False)  # yahoo | espn | fantasypros
     injury_status    = Column(String,  nullable=True)   # None | out | ir | doubtful | questionable
 
