@@ -440,25 +440,6 @@ html, body {
 
     </div>
 
-    <div id="tab-team" class="tab-view">
-      <div class="section-label" id="team-health-label">My Team</div>
-      <div id="vp-team-health">
-        <div class="vp-status">Loading team health...</div>
-      </div>
-
-      <!-- VP2: War Room -->
-      <div class="section-label" style="margin-top:16px;" id="war-room-label">War Room</div>
-      <div id="vp-war-room">
-        <div class="vp-status">Loading War Room...</div>
-      </div>
-
-      <!-- VP3: My Outlook -->
-      <div class="section-label" style="margin-top:16px;">My Outlook</div>
-      <div id="vp-my-outlook">
-        <div class="vp-status">Loading outlook...</div>
-      </div>
-    </div>
-
     <div id="tab-account" class="tab-view">
       <div class="section-label">My Wallet</div>
       <div id="vp-wallet">
@@ -500,10 +481,6 @@ html, body {
     <button class="bottom-nav__item" data-tab="tab-action">
       <span class="bottom-nav__icon">🎰</span>
       My Action
-    </button>
-    <button class="bottom-nav__item" data-tab="tab-team">
-      <span class="bottom-nav__icon">🏈</span>
-      My Team
     </button>
     <button class="bottom-nav__item" data-tab="tab-account">
       <span class="bottom-nav__icon">💰</span>
@@ -1423,9 +1400,6 @@ async function loadCommishSettings() {
   } catch (e) {}
 
   loadStandings();
-  loadTeamHealth();
-  loadWarRoom();
-  loadMyOutlook();
   loadTheBook();
   loadMyRecord();
   loadWallet();

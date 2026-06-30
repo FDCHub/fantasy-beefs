@@ -99,7 +99,7 @@ html, body {
   border-top: 1px solid #2E3548;
   height: var(--nav-h);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   max-width: 480px;
   margin: 0 auto;
 }
