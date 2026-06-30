@@ -11,6 +11,7 @@ the same odds within a session (reproducible without being user-visible).
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -21,6 +22,8 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import LeagueScoring, Matchup, Projection, Roster, SessionLocal, Team
+
+_logger = logging.getLogger(__name__)
 
 N_SIMS           = 10_000
 MIN_STD          = 0.5    # floor so zero-projection players still vary
@@ -60,6 +63,16 @@ INJURY_MULTIPLIERS: dict[str, float] = {
     "ir":           0.00,
     "doubtful":     0.25,
     "questionable": 0.60,
+}
+
+# Defensive normalization for raw Yahoo API codes that may reach this engine
+# without being translated first. The canonical translation (Yahoo code →
+# bucket name) belongs in the Yahoo seed script, which stores bucket names
+# in Projection.injury_status before we ever read them here. This dict is a
+# safety net only — it should never fire once the seed script is written.
+_YAHOO_CODE_NORM: dict[str, str] = {
+    "na":  "out",   # Inactive: Coach's Decision or Not on Roster (47 obs in audit)
+    "dnr": "out",   # Reserve: Did Not Report (2 obs in audit)
 }
 
 # ── Scoring settings ──────────────────────────────────────────────────────────
@@ -212,6 +225,36 @@ def _prob_to_american(prob: float) -> int:
     return 100
 
 
+def _injury_multiplier(inj_status: str | None) -> float:
+    """
+    Return the projection multiplier for a stored injury status string.
+
+    Lookup order:
+      1. None or ''      → 1.0   (genuinely healthy, no status on record)
+      2. _YAHOO_CODE_NORM lookup (case-insensitive) → normalized bucket name
+      3. INJURY_MULTIPLIERS lookup on the (possibly normalized) string
+      4. Unknown non-empty string → 0.60 + stderr warning
+
+    The 0.60 fallback for unknowns is conservative by design: every unmapped
+    status found in real Yahoo data so far (NA, DNR) meant reduced/zero output,
+    never full health. Defaulting unknowns to 1.0 ("probably fine") is the
+    wrong prior. The warning makes future unmapped statuses visible immediately.
+    """
+    if not inj_status:
+        return 1.0
+    normalized = _YAHOO_CODE_NORM.get(inj_status.lower(), inj_status)
+    mult = INJURY_MULTIPLIERS.get(normalized)
+    if mult is not None:
+        return mult
+    _logger.warning(
+        "Unknown injury status %r — applying 0.60 multiplier (same as "
+        "'questionable'). Add an explicit mapping to INJURY_MULTIPLIERS or "
+        "_YAHOO_CODE_NORM if this status recurs.",
+        inj_status,
+    )
+    return 0.60
+
+
 def _starters(
     team: Team,
     week: int,
@@ -241,7 +284,7 @@ def _starters(
         )
         raw        = proj.projected_points if proj else 0.0
         inj_status = proj.injury_status    if proj else None
-        inj_mult   = INJURY_MULTIPLIERS.get(inj_status or "", 1.0)
+        inj_mult   = _injury_multiplier(inj_status)
         lines.append(StarterLine(
             player_id        = p.id,
             name             = p.name,
@@ -391,7 +434,7 @@ def bench_players(
         )
         raw        = proj.projected_points if proj else 0.0
         inj_status = proj.injury_status    if proj else None
-        inj_mult   = INJURY_MULTIPLIERS.get(inj_status or "", 1.0)
+        inj_mult   = _injury_multiplier(inj_status)
         adj        = _adjust_for_scoring(raw * inj_mult, p.position, scoring)
         lines.append(BenchPlayerLine(
             player_id       = p.id,
