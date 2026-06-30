@@ -105,22 +105,35 @@ proving scoring lives in the engine, not the source.
 
 ## Source 2 — YahooSource
 
-**Endpoint:**
+**Endpoint (confirmed working, verified 2026-06-30 — week 1 and week 10
+of 2025, all 15 roster players returned valid fantasy-point values):**
 ```
-GET https://fantasysports.yahooapis.com/fantasy/v2/league/{league_key}
-    /players;player_keys={keys}/stats;type=projected;week={week}
+GET https://fantasysports.yahooapis.com/fantasy/v2/team/{team_key}
+    /roster;week={week}/players/stats
 ```
+`{team_key}` = `{game_key}.l.{league_id}.t.{team_id}` e.g. `461.l.488800.t.11`
+
+**IMPORTANT:** No `type=` parameter. `type=projected`, `type=week`, and
+`type=projected_week` all return HTTP 400. Omitting the param is what works.
+One call per team per week = 12 × 17 = 204 calls per full-season backfill.
 
 **Auth:** Yahoo OAuth 2.0 session (existing `yahoo_auth.py` flow).
 yfpy 17.0.0 does not wrap this endpoint — hit it raw via the OAuth session.
 
-**Field mapping:** Yahoo returns a `player_stats` object per player.
-Map equivalent fields to `RawProj`. `yahoo_player_id` is the native ID.
-`fpid` will be `None` for Yahoo-only requests.
+**Field mapping (confirmed from live response, 2026-06-30):**
+Yahoo's player node is a list:
+- `player[0]` — list of metadata dicts (name, position, player_key, etc.)
+- `player[1]` — player stats dict
+- `player[2]` — player_points dict: `{"coverage_type": ..., "week": ..., "total": "16.28"}`
 
-**Note:** Yahoo projected stats endpoint confirmed available via existing
-OAuth. Field-level mapping requires a live response audit — complete this
-before marking `YahooSource` as built.
+Mapping to `RawProj`:
+- `player[2]["player_points"]["total"]` → `projected_points` (the fantasy-points value)
+- `player[0][?]["player_key"]` → `yahoo_player_id` (the native ID)
+- `fpid` will be `None` for Yahoo-only requests.
+
+**Note:** The `player_points.total` value for completed weeks reflects
+actual fantasy points scored for that week (Yahoo does not serve retroactive
+projections). For future/current weeks it reflects Yahoo's projected total.
 
 **Acceptance:** Same player, same week — Yahoo raw stat line scored under
 mock league rules produces a plausible point total. `yahoo_player_id`
