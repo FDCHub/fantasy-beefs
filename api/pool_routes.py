@@ -1,12 +1,15 @@
 """FastAPI router for /pool Mode 3 weekly pool endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import dataclasses
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db.deps import get_db
-from auth.jwt_auth import require_commissioner, get_current_gm, User
+from auth.jwt_auth import assert_own_team, require_commissioner, get_current_gm, User
 from betting.pool_engine import (
     setup_pool_config,
     get_pool_config,
@@ -14,6 +17,8 @@ from betting.pool_engine import (
     submit_worst_beat_prediction,
     get_pool_predictions,
     settle_pool,
+    get_pool_week,
+    submit_pool_pick,
     PoolConfigOut,
     PoolEntryResult,
     PoolPredictionOut,
@@ -125,3 +130,59 @@ def settle_weekly_pool(
         return settle_pool(league_id=req.league_id, week=req.week, db=db)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Pool Card endpoints (VP2 Section 1) ───────────────────────────────────────
+
+class PoolPickRequest(BaseModel):
+    league_id: int
+    team_id:   int
+    bet_type:  str
+    pick:      Optional[int] = None  # picked team_id; null to reset
+    week:      int
+
+
+@router.get("/week/{week}")
+def get_week_pool(
+    week:      int,
+    league_id: int = Query(..., description="League ID"),
+    db:        Session = Depends(get_db),
+) -> dict:
+    """
+    Return all 4 pool bets for the week with every GM's current pick state.
+    lock_time is derived from PoolPot.lock_time if set, else computed from
+    the NFL 2024 schedule formula (Thursday 8:20 PM ET per week).
+    """
+    if not 1 <= week <= 17:
+        raise HTTPException(status_code=400, detail="week must be 1–17")
+    try:
+        result = get_pool_week(league_id=league_id, week=week, db=db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return dataclasses.asdict(result)
+
+
+@router.post("/pick")
+def submit_pick(
+    req:        PoolPickRequest,
+    db:         Session = Depends(get_db),
+    current_gm: User    = Depends(get_current_gm),
+) -> dict:
+    """
+    Upsert a GM's pick for one pool bet type.
+    Self-pick is allowed only for biggest_winner; blocked for the other three.
+    Rejected after the weekly lock_time (Thursday 8:20 PM ET by default).
+    """
+    assert_own_team(req.team_id, current_gm)
+    try:
+        result = submit_pool_pick(
+            league_id    = req.league_id,
+            team_id      = req.team_id,
+            bet_type     = req.bet_type,
+            pick_team_id = req.pick,
+            week         = req.week,
+            db           = db,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return dataclasses.asdict(result)

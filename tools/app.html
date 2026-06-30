@@ -243,6 +243,57 @@ html, body {
   color: var(--orange-lt);
 }
 
+/* VP: Pool Card picker rows (shell-only; not in components.css) */
+.pool-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+.pool-pick-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--navy-lt);
+  width: 82px;
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+.pool-pick-select {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 5px;
+}
+.pool-pick-select:disabled { opacity: 0.45; }
+.pool-pick-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.pool-pick-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--orange);
+  color: #fff;
+  cursor: pointer;
+}
+.pool-pick-btn:disabled { opacity: 0.35; cursor: default; }
+.pool-pick-btn--reset {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.25);
+  color: var(--navy-lt);
+  padding: 4px 7px;
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -289,8 +340,10 @@ html, body {
 
     <div id="tab-action" class="tab-view">
 
-      <!-- Pool card render target -->
+      <!-- Section 1: Pool Card (VP2) -->
       <div id="vp-pool-header"></div>
+
+      <!-- TODO: Section 2 — Matchup Cards (added in next prompt) -->
 
       <!-- Bet matrix -->
       <div class="section-label" id="book-label">The Book</div>
@@ -900,7 +953,8 @@ loadMyOutlook();
 
 const LEAGUE_ID = 1;
 
-var _bookCtx = { matchupId: null, betType: null, line: null, label: null };
+var _bookCtx  = { matchupId: null, betType: null, line: null, label: null };
+var _poolData = null;  // cached GET /pool/week response
 
 function toggleCard(id) {
   var card = document.getElementById(id);
@@ -929,31 +983,112 @@ function placeBetConsole() {
   closeBetSlip();
 }
 
-function _poolCardHtml(predictions) {
-  var myPick = (predictions || []).find(function(p) { return p.team_id === GM_TEAM_ID; });
-  var pickNote = myPick
-    ? 'Your Worst Beat pick: <strong>' + (myPick.predicted_worst_beat_name || 'Team ' + myPick.predicted_worst_beat_team_id) + '</strong>'
-    : 'No Worst Beat pick submitted yet.';
-  return [
+function _esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function _poolPickCardHtml(poolWeek) {
+  if (!poolWeek) return '<div class="pool-card"><div class="pool-card__title">THE POOL — WEEK ' + CURRENT_WEEK + '</div></div>';
+
+  var locked = poolWeek.locked;
+  var parts  = [
     '<div class="pool-card">',
-      '<div class="pool-card__title">The Pool — Week ' + CURRENT_WEEK + '</div>',
-      '<div class="pool-card__pots">',
-        '<div class="pool-card__pot">',
-          '<div class="pool-card__pot-label">Biggest Winner</div>',
-          '<div class="pool-card__pot-value">$—</div>',
-        '</div>',
-        '<div class="pool-card__pot">',
-          '<div class="pool-card__pot-label">Worst Beat</div>',
-          '<div class="pool-card__pot-value">$—</div>',
-        '</div>',
-        '<div class="pool-card__pot">',
-          '<div class="pool-card__pot-label">Spec Teams</div>',
-          '<div class="pool-card__pot-value">$—</div>',
-        '</div>',
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;">',
+        '<div class="pool-card__title" style="margin-bottom:0;">THE POOL — WEEK ' + CURRENT_WEEK + '</div>',
+        locked
+          ? '<span style="font-family:var(--mono);font-size:9px;font-weight:700;color:var(--red);letter-spacing:0.06em;">LOCKED</span>'
+          : '<span id="pool-lock-timer" style="font-family:var(--mono);font-size:9px;font-weight:700;color:var(--gold-lt);letter-spacing:0.04em;">…</span>',
       '</div>',
-      '<div class="book-pick-note">' + pickNote + '</div>',
-    '</div>',
-  ].join('');
+  ];
+
+  (poolWeek.bets || []).forEach(function(bt) {
+    var myPick   = (bt.picks || []).find(function(p) { return p.team_id === GM_TEAM_ID; });
+    var hasPick  = myPick && myPick.picked_team_id != null;
+
+    var opts = '<option value="">— pick —</option>';
+    (poolWeek.teams || []).forEach(function(t) {
+      if (!bt.self_pick_allowed && t.team_id === GM_TEAM_ID) return;
+      var sel = hasPick && myPick.picked_team_id === t.team_id ? ' selected' : '';
+      opts += '<option value="' + t.team_id + '"' + sel + '>' + _esc(t.team_name) + '</option>';
+    });
+
+    parts.push(
+      '<div class="pool-pick-row">',
+        '<span class="pool-pick-label">' + _esc(bt.label) + '</span>',
+        '<select class="pool-pick-select" id="pool-sel-' + bt.bet_type + '"' + (locked ? ' disabled' : '') + '>',
+          opts,
+        '</select>',
+        '<div class="pool-pick-actions">',
+          '<button class="pool-pick-btn"' +
+            (locked ? ' disabled' : ' onclick="submitPoolPick(\'' + bt.bet_type + '\')"') +
+          '>Go</button>',
+          (hasPick && !locked)
+            ? '<button class="pool-pick-btn pool-pick-btn--reset" onclick="submitPoolPick(\'' + bt.bet_type + '\', true)">×</button>'
+            : '',
+        '</div>',
+      '</div>'
+    );
+  });
+
+  parts.push('</div>');
+  return parts.join('');
+}
+
+var _poolCountdownTimer = null;
+function _startPoolCountdown(lockTimeISO) {
+  if (_poolCountdownTimer) clearInterval(_poolCountdownTimer);
+  function tick() {
+    var el        = document.getElementById('pool-lock-timer');
+    if (!el) { clearInterval(_poolCountdownTimer); return; }
+    var remaining = new Date(lockTimeISO) - Date.now();
+    if (remaining <= 0) { el.textContent = 'LOCKED'; clearInterval(_poolCountdownTimer); return; }
+    var d = Math.floor(remaining / 86400000);
+    var h = Math.floor((remaining % 86400000) / 3600000);
+    var m = Math.floor((remaining % 3600000)  / 60000);
+    el.textContent = d > 0 ? d + 'd ' + h + 'h left' : h + 'h ' + m + 'm left';
+  }
+  tick();
+  _poolCountdownTimer = setInterval(tick, 60000);
+}
+
+async function submitPoolPick(betType, reset) {
+  var sel        = document.getElementById('pool-sel-' + betType);
+  var pickTeamId = reset ? null : (sel ? parseInt(sel.value, 10) || null : null);
+
+  if (!reset && !pickTeamId) { alert('Select a team first.'); return; }
+
+  try {
+    var res = await fetchAuth(API_BASE + '/pool/pick', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        league_id: LEAGUE_ID,
+        team_id:   GM_TEAM_ID,
+        bet_type:  betType,
+        pick:      pickTeamId,
+        week:      CURRENT_WEEK,
+      }),
+    });
+    if (!res.ok) {
+      var err = await res.json().catch(function() { return {}; });
+      alert('Error: ' + (err.detail || 'HTTP ' + res.status));
+      return;
+    }
+    // Refresh the pool card
+    var weekRes = await fetch(API_BASE + '/pool/week/' + CURRENT_WEEK + '?league_id=' + LEAGUE_ID);
+    if (weekRes.ok) {
+      _poolData = await weekRes.json();
+      var poolEl = document.getElementById('vp-pool-header');
+      if (poolEl) {
+        poolEl.innerHTML = _poolPickCardHtml(_poolData);
+        if (!_poolData.locked) _startPoolCountdown(_poolData.lock_time);
+      }
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  }
 }
 
 var _BET_TYPES = [
@@ -1040,18 +1175,19 @@ async function loadTheBook() {
     });
     var gmMatchupId = gmMatchup ? gmMatchup.matchup_id : matchups[0].matchup_id;
 
-    // Bets for GM's matchup + pool predictions (parallel, non-fatal)
+    // Bets for GM's matchup + pool week data (parallel, non-fatal)
     var parallel = await Promise.all([
       fetch(API_BASE + '/bets/' + gmMatchupId)
         .then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
-      fetch(API_BASE + '/pool/predictions/' + LEAGUE_ID + '/' + CURRENT_WEEK)
-        .then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
+      fetch(API_BASE + '/pool/week/' + CURRENT_WEEK + '?league_id=' + LEAGUE_ID)
+        .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
     ]);
-    var gmBets      = parallel[0];
-    var predictions = parallel[1];
+    var gmBets = parallel[0];
+    _poolData  = parallel[1];
 
     bookLabel.textContent = 'The Book — Week ' + CURRENT_WEEK;
-    poolEl.innerHTML = _poolCardHtml(predictions);
+    poolEl.innerHTML      = _poolPickCardHtml(_poolData);
+    if (_poolData && !_poolData.locked) _startPoolCountdown(_poolData.lock_time);
 
     // GM's matchup first, then rest sorted by matchup_id
     matchups.sort(function(a, b) {

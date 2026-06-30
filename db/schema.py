@@ -811,8 +811,30 @@ class PoolPot(Base):
     entries_collected          = Column(Boolean,  default=False)
     settled                    = Column(Boolean,  default=False)
     settled_at                 = Column(DateTime(timezone=True), nullable=True)
+    lock_time                  = Column(DateTime(timezone=True), nullable=True)
 
     league = relationship("League")
+
+
+class PoolBetPick(Base):
+    """One pick per team per bet_type per week (all 4 pool bets)."""
+    __tablename__ = "pool_bet_picks"
+    __table_args__ = (
+        UniqueConstraint("league_id", "team_id", "bet_type", "week",
+                         name="uq_pool_bet_pick_team_type_week"),
+    )
+
+    id             = Column(Integer,  primary_key=True, autoincrement=True)
+    league_id      = Column(Integer,  ForeignKey("leagues.id"), nullable=False)
+    team_id        = Column(Integer,  ForeignKey("teams.id"),   nullable=False)
+    bet_type       = Column(String,   nullable=False)
+    picked_team_id = Column(Integer,  ForeignKey("teams.id"),   nullable=True)
+    week           = Column(Integer,  nullable=False)
+    submitted_at   = Column(DateTime(timezone=True), nullable=True)
+
+    team        = relationship("Team", foreign_keys=[team_id])
+    picked_team = relationship("Team", foreign_keys=[picked_team_id])
+    league      = relationship("League")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

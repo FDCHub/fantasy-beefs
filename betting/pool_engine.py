@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import os
 import sys
+import zoneinfo
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -31,7 +32,9 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import (
+    League,
     Matchup,
+    PoolBetPick,
     PoolConfig,
     PoolPot,
     PoolPrediction,
@@ -44,6 +47,31 @@ from db.schema import (
 
 SEASON = 2024
 SOURCE = "fantasypros"
+
+# ── Pool bet-type registry ─────────────────────────────────────────────────────
+
+_ET = zoneinfo.ZoneInfo("America/New_York")
+
+# Thursday 8:20 PM ET for NFL 2024 week 1 (first SNF kickoff that opened the week)
+_NFL_2024_W1_LOCK = datetime(2024, 9, 5, 20, 20, 0, tzinfo=_ET)
+
+POOL_BET_TYPES: list[dict] = [
+    {"key": "biggest_winner", "label": "Biggest Winner",        "self_pick_allowed": True},
+    {"key": "worst_beat",     "label": "Worst Beat",            "self_pick_allowed": False},
+    {"key": "special_teams",  "label": "Special Teams Supremacy","self_pick_allowed": False},
+    {"key": "bench_burn",     "label": "Bench Burn",            "self_pick_allowed": False},
+]
+_VALID_BET_TYPES = {b["key"] for b in POOL_BET_TYPES}
+
+
+def _nfl_lock_time(season: int, week: int) -> datetime:
+    """
+    Thursday 8:20 PM ET for the given NFL week.
+    Computed from the known 2024 season opener — no game-time data exists in the DB.
+    """
+    if season == 2024:
+        return _NFL_2024_W1_LOCK + timedelta(weeks=week - 1)
+    raise ValueError(f"No lock_time formula defined for season {season}")
 
 
 # ── Result dataclasses ────────────────────────────────────────────────────────
@@ -525,4 +553,187 @@ def settle_pool(league_id: int, week: int, db: Session) -> PoolSettlementResult:
         special_teams      = special_teams_info,
         total_distributed  = total_distributed,
         rolled_over_amount = wb_rolled_over,
+    )
+
+
+# ── Pool week view (all 4 bets + pick states) ─────────────────────────────────
+
+@dataclass
+class PoolTeamOut:
+    team_id:   int
+    team_name: str
+    owner:     str
+
+
+@dataclass
+class PoolPickStateOut:
+    team_id:          int
+    team_name:        str
+    picked_team_id:   Optional[int]
+    picked_team_name: Optional[str]
+
+
+@dataclass
+class PoolBetTypeOut:
+    bet_type:          str
+    label:             str
+    self_pick_allowed: bool
+    picks:             list  # list[PoolPickStateOut]
+
+
+@dataclass
+class PoolWeekOut:
+    week:      int
+    league_id: int
+    lock_time: str   # ISO-8601 with tz
+    locked:    bool
+    bets:      list  # list[PoolBetTypeOut]
+    teams:     list  # list[PoolTeamOut]
+
+
+def get_pool_week(league_id: int, week: int, db: Session) -> PoolWeekOut:
+    """
+    Return all 4 pool bets for the week with every GM's current pick state.
+    lock_time is read from PoolPot.lock_time if set, else computed from the
+    NFL 2024 schedule formula (Thursday 8:20 PM ET).
+    """
+    league = db.query(League).filter(League.id == league_id).first()
+    if not league:
+        raise ValueError(f"League {league_id} not found")
+
+    teams = db.query(Team).filter(Team.league_id == league_id).order_by(Team.id).all()
+    if not teams:
+        raise ValueError(f"No teams found in league {league_id}")
+
+    pot = db.query(PoolPot).filter(
+        PoolPot.league_id == league_id,
+        PoolPot.week      == week,
+    ).first()
+
+    lock_dt = (pot.lock_time if pot and pot.lock_time else _nfl_lock_time(league.season, week))
+    now     = datetime.now(timezone.utc)
+    locked  = now >= lock_dt.astimezone(timezone.utc)
+
+    team_map = {t.id: t for t in teams}
+
+    all_picks = (
+        db.query(PoolBetPick)
+        .filter(PoolBetPick.league_id == league_id, PoolBetPick.week == week)
+        .all()
+    )
+    pick_index: dict[tuple[int, str], PoolBetPick] = {
+        (p.team_id, p.bet_type): p for p in all_picks
+    }
+
+    bet_type_outs = []
+    for bt in POOL_BET_TYPES:
+        pick_states = []
+        for team in teams:
+            pick            = pick_index.get((team.id, bt["key"]))
+            picked_team_id  = pick.picked_team_id if pick else None
+            picked_team_name = (
+                team_map[picked_team_id].team_name
+                if picked_team_id and picked_team_id in team_map
+                else None
+            )
+            pick_states.append(PoolPickStateOut(
+                team_id          = team.id,
+                team_name        = team.team_name,
+                picked_team_id   = picked_team_id,
+                picked_team_name = picked_team_name,
+            ))
+        bet_type_outs.append(PoolBetTypeOut(
+            bet_type          = bt["key"],
+            label             = bt["label"],
+            self_pick_allowed = bt["self_pick_allowed"],
+            picks             = pick_states,
+        ))
+
+    team_outs = [
+        PoolTeamOut(team_id=t.id, team_name=t.team_name, owner=t.owner)
+        for t in teams
+    ]
+
+    return PoolWeekOut(
+        week      = week,
+        league_id = league_id,
+        lock_time = lock_dt.isoformat(),
+        locked    = locked,
+        bets      = bet_type_outs,
+        teams     = team_outs,
+    )
+
+
+def submit_pool_pick(
+    league_id:    int,
+    team_id:      int,
+    bet_type:     str,
+    pick_team_id: Optional[int],
+    week:         int,
+    db:           Session,
+) -> PoolPickStateOut:
+    """
+    Upsert a GM's pick for one of the 4 pool bet types.
+    pick_team_id=None resets the pick to unpicked.
+    Raises ValueError if: window closed, self-pick blocked, invalid team, invalid bet_type.
+    """
+    if bet_type not in _VALID_BET_TYPES:
+        raise ValueError(f"Invalid bet_type {bet_type!r}. Must be one of: {sorted(_VALID_BET_TYPES)}")
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if not league:
+        raise ValueError(f"League {league_id} not found")
+
+    pot = db.query(PoolPot).filter(
+        PoolPot.league_id == league_id, PoolPot.week == week,
+    ).first()
+    lock_dt = (pot.lock_time if pot and pot.lock_time else _nfl_lock_time(league.season, week))
+    if datetime.now(timezone.utc) >= lock_dt.astimezone(timezone.utc):
+        raise ValueError(f"Pick window is closed for week {week} (locked at {lock_dt.isoformat()})")
+
+    submitting_team = db.query(Team).filter(
+        Team.id == team_id, Team.league_id == league_id,
+    ).first()
+    if not submitting_team:
+        raise ValueError(f"Team {team_id} not found in league {league_id}")
+
+    picked_team: Optional[Team] = None
+    if pick_team_id is not None:
+        bt_cfg = next(b for b in POOL_BET_TYPES if b["key"] == bet_type)
+        if not bt_cfg["self_pick_allowed"] and pick_team_id == team_id:
+            raise ValueError(f"Self-pick not allowed for {bet_type}")
+        picked_team = db.query(Team).filter(
+            Team.id == pick_team_id, Team.league_id == league_id,
+        ).first()
+        if not picked_team:
+            raise ValueError(f"Pick team {pick_team_id} not found in league {league_id}")
+
+    now      = datetime.now(timezone.utc)
+    existing = db.query(PoolBetPick).filter(
+        PoolBetPick.league_id == league_id,
+        PoolBetPick.team_id   == team_id,
+        PoolBetPick.bet_type  == bet_type,
+        PoolBetPick.week      == week,
+    ).first()
+
+    if existing:
+        existing.picked_team_id = pick_team_id
+        existing.submitted_at   = now
+    else:
+        db.add(PoolBetPick(
+            league_id      = league_id,
+            team_id        = team_id,
+            bet_type       = bet_type,
+            picked_team_id = pick_team_id,
+            week           = week,
+            submitted_at   = now,
+        ))
+
+    db.commit()
+
+    return PoolPickStateOut(
+        team_id          = team_id,
+        team_name        = submitting_team.team_name,
+        picked_team_id   = pick_team_id,
+        picked_team_name = picked_team.team_name if picked_team else None,
     )
