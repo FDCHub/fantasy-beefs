@@ -348,13 +348,13 @@ if __name__ == "__main__":
               f"straight  ${c_a.amount:.0f}  "
               f"{c_a.challenger_moneyline:+,}/{c_a.challenged_moneyline:+,}")
 
-        # B: team 2 vs team 4 — bench_battle
+        # B: team 2 vs team 4 — spread
         c_b = issue_challenge(
-            2, 4, WEEK, "bench_battle", 75.0, db=db,
-            trash_talk="My bench is deeper than your whole roster!",
+            2, 4, WEEK, "spread", 75.0, db=db, line=10.0,
+            trash_talk="Give me the points and I'll still bury you.",
         )
         print(f"  B #{c_b.challenge_id}: {tname(2)} vs {tname(4)}  "
-              f"bench_battle  ${c_b.amount:.0f}  "
+              f"spread +10  ${c_b.amount:.0f}  "
               f"{c_b.challenger_moneyline:+,}/{c_b.challenged_moneyline:+,}")
 
         # C: team 5 vs team 7 — over_under
@@ -376,27 +376,25 @@ if __name__ == "__main__":
 
         # ── Inject staleness on challenge B before acceptance ─────────────────
         print(f"\n{'─'*70}")
-        print("Injecting 20% projection shift on challenge B (bench_battle)...")
-        # Get team 4's first bench player at week 3
+        print("Injecting 22% projection shift on challenge B (spread) to trigger staleness warning...")
         from db.schema import Roster
-        bench_slots = (
+        starter_slots = (
             db.query(Roster)
             .filter(Roster.team_id == 4)
             .order_by(Roster.id)
-            .offset(9)
             .limit(1)
             .all()
         )
-        if bench_slots:
+        if starter_slots:
             proj = db.query(Projection).filter_by(
-                player_id=bench_slots[0].player_id,
+                player_id=starter_slots[0].player_id,
                 week=WEEK, season=SEASON, source=SOURCE,
             ).first()
             if proj:
                 old_pts = proj.projected_points
                 proj.projected_points = round(old_pts * 1.22, 2)
                 db.commit()
-                print(f"  {bench_slots[0].player.name}: "
+                print(f"  {starter_slots[0].player.name}: "
                       f"{old_pts:.2f} → {proj.projected_points:.2f}  (+22%)")
 
         # ── Accept A and B, accept C, decline D ───────────────────────────────
@@ -410,10 +408,10 @@ if __name__ == "__main__":
               f"challenged_bet=#{r_a.challenged_bet_id}  "
               f"stale={r_a.staleness_warning}")
 
-        print("Accepting B (bench_battle — expect staleness warning)...")
+        print("Accepting B (spread — expect staleness warning)...")
         r_b = respond_to_challenge(
             c_b.challenge_id, accept=True, db=db,
-            trash_talk="I'll take that bet, my bench eats.",
+            trash_talk="I'll take that bet, bring it.",
         )
         print(f"  challenger_bet=#{r_b.challenger_bet_id}  "
               f"challenged_bet=#{r_b.challenged_bet_id}  "

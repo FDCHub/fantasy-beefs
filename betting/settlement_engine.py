@@ -186,7 +186,7 @@ def _eval_beef(bet: Bet, db: Session) -> bool:
     if bet.bet_type == "prop":
         return _eval_prop(bet, db)
 
-    return False
+    raise ValueError(f"No settlement handler for beef bet_type {bet.bet_type!r}")
 
 
 # ── The Lineup settlement ─────────────────────────────────────────────────────

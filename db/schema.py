@@ -166,7 +166,7 @@ class Bet(Base):
         CheckConstraint("status IN ('pending','won','lost','push')", name="ck_bet_status"),
         CheckConstraint("amount > 0",                               name="ck_bet_amount"),
         CheckConstraint(
-            "bet_type IN ('straight','spread','over_under','prop','bench_battle','full_beef','the_lineup')",
+            "bet_type IN ('straight','spread','over_under','prop','the_lineup')",
             name="ck_bet_type",
         ),
     )
@@ -247,7 +247,7 @@ class BeefChallenge(Base):
             name="ck_beef_status",
         ),
         CheckConstraint(
-            "bet_type IN ('straight','spread','over_under','prop','bench_battle')",
+            "bet_type IN ('straight','spread','over_under','prop')",
             name="ck_beef_bet_type",
         ),
     )

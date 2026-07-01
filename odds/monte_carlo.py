@@ -56,8 +56,6 @@ CORRELATION_VARIANCE_MULTIPLIER: float = 1.15
 N_START          = 9      # QB RB RB WR WR TE FLEX K DEF
 SEASON           = 2024
 SOURCE           = "fantasypros"
-MIN_HEALTHY_BENCH = 6     # bench_battle requires this many non-Out/IR bench players per team
-
 INJURY_MULTIPLIERS: dict[str, float] = {
     "out":          0.00,
     "ir":           0.00,
@@ -168,21 +166,11 @@ def load_scoring_from_db(league_id: int, db) -> ScoringSettings:
 # ── Result dataclass ──────────────────────────────────────────────────────────
 
 @dataclass
-class BenchPlayerLine:
-    player_id:       int
-    name:            str
-    position:        str
-    injury_status:   str | None   # None = healthy
-    raw_points:      float        # FP PPR projection (pre-injury)
-    adjusted_points: float        # after injury multiplier + scoring adjustment
-
-
-@dataclass
 class StarterLine:
     player_id:        int
     name:             str
     position:         str
-    injury_status:    str | None   # None = healthy; mirrors BenchPlayerLine pattern
+    injury_status:    str | None   # None = healthy
     projected_points: float        # raw FantasyPros PPR projection (pre-injury)
     adjusted_points:  float        # after injury multiplier + scoring-system conversion
 
@@ -402,83 +390,6 @@ def simulate_scores(
     # Seed consistent with run() so straight/spread/ou share the same game sim
     rng = np.random.default_rng(seed=home_team.id * 10_000 + away_team.id * 100 + week)
     return _simulate_team(home_pts, home_pos, rng, n_sims), _simulate_team(away_pts, away_pos, rng, n_sims)
-
-
-def bench_players(
-    team: Team,
-    week: int,
-    db: Session,
-    scoring: ScoringSettings | None = None,
-) -> list[BenchPlayerLine]:
-    """
-    Return bench roster slots (offset N_START) with injury-adjusted projections.
-    Out/IR → 0.0 pts; Doubtful → 0.25×; Questionable → 0.60×.
-    """
-    from db.schema import Roster as _Roster
-    if scoring is None:
-        raise ValueError("scoring is required — pass the league's ScoringSettings explicitly. Use load_scoring_from_db() or a verified preset.")
-    slots = (
-        db.query(_Roster)
-        .filter(_Roster.team_id == team.id)
-        .order_by(_Roster.id)
-        .offset(N_START)
-        .all()
-    )
-    lines: list[BenchPlayerLine] = []
-    for slot in slots:
-        p = slot.player
-        proj = (
-            db.query(Projection)
-            .filter_by(player_id=p.id, week=week, season=SEASON, source=SOURCE)
-            .first()
-        )
-        raw        = proj.projected_points if proj else 0.0
-        inj_status = proj.injury_status    if proj else None
-        inj_mult   = _injury_multiplier(inj_status)
-        adj        = _adjust_for_scoring(raw * inj_mult, p.position, scoring)
-        lines.append(BenchPlayerLine(
-            player_id       = p.id,
-            name            = p.name,
-            position        = p.position,
-            injury_status   = inj_status,
-            raw_points      = raw,
-            adjusted_points = adj,
-        ))
-    return lines
-
-
-def simulate_bench_scores(
-    home_team: Team,
-    away_team: Team,
-    week: int,
-    db: Session,
-    n_sims: int = N_SIMS,
-    scoring: ScoringSettings | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return (home_bench_scores, away_bench_scores) arrays of shape (n_sims,)."""
-    home_lines = bench_players(home_team, week, db, scoring)
-    away_lines = bench_players(away_team, week, db, scoring)
-
-    # Use a seed offset distinct from the starter simulation
-    rng = np.random.default_rng(
-        seed=home_team.id * 10_000 + away_team.id * 100 + week + 1_000
-    )
-
-    if home_lines:
-        home_pts    = np.array([b.adjusted_points for b in home_lines])
-        home_pos    = [b.position for b in home_lines]
-        home_scores = _simulate_team(home_pts, home_pos, rng, n_sims)
-    else:
-        home_scores = np.zeros(n_sims)
-
-    if away_lines:
-        away_pts    = np.array([b.adjusted_points for b in away_lines])
-        away_pos    = [b.position for b in away_lines]
-        away_scores = _simulate_team(away_pts, away_pos, rng, n_sims)
-    else:
-        away_scores = np.zeros(n_sims)
-
-    return home_scores, away_scores
 
 
 def simulate_player_scores(

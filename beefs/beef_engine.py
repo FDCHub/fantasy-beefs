@@ -54,7 +54,6 @@ from odds.odds_engine_headless import (
 N_START           = 9
 SEASON            = 2024
 SOURCE            = "fantasypros"
-MIN_HEALTHY_BENCH = 6
 from wallet.wallet_manager import MIN_BET
 from betting.pool_engine import _nfl_lock_time
 from feed.league_feed import (

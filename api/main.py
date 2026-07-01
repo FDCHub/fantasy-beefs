@@ -1047,7 +1047,7 @@ class ChallengeRequest(BaseModel):
     challenger_team_id: int
     challenged_team_id: int
     week:               int   = Field(..., ge=1, le=17)
-    bet_type:           str   = Field(..., description="straight | spread | over_under | prop | bench_battle")
+    bet_type:           str   = Field(..., description="straight | spread | over_under | prop")
     amount:             float = Field(..., gt=0)
     # type-specific (pass only what's needed for your bet_type)
     line:               Optional[float] = None
