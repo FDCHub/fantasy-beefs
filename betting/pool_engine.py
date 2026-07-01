@@ -20,6 +20,7 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import zoneinfo
@@ -27,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -34,12 +36,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from db.schema import (
     League,
     Matchup,
+    NflSchedule,
     PoolBetPick,
     PoolConfig,
     PoolPot,
     PoolPrediction,
     Projection,
     Roster,
+    SessionLocal,
     Team,
     Transaction,
     Wallet,
@@ -64,11 +68,43 @@ POOL_BET_TYPES: list[dict] = [
 _VALID_BET_TYPES = {b["key"] for b in POOL_BET_TYPES}
 
 
+_log = logging.getLogger(__name__)
+
+
 def _nfl_lock_time(season: int, week: int) -> datetime:
     """
-    Thursday 8:20 PM ET for the given NFL week.
-    Computed from the known 2024 season opener — no game-time data exists in the DB.
+    Returns the kickoff time of the earliest game for the given NFL season/week.
+
+    Primary path — NflSchedule populated: queries MIN(kickoff_utc) across all
+    games for that season/week.  Handles any opener day automatically (Wednesday
+    openers, Thursday international games, etc.).
+
+    Fallback — NflSchedule not yet synced for that season/week: uses the
+    hardcoded 2024 Thursday 8:20 PM ET formula (season 2024 only; raises
+    ValueError for any other season).  Logs a WARNING so an unsynced week
+    does not fail silently.
     """
+    with SessionLocal() as _db:
+        earliest = (
+            _db.query(func.min(NflSchedule.kickoff_utc))
+            .filter(NflSchedule.season == season, NflSchedule.week == week)
+            .scalar()
+        )
+
+    if earliest is not None:
+        # SQLite stores datetimes as naive strings; Postgres returns tz-aware.
+        # Normalise to UTC-aware so callers can always compare against utcnow().
+        if earliest.tzinfo is None:
+            earliest = earliest.replace(tzinfo=timezone.utc)
+        return earliest
+
+    # ── Fallback: no NflSchedule rows for this season/week ────────────────────
+    _log.warning(
+        "_nfl_lock_time fallback: NflSchedule has no rows for season=%s week=%s. "
+        "Run upsert_week_schedule() to populate schedule data. "
+        "Using hardcoded 2024 Thursday formula.",
+        season, week,
+    )
     if season == 2024:
         return _NFL_2024_W1_LOCK + timedelta(weeks=week - 1)
     raise ValueError(f"No lock_time formula defined for season {season}")
