@@ -843,6 +843,30 @@ class PoolBetPick(Base):
     league      = relationship("League")
 
 
+# ── NFL Schedule ──────────────────────────────────────────────────────────────
+
+class NflSchedule(Base):
+    """One row per NFL game — season/week/matchup + kickoff time.  Populated by
+    the ESPN schedule connector; keyed on (season, week, home_team, away_team).
+    No foreign keys into league/team tables — this is raw NFL data, not fantasy
+    league data.
+    """
+    __tablename__ = "nfl_schedule"
+    __table_args__ = (
+        UniqueConstraint("season", "week", "home_team", "away_team",
+                         name="uq_nfl_schedule_game"),
+    )
+
+    id             = Column(Integer,  primary_key=True, autoincrement=True)
+    season         = Column(Integer,  nullable=False)
+    week           = Column(Integer,  nullable=False)
+    home_team      = Column(String,   nullable=False)   # ESPN team abbreviation, e.g. "KC"
+    away_team      = Column(String,   nullable=False)   # ESPN team abbreviation, e.g. "DET"
+    kickoff_utc    = Column(DateTime, nullable=False)
+    last_synced_at = Column(DateTime, nullable=False,
+                            default=lambda: datetime.now(timezone.utc))
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def create_all() -> None:
