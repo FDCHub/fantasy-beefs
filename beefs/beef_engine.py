@@ -415,9 +415,25 @@ def issue_challenge(
         raise ValueError(f"Amount ${amount:.2f} is below the minimum ${MIN_BET:.2f}")
 
     challenger_wallet = db.query(Wallet).filter(Wallet.team_id == challenger_team_id).first()
-    if not challenger_wallet or challenger_wallet.balance < amount:
-        bal = challenger_wallet.balance if challenger_wallet else 0.0
-        raise ValueError(f"Challenger wallet has insufficient funds: ${bal:.2f} < ${amount:.2f}")
+    if not challenger_wallet:
+        raise ValueError(f"No wallet found for team {challenger_team_id}")
+    pending_bets       = db.query(Bet).filter(
+        Bet.wallet_id == challenger_wallet.id, Bet.status == "pending"
+    ).all()
+    bet_exposure       = round(sum(b.amount for b in pending_bets), 2)
+    pending_challenges = db.query(BeefChallenge).filter(
+        BeefChallenge.challenger_team_id == challenger_team_id,
+        BeefChallenge.status == "pending",
+    ).all()
+    challenge_reserved = round(sum(c.amount for c in pending_challenges), 2)
+    available          = round(challenger_wallet.balance - bet_exposure - challenge_reserved, 2)
+    if available < amount:
+        raise ValueError(
+            f"Challenger wallet has insufficient available funds: "
+            f"${available:.2f} available (${challenger_wallet.balance:.2f} balance, "
+            f"${bet_exposure:.2f} in pending bets, "
+            f"${challenge_reserved:.2f} reserved for pending challenges)"
+        )
 
     player = db.query(Player).filter(Player.id == player_id).first() if player_id else None
 

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from db.schema import Bet, Transaction, Wallet, Team
+from db.schema import Bet, BeefChallenge, Transaction, Wallet, Team
 
 # ── Bet-sizing constants (imported by bet_engine) ─────────────────────────────
 MIN_BET     = 5.00
@@ -36,9 +36,10 @@ class WalletState:
     owner:             str
     balance:           float
     max_single_bet:    float   # 20 % of balance
-    open_bets:         int
-    pending_exposure:  float   # sum of amounts still pending settlement
-    total_deposited:   float
+    open_bets:           int
+    pending_exposure:    float   # sum of amounts still pending settlement
+    challenge_reserved:  float   # sum of stakes in pending BeefChallenges issued by this team
+    total_deposited:     float
     total_withdrawn:   float
     total_wagered:     float
     total_payout:      float
@@ -82,6 +83,19 @@ def _get_wallet(wallet_id: int, db: Session) -> Wallet:
     return w
 
 
+def _challenge_reserved(team_id: int, db: Session) -> float:
+    """Sum of stakes in pending BeefChallenges issued by this team (soft-locked at issue time)."""
+    rows = (
+        db.query(BeefChallenge)
+        .filter(
+            BeefChallenge.challenger_team_id == team_id,
+            BeefChallenge.status == "pending",
+        )
+        .all()
+    )
+    return round(sum(c.amount for c in rows), 2)
+
+
 def _wallet_state(w: Wallet, db: Session) -> WalletState:
     txns = db.query(Transaction).filter(Transaction.wallet_id == w.id).all()
 
@@ -93,21 +107,23 @@ def _wallet_state(w: Wallet, db: Session) -> WalletState:
     open_bets = db.query(Bet).filter(
         Bet.wallet_id == w.id, Bet.status == "pending"
     ).all()
-    pending_exposure = round(sum(b.amount for b in open_bets), 2)
+    pending_exposure   = round(sum(b.amount for b in open_bets), 2)
+    challenge_reserved = _challenge_reserved(w.team_id, db)
 
     return WalletState(
-        wallet_id        = w.id,
-        team_id          = w.team_id,
-        team_name        = w.team.team_name,
-        owner            = w.team.owner,
-        balance          = w.balance,
-        max_single_bet   = round(w.balance * MAX_BET_PCT, 2),
-        open_bets        = len(open_bets),
-        pending_exposure = pending_exposure,
-        total_deposited  = round(total_deposited, 2),
-        total_withdrawn  = round(total_withdrawn, 2),
-        total_wagered    = round(total_wagered, 2),
-        total_payout     = round(total_payout, 2),
+        wallet_id          = w.id,
+        team_id            = w.team_id,
+        team_name          = w.team.team_name,
+        owner              = w.team.owner,
+        balance            = w.balance,
+        max_single_bet     = round(w.balance * MAX_BET_PCT, 2),
+        open_bets          = len(open_bets),
+        pending_exposure   = pending_exposure,
+        challenge_reserved = challenge_reserved,
+        total_deposited    = round(total_deposited, 2),
+        total_withdrawn    = round(total_withdrawn, 2),
+        total_wagered      = round(total_wagered, 2),
+        total_payout       = round(total_payout, 2),
     )
 
 
@@ -144,16 +160,17 @@ def withdraw(wallet_id: int, amount: float, db: Session) -> WalletState:
             f"Insufficient balance: requested ${amount:.2f}, available ${w.balance:.2f}"
         )
 
-    # Warn if withdrawal would wipe out pending bet coverage, but still allow it
-    open_bets = db.query(Bet).filter(
+    open_bets          = db.query(Bet).filter(
         Bet.wallet_id == wallet_id, Bet.status == "pending"
     ).all()
-    pending_exposure = sum(b.amount for b in open_bets)
-    available        = round(w.balance - pending_exposure, 2)
+    pending_exposure   = sum(b.amount for b in open_bets)
+    ch_reserved        = _challenge_reserved(w.team_id, db)
+    available          = round(w.balance - pending_exposure - ch_reserved, 2)
     if amount > available:
         raise ValueError(
             f"Cannot withdraw ${amount:.2f}: ${pending_exposure:.2f} is locked in "
-            f"{len(open_bets)} pending bet(s). Available to withdraw: ${available:.2f}"
+            f"{len(open_bets)} pending bet(s) and ${ch_reserved:.2f} is reserved for "
+            f"pending challenges. Available to withdraw: ${available:.2f}"
         )
 
     w.balance = round(w.balance - amount, 2)

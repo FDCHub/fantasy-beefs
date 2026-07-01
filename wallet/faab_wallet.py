@@ -34,13 +34,14 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import (
+    Bet,
+    BeefChallenge,
     FaabConfig,
     FaabTransaction,
     FaabWallet,
     League,
     Team,
     Wallet,
-    Bet,
 )
 from db.deps import get_db
 from auth.jwt_auth import get_current_gm
@@ -155,9 +156,10 @@ class FaabWalletState:
     # Bet wallet (from wallets table)
     bet_balance:          float
     bet_open_bets:        int
-    bet_pending_exposure: float
-    bet_max_single_bet:   float
-    bet_frozen:           bool
+    bet_pending_exposure:   float
+    bet_challenge_reserved: float   # stakes held in pending BeefChallenges issued by this team
+    bet_max_single_bet:     float
+    bet_frozen:             bool
     # Waiver wallet (from faab_wallets table)
     waiver_balance:       float
     pending_waiver_topup: float
@@ -211,21 +213,27 @@ def _build_state(fw: FaabWallet, db: Session) -> FaabWalletState:
     open_bets = db.query(Bet).filter(
         Bet.wallet_id == bwallet.id, Bet.status == "pending"
     ).all()
-    pending_exp = round(sum(b.amount for b in open_bets), 2)
+    pending_exp        = round(sum(b.amount for b in open_bets), 2)
+    pending_challenges = db.query(BeefChallenge).filter(
+        BeefChallenge.challenger_team_id == fw.team_id,
+        BeefChallenge.status == "pending",
+    ).all()
+    ch_reserved = round(sum(c.amount for c in pending_challenges), 2)
 
     return FaabWalletState(
-        faab_wallet_id       = fw.id,
-        team_id              = fw.team_id,
-        team_name            = team.team_name,
-        owner                = team.owner,
-        bet_balance          = round(bwallet.balance, 2),
-        bet_open_bets        = len(open_bets),
-        bet_pending_exposure = pending_exp,
-        bet_max_single_bet   = round(bwallet.balance * 0.20, 2),
-        bet_frozen           = bool(fw.bet_frozen),
-        waiver_balance       = round(fw.waiver_balance, 2),
-        pending_waiver_topup = round(fw.pending_waiver_topup, 2),
-        total_available      = round(bwallet.balance + fw.waiver_balance, 2),
+        faab_wallet_id          = fw.id,
+        team_id                 = fw.team_id,
+        team_name               = team.team_name,
+        owner                   = team.owner,
+        bet_balance             = round(bwallet.balance, 2),
+        bet_open_bets           = len(open_bets),
+        bet_pending_exposure    = pending_exp,
+        bet_challenge_reserved  = ch_reserved,
+        bet_max_single_bet      = round(bwallet.balance * 0.20, 2),
+        bet_frozen              = bool(fw.bet_frozen),
+        waiver_balance          = round(fw.waiver_balance, 2),
+        pending_waiver_topup    = round(fw.pending_waiver_topup, 2),
+        total_available         = round(bwallet.balance + fw.waiver_balance, 2),
     )
 
 
