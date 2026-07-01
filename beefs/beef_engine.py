@@ -56,6 +56,7 @@ SEASON            = 2024
 SOURCE            = "fantasypros"
 MIN_HEALTHY_BENCH = 6
 from wallet.wallet_manager import MIN_BET
+from betting.pool_engine import _nfl_lock_time
 from feed.league_feed import (
     log_challenge_issued,
     log_challenge_accepted,
@@ -395,6 +396,11 @@ def issue_challenge(
         raise ValueError("A team cannot challenge itself")
     if not 1 <= week <= 17:
         raise ValueError("week must be 1–17")
+    lock_dt = _nfl_lock_time(SEASON, week)
+    if datetime.now(timezone.utc) >= lock_dt:
+        raise ValueError(
+            f"Week {week} locked at kickoff — challenges can no longer be issued for this week"
+        )
 
     challenger_team = db.query(Team).filter(Team.id == challenger_team_id).first()
     challenged_team = db.query(Team).filter(Team.id == challenged_team_id).first()
@@ -494,6 +500,17 @@ def respond_to_challenge(
         challenge.status = "expired"
         db.commit()
         raise ValueError("Challenge has expired")
+    try:
+        lock_dt = _nfl_lock_time(SEASON, challenge.week)
+    except ValueError:
+        lock_dt = None  # season not yet configured — skip kickoff check
+    if lock_dt is not None and now >= lock_dt:
+        challenge.status = "expired"
+        db.commit()
+        raise ValueError(
+            f"Week {challenge.week} locked at kickoff — "
+            f"this challenge can no longer be accepted or declined"
+        )
 
     challenge.responded_at = now
 
@@ -572,7 +589,12 @@ def get_pending_challenges(team_id: int, db: Session) -> list[ChallengeOut]:
     )
     results: list[ChallengeOut] = []
     for c in candidates:
-        if c.expires_at.replace(tzinfo=timezone.utc) < now:
+        ttl_expired = c.expires_at.replace(tzinfo=timezone.utc) < now
+        try:
+            lock_expired = now >= _nfl_lock_time(SEASON, c.week)
+        except ValueError:
+            lock_expired = False  # season not configured — don't auto-expire on kickoff
+        if ttl_expired or lock_expired:
             c.status = "expired"
             log_challenge_expired(c, db)
             continue
