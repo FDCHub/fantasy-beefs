@@ -243,7 +243,7 @@ class BeefChallenge(Base):
     __tablename__ = "beef_challenges"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending','accepted','declined','expired')",
+            "status IN ('pending','countered','accepted','declined','expired')",
             name="ck_beef_status",
         ),
         CheckConstraint(
@@ -277,6 +277,9 @@ class BeefChallenge(Base):
     # Projection snapshot taken at challenge creation; used for staleness detection on accept
     projection_snapshot  = Column(String,  nullable=True)
     staleness_warning    = Column(Integer, nullable=False, default=0)  # 1 if any proj shifted >10%
+    # Counter-offer fields (null until a counter is made)
+    countered_amount     = Column(Float,    nullable=True)
+    countered_at         = Column(DateTime, nullable=True)
 
     challenger_team  = relationship("Team", foreign_keys=[challenger_team_id])
     challenged_team  = relationship("Team", foreign_keys=[challenged_team_id])
