@@ -37,10 +37,6 @@ from betting.bet_engine import (
     place_spread_bet,
     place_over_under,
     place_prop_bet,
-    place_more_overs,
-    place_closest_to_projection,
-    place_position_group_wins,
-    place_most_offensive_tds,
 )
 from betting.settlement_engine import settle_week, SettlementReport
 from beefs.beef_engine import (
@@ -774,38 +770,6 @@ class PropBetRequest(BaseModel):
     week:           int   = Field(..., ge=1, le=17)
 
 
-class MoreOversRequest(BaseModel):
-    matchup_id:     int
-    wallet_id:      int
-    picked_team_id: int
-    amount:         float
-    week:           int = Field(..., ge=1, le=17)
-
-
-class ClosestToProjRequest(BaseModel):
-    matchup_id:     int
-    wallet_id:      int
-    picked_team_id: int
-    amount:         float
-    week:           int = Field(..., ge=1, le=17)
-
-
-class PositionGroupRequest(BaseModel):
-    matchup_id:     int
-    wallet_id:      int
-    picked_team_id: int
-    amount:         float
-    week:           int = Field(..., ge=1, le=17)
-
-
-class MostTDsRequest(BaseModel):
-    matchup_id:     int
-    wallet_id:      int
-    picked_team_id: int
-    amount:         float
-    week:           int = Field(..., ge=1, le=17)
-
-
 @app.post("/bets/straight", response_model=BetEngineOut, status_code=201)
 def bet_straight(
     req:          StraightBetRequest,
@@ -866,74 +830,6 @@ def bet_prop(
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
         result = place_prop_bet(
-            req.matchup_id, req.wallet_id, req.picked_team_id,
-            req.amount, req.week, db,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _bet_out(result)
-
-
-@app.post("/bets/more-overs", response_model=BetEngineOut, status_code=201)
-def bet_more_overs(
-    req:          MoreOversRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
-):
-    assert_own_wallet(req.wallet_id, current_user, db)
-    try:
-        result = place_more_overs(
-            req.matchup_id, req.wallet_id, req.picked_team_id,
-            req.amount, req.week, db,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _bet_out(result)
-
-
-@app.post("/bets/closest-to-proj", response_model=BetEngineOut, status_code=201)
-def bet_closest_to_proj(
-    req:          ClosestToProjRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
-):
-    assert_own_wallet(req.wallet_id, current_user, db)
-    try:
-        result = place_closest_to_projection(
-            req.matchup_id, req.wallet_id, req.picked_team_id,
-            req.amount, req.week, db,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _bet_out(result)
-
-
-@app.post("/bets/position-groups", response_model=BetEngineOut, status_code=201)
-def bet_position_groups(
-    req:          PositionGroupRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
-):
-    assert_own_wallet(req.wallet_id, current_user, db)
-    try:
-        result = place_position_group_wins(
-            req.matchup_id, req.wallet_id, req.picked_team_id,
-            req.amount, req.week, db,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _bet_out(result)
-
-
-@app.post("/bets/most-tds", response_model=BetEngineOut, status_code=201)
-def bet_most_tds(
-    req:          MostTDsRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
-):
-    assert_own_wallet(req.wallet_id, current_user, db)
-    try:
-        result = place_most_offensive_tds(
             req.matchup_id, req.wallet_id, req.picked_team_id,
             req.amount, req.week, db,
         )
