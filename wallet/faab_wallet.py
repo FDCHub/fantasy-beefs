@@ -216,7 +216,7 @@ def _build_state(fw: FaabWallet, db: Session) -> FaabWalletState:
     pending_exp        = round(sum(b.amount for b in open_bets), 2)
     pending_challenges = db.query(BeefChallenge).filter(
         BeefChallenge.challenger_team_id == fw.team_id,
-        BeefChallenge.status == "pending",
+        BeefChallenge.status.in_(["pending", "countered"]),
     ).all()
     ch_reserved = round(sum(c.amount for c in pending_challenges), 2)
 

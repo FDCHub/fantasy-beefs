@@ -72,6 +72,13 @@ def _hl_expired(issuer: str, target: str) -> str:
     return f"{issuer}'s challenge to {target} expired unanswered"
 
 
+def _hl_countered(counterofferer: str, issuer: str, new_amount: float) -> str:
+    return (
+        f"{counterofferer} countered {issuer}'s challenge — "
+        f"new stake ${new_amount:.0f}"
+    )
+
+
 def _hl_settled(winner: str, loser: str, desc: str, stake: float, payout: float) -> str:
     profit = round(payout - stake, 2)
     return (
@@ -199,6 +206,31 @@ def log_challenge_expired(
         trash_talk     = None,
         created_at     = datetime.now(timezone.utc),
     ))
+
+
+def log_challenge_countered(
+    challenge:  BeefChallenge,
+    db:         Session,
+    trash_talk: str | None = None,
+) -> None:
+    headline = _hl_countered(
+        challenge.challenged_team.team_name,
+        challenge.challenger_team.team_name,
+        challenge.countered_amount or 0.0,
+    )
+    db.add(FeedEvent(
+        league_id      = challenge.challenger_team.league_id,
+        week           = challenge.week,
+        event_type     = "challenge_countered",
+        actor_team_id  = challenge.challenged_team_id,
+        target_team_id = challenge.challenger_team_id,
+        challenge_id   = challenge.id,
+        bet_id         = None,
+        headline       = headline,
+        trash_talk     = trash_talk,
+        created_at     = datetime.now(timezone.utc),
+    ))
+    db.commit()
 
 
 def log_settlement_events(

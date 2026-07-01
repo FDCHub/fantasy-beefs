@@ -59,6 +59,7 @@ from betting.pool_engine import _nfl_lock_time
 from feed.league_feed import (
     log_challenge_issued,
     log_challenge_accepted,
+    log_challenge_countered,
     log_challenge_declined,
     log_challenge_expired,
 )
@@ -90,6 +91,7 @@ class ChallengeOut:
     responded_at:         str | None
     challenger_bet_id:    int | None
     challenged_bet_id:    int | None
+    countered_amount:     float | None = None
 
 
 @dataclass
@@ -248,6 +250,7 @@ def _to_out(c: BeefChallenge, direction: str = "any") -> ChallengeOut:
         responded_at         = c.responded_at.isoformat() if c.responded_at else None,
         challenger_bet_id    = c.challenger_bet_id,
         challenged_bet_id    = c.challenged_bet_id,
+        countered_amount     = c.countered_amount,
     )
 
 
@@ -428,7 +431,7 @@ def issue_challenge(
     bet_exposure       = round(sum(b.amount for b in pending_bets), 2)
     pending_challenges = db.query(BeefChallenge).filter(
         BeefChallenge.challenger_team_id == challenger_team_id,
-        BeefChallenge.status == "pending",
+        BeefChallenge.status.in_(["pending", "countered"]),
     ).all()
     challenge_reserved = round(sum(c.amount for c in pending_challenges), 2)
     available          = round(challenger_wallet.balance - bet_exposure - challenge_reserved, 2)
@@ -488,12 +491,17 @@ def respond_to_challenge(
     db:           Session,
     trash_talk:   str | None = None,
 ) -> ChallengeOut | AcceptResult:
-    """GM2 accepts or declines. Returns AcceptResult if accepted, ChallengeOut if declined."""
+    """
+    Accept or decline a challenge (pending) or a counter-offer (countered).
+
+    Pending    → only the challenged team may respond (enforced in the API route).
+    Countered  → only the original challenger may respond (enforced in the API route).
+    """
     now       = datetime.now(timezone.utc)
     challenge = db.query(BeefChallenge).filter(BeefChallenge.id == challenge_id).first()
     if not challenge:
         raise ValueError(f"Challenge {challenge_id} not found")
-    if challenge.status != "pending":
+    if challenge.status not in ("pending", "countered"):
         raise ValueError(f"Challenge is already {challenge.status}")
     if challenge.expires_at.replace(tzinfo=timezone.utc) < now:
         challenge.status = "expired"
@@ -520,35 +528,73 @@ def respond_to_challenge(
         log_challenge_declined(challenge, db, trash_talk=trash_talk)
         return _to_out(challenge, direction="received")
 
-    # ── Accept: check staleness, place both bets atomically ─────────────────
-    week = challenge.week
+    # ── Accept: determine effective stake ────────────────────────────────────
+    is_counter       = challenge.countered_amount is not None
+    effective_amount = challenge.countered_amount if is_counter else challenge.amount
 
+    week  = challenge.week
     stale = _check_staleness(challenge.projection_snapshot, week, db)
     challenge.staleness_warning = 1 if stale else 0
 
-    challenger_wallet = db.query(Wallet).filter(
-        Wallet.team_id == challenge.challenger_team_id
-    ).first()
-    challenged_wallet = db.query(Wallet).filter(
-        Wallet.team_id == challenge.challenged_team_id
-    ).first()
-
     ch_matchup = _find_own_matchup(challenge.challenger_team_id, week, db)
     cd_matchup = _find_own_matchup(challenge.challenged_team_id, week, db)
-
-    # Challenger bets FOR themselves; challenged bets FOR themselves
     ch_pick, ch_line, ch_side = _challenger_side_params(challenge)
     cd_pick, cd_line, cd_side = _challenged_side_params(challenge)
 
+    if is_counter:
+        # Countered accept: re-verify both wallets can cover countered_amount right now.
+        # Challenger: exclude the current challenge from its own reservation (it's about to settle).
+        ch_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenger_team_id).first()
+        ch_pending_bets    = db.query(Bet).filter(Bet.wallet_id == ch_wallet.id, Bet.status == "pending").all()
+        ch_bet_exposure    = round(sum(b.amount for b in ch_pending_bets), 2)
+        ch_other_reserved  = round(sum(
+            c.amount for c in db.query(BeefChallenge).filter(
+                BeefChallenge.challenger_team_id == challenge.challenger_team_id,
+                BeefChallenge.status.in_(["pending", "countered"]),
+                BeefChallenge.id != challenge.id,
+            ).all()
+        ), 2)
+        ch_available = round(ch_wallet.balance - ch_bet_exposure - ch_other_reserved, 2)
+        if ch_available < effective_amount:
+            raise ValueError(
+                f"Challenger wallet has insufficient funds for counter-offer amount of "
+                f"${effective_amount:.2f}: ${ch_available:.2f} available "
+                f"(${ch_wallet.balance:.2f} balance, ${ch_bet_exposure:.2f} in pending bets, "
+                f"${ch_other_reserved:.2f} in other challenge reservations)"
+            )
+
+        cd_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
+        cd_pending_bets   = db.query(Bet).filter(Bet.wallet_id == cd_wallet.id, Bet.status == "pending").all()
+        cd_bet_exposure   = round(sum(b.amount for b in cd_pending_bets), 2)
+        cd_reserved       = round(sum(
+            c.amount for c in db.query(BeefChallenge).filter(
+                BeefChallenge.challenger_team_id == challenge.challenged_team_id,
+                BeefChallenge.status.in_(["pending", "countered"]),
+            ).all()
+        ), 2)
+        cd_available = round(cd_wallet.balance - cd_bet_exposure - cd_reserved, 2)
+        if cd_available < effective_amount:
+            raise ValueError(
+                f"Challenged wallet has insufficient funds for counter-offer amount of "
+                f"${effective_amount:.2f}: ${cd_available:.2f} available "
+                f"(${cd_wallet.balance:.2f} balance, ${cd_bet_exposure:.2f} in pending bets, "
+                f"${cd_reserved:.2f} in challenge reservations)"
+            )
+        challenger_wallet = ch_wallet
+        challenged_wallet = cd_wallet
+    else:
+        challenger_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenger_team_id).first()
+        challenged_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
+
     challenger_bet = _place_beef_side(
-        db, challenger_wallet, challenge.amount,
+        db, challenger_wallet, effective_amount,
         challenge.bet_type, ch_matchup.id,
         ch_pick, challenge.player_id, ch_line, ch_side,
         challenge.description, challenge.challenger_odds,
         beef_challenge_id=challenge.id,
     )
     challenged_bet = _place_beef_side(
-        db, challenged_wallet, challenge.amount,
+        db, challenged_wallet, effective_amount,
         challenge.bet_type, cd_matchup.id,
         cd_pick, challenge.player_id, cd_line, cd_side,
         _mirror_description(challenge.description), challenge.challenged_odds,
@@ -567,19 +613,89 @@ def respond_to_challenge(
         challenged_bet_id = challenged_bet.id,
         challenger_team   = challenge.challenger_team.team_name,
         challenged_team   = challenge.challenged_team.team_name,
-        amount            = challenge.amount,
+        amount            = effective_amount,
         description       = challenge.description,
         staleness_warning = stale,
     )
 
 
+def counter_challenge(
+    challenge_id:     int,
+    countered_amount: float,
+    db:               Session,
+    trash_talk:       str | None = None,
+) -> ChallengeOut:
+    """
+    The challenged party proposes a different stake amount.
+    Only valid when status == 'pending' (one counter max — already-countered is rejected).
+    Bet type, week, and odds remain locked; only the stake changes.
+    """
+    now       = datetime.now(timezone.utc)
+    challenge = db.query(BeefChallenge).filter(BeefChallenge.id == challenge_id).first()
+    if not challenge:
+        raise ValueError(f"Challenge {challenge_id} not found")
+    if challenge.status != "pending":
+        raise ValueError(
+            f"Cannot counter: challenge is {challenge.status!r} — "
+            f"only a pending challenge can be countered (one counter max)"
+        )
+    if countered_amount < MIN_BET:
+        raise ValueError(
+            f"Counter-offer amount ${countered_amount:.2f} is below the minimum ${MIN_BET:.2f}"
+        )
+
+    # Kickoff lock — same rule as issue_challenge
+    try:
+        lock_dt = _nfl_lock_time(SEASON, challenge.week)
+    except ValueError:
+        lock_dt = None
+    if lock_dt is not None and now >= lock_dt:
+        raise ValueError(
+            f"Week {challenge.week} locked at kickoff — "
+            f"this challenge can no longer be countered"
+        )
+
+    # Check CHALLENGED team's available balance for countered_amount.
+    # They're the ones proposing this stake — verify they can actually cover it.
+    cd_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
+    if not cd_wallet:
+        raise ValueError(f"No wallet found for team {challenge.challenged_team_id}")
+    cd_pending_bets       = db.query(Bet).filter(
+        Bet.wallet_id == cd_wallet.id, Bet.status == "pending"
+    ).all()
+    cd_bet_exposure       = round(sum(b.amount for b in cd_pending_bets), 2)
+    cd_pending_challenges = db.query(BeefChallenge).filter(
+        BeefChallenge.challenger_team_id == challenge.challenged_team_id,
+        BeefChallenge.status.in_(["pending", "countered"]),
+    ).all()
+    cd_challenge_reserved = round(sum(c.amount for c in cd_pending_challenges), 2)
+    cd_available          = round(cd_wallet.balance - cd_bet_exposure - cd_challenge_reserved, 2)
+    if cd_available < countered_amount:
+        raise ValueError(
+            f"Challenged wallet has insufficient funds to propose a ${countered_amount:.2f} counter: "
+            f"${cd_available:.2f} available (${cd_wallet.balance:.2f} balance, "
+            f"${cd_bet_exposure:.2f} in pending bets, "
+            f"${cd_challenge_reserved:.2f} in challenge reservations)"
+        )
+
+    challenge.countered_amount = countered_amount
+    challenge.countered_at     = now
+    challenge.status           = "countered"
+    challenge.expires_at       = now + timedelta(hours=CHALLENGE_TTL_HOURS)
+
+    db.commit()
+    db.refresh(challenge)
+    log_challenge_countered(challenge, db, trash_talk=trash_talk)
+    return _to_out(challenge, direction="received")
+
+
 def get_pending_challenges(team_id: int, db: Session) -> list[ChallengeOut]:
-    """Return sent + received pending challenges; auto-expire stale ones."""
+    """Return sent + received pending/countered challenges; auto-expire stale ones."""
     now = datetime.now(timezone.utc)
     candidates = (
         db.query(BeefChallenge)
         .filter(
-            BeefChallenge.status == "pending",
+            BeefChallenge.status.in_(["pending", "countered"]),
             (BeefChallenge.challenger_team_id == team_id) |
             (BeefChallenge.challenged_team_id == team_id),
         )

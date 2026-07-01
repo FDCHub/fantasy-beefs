@@ -40,7 +40,8 @@ from betting.bet_engine import (
 )
 from betting.settlement_engine import settle_week, SettlementReport
 from beefs.beef_engine import (
-    issue_challenge, respond_to_challenge, get_pending_challenges,
+    issue_challenge, respond_to_challenge, counter_challenge,
+    get_pending_challenges,
     AcceptResult, ChallengeOut,
 )
 from feed.league_feed import get_league_feed, get_week_feed, FeedPage, FeedEventOut
@@ -1062,6 +1063,12 @@ class RespondRequest(BaseModel):
     trash_talk:   Optional[str] = None
 
 
+class CounterRequest(BaseModel):
+    challenge_id:     int
+    countered_amount: float
+    trash_talk:       Optional[str] = None
+
+
 class ChallengeOut_API(BaseModel):
     challenge_id:         int
     direction:            str
@@ -1083,6 +1090,7 @@ class ChallengeOut_API(BaseModel):
     responded_at:         Optional[str]
     challenger_bet_id:    Optional[int]
     challenged_bet_id:    Optional[int]
+    countered_amount:     Optional[float] = None
 
 
 class AcceptResultOut(BaseModel):
@@ -1135,7 +1143,11 @@ def beef_respond(
     challenge = db.query(BeefChallenge).filter(BeefChallenge.id == req.challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
-    assert_own_team(challenge.challenged_team_id, current_user)
+    # Pending: the challenged team responds. Countered: the original challenger responds.
+    if challenge.status == "countered":
+        assert_own_team(challenge.challenger_team_id, current_user)
+    else:
+        assert_own_team(challenge.challenged_team_id, current_user)
     try:
         result = respond_to_challenge(req.challenge_id, req.accept, db,
                                       trash_talk=req.trash_talk)
@@ -1153,6 +1165,24 @@ def beef_respond(
             staleness_warning = result.staleness_warning,
             accepted          = True,
         )
+    return _challenge_out(result)
+
+
+@app.post("/beef/counter", response_model=ChallengeOut_API, status_code=200)
+def beef_counter(
+    req:          CounterRequest,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    challenge = db.query(BeefChallenge).filter(BeefChallenge.id == req.challenge_id).first()
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    assert_own_team(challenge.challenged_team_id, current_user)
+    try:
+        result = counter_challenge(req.challenge_id, req.countered_amount, db,
+                                   trash_talk=req.trash_talk)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return _challenge_out(result)
 
 

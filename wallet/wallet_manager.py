@@ -84,12 +84,12 @@ def _get_wallet(wallet_id: int, db: Session) -> Wallet:
 
 
 def _challenge_reserved(team_id: int, db: Session) -> float:
-    """Sum of stakes in pending BeefChallenges issued by this team (soft-locked at issue time)."""
+    """Sum of stakes in pending/countered BeefChallenges issued by this team (soft-locked until resolved)."""
     rows = (
         db.query(BeefChallenge)
         .filter(
             BeefChallenge.challenger_team_id == team_id,
-            BeefChallenge.status == "pending",
+            BeefChallenge.status.in_(["pending", "countered"]),
         )
         .all()
     )
