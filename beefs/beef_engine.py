@@ -52,7 +52,8 @@ from odds.odds_engine_headless import (
 )
 
 N_START           = 9
-SEASON            = 2024
+SEASON            = 2025   # Projection/Roster data queries — bump when 2026 league data is seeded
+LOCK_SEASON       = 2026   # _nfl_lock_time only — drives NflSchedule lookup, independent of data season
 SOURCE            = "fantasypros"
 from wallet.wallet_manager import MIN_BET
 from betting.pool_engine import _nfl_lock_time
@@ -398,7 +399,7 @@ def issue_challenge(
         raise ValueError("A team cannot challenge itself")
     if not 1 <= week <= 17:
         raise ValueError("week must be 1–17")
-    lock_dt = _nfl_lock_time(SEASON, week)
+    lock_dt = _nfl_lock_time(LOCK_SEASON, week)
     if datetime.now(timezone.utc) >= lock_dt:
         raise ValueError(
             f"Week {week} locked at kickoff — challenges can no longer be issued for this week"
@@ -508,7 +509,7 @@ def respond_to_challenge(
         db.commit()
         raise ValueError("Challenge has expired")
     try:
-        lock_dt = _nfl_lock_time(SEASON, challenge.week)
+        lock_dt = _nfl_lock_time(LOCK_SEASON, challenge.week)
     except ValueError:
         lock_dt = None  # season not yet configured — skip kickoff check
     if lock_dt is not None and now >= lock_dt:
@@ -646,7 +647,7 @@ def counter_challenge(
 
     # Kickoff lock — same rule as issue_challenge
     try:
-        lock_dt = _nfl_lock_time(SEASON, challenge.week)
+        lock_dt = _nfl_lock_time(LOCK_SEASON, challenge.week)
     except ValueError:
         lock_dt = None
     if lock_dt is not None and now >= lock_dt:
@@ -706,7 +707,7 @@ def get_pending_challenges(team_id: int, db: Session) -> list[ChallengeOut]:
     for c in candidates:
         ttl_expired = c.expires_at.replace(tzinfo=timezone.utc) < now
         try:
-            lock_expired = now >= _nfl_lock_time(SEASON, c.week)
+            lock_expired = now >= _nfl_lock_time(LOCK_SEASON, c.week)
         except ValueError:
             lock_expired = False  # season not configured — don't auto-expire on kickoff
         if ttl_expired or lock_expired:
