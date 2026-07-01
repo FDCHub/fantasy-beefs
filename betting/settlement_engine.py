@@ -29,6 +29,10 @@ from feed.league_feed import log_settlement_events
 SEASON = 2024
 SOURCE = "fantasypros"
 
+# The Lineup uses a separate season/source — Yahoo actual scores vs pre-week projection
+_LINEUP_SEASON = 2025
+_LINEUP_SOURCE = "yahoo"
+
 
 # ── Result dataclasses ────────────────────────────────────────────────────────
 
@@ -185,6 +189,113 @@ def _eval_beef(bet: Bet, db: Session) -> bool:
     return False
 
 
+# ── The Lineup settlement ─────────────────────────────────────────────────────
+
+@dataclass
+class LineupPlayer:
+    player_id:        int
+    player_name:      str
+    actual_points:    float | None   # None = week not yet settled
+    projected_points: float | None   # None = no pre-week projection available
+
+
+def _starters_for_team(team_id: int, week: int, db: Session) -> list[LineupPlayer]:
+    """
+    Return LineupPlayer records for every starter on this team this week.
+    Filters on Roster.slot to exclude BN/IR (never on player.position —
+    that misidentifies FLEX players). If slot is NULL (pre-migration rows),
+    includes the player rather than silently dropping them.
+    """
+    roster_rows = (
+        db.query(Roster)
+        .filter(Roster.team_id == team_id)
+        .order_by(Roster.id)
+        .all()
+    )
+    players: list[LineupPlayer] = []
+    for r in roster_rows:
+        if r.slot is not None and r.slot in ("BN", "IR"):
+            continue
+        proj = db.query(Projection).filter_by(
+            player_id=r.player_id,
+            week=week,
+            season=_LINEUP_SEASON,
+            source=_LINEUP_SOURCE,
+        ).first()
+        players.append(LineupPlayer(
+            player_id        = r.player_id,
+            player_name      = r.player.name,
+            actual_points    = proj.actual_points    if proj else None,
+            projected_points = proj.projected_points if proj else None,
+        ))
+    return players
+
+
+def _lineup_winner(
+    team_a: list[LineupPlayer],
+    team_b: list[LineupPlayer],
+    week: int,
+) -> str:
+    """
+    Pure logic — no DB calls. Returns 'a', 'b', or 'push'.
+
+    Rules:
+      1. Exclude any starter whose projected_points is None from both the
+         beat-count and the differential sum for their side. Log a warning.
+      2. Count per side: starters with actual_points > projected_points (strict).
+      3. Higher count wins.
+      4. Tie on count: tiebreaker is sum(actual - projected) across included starters.
+      5. Tie on both: push.
+    """
+    def _process(players: list[LineupPlayer], side_label: str) -> tuple[int, float]:
+        count = 0
+        total_diff = 0.0
+        for p in players:
+            if p.projected_points is None:
+                print(
+                    f"  [WARN] the_lineup week {week}: {p.player_name} "
+                    f"(team {side_label}) has no projection — excluded from settlement"
+                )
+                continue
+            actual = p.actual_points if p.actual_points is not None else 0.0
+            diff   = actual - p.projected_points
+            if diff > 0:
+                count += 1
+            total_diff += diff
+        return count, total_diff
+
+    a_count, a_diff = _process(team_a, "A")
+    b_count, b_diff = _process(team_b, "B")
+
+    if a_count != b_count:
+        return "a" if a_count > b_count else "b"
+    if a_diff != b_diff:
+        return "a" if a_diff > b_diff else "b"
+    return "push"
+
+
+def _eval_the_lineup(bet: Bet, db: Session) -> str:
+    """
+    Settle a The Lineup bet. Returns 'won', 'lost', or 'push'.
+    Compares how many starters on each team beat their Yahoo projection.
+    """
+    matchup = bet.matchup
+    week    = matchup.week
+
+    a_players = _starters_for_team(matchup.home_team_id, week, db)
+    b_players = _starters_for_team(matchup.away_team_id, week, db)
+
+    winner_side = _lineup_winner(a_players, b_players, week)
+
+    if winner_side == "push":
+        return "push"
+
+    winner_team_id = (
+        matchup.home_team_id if winner_side == "a" else matchup.away_team_id
+    )
+    return "won" if winner_team_id == bet.picked_team_id else "lost"
+
+
 _EVALUATORS = {
     "straight":   lambda bet, matchup, db: _eval_straight(bet, matchup),
     "spread":     lambda bet, matchup, db: _eval_spread(bet, matchup),
@@ -220,23 +331,39 @@ def settle_week(week: int, db: Session) -> SettlementReport:
 
     for bet in pending:
         matchup = bet.matchup
-        # Beef bets compare weekly scores across different matchups
-        if bet.beef_challenge_id is not None:
-            won = _eval_beef(bet, db)
+
+        # Resolve outcome -------------------------------------------------
+        if bet.bet_type == "the_lineup":
+            result = _eval_the_lineup(bet, db)
+            if result == "push":
+                status = "push"
+                payout = bet.amount          # return stake, no profit
+                profit = 0.0
+            else:
+                status = "won" if result == "won" else "lost"
+                payout = round(bet.amount * bet.odds, 2) if status == "won" else 0.0
+                profit = round(payout - bet.amount, 2)
+        elif bet.beef_challenge_id is not None:
+            # Beef bets compare weekly scores across different matchups
+            won    = _eval_beef(bet, db)
+            status = "won" if won else "lost"
+            payout = round(bet.amount * bet.odds, 2) if won else 0.0
+            profit = round(payout - bet.amount, 2)
         else:
             evaluator = _EVALUATORS.get(bet.bet_type)
             if evaluator is None:
                 continue
-            won = evaluator(bet, matchup, db)
-        status = "won" if won else "lost"
-        payout = round(bet.amount * bet.odds, 2) if won else 0.0
-        profit = round(payout - bet.amount, 2)
+            won    = evaluator(bet, matchup, db)
+            status = "won" if won else "lost"
+            payout = round(bet.amount * bet.odds, 2) if won else 0.0
+            profit = round(payout - bet.amount, 2)
+        # -----------------------------------------------------------------
 
         bet.status     = status
         bet.settled_at = now
 
         wallet = wallets[bet.wallet_id]
-        if won:
+        if status in ("won", "push"):   # push returns stake; won returns stake+profit
             wallet.balance = round(wallet.balance + payout, 2)
             db.add(Transaction(
                 wallet_id  = bet.wallet_id,

@@ -117,6 +117,9 @@ class Roster(Base):
     id        = Column(Integer, primary_key=True, autoincrement=True)
     team_id   = Column(Integer, ForeignKey("teams.id"),   nullable=False)
     player_id = Column(Integer, ForeignKey("players.id"), nullable=False)
+    # Lineup slot (QB/RB/WR/TE/FLEX/K/DEF/BN/IR). NULL = unknown (pre-migration rows).
+    # Use slot, not player.position, to determine starters — avoids the FLEX-bug.
+    slot      = Column(String, nullable=True)
 
     team   = relationship("Team",   back_populates="roster")
     player = relationship("Player", back_populates="rosters")
@@ -160,10 +163,10 @@ class Wallet(Base):
 class Bet(Base):
     __tablename__ = "bets"
     __table_args__ = (
-        CheckConstraint("status IN ('pending','won','lost')", name="ck_bet_status"),
-        CheckConstraint("amount > 0",                         name="ck_bet_amount"),
+        CheckConstraint("status IN ('pending','won','lost','push')", name="ck_bet_status"),
+        CheckConstraint("amount > 0",                               name="ck_bet_amount"),
         CheckConstraint(
-            "bet_type IN ('straight','spread','over_under','prop','bench_battle','full_beef')",
+            "bet_type IN ('straight','spread','over_under','prop','bench_battle','full_beef','the_lineup')",
             name="ck_bet_type",
         ),
     )
