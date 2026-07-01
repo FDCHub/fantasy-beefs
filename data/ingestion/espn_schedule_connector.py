@@ -136,6 +136,29 @@ def upsert_week_schedule(season: int, week: int, db: Session) -> int:
     return written
 
 
+def refresh_upcoming_weeks(season: int, current_week: int, db: Session) -> dict:
+    """
+    Upsert schedule data from ESPN for current_week and current_week + 1.
+
+    This is the weekly "look-ahead" refresh — designed to catch NFL flex-schedule
+    moves (time or network changes) before they affect lock-time logic.  Only two
+    weeks are fetched per call to keep it cheap.
+
+    ESPN data always wins on conflict: the existing upsert_week_schedule() logic
+    overwrites kickoff_utc on every matching row, so any local value (including
+    values seeded from a CSV) is corrected to the live ESPN value automatically.
+
+    Returns a dict with the number of rows written per week::
+
+        {"week_N_rows_written": int, "week_N+1_rows_written": int}
+    """
+    weeks_written: dict[str, int] = {}
+    for week in [current_week, current_week + 1]:
+        written = upsert_week_schedule(season, week, db)
+        weeks_written[f"week_{week}_rows_written"] = written
+    return weeks_written
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _parse_espn_dt(raw: str) -> datetime | None:
