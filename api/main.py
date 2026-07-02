@@ -1094,15 +1094,17 @@ class ChallengeOut_API(BaseModel):
 
 
 class AcceptResultOut(BaseModel):
-    challenge_id:      int
-    challenger_bet_id: int
-    challenged_bet_id: int
-    challenger_team:   str
-    challenged_team:   str
-    amount:            float
-    description:       str
-    staleness_warning: bool
-    accepted:          bool = True
+    challenge_id:          int
+    challenger_bet_id:     int
+    challenged_bet_id:     int
+    challenger_team:       str
+    challenged_team:       str
+    amount:                float
+    description:           str
+    staleness_warning:     bool
+    accepted:              bool = True
+    final_challenger_odds: float
+    final_challenged_odds: float
 
 
 def _challenge_out(c: ChallengeOut) -> ChallengeOut_API:
@@ -1155,15 +1157,17 @@ def beef_respond(
         raise HTTPException(status_code=400, detail=str(e))
     if isinstance(result, AcceptResult):
         return AcceptResultOut(
-            challenge_id      = result.challenge_id,
-            challenger_bet_id = result.challenger_bet_id,
-            challenged_bet_id = result.challenged_bet_id,
-            challenger_team   = result.challenger_team,
-            challenged_team   = result.challenged_team,
-            amount            = result.amount,
-            description       = result.description,
-            staleness_warning = result.staleness_warning,
-            accepted          = True,
+            challenge_id          = result.challenge_id,
+            challenger_bet_id     = result.challenger_bet_id,
+            challenged_bet_id     = result.challenged_bet_id,
+            challenger_team       = result.challenger_team,
+            challenged_team       = result.challenged_team,
+            amount                = result.amount,
+            description           = result.description,
+            staleness_warning     = result.staleness_warning,
+            accepted              = True,
+            final_challenger_odds = result.final_challenger_odds,
+            final_challenged_odds = result.final_challenged_odds,
         )
     return _challenge_out(result)
 

@@ -8,7 +8,8 @@ both teams' starters for the given week and comparing the score distributions.
 Flow:
   1. GM1 calls issue_challenge()
        • No shared-matchup required — any two GMs can beef any week.
-       • Runs Monte Carlo on both teams → locks fair odds for both sides.
+       • Runs Monte Carlo on both teams → preview odds only; real odds
+         are recomputed at acceptance.
        • Writes BeefChallenge(status=pending, expires_at=now+24h).
   2. GM2 calls respond_to_challenge(accept=True/False)
        • Checks expiry and idempotency.
@@ -97,14 +98,27 @@ class ChallengeOut:
 
 @dataclass
 class AcceptResult:
-    challenge_id:      int
-    challenger_bet_id: int
-    challenged_bet_id: int
-    challenger_team:   str
-    challenged_team:   str
-    amount:            float
-    description:       str
-    staleness_warning: bool
+    challenge_id:          int
+    challenger_bet_id:     int
+    challenged_bet_id:     int
+    challenger_team:       str
+    challenged_team:       str
+    amount:                float
+    description:           str
+    staleness_warning:     bool
+    final_challenger_odds: float
+    final_challenged_odds: float
+
+
+@dataclass
+class OddsInputs:
+    challenger_team_id: int
+    challenged_team_id: int
+    ch_starters:        list[PlayerProj] | None  # None for prop
+    cd_starters:        list[PlayerProj] | None  # None for prop
+    prop_projected:     float | None             # None for straight/spread/over_under
+    prop_player_id:     int | None               # None for straight/spread/over_under
+    points_snapshot:    dict[str, float]         # player_id str -> projected_points, for staleness
 
 
 # ── Odds helpers ──────────────────────────────────────────────────────────────
@@ -113,6 +127,115 @@ def _ml_to_decimal(ml: int) -> float:
     if ml < 0:
         return round(1 + 100 / abs(ml), 4)
     return round(1 + ml / 100, 4)
+
+
+def _fetch_starters_for_odds(
+    bet_type:           str,
+    challenger_team_id: int,
+    challenged_team_id: int,
+    player_id:          int | None,
+    week:               int,
+    db:                 Session,
+) -> OddsInputs:
+    """Query Roster + Projection and return a bundle for simulation and staleness checking.
+    Does not run any Monte Carlo — that is _compute_odds_from_inputs()'s job.
+    """
+    points_snapshot: dict[str, float] = {}
+
+    if bet_type == "prop":
+        proj = db.query(Projection).filter_by(
+            player_id=player_id, week=week, season=SEASON, source=SOURCE
+        ).first()
+        projected = proj.projected_points if proj else 0.0
+        if player_id:
+            points_snapshot[str(player_id)] = projected
+        return OddsInputs(
+            challenger_team_id = challenger_team_id,
+            challenged_team_id = challenged_team_id,
+            ch_starters        = None,
+            cd_starters        = None,
+            prop_projected     = projected,
+            prop_player_id     = player_id,
+            points_snapshot    = points_snapshot,
+        )
+
+    # straight | spread | over_under — all need the same starter lists
+    ch_starters: list[PlayerProj] = []
+    cd_starters: list[PlayerProj] = []
+    for team_id, starters_list in (
+        (challenger_team_id, ch_starters),
+        (challenged_team_id, cd_starters),
+    ):
+        slots = (
+            db.query(Roster)
+            .filter(Roster.team_id == team_id)
+            .order_by(Roster.id)
+            .limit(N_START)
+            .all()
+        )
+        for s in slots:
+            p = db.query(Projection).filter_by(
+                player_id=s.player_id, week=week, season=SEASON, source=SOURCE
+            ).first()
+            pts = p.projected_points if p else 0.0
+            starters_list.append(PlayerProj(
+                player_id        = s.player_id,
+                name             = s.player.name,
+                position         = s.player.position,
+                projected_points = pts,
+                injury_status    = p.injury_status if p else None,
+            ))
+            points_snapshot[str(s.player_id)] = pts
+
+    return OddsInputs(
+        challenger_team_id = challenger_team_id,
+        challenged_team_id = challenged_team_id,
+        ch_starters        = ch_starters,
+        cd_starters        = cd_starters,
+        prop_projected     = None,
+        prop_player_id     = None,
+        points_snapshot    = points_snapshot,
+    )
+
+
+def _compute_odds_from_inputs(
+    bet_type: str,
+    inputs:   OddsInputs,
+    week:     int,
+    line:     float | None = None,
+    side:     str | None   = None,
+) -> tuple[float, int, float, int]:
+    """Pure Monte Carlo math — no database access. Returns (dec_ch, ml_ch, dec_cd, ml_cd)."""
+    if bet_type in ("straight", "spread", "over_under"):
+        ch_scores, cd_scores = simulate_scores(
+            inputs.challenger_team_id, inputs.challenged_team_id,
+            inputs.ch_starters, inputs.cd_starters, week,
+        )
+        if bet_type == "straight":
+            p_ch = float((ch_scores > cd_scores).mean())
+        elif bet_type == "spread":
+            p_ch = float(((ch_scores - cd_scores) > (line or 0.0)).mean())
+        else:  # over_under
+            combined = ch_scores + cd_scores
+            if side == "over":
+                p_ch = float((combined > (line or 0.0)).mean())
+            else:
+                p_ch = float((combined < (line or 0.0)).mean())
+
+    elif bet_type == "prop":
+        scores = simulate_player_scores(inputs.prop_projected, inputs.prop_player_id, week)
+        if side == "over":
+            p_ch = float((scores > (line or 0.0)).mean())
+        else:
+            p_ch = float((scores < (line or 0.0)).mean())
+
+    else:
+        raise ValueError(f"Unknown bet_type: {bet_type!r}")
+
+    p_cd  = 1.0 - p_ch
+    ml_ch = _prob_to_american(p_ch)
+    ml_cd = _prob_to_american(p_cd)
+    return _ml_to_decimal(ml_ch), ml_ch, _ml_to_decimal(ml_cd), ml_cd
 
 
 def _compute_odds(
@@ -125,73 +248,11 @@ def _compute_odds(
     side:               str | None   = None,
     player_id:          int | None   = None,
 ) -> tuple[float, int, float, int]:
-    """
-    Simulate both teams and return (ch_dec, ch_ml, cd_dec, cd_ml).
-    challenger_scores corresponds to challenger_team, regardless of matchup.
-    """
-    if bet_type in ("straight", "spread"):
-        _ch_slots = db.query(Roster).filter(Roster.team_id == challenger_team.id).order_by(Roster.id).limit(N_START).all()
-        _cd_slots = db.query(Roster).filter(Roster.team_id == challenged_team.id).order_by(Roster.id).limit(N_START).all()
-        ch_starters: list[PlayerProj] = []
-        for _s in _ch_slots:
-            _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
-            ch_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position,
-                                          projected_points=_p.projected_points if _p else 0.0,
-                                          injury_status=_p.injury_status if _p else None))
-        cd_starters: list[PlayerProj] = []
-        for _s in _cd_slots:
-            _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
-            cd_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position,
-                                          projected_points=_p.projected_points if _p else 0.0,
-                                          injury_status=_p.injury_status if _p else None))
-        ch_scores, cd_scores = simulate_scores(challenger_team.id, challenged_team.id, ch_starters, cd_starters, week)
-        if bet_type == "straight":
-            p_ch = float((ch_scores > cd_scores).mean())
-        else:
-            p_ch = float(((ch_scores - cd_scores) > (line or 0.0)).mean())
-
-    elif bet_type == "over_under":
-        _ch_slots = db.query(Roster).filter(Roster.team_id == challenger_team.id).order_by(Roster.id).limit(N_START).all()
-        _cd_slots = db.query(Roster).filter(Roster.team_id == challenged_team.id).order_by(Roster.id).limit(N_START).all()
-        ch_starters = []
-        for _s in _ch_slots:
-            _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
-            ch_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position,
-                                          projected_points=_p.projected_points if _p else 0.0,
-                                          injury_status=_p.injury_status if _p else None))
-        cd_starters = []
-        for _s in _cd_slots:
-            _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
-            cd_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position,
-                                          projected_points=_p.projected_points if _p else 0.0,
-                                          injury_status=_p.injury_status if _p else None))
-        ch_scores, cd_scores = simulate_scores(challenger_team.id, challenged_team.id, ch_starters, cd_starters, week)
-        combined = ch_scores + cd_scores
-        if side == "over":
-            p_ch = float((combined > (line or 0.0)).mean())
-        else:
-            p_ch = float((combined < (line or 0.0)).mean())
-
-    elif bet_type == "prop":
-        proj = (
-            db.query(Projection)
-            .filter_by(player_id=player_id, week=week, season=SEASON, source=SOURCE)
-            .first()
-        )
-        projected = proj.projected_points if proj else 0.0
-        scores    = simulate_player_scores(projected, player_id, week)
-        if side == "over":
-            p_ch = float((scores > (line or 0.0)).mean())
-        else:
-            p_ch = float((scores < (line or 0.0)).mean())
-
-    else:
-        raise ValueError(f"Unknown bet_type: {bet_type!r}")
-
-    p_cd   = 1.0 - p_ch
-    ml_ch  = _prob_to_american(p_ch)
-    ml_cd  = _prob_to_american(p_cd)
-    return _ml_to_decimal(ml_ch), ml_ch, _ml_to_decimal(ml_cd), ml_cd
+    """Preview-odds wrapper used by issue_challenge(). Fetch then simulate."""
+    inputs = _fetch_starters_for_odds(
+        bet_type, challenger_team.id, challenged_team.id, player_id, week, db
+    )
+    return _compute_odds_from_inputs(bet_type, inputs, week, line, side)
 
 
 # ── Description builder ───────────────────────────────────────────────────────
@@ -393,6 +454,8 @@ def issue_challenge(
     """
     GM1 issues a challenge to GM2 for any given week.
     The two teams do NOT need to be scheduled against each other.
+    Odds computed here are a preview only — the live odds are recomputed
+    at acceptance time and locked into the placed Bet rows.
     """
     if challenger_team_id == challenged_team_id:
         raise ValueError("A team cannot challenge itself")
@@ -539,12 +602,13 @@ def respond_to_challenge(
     effective_amount = challenge.countered_amount if is_counter else challenge.amount
 
     week  = challenge.week
-    # Reused by the odds recompute in a later change — do not query Projection again below this point in this function.
-    live_projections = json.loads(_snapshot_projections(
+    # Single DB fetch — points_snapshot feeds the staleness check; full bundle
+    # feeds the odds recompute below (no second fetch).
+    live_inputs = _fetch_starters_for_odds(
         challenge.bet_type, challenge.challenger_team_id, challenge.challenged_team_id,
         challenge.player_id, week, db,
-    ))
-    stale = _check_staleness(challenge.projection_snapshot, live_projections)
+    )
+    stale = _check_staleness(challenge.projection_snapshot, live_inputs.points_snapshot)
     challenge.staleness_warning = 1 if stale else 0
 
     ch_matchup = _find_own_matchup(challenge.challenger_team_id, week, db)
@@ -597,6 +661,16 @@ def respond_to_challenge(
         challenger_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenger_team_id).first()
         challenged_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
 
+    # Recompute odds from live data on the shared path — overwrites the preview odds
+    # stored at issue time so both Bet rows receive the final locked line.
+    dec_ch, ml_ch, dec_cd, ml_cd = _compute_odds_from_inputs(
+        challenge.bet_type, live_inputs, week, challenge.line, challenge.side
+    )
+    challenge.challenger_odds      = dec_ch
+    challenge.challenged_odds      = dec_cd
+    challenge.challenger_moneyline = ml_ch
+    challenge.challenged_moneyline = ml_cd
+
     challenger_bet = _place_beef_side(
         db, challenger_wallet, effective_amount,
         challenge.bet_type, ch_matchup.id,
@@ -619,14 +693,16 @@ def respond_to_challenge(
     log_challenge_accepted(challenge, db, trash_talk=trash_talk)
 
     return AcceptResult(
-        challenge_id      = challenge.id,
-        challenger_bet_id = challenger_bet.id,
-        challenged_bet_id = challenged_bet.id,
-        challenger_team   = challenge.challenger_team.team_name,
-        challenged_team   = challenge.challenged_team.team_name,
-        amount            = effective_amount,
-        description       = challenge.description,
-        staleness_warning = stale,
+        challenge_id          = challenge.id,
+        challenger_bet_id     = challenger_bet.id,
+        challenged_bet_id     = challenged_bet.id,
+        challenger_team       = challenge.challenger_team.team_name,
+        challenged_team       = challenge.challenged_team.team_name,
+        amount                = effective_amount,
+        description           = challenge.description,
+        staleness_warning     = stale,
+        final_challenger_odds = dec_ch,
+        final_challenged_odds = dec_cd,
     )
 
 
