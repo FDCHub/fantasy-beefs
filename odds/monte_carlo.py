@@ -54,7 +54,7 @@ STD_PCT_BY_POSITION: dict[str, float] = {
 # Revisit with real historical covariance data post-launch.
 CORRELATION_VARIANCE_MULTIPLIER: float = 1.15
 N_START          = 9      # QB RB RB WR WR TE FLEX K DEF
-SEASON           = 2024
+from config import CURRENT_SEASON as SEASON
 SOURCE           = "fantasypros"
 INJURY_MULTIPLIERS: dict[str, float] = {
     "out":          0.00,
