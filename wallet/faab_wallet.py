@@ -654,12 +654,18 @@ def transfer(
         open_bets  = db.query(Bet).filter(
             Bet.wallet_id == bet_wallet.id, Bet.status == "pending"
         ).all()
-        pending_exp = sum(b.amount for b in open_bets)
-        available   = round(bet_wallet.balance - pending_exp, 2)
+        pending_exp        = round(sum(b.amount for b in open_bets), 2)
+        pending_challenges = db.query(BeefChallenge).filter(
+            BeefChallenge.challenger_team_id == team_id,
+            BeefChallenge.status.in_(["pending", "countered"]),
+        ).all()
+        ch_reserved = round(sum(c.amount for c in pending_challenges), 2)
+        available   = round(bet_wallet.balance - pending_exp - ch_reserved, 2)
         if amount > available:
             raise ValueError(
                 f"Cannot transfer ${amount:.2f}: only ${available:.2f} is available "
-                f"(${pending_exp:.2f} locked in pending bets)"
+                f"(${bet_wallet.balance:.2f} balance, ${pending_exp:.2f} in pending bets, "
+                f"${ch_reserved:.2f} reserved for pending challenges)"
             )
         bet_wallet.balance      = round(bet_wallet.balance - amount, 2)
         fw.waiver_balance       = round(fw.waiver_balance + amount, 2)

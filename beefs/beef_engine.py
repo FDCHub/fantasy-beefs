@@ -437,6 +437,39 @@ def _place_beef_side(
     return bet
 
 
+def _verify_wallet_available(
+    team_id:              int,
+    effective_amount:     float,
+    db:                   Session,
+    exclude_challenge_id: int | None = None,
+) -> Wallet:
+    """
+    Confirm team_id's bet wallet can cover effective_amount right now —
+    balance minus pending bet exposure minus other pending/countered
+    beef reservations. Raises ValueError with a breakdown if not.
+    Returns the Wallet row on success.
+    """
+    wallet       = db.query(Wallet).filter(Wallet.team_id == team_id).first()
+    pending_bets = db.query(Bet).filter(Bet.wallet_id == wallet.id, Bet.status == "pending").all()
+    bet_exposure = round(sum(b.amount for b in pending_bets), 2)
+    ch_query     = db.query(BeefChallenge).filter(
+        BeefChallenge.challenger_team_id == team_id,
+        BeefChallenge.status.in_(["pending", "countered"]),
+    )
+    if exclude_challenge_id is not None:
+        ch_query = ch_query.filter(BeefChallenge.id != exclude_challenge_id)
+    ch_reserved = round(sum(c.amount for c in ch_query.all()), 2)
+    available   = round(wallet.balance - bet_exposure - ch_reserved, 2)
+    if available < effective_amount:
+        raise ValueError(
+            f"Team {team_id}'s wallet has insufficient funds: "
+            f"${effective_amount:.2f} needed, ${available:.2f} available "
+            f"(${wallet.balance:.2f} balance, ${bet_exposure:.2f} in pending bets, "
+            f"${ch_reserved:.2f} in challenge reservations)"
+        )
+    return wallet
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def issue_challenge(
@@ -618,48 +651,24 @@ def respond_to_challenge(
 
     if is_counter:
         # Countered accept: re-verify both wallets can cover countered_amount right now.
-        # Challenger: exclude the current challenge from its own reservation (it's about to settle).
-        ch_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenger_team_id).first()
-        ch_pending_bets    = db.query(Bet).filter(Bet.wallet_id == ch_wallet.id, Bet.status == "pending").all()
-        ch_bet_exposure    = round(sum(b.amount for b in ch_pending_bets), 2)
-        ch_other_reserved  = round(sum(
-            c.amount for c in db.query(BeefChallenge).filter(
-                BeefChallenge.challenger_team_id == challenge.challenger_team_id,
-                BeefChallenge.status.in_(["pending", "countered"]),
-                BeefChallenge.id != challenge.id,
-            ).all()
-        ), 2)
-        ch_available = round(ch_wallet.balance - ch_bet_exposure - ch_other_reserved, 2)
-        if ch_available < effective_amount:
-            raise ValueError(
-                f"Challenger wallet has insufficient funds for counter-offer amount of "
-                f"${effective_amount:.2f}: ${ch_available:.2f} available "
-                f"(${ch_wallet.balance:.2f} balance, ${ch_bet_exposure:.2f} in pending bets, "
-                f"${ch_other_reserved:.2f} in other challenge reservations)"
-            )
-
-        cd_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
-        cd_pending_bets   = db.query(Bet).filter(Bet.wallet_id == cd_wallet.id, Bet.status == "pending").all()
-        cd_bet_exposure   = round(sum(b.amount for b in cd_pending_bets), 2)
-        cd_reserved       = round(sum(
-            c.amount for c in db.query(BeefChallenge).filter(
-                BeefChallenge.challenger_team_id == challenge.challenged_team_id,
-                BeefChallenge.status.in_(["pending", "countered"]),
-            ).all()
-        ), 2)
-        cd_available = round(cd_wallet.balance - cd_bet_exposure - cd_reserved, 2)
-        if cd_available < effective_amount:
-            raise ValueError(
-                f"Challenged wallet has insufficient funds for counter-offer amount of "
-                f"${effective_amount:.2f}: ${cd_available:.2f} available "
-                f"(${cd_wallet.balance:.2f} balance, ${cd_bet_exposure:.2f} in pending bets, "
-                f"${cd_reserved:.2f} in challenge reservations)"
-            )
-        challenger_wallet = ch_wallet
-        challenged_wallet = cd_wallet
+        # Challenger excludes the current challenge from its reservation (it's about to settle).
+        challenger_wallet = _verify_wallet_available(
+            challenge.challenger_team_id, effective_amount, db,
+            exclude_challenge_id=challenge.id,
+        )
+        challenged_wallet = _verify_wallet_available(
+            challenge.challenged_team_id, effective_amount, db,
+        )
     else:
-        challenger_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenger_team_id).first()
-        challenged_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
+        # Plain accept: same wallet check — catches funds drained since the challenge was issued.
+        # Challenger excludes the current challenge from its reservation (it's about to settle).
+        challenger_wallet = _verify_wallet_available(
+            challenge.challenger_team_id, effective_amount, db,
+            exclude_challenge_id=challenge.id,
+        )
+        challenged_wallet = _verify_wallet_available(
+            challenge.challenged_team_id, effective_amount, db,
+        )
 
     # Recompute odds from live data on the shared path — overwrites the preview odds
     # stored at issue time so both Bet rows receive the final locked line.
