@@ -227,8 +227,12 @@ def simulate_scores(
     week:          int,
     n_sims:        int = N_SIMS,
     scoring:       ScoringSettings = HALF_PPR,
+    matchup_id:    int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return (home_scores, away_scores) arrays of shape (n_sims,)."""
+    """Return (home_scores, away_scores) arrays of shape (n_sims,).
+
+    When matchup_id is provided, seeds identically to run() for that matchup.
+    """
     if not home_starters:
         raise ValueError("home_starters must not be empty")
     if not away_starters:
@@ -240,7 +244,10 @@ def simulate_scores(
     home_pts = np.array([s.adjusted_points for s in home_lines])
     away_pts = np.array([s.adjusted_points for s in away_lines])
 
-    rng = np.random.default_rng(seed=home_team_id * 10_000 + away_team_id * 100 + week)
+    if matchup_id is not None:
+        rng = np.random.default_rng(seed=matchup_id * 1_000 + week)
+    else:
+        rng = np.random.default_rng(seed=home_team_id * 10_000 + away_team_id * 100 + week)
     return _simulate_team(home_pts, rng), _simulate_team(away_pts, rng)
 
 

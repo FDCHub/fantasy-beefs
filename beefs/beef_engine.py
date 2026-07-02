@@ -119,6 +119,8 @@ class OddsInputs:
     prop_projected:     float | None             # None for straight/spread/over_under
     prop_player_id:     int | None               # None for straight/spread/over_under
     points_snapshot:    dict[str, float]         # player_id str -> projected_points, for staleness
+    shared_matchup_id:  int | None = None        # set when both teams are scheduled vs each other
+    challenger_is_home: bool       = True        # only meaningful when shared_matchup_id is set
 
 
 # ── Odds helpers ──────────────────────────────────────────────────────────────
@@ -187,6 +189,10 @@ def _fetch_starters_for_odds(
             ))
             points_snapshot[str(s.player_id)] = pts
 
+    shared     = _find_shared_matchup(challenger_team_id, challenged_team_id, week, db)
+    shared_id  = shared.id if shared else None
+    ch_is_home = (shared.home_team_id == challenger_team_id) if shared else True
+
     return OddsInputs(
         challenger_team_id = challenger_team_id,
         challenged_team_id = challenged_team_id,
@@ -195,6 +201,8 @@ def _fetch_starters_for_odds(
         prop_projected     = None,
         prop_player_id     = None,
         points_snapshot    = points_snapshot,
+        shared_matchup_id  = shared_id,
+        challenger_is_home = ch_is_home,
     )
 
 
@@ -207,10 +215,28 @@ def _compute_odds_from_inputs(
 ) -> tuple[float, int, float, int]:
     """Pure Monte Carlo math — no database access. Returns (dec_ch, ml_ch, dec_cd, ml_cd)."""
     if bet_type in ("straight", "spread", "over_under"):
-        ch_scores, cd_scores = simulate_scores(
-            inputs.challenger_team_id, inputs.challenged_team_id,
-            inputs.ch_starters, inputs.cd_starters, week,
-        )
+        if inputs.shared_matchup_id is not None:
+            # Both teams are real scheduled opponents — orient starters to match the
+            # canonical home/away order and use the same seed run() would produce.
+            if inputs.challenger_is_home:
+                sim_home_starters, sim_away_starters = inputs.ch_starters, inputs.cd_starters
+                sim_home_id,       sim_away_id       = inputs.challenger_team_id, inputs.challenged_team_id
+            else:
+                sim_home_starters, sim_away_starters = inputs.cd_starters, inputs.ch_starters
+                sim_home_id,       sim_away_id       = inputs.challenged_team_id, inputs.challenger_team_id
+            raw_home, raw_away = simulate_scores(
+                sim_home_id, sim_away_id,
+                sim_home_starters, sim_away_starters,
+                week, matchup_id=inputs.shared_matchup_id,
+            )
+            # Map home/away back to challenger/challenged before computing p_ch
+            ch_scores = raw_home if inputs.challenger_is_home else raw_away
+            cd_scores = raw_away if inputs.challenger_is_home else raw_home
+        else:
+            ch_scores, cd_scores = simulate_scores(
+                inputs.challenger_team_id, inputs.challenged_team_id,
+                inputs.ch_starters, inputs.cd_starters, week,
+            )
         if bet_type == "straight":
             p_ch = float((ch_scores > cd_scores).mean())
         elif bet_type == "spread":
@@ -384,6 +410,23 @@ def _find_own_matchup(team_id: int, week: int, db: Session) -> Matchup:
     if not m:
         raise ValueError(f"Team {team_id} has no matchup in week {week}")
     return m
+
+
+def _find_shared_matchup(team_a_id: int, team_b_id: int, week: int, db: Session) -> Matchup | None:
+    """Return the Matchup row if team_a and team_b are scheduled against
+    each other this week, else None. Beefs don't require this — most
+    calls will return None."""
+    return (
+        db.query(Matchup)
+        .filter(
+            Matchup.week == week,
+            (
+                ((Matchup.home_team_id == team_a_id) & (Matchup.away_team_id == team_b_id))
+                | ((Matchup.home_team_id == team_b_id) & (Matchup.away_team_id == team_a_id))
+            ),
+        )
+        .first()
+    )
 
 
 def _place_beef_side(
