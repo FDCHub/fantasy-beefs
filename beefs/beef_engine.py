@@ -290,16 +290,15 @@ def _snapshot_projections(
     return json.dumps(snapshot)
 
 
-def _check_staleness(snapshot_json: str | None, week: int, db: Session) -> bool:
-    """Return True if any snapshotted player's projection has shifted more than 10%."""
+def _check_staleness(snapshot_json: str | None, live_snapshot: dict[str, float]) -> bool:
+    """Return True if any snapshotted player's projection has shifted more than 10%.
+    Pure comparison against live_snapshot — no database access.
+    """
     if not snapshot_json:
         return False
     snapshot = json.loads(snapshot_json)
     for pid_str, old_pts in snapshot.items():
-        proj = db.query(Projection).filter_by(
-            player_id=int(pid_str), week=week, season=SEASON, source=SOURCE
-        ).first()
-        new_pts = proj.projected_points if proj else 0.0
+        new_pts = live_snapshot.get(pid_str, 0.0)
         if old_pts == 0.0:
             if new_pts > 0.0:
                 return True   # player recovered / projection appeared
@@ -529,12 +528,23 @@ def respond_to_challenge(
         log_challenge_declined(challenge, db, trash_talk=trash_talk)
         return _to_out(challenge, direction="received")
 
+    # Guarantees every read from here through db.commit() sees one consistent snapshot
+    # of the database, so a concurrent projection refresh or wallet transfer can't land
+    # mid-sequence and produce a mismatched result.
+    if db.get_bind().dialect.name != "sqlite":
+        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+
     # ── Accept: determine effective stake ────────────────────────────────────
     is_counter       = challenge.countered_amount is not None
     effective_amount = challenge.countered_amount if is_counter else challenge.amount
 
     week  = challenge.week
-    stale = _check_staleness(challenge.projection_snapshot, week, db)
+    # Reused by the odds recompute in a later change — do not query Projection again below this point in this function.
+    live_projections = json.loads(_snapshot_projections(
+        challenge.bet_type, challenge.challenger_team_id, challenge.challenged_team_id,
+        challenge.player_id, week, db,
+    ))
+    stale = _check_staleness(challenge.projection_snapshot, live_projections)
     challenge.staleness_warning = 1 if stale else 0
 
     ch_matchup = _find_own_matchup(challenge.challenger_team_id, week, db)
