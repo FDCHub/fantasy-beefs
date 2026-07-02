@@ -52,7 +52,7 @@ from odds.odds_engine_headless import (
 )
 
 N_START           = 9
-SEASON            = 2025   # Projection/Roster data queries — bump when 2026 league data is seeded
+from config import CURRENT_SEASON as SEASON
 LOCK_SEASON       = 2026   # _nfl_lock_time only — drives NflSchedule lookup, independent of data season
 SOURCE            = "fantasypros"
 from wallet.wallet_manager import MIN_BET

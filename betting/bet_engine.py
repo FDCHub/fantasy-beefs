@@ -34,7 +34,7 @@ from odds.odds_engine_headless import (
     simulate_scores,
 )
 
-SEASON = 2024
+from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
 
 _STARTER_SLOTS = 9   # first 9 roster rows are starters

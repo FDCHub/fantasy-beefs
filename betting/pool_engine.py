@@ -49,7 +49,7 @@ from db.schema import (
     Wallet,
 )
 
-SEASON = 2024
+from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
 
 # ── Pool bet-type registry ─────────────────────────────────────────────────────

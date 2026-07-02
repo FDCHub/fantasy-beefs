@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from db.schema import Bet, BeefChallenge, Matchup, Projection, Roster, Transaction, Wallet
 from feed.league_feed import log_settlement_events
 
-SEASON = 2024
+from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
 
 # The Lineup uses a separate season/source — Yahoo actual scores vs pre-week projection
@@ -106,8 +106,10 @@ def _eval_over_under(bet: Bet, matchup: Matchup) -> bool:
     return combined < (bet.line or 0.0)
 
 
-def _eval_prop(bet: Bet, db: Session) -> bool:
-    """Compare actual points of home top starter (player_id) vs away top starter (int(side))."""
+def _eval_prop(bet: Bet, db: Session) -> str:
+    """Compare actual points of home top starter (player_id) vs away top starter (int(side)).
+    Returns "won", "lost", or "push".
+    """
     week = bet.matchup.week
     home_proj = db.query(Projection).filter_by(
         player_id=bet.player_id, week=week, season=SEASON, source=SOURCE,
@@ -117,9 +119,11 @@ def _eval_prop(bet: Bet, db: Session) -> bool:
     ).first()
     home_actual = home_proj.actual_points if home_proj else 0.0
     away_actual = away_proj.actual_points if away_proj else 0.0
+    if home_actual == away_actual:
+        return "push"
     if bet.picked_team_id == bet.matchup.home_team_id:
-        return home_actual > away_actual
-    return away_actual > home_actual
+        return "won" if home_actual > away_actual else "lost"
+    return "won" if away_actual > home_actual else "lost"
 
 
 def _position_actual(team_id: int, position: str, week: int, db: Session) -> float:
@@ -154,10 +158,11 @@ def _team_score_for_week(team_id: int, week: int, db: Session) -> float:
     return m.home_score if m.home_team_id == team_id else m.away_score
 
 
-def _eval_beef(bet: Bet, db: Session) -> bool:
+def _eval_beef(bet: Bet, db: Session) -> str:
     """
     Settle a beef bet by comparing each team's actual weekly score from
     their own matchup — not from a shared matchup.
+    Returns "won", "lost", or "push".
     """
     c    = bet.beef_challenge
     week = c.week
@@ -167,21 +172,31 @@ def _eval_beef(bet: Bet, db: Session) -> bool:
         opp_id    = (c.challenged_team_id if bet.picked_team_id == c.challenger_team_id
                      else c.challenger_team_id)
         opp_score = _team_score_for_week(opp_id, week, db)
-        return my_score > opp_score
+        if my_score == opp_score:
+            return "push"
+        return "won" if my_score > opp_score else "lost"
 
     if bet.bet_type == "spread":
         my_score  = _team_score_for_week(bet.picked_team_id, week, db)
         opp_id    = (c.challenged_team_id if bet.picked_team_id == c.challenger_team_id
                      else c.challenger_team_id)
         opp_score = _team_score_for_week(opp_id, week, db)
-        return (my_score - opp_score) > (bet.line or 0.0)
+        margin = my_score - opp_score
+        line   = bet.line or 0.0
+        if margin == line:
+            return "push"
+        return "won" if margin > line else "lost"
 
     if bet.bet_type == "over_under":
         s1       = _team_score_for_week(c.challenger_team_id, week, db)
         s2       = _team_score_for_week(c.challenged_team_id, week, db)
         combined = s1 + s2
-        return (combined > (bet.line or 0.0)) if bet.side == "over" \
-               else (combined < (bet.line or 0.0))
+        line     = bet.line or 0.0
+        if combined == line:
+            return "push"
+        if bet.side == "over":
+            return "won" if combined > line else "lost"
+        return "won" if combined < line else "lost"
 
     if bet.bet_type == "prop":
         return _eval_prop(bet, db)
@@ -345,18 +360,33 @@ def settle_week(week: int, db: Session) -> SettlementReport:
                 profit = round(payout - bet.amount, 2)
         elif bet.beef_challenge_id is not None:
             # Beef bets compare weekly scores across different matchups
-            won    = _eval_beef(bet, db)
-            status = "won" if won else "lost"
-            payout = round(bet.amount * bet.odds, 2) if won else 0.0
-            profit = round(payout - bet.amount, 2)
+            result = _eval_beef(bet, db)
+            if result == "push":
+                status = "push"
+                payout = bet.amount
+                profit = 0.0
+            else:
+                status = "won" if result == "won" else "lost"
+                payout = round(bet.amount * bet.odds, 2) if status == "won" else 0.0
+                profit = round(payout - bet.amount, 2)
         else:
             evaluator = _EVALUATORS.get(bet.bet_type)
             if evaluator is None:
                 continue
-            won    = evaluator(bet, matchup, db)
-            status = "won" if won else "lost"
-            payout = round(bet.amount * bet.odds, 2) if won else 0.0
-            profit = round(payout - bet.amount, 2)
+            result = evaluator(bet, matchup, db)
+            if isinstance(result, str):   # prop: returns "won" | "lost" | "push"
+                if result == "push":
+                    status = "push"
+                    payout = bet.amount
+                    profit = 0.0
+                else:
+                    status = result
+                    payout = round(bet.amount * bet.odds, 2) if status == "won" else 0.0
+                    profit = round(payout - bet.amount, 2)
+            else:                          # straight / spread / over_under: returns bool
+                status = "won" if result else "lost"
+                payout = round(bet.amount * bet.odds, 2) if result else 0.0
+                profit = round(payout - bet.amount, 2)
         # -----------------------------------------------------------------
 
         bet.status     = status
