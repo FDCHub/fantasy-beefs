@@ -77,7 +77,7 @@ def read_pool_config(league_id: int, db: Session = Depends(get_db)) -> PoolConfi
     try:
         return get_pool_config(league_id=league_id, db=db)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/collect", response_model=PoolEntryResult)

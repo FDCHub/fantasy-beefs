@@ -71,6 +71,13 @@ _VALID_BET_TYPES = {b["key"] for b in POOL_BET_TYPES}
 _log = logging.getLogger(__name__)
 
 
+def _assert_league_exists(league_id: int, db: Session) -> League:
+    league = db.query(League).filter(League.id == league_id).first()
+    if not league:
+        raise ValueError(f"League {league_id} not found")
+    return league
+
+
 def _nfl_lock_time(season: int, week: int) -> datetime:
     """
     Returns the kickoff time of the earliest game for the given NFL season/week.
@@ -170,6 +177,7 @@ def setup_pool_config(
 
 
 def get_pool_config(league_id: int, db: Session) -> PoolConfigOut:
+    _assert_league_exists(league_id, db)
     cfg = db.query(PoolConfig).filter(PoolConfig.league_id == league_id).first()
     if not cfg:
         raise ValueError(f"Pool not configured for league {league_id}. Call setup_pool_config first.")
@@ -633,9 +641,7 @@ def get_pool_week(league_id: int, week: int, db: Session) -> PoolWeekOut:
     lock_time is read from PoolPot.lock_time if set, else computed from the
     NFL 2024 schedule formula (Thursday 8:20 PM ET).
     """
-    league = db.query(League).filter(League.id == league_id).first()
-    if not league:
-        raise ValueError(f"League {league_id} not found")
+    league = _assert_league_exists(league_id, db)
 
     teams = db.query(Team).filter(Team.league_id == league_id).order_by(Team.id).all()
     if not teams:
@@ -716,9 +722,7 @@ def submit_pool_pick(
     if bet_type not in _VALID_BET_TYPES:
         raise ValueError(f"Invalid bet_type {bet_type!r}. Must be one of: {sorted(_VALID_BET_TYPES)}")
 
-    league = db.query(League).filter(League.id == league_id).first()
-    if not league:
-        raise ValueError(f"League {league_id} not found")
+    league = _assert_league_exists(league_id, db)
 
     pot = db.query(PoolPot).filter(
         PoolPot.league_id == league_id, PoolPot.week == week,
