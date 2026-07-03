@@ -133,13 +133,13 @@ def _col(value: str, width: int) -> str:
 
 
 def _ascii_table(headers: list[str], rows: list[list[str]], widths: list[int]) -> str:
-    sep_top  = "┌" + "┬".join("─" * (w + 2) for w in widths) + "┐"
-    sep_mid  = "├" + "┼".join("─" * (w + 2) for w in widths) + "┤"
-    sep_bot  = "└" + "┴".join("─" * (w + 2) for w in widths) + "┘"
+    sep_top  = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    sep_mid  = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    sep_bot  = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
 
     def _row(cells: list[str]) -> str:
         parts = [f" {_col(c, widths[i])} " for i, c in enumerate(cells)]
-        return "│" + "│".join(parts) + "│"
+        return "|" + "|".join(parts) + "|"
 
     lines = [sep_top, _row(headers), sep_mid]
     for row in rows:
@@ -877,7 +877,7 @@ def _build_gm_email(
     lines.append("")
 
     # Bets section
-    lines.append("─── YOUR BETS ───────────────────────────────────────────────────")
+    lines.append("--- YOUR BETS ---------------------------------------------------")
     if settlement:
         mv = next((m for m in settlement.wallet_movements
                    if m.team_name == team.team_name), None)
@@ -897,7 +897,7 @@ def _build_gm_email(
     # Rules applied to this team
     my_rules = [e for e in rule_execs if e.team_id == team_id]
     lines.append("")
-    lines.append("─── COMMISSIONER RULES APPLIED TO YOU ──────────────────────────")
+    lines.append("--- COMMISSIONER RULES APPLIED TO YOU --------------------------")
     if my_rules:
         for e in my_rules:
             sign = "-" if e.effect_type == "obligation" else "+"
@@ -910,7 +910,7 @@ def _build_gm_email(
     faab = next((r for r in faab_rows if r["team_id"] == team_id), None)
     wallet = db.query(Wallet).filter(Wallet.team_id == team_id).first()
     lines.append("")
-    lines.append("─── YOUR WALLETS ────────────────────────────────────────────────")
+    lines.append("--- YOUR WALLETS ------------------------------------------------")
     if wallet:
         frozen_tag = "  *** FROZEN — TOP UP TO RESUME BETTING ***" if (faab and faab["bet_frozen"]) else ""
         lines.append(f"  Bet wallet:     ${wallet.balance:>9,.2f}{frozen_tag}")
@@ -920,7 +920,7 @@ def _build_gm_email(
         lines.append(f"  Waiver budget:  ${faab['waiver_balance']:>9,.2f}{pending_tag}")
 
     lines.append("")
-    lines.append("─── COMING UP: WEEK " + str(week + 1) + " ─────────────────────────────────────")
+    lines.append("--- COMING UP: WEEK " + str(week + 1) + " -------------------------------------")
     lines.append("  Matchups are live — go place your bets!")
     lines.append("")
     lines.append("—")
