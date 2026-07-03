@@ -101,9 +101,10 @@ class Team(Base):
 class Player(Base):
     __tablename__ = "players"
 
-    id       = Column(Integer, primary_key=True, autoincrement=True)
-    name     = Column(String,  nullable=False, unique=True)
-    position = Column(String,  nullable=False)   # QB | RB | WR | TE | FLEX | K | DEF
+    id       = Column(Integer,    primary_key=True, autoincrement=True)
+    name     = Column(String,     nullable=False, unique=True)
+    position = Column(String,     nullable=False)      # QB | RB | WR | TE | FLEX | K | DEF
+    nfl_team = Column(String(4),  nullable=True)       # NFL team abbreviation, e.g. "KC", "BAL"
 
     rosters      = relationship("Roster",     back_populates="player")
     projections  = relationship("Projection", back_populates="player")
@@ -137,6 +138,7 @@ class Matchup(Base):
     home_score     = Column(Float,   nullable=False)
     away_score     = Column(Float,   nullable=False)
     winner_team_id = Column(Integer, ForeignKey("teams.id"),    nullable=True)
+    refreshed_at   = Column(DateTime, nullable=True)
 
     league    = relationship("League", back_populates="matchups")
     home_team = relationship("Team", foreign_keys=[home_team_id],
@@ -286,6 +288,22 @@ class BeefChallenge(Base):
     player           = relationship("Player", foreign_keys=[player_id])
     challenger_bet   = relationship("Bet",    foreign_keys=[challenger_bet_id])
     challenged_bet   = relationship("Bet",    foreign_keys=[challenged_bet_id])
+
+
+class BeefStarter(Base):
+    """Snapshot of both teams' staked players at challenge-issue time.
+    Used by the per-bet kickoff lock to determine when each GM is locked."""
+    __tablename__ = "beef_starters"
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    beef_challenge_id = Column(Integer, ForeignKey("beef_challenges.id"), nullable=False)
+    team_id           = Column(Integer, ForeignKey("teams.id"),           nullable=False)
+    player_id         = Column(Integer, ForeignKey("players.id"),         nullable=False)
+    nfl_team          = Column(String(4), nullable=True)
+
+    beef_challenge = relationship("BeefChallenge", foreign_keys=[beef_challenge_id])
+    team           = relationship("Team",          foreign_keys=[team_id])
+    player         = relationship("Player",        foreign_keys=[player_id])
 
 
 class FeedEvent(Base):
@@ -864,6 +882,24 @@ class NflSchedule(Base):
     away_team      = Column(String,   nullable=False)   # ESPN team abbreviation, e.g. "DET"
     kickoff_utc    = Column(DateTime, nullable=False)
     last_synced_at = Column(DateTime, nullable=False,
+                            default=lambda: datetime.now(timezone.utc))
+
+
+# ── Player ID Crosswalk ───────────────────────────────────────────────────────
+
+class PlayerIdMap(Base):
+    """Cross-platform player ID crosswalk sourced from DynastyProcess db_playerids.csv.
+    Keyed on fantasypros_id (only rows with a real FP ID are upserted).
+    Used to resolve a fantasy player's current NFL team for per-game kickoff locking.
+    """
+    __tablename__ = "player_id_map"
+
+    fantasypros_id = Column(String,   primary_key=True)
+    yahoo_id       = Column(String,   nullable=True)
+    name           = Column(String,   nullable=False)
+    position       = Column(String,   nullable=True)
+    team           = Column(String,   nullable=True)   # NFL team abbreviation, e.g. "KC"; "FA" = free agent
+    last_updated   = Column(DateTime, nullable=False,
                             default=lambda: datetime.now(timezone.utc))
 
 

@@ -2,6 +2,7 @@
 Tuesday Automation — master job at 12:01am UTC every Tuesday.
 
 Execution order (each step is isolated — one failure never kills the run):
+  0. refresh_scores    — pull live Yahoo scoreboard; upsert matchup scores (GATE source)
   1. settle_bets       — settle_week() for the completed week
   2. execute_rules     — execute_weekly_rules() for all active commissioner rules
   3. freeze_wallets    — check every team's bet wallet; freeze any <= $0
@@ -11,6 +12,11 @@ Execution order (each step is isolated — one failure never kills the run):
   7. weekly_wrapup     — AI weekly wrap-up + Roast Beef, emails all GMs
   8. power_rankings    — compute & publish updated power rankings to feed
   9. email_gms         — send personal week summary to every GM
+
+Environment variables (Yahoo OAuth — required on Railway where secrets/ is absent):
+  YAHOO_PRIVATE_JSON   — full JSON string from secrets/private.json
+  YAHOO_CONSUMER_SECRET — consumer_secret value from secrets/yahoo_oauth.json
+  YAHOO_LEAGUE_ID      — Yahoo league ID string (default: 488800)
 
 Environment variables:
   SMTP_HOST            — SMTP server (mock email if unset)
@@ -100,6 +106,26 @@ class TuesdayRunSummary:
     status:       str
 
 
+@dataclass
+class RefreshResult:
+    """
+    Result from _step_refresh_scores.  Consumed by the settlement gate in
+    run_tuesday_sync (STEP D).
+
+    settleable is True ONLY when:
+      - Yahoo returned a list (not None, not an exception)
+      - Every matchup has status == "final"
+      - Every team ID resolved through TeamResolver
+      - The upsert committed without error
+
+    Every other path sets settleable=False and populates reason with a
+    human-readable explanation for logging and the commissioner alert.
+    """
+    settleable: bool
+    week:       int
+    reason:     str
+
+
 # ── Table formatting ──────────────────────────────────────────────────────────
 
 def _col(value: str, width: int) -> str:
@@ -175,9 +201,322 @@ def _gm_email_address(team_id: int, db: Session) -> str:
     return team.email if team else ""
 
 
+# ── Slate freshness gate ───────────────────────────────────────────────────────
+
+def _assert_slate_fresh(
+    league_id: int,
+    week: int,
+    db: Session,
+    *,
+    yahoo_home_ids: set[int] | None = None,
+    check_refreshed: bool = False,
+) -> tuple[bool, str, int]:
+    """
+    Single source of truth for "is the matchup slate complete and refreshed?"
+
+    Returns (is_fresh, reason, db_count).
+
+    Always checks:
+      - db_count > 0  (seed must have run)
+
+    When yahoo_home_ids is provided (step 0 / _step_refresh_scores):
+      - Checks exact set identity between DB home_team_ids and Yahoo's translated
+        return, in both directions:
+          missing = db_home_ids - yahoo_home_ids  (DB game Yahoo dropped)
+          extra   = yahoo_home_ids - db_home_ids  (game Yahoo invented)
+        Either non-empty set fails the gate.  Count equality alone does not
+        pass — a duplicate plus a missing game has identical counts but fires
+        both sets.
+      - yahoo_home_ids contains DB IDs (after TeamResolver translation), so the
+        comparison is in the same namespace as the DB query.
+
+    When check_refreshed=True (step 1 self-guard / _step_settle_bets):
+      - Checks that all matchup rows have refreshed_at IS NOT NULL.
+      - NULL means _step_refresh_scores did not complete for that row.
+      - Requires migration: migrations/add_matchup_refreshed_at.py.
+      - Score values (0.0, etc.) are never used to infer freshness — only the
+        timestamp is authoritative.  A genuine 0-0 final with a non-NULL
+        refreshed_at is correctly treated as fresh.
+    """
+    from sqlalchemy import text
+
+    rows = db.execute(
+        text(
+            "SELECT home_team_id, refreshed_at FROM matchups "
+            "WHERE league_id = :lid AND week = :week"
+        ),
+        {"lid": league_id, "week": week},
+    ).fetchall()
+
+    db_count = len(rows)
+
+    if db_count == 0:
+        return (
+            False,
+            f"week {week}: no matchups in DB for league_id={league_id} — seed not run?",
+            0,
+        )
+
+    if yahoo_home_ids is not None:
+        db_home_ids = {row[0] for row in rows}
+        missing     = db_home_ids - yahoo_home_ids  # DB games Yahoo dropped
+        extra       = yahoo_home_ids - db_home_ids  # games Yahoo invented
+        if missing or extra:
+            parts: list[str] = []
+            if missing:
+                parts.append(f"missing from Yahoo: {sorted(missing)}")
+            if extra:
+                parts.append(f"invented by Yahoo (not in DB): {sorted(extra)}")
+            return (
+                False,
+                f"week {week}: slate mismatch — {'; '.join(parts)}",
+                db_count,
+            )
+
+    if check_refreshed:
+        unrefreshed = [row[0] for row in rows if row[1] is None]
+        if unrefreshed:
+            return (
+                False,
+                (f"week {week}: {len(unrefreshed)} matchup(s) have NULL refreshed_at — "
+                 f"refresh did not complete "
+                 f"(home_team_ids: {sorted(unrefreshed)})"),
+                db_count,
+            )
+
+    return (True, f"week {week}: {db_count} matchup(s) — slate complete and fresh",
+            db_count)
+
+
+# ── Step 0: Refresh matchup scores from Yahoo ────────────────────────────────
+
+def _build_yahoo_query(yahoo_league_id: str):
+    """
+    Build an authenticated yfpy YahooFantasySportsQuery.
+
+    Credential loading (in priority order):
+      1. YAHOO_PRIVATE_JSON env var (full JSON string) + YAHOO_CONSUMER_SECRET
+         env var — the expected path on Railway where secrets/ is not deployed.
+      2. secrets/private.json + secrets/yahoo_oauth.json — local dev fallback.
+
+    yfpy gotchas preserved:
+      - game_id=461 passed into the constructor (not just game_code).
+      - consumer_secret merged into the token dict before the constructor call.
+    """
+    from yfpy.query import YahooFantasySportsQuery
+
+    private_env = os.getenv("YAHOO_PRIVATE_JSON", "")
+    secret_env  = os.getenv("YAHOO_CONSUMER_SECRET", "")
+
+    if private_env and secret_env:
+        token = json.loads(private_env)
+        token["consumer_secret"] = secret_env
+    else:
+        root = os.path.join(os.path.dirname(__file__), "..")
+        with open(os.path.join(root, "secrets", "private.json")) as f:
+            token = json.load(f)
+        with open(os.path.join(root, "secrets", "yahoo_oauth.json")) as f:
+            creds = json.load(f)
+        token["consumer_secret"] = creds["consumer_secret"]
+
+    return YahooFantasySportsQuery(
+        league_id=yahoo_league_id,
+        game_code="nfl",
+        game_id=461,
+        yahoo_access_token_json=token,
+        browser_callback=False,
+    )
+
+
+def _step_refresh_scores(
+    league_id: int,
+    week: int,
+    db: Session,
+) -> tuple[StepResult, RefreshResult]:
+    """
+    Step 0 — pull the live Yahoo scoreboard for the given week and upsert
+    matchup scores into the matchups table.
+
+    Returns (StepResult, RefreshResult).  RefreshResult.settleable is True only
+    when all matchups are final, the Yahoo return covers the full DB slate with
+    set-exact identity (not just count equality), every team ID resolved, and
+    the upsert committed — including refreshed_at = NOW() on every row.
+
+    Translation precedes the slate check because set containment requires
+    DB IDs, and those only exist after the TeamResolver runs.
+    """
+    from db.team_resolver import build_team_resolver, TeamResolverError
+    from sqlalchemy import text
+    from yahoo_scoreboard import fetch_week_scoreboard
+
+    yahoo_league_id = os.getenv("YAHOO_LEAGUE_ID", "488800")
+    t0 = time.monotonic()
+
+    def _not_fresh(
+        reason: str, error: str | None = None
+    ) -> tuple[StepResult, RefreshResult]:
+        ms = int((time.monotonic() - t0) * 1000)
+        return (
+            StepResult("refresh_scores", False, reason, {"settleable": False}, error, ms),
+            RefreshResult(settleable=False, week=week, reason=reason),
+        )
+
+    # ── Build team resolver (one DB round-trip) ───────────────────────────────
+    try:
+        resolver = build_team_resolver(db, league_id)
+    except TeamResolverError as exc:
+        return _not_fresh(f"week {week}: team resolver failed — {exc}", str(exc))
+    except Exception as exc:
+        return _not_fresh(f"week {week}: unexpected resolver error — {exc}", str(exc))
+
+    # ── Fetch live scoreboard from Yahoo ─────────────────────────────────────
+    try:
+        query      = _build_yahoo_query(yahoo_league_id)
+        scoreboard = fetch_week_scoreboard(query, week)
+    except Exception as exc:
+        return _not_fresh(
+            f"week {week}: Yahoo fetch failed — {type(exc).__name__}: {exc}",
+            str(exc),
+        )
+
+    if scoreboard is None:
+        return _not_fresh(f"week {week}: season-over anomaly — Yahoo returned None")
+
+    # ── All returned matchups must be final ───────────────────────────────────
+    # Early exit before translation — status check is cheap.
+    not_final = [m for m in scoreboard if m["status"] != "final"]
+    if not_final:
+        pairs    = [(m["home_team_id"], m["away_team_id"]) for m in not_final]
+        statuses = [m["status"] for m in not_final]
+        return _not_fresh(
+            f"week {week} not settled: matchup(s) {pairs} not final (statuses: {statuses})"
+        )
+
+    # ── Translate Yahoo IDs → DB IDs (all-or-nothing) ────────────────────────
+    # Translation must precede the slate check — set containment compares
+    # DB home_team_id values, which only exist after resolver runs.
+    translated: list[dict] = []
+    unresolved: list[str]  = []
+
+    for m in scoreboard:
+        try:
+            db_home   = resolver.yahoo_to_db(m["home_team_id"])
+            db_away   = resolver.yahoo_to_db(m["away_team_id"])
+            db_winner = (
+                resolver.yahoo_to_db(m["winner_team_id"])
+                if m["winner_team_id"] is not None
+                else None
+            )
+        except TeamResolverError as exc:
+            unresolved.append(str(exc))
+            continue
+
+        translated.append({
+            "league_id":      league_id,
+            "week":           week,
+            "home_team_id":   db_home,
+            "away_team_id":   db_away,
+            "home_score":     m["home_score"],
+            "away_score":     m["away_score"],
+            "winner_team_id": db_winner,
+        })
+
+    if unresolved:
+        return _not_fresh(
+            f"week {week}: unresolved team IDs — {'; '.join(unresolved)}"
+        )
+
+    # ── Slate completeness — set containment, not count equality ─────────────
+    # Six matchups back / six in DB / gate clears — even if one is a duplicate
+    # and one real game is missing.  The missing game keeps its stale score and
+    # settles anyway.  Set containment closes this: every DB home_team_id must
+    # appear in Yahoo's translated return.
+    yahoo_home_ids = {row["home_team_id"] for row in translated}
+    slate_ok, slate_reason, _ = _assert_slate_fresh(
+        league_id, week, db, yahoo_home_ids=yahoo_home_ids
+    )
+    if not slate_ok:
+        return _not_fresh(slate_reason)
+
+    # ── Upsert all rows in one transaction ───────────────────────────────────
+    # refreshed_at = NOW() written on both INSERT and UPDATE.
+    # _assert_slate_fresh with check_refreshed=True reads this column in step 1
+    # to confirm the refresh completed; NULL = never touched by a live refresh.
+    upsert_sql = text("""
+        INSERT INTO matchups
+            (league_id, week, home_team_id, away_team_id,
+             home_score, away_score, winner_team_id, refreshed_at)
+        VALUES
+            (:league_id, :week, :home_team_id, :away_team_id,
+             :home_score, :away_score, :winner_team_id, NOW())
+        ON CONFLICT (league_id, week, home_team_id)
+        DO UPDATE SET
+            home_score     = EXCLUDED.home_score,
+            away_score     = EXCLUDED.away_score,
+            winner_team_id = EXCLUDED.winner_team_id,
+            refreshed_at   = NOW()
+    """)
+    try:
+        for row in translated:
+            db.execute(upsert_sql, row)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        return _not_fresh(
+            f"week {week}: upsert failed — {type(exc).__name__}: {exc}",
+            str(exc),
+        )
+
+    ms  = int((time.monotonic() - t0) * 1000)
+    msg = (f"week {week}: {len(translated)} matchup score(s) upserted — "
+           f"all final, full slate, all IDs resolved")
+    return (
+        StepResult(
+            "refresh_scores", True, msg,
+            {"rows_upserted": len(translated), "settleable": True},
+            None, ms,
+        ),
+        RefreshResult(settleable=True, week=week, reason=msg),
+    )
+
+
 # ── Step 1: Settle bets ───────────────────────────────────────────────────────
 
-def _step_settle_bets(league_id: int, week: int, db: Session):
+def _step_settle_bets(
+    league_id: int,
+    week: int,
+    db: Session,
+    *,
+    mock_mode: bool = MOCK_EMAIL_MODE,
+):
+    # DB self-guard — re-derive freshness from the DB before touching any wallet.
+    # Reads refreshed_at IS NOT NULL (written by step 0's upsert).
+    # This is independent of the gate in run_tuesday_sync and catches direct calls
+    # (tests, scripts, future gate bugs) that bypass it.
+    fresh_ok, fresh_reason, _ = _assert_slate_fresh(
+        league_id, week, db, check_refreshed=True
+    )
+    if not fresh_ok:
+        # The alert itself must never crash the abort path — if the commissioner
+        # address is bad or SMTP is down, log and continue to the safe return.
+        try:
+            _alert_settlement_skipped(league_id, week, fresh_reason, mock_mode, db)
+        except Exception as alert_exc:
+            import logging
+            logging.error(
+                "[TuesdaySync] Settlement skip alert failed (guard still active): %s",
+                alert_exc,
+            )
+        return (
+            StepResult(
+                "settle_bets", False,
+                f"ABORTED — DB slate not fresh: {fresh_reason}",
+                {"settleable": False, "db_guard_triggered": True, "reason": fresh_reason},
+                None, 0,
+            ),
+            None,
+        )
+
     from betting.settlement_engine import settle_week
     t0 = time.monotonic()
     try:
@@ -197,6 +536,50 @@ def _step_settle_bets(league_id: int, week: int, db: Session):
     except Exception as e:
         ms = int((time.monotonic() - t0) * 1000)
         return StepResult("settle_bets", False, "settlement failed", {}, str(e), ms), None
+
+
+def _alert_settlement_skipped(
+    league_id: int,
+    week: int,
+    reason: str,
+    mock_mode: bool,
+    db: Session,
+) -> None:
+    """
+    Log at ERROR and fire an immediate out-of-band commissioner alert when
+    settlement is skipped because the matchup slate is incomplete or scores
+    are not confirmed final.
+
+    Called from two places:
+      1. The gate in run_tuesday_sync when refresh_result.settleable is False.
+      2. The DB self-guard inside _step_settle_bets if called with a stale slate.
+
+    Both use the confirmed utilities _send_email and _commissioner_email_address.
+    This is not the scheduled Tuesday report; it fires immediately.
+    """
+    import logging
+    logging.error(
+        "[TuesdaySync] SETTLEMENT SKIPPED week=%d league_id=%d — %s",
+        week, league_id, reason,
+    )
+    to      = _commissioner_email_address(league_id, db)
+    subject = f"SETTLEMENT SKIPPED — week {week} — scores not fresh"
+    body    = "\n".join([
+        "SETTLEMENT SKIPPED — Fantasy Beefs",
+        "=" * 50,
+        "",
+        f"Week:    {week}",
+        f"League:  {league_id}",
+        f"Reason:  {reason}",
+        "",
+        "No wallets moved.  No bets settled.",
+        "Settlement will run automatically on the next Tuesday sync",
+        "once Yahoo returns confirmed final scores for all matchups.",
+        "",
+        "This is an immediate alert — not the scheduled Tuesday report.",
+        "The rest of the Tuesday sync (rules, wallets, FAAB, emails) ran normally.",
+    ])
+    _send_email(to, subject, body, mock_mode=mock_mode)
 
 
 # ── Step 2: Execute weekly commissioner rules ─────────────────────────────────
@@ -359,6 +742,8 @@ def _build_commissioner_report(
     faab_rows:    list[dict],
     started_at:   datetime,
     db:           Session,
+    *,
+    settlement_skip_reason: str | None = None,
 ) -> str:
     league = db.query(League).filter(League.id == league_id).first()
     league_name = league.name if league else f"League {league_id}"
@@ -408,6 +793,8 @@ def _build_commissioner_report(
                 ["Team", "Before", "After", "Net P&L"],
                 rows, [26, 11, 11, 12],
             ))
+    elif settlement_skip_reason:
+        lines.append(f"  SKIPPED — {settlement_skip_reason}")
     else:
         lines.append("  (settlement step failed or no pending bets)")
 
@@ -475,6 +862,8 @@ def _build_gm_email(
     rule_execs: list,
     faab_rows:  list[dict],
     db:         Session,
+    *,
+    settlement_skip_reason: str | None = None,
 ) -> str:
     team = db.query(Team).filter(Team.id == team_id).first()
     if not team:
@@ -500,6 +889,8 @@ def _build_gm_email(
             lines.append(f"  Bet wallet after settlement: ${mv.balance_after:,.2f}")
         else:
             lines.append("  No bets placed this week.")
+    elif settlement_skip_reason:
+        lines.append(f"  SKIPPED — {settlement_skip_reason}")
     else:
         lines.append("  (settlement data unavailable)")
 
@@ -552,6 +943,8 @@ def _step_email_commissioner(
     faab_rows:    list[dict],
     started_at:   datetime,
     db:           Session,
+    *,
+    settlement_skip_reason: str | None = None,
 ) -> StepResult:
     t0 = time.monotonic()
     try:
@@ -559,6 +952,7 @@ def _step_email_commissioner(
             league_id, week, run_id, mock_mode, steps_so_far,
             settlement, rule_execs, frozen_teams, applied_topups, faab_rows,
             started_at, db,
+            settlement_skip_reason=settlement_skip_reason,
         )
         errors  = sum(1 for s in steps_so_far if not s.success)
         frozen  = len(frozen_teams)
@@ -615,6 +1009,7 @@ def _step_email_gms(
     db:         Session,
     *,
     mock_mode:  bool,
+    settlement_skip_reason: str | None = None,
 ) -> tuple[StepResult, int]:
     t0 = time.monotonic()
     sent  = 0
@@ -622,7 +1017,10 @@ def _step_email_gms(
     try:
         teams = db.query(Team).filter(Team.league_id == league_id).all()
         for team in teams:
-            body = _build_gm_email(team.id, week, settlement, rule_execs, faab_rows, db)
+            body = _build_gm_email(
+                team.id, week, settlement, rule_execs, faab_rows, db,
+                settlement_skip_reason=settlement_skip_reason,
+            )
             if not body:
                 continue
             subject = f"[Fantasy Beefs] Week {week} Summary — {team.team_name}"
@@ -705,6 +1103,7 @@ def run_tuesday_sync(
 
     # Accumulated data to pass between steps
     settlement   = None
+    settlement_skip_reason = None
     rule_execs   = []
     frozen_teams = []
     applied_topups = []
@@ -713,10 +1112,41 @@ def run_tuesday_sync(
     print(f"[TuesdaySync] Starting run {run_id}  league={league_id}  week={week}  "
           f"mock_email={'yes' if mock_mode else 'no'}")
 
-    # Step 1
-    r, settlement = _step_settle_bets(league_id, week, db)
+    # Step 0 — refresh live scores from Yahoo before settlement
+    r, refresh_result = _step_refresh_scores(league_id, week, db)
     steps.append(r)
-    print(f"  [1] settle_bets     — {'OK' if r.success else 'FAILED'}: {r.message}")
+    print(f"  [0] refresh_scores  — {'OK' if r.success else 'FAILED'}: {r.message}")
+
+    # Step 1 — GATE: settlement runs only when step 0 confirmed a full, final slate.
+    # This is the only step that breaks log-and-continue isolation — skipping
+    # settlement on a stale slate is a deliberate hard stop, not a soft failure.
+    if not refresh_result.settleable:
+        try:
+            _alert_settlement_skipped(
+                league_id, week, refresh_result.reason, mock_mode, db
+            )
+        except Exception as alert_exc:
+            import logging
+            logging.error(
+                "[TuesdaySync] Gate alert failed (settlement still skipped): %s",
+                alert_exc,
+            )
+        r = StepResult(
+            "settle_bets", False,
+            f"SKIPPED — scores not fresh: {refresh_result.reason}",
+            {"settleable": False, "skipped": True},
+            None, 0,
+        )
+        settlement = None
+        settlement_skip_reason = refresh_result.reason
+        steps.append(r)
+        print(f"  [1] settle_bets     — SKIPPED: {refresh_result.reason}")
+    else:
+        r, settlement = _step_settle_bets(league_id, week, db, mock_mode=mock_mode)
+        if r.data.get("db_guard_triggered"):
+            settlement_skip_reason = r.data.get("reason")
+        steps.append(r)
+        print(f"  [1] settle_bets     — {'OK' if r.success else 'FAILED'}: {r.message}")
 
     # Step 2
     r, rule_execs = _step_execute_rules(league_id, week, db)
@@ -743,6 +1173,7 @@ def run_tuesday_sync(
         league_id, week, run_id, mock_mode,
         steps, settlement, rule_execs, frozen_teams, applied_topups,
         faab_rows, started_at, db,
+        settlement_skip_reason=settlement_skip_reason,
     )
     steps.append(r)
     emails_sent = 1 if r.success else 0
@@ -763,6 +1194,7 @@ def run_tuesday_sync(
     r, n_gm = _step_email_gms(
         league_id, week, settlement, rule_execs, faab_rows, db,
         mock_mode=mock_mode,
+        settlement_skip_reason=settlement_skip_reason,
     )
     steps.append(r)
     emails_sent += n_gm
