@@ -315,6 +315,10 @@ class BeefStarter(Base):
     """Snapshot of both teams' staked players at challenge-issue time.
     Used by the per-bet kickoff lock to determine when each GM is locked."""
     __tablename__ = "beef_starters"
+    # beef_challenge_id must lead the tuple — the read-side query at
+    # beef_engine.py:758 filters on beef_challenge_id alone, so it needs
+    # that column first to use this constraint's index for the lookup.
+    __table_args__ = (UniqueConstraint("beef_challenge_id", "team_id", "player_id"),)
 
     id                = Column(Integer, primary_key=True, autoincrement=True)
     beef_challenge_id = Column(Integer, ForeignKey("beef_challenges.id"), nullable=False)

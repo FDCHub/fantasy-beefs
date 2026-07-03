@@ -429,6 +429,45 @@ def _find_shared_matchup(team_a_id: int, team_b_id: int, week: int, db: Session)
     )
 
 
+def _capture_beef_starters(
+    challenge_id:      int,
+    challenger_team_id: int,
+    challenged_team_id: int,
+    db:                Session,
+) -> None:
+    """Snapshot both teams' first-9-by-id roster players into beef_starters.
+    Called once after the BeefChallenge row has been committed and has an id.
+    Fewer than 9 rows per team is fine — write whatever exists.
+    Idempotent: a repeat call for the same challenge/team is a safe no-op —
+    existing (beef_challenge_id, team_id, player_id) rows are skipped, not
+    duplicated."""
+    for team_id in (challenger_team_id, challenged_team_id):
+        slots = (
+            db.query(Roster)
+            .filter(Roster.team_id == team_id)
+            .order_by(Roster.id)
+            .limit(N_START)
+            .all()
+        )
+        existing_player_ids = {
+            row.player_id
+            for row in db.query(BeefStarter.player_id).filter(
+                BeefStarter.beef_challenge_id == challenge_id,
+                BeefStarter.team_id           == team_id,
+            ).all()
+        }
+        for s in slots:
+            if s.player_id in existing_player_ids:
+                continue
+            db.add(BeefStarter(
+                beef_challenge_id = challenge_id,
+                team_id           = team_id,
+                player_id         = s.player_id,
+                nfl_team          = s.player.nfl_team,
+            ))
+    db.commit()
+
+
 def _place_beef_side(
     db:               Session,
     wallet:           Wallet,
