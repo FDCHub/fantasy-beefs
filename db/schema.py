@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     create_engine,
+    func,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
@@ -124,6 +125,26 @@ class Roster(Base):
 
     team   = relationship("Team",   back_populates="roster")
     player = relationship("Player", back_populates="rosters")
+
+
+class RosterSlot(Base):
+    """One row per team, player, and week. Insert-only — never
+    overwritten. Read by weekly_wrap.py and bet settlement to
+    answer 'what was true that week.'"""
+    __tablename__ = "roster_slots"
+    __table_args__ = (UniqueConstraint("team_id", "player_id", "week"),)
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    league_id  = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    team_id    = Column(Integer, ForeignKey("teams.id"),   nullable=False)
+    player_id  = Column(Integer, ForeignKey("players.id"), nullable=False)
+    week       = Column(Integer, nullable=False)
+    slot       = Column(String, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+    league = relationship("League")
+    team   = relationship("Team")
+    player = relationship("Player")
 
 
 class Matchup(Base):
