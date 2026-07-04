@@ -39,7 +39,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import json
 
 from db.schema import (
-    Bet, BeefChallenge, Matchup, Player, Projection, Roster,
+    Bet, BeefChallenge, BeefStarter, Matchup, Player, Projection, Roster,
     Transaction, Wallet, Team,
 )
 from odds.odds_engine_headless import (
@@ -54,10 +54,11 @@ from odds.odds_engine_headless import (
 
 N_START           = 9
 from config import CURRENT_SEASON as SEASON
-LOCK_SEASON       = 2026   # _nfl_lock_time only — drives NflSchedule lookup, independent of data season
+from config import LOCK_SEASON
 SOURCE            = "fantasypros"
 from wallet.wallet_manager import MIN_BET
 from betting.pool_engine import _nfl_lock_time
+from betting.per_bet_lock import is_bet_locked_for_gm
 from feed.league_feed import (
     log_challenge_issued,
     log_challenge_accepted,
@@ -173,6 +174,79 @@ def _fetch_starters_for_odds(
             .filter(Roster.team_id == team_id)
             .order_by(Roster.id)
             .limit(N_START)
+            .all()
+        )
+        for s in slots:
+            p = db.query(Projection).filter_by(
+                player_id=s.player_id, week=week, season=SEASON, source=SOURCE
+            ).first()
+            pts = p.projected_points if p else 0.0
+            starters_list.append(PlayerProj(
+                player_id        = s.player_id,
+                name             = s.player.name,
+                position         = s.player.position,
+                projected_points = pts,
+                injury_status    = p.injury_status if p else None,
+            ))
+            points_snapshot[str(s.player_id)] = pts
+
+    shared     = _find_shared_matchup(challenger_team_id, challenged_team_id, week, db)
+    shared_id  = shared.id if shared else None
+    ch_is_home = (shared.home_team_id == challenger_team_id) if shared else True
+
+    return OddsInputs(
+        challenger_team_id = challenger_team_id,
+        challenged_team_id = challenged_team_id,
+        ch_starters        = ch_starters,
+        cd_starters        = cd_starters,
+        prop_projected     = None,
+        prop_player_id     = None,
+        points_snapshot    = points_snapshot,
+        shared_matchup_id  = shared_id,
+        challenger_is_home = ch_is_home,
+    )
+
+
+def _fetch_starters_for_odds_from_snapshot(
+    bet_type:           str,
+    challenger_team_id: int,
+    challenged_team_id: int,
+    player_id:          int | None,
+    week:               int,
+    db:                 Session,
+    beef_challenge_id:  int,
+) -> OddsInputs:
+    """Same as _fetch_starters_for_odds, but reads the frozen BeefStarter
+    snapshot instead of live Roster. Used by respond_to_challenge(), where
+    the roster was already frozen into BeefStarter at issue time — unlike
+    issue_challenge(), where nothing is frozen yet and live Roster is still
+    correct.
+
+    Projections are still fetched fresh: the roster is locked, but the
+    projection is allowed to move — staleness_warning already exists to
+    flag exactly that kind of shift.
+    """
+    if bet_type == "prop":
+        # Prop bets never touch Roster or BeefStarter — nothing to freeze.
+        return _fetch_starters_for_odds(
+            bet_type, challenger_team_id, challenged_team_id, player_id, week, db
+        )
+
+    points_snapshot: dict[str, float] = {}
+
+    # straight | spread | over_under — all need the same starter lists
+    ch_starters: list[PlayerProj] = []
+    cd_starters: list[PlayerProj] = []
+    for team_id, starters_list in (
+        (challenger_team_id, ch_starters),
+        (challenged_team_id, cd_starters),
+    ):
+        slots = (
+            db.query(BeefStarter)
+            .filter(
+                BeefStarter.beef_challenge_id == beef_challenge_id,
+                BeefStarter.team_id           == team_id,
+            )
             .all()
         )
         for s in slots:
@@ -659,6 +733,7 @@ def issue_challenge(
     db.add(challenge)
     db.commit()
     db.refresh(challenge)
+    _capture_beef_starters(challenge.id, challenger_team_id, challenged_team_id, db)
     log_challenge_issued(challenge, db, trash_talk=trash_talk)
     return _to_out(challenge, direction="sent")
 
@@ -706,6 +781,38 @@ def respond_to_challenge(
         log_challenge_declined(challenge, db, trash_talk=trash_talk)
         return _to_out(challenge, direction="received")
 
+    # ── Per-bet kickoff lock (versus bets only) ──────────────────────────────
+    # Split beef_starters by frozen team_id — never re-queries live Roster.
+    # Runs before wallet verification, staleness check, and odds recompute —
+    # a locked challenge is rejected before any of that work runs, and before
+    # anything on the challenge object is mutated.
+    all_starters_raw = (
+        db.query(BeefStarter)
+        .filter(BeefStarter.beef_challenge_id == challenge.id)
+        .all()
+    )
+    # Dedup on (team_id, player_id) at read time — independent of the DB
+    # constraint; guards against any duplicate rows written before the
+    # constraint existed.
+    all_starters = list({(s.team_id, s.player_id): s for s in all_starters_raw}.values())
+    # Every frozen starter is included, even with a missing nfl_team — an
+    # empty string reaches is_bet_locked_for_gm's own fail-safe, which treats
+    # an unrecognized/unmapped team code as locked (protect the money) rather
+    # than silently dropping the player before the lock ever sees them.
+    ch_nfl_teams = [s.nfl_team or "" for s in all_starters
+                    if s.team_id == challenge.challenger_team_id]
+    cd_nfl_teams = [s.nfl_team or "" for s in all_starters
+                    if s.team_id == challenge.challenged_team_id]
+    raw_conn = db.connection()
+    ch_locked = is_bet_locked_for_gm(raw_conn, ch_nfl_teams, challenge.week)
+    cd_locked = is_bet_locked_for_gm(raw_conn, cd_nfl_teams, challenge.week)
+    if ch_locked or cd_locked:
+        locked_side = challenge.challenger_team.team_name if ch_locked else challenge.challenged_team.team_name
+        raise ValueError(
+            f"{locked_side}'s staked players are in a game that has already kicked off "
+            f"for week {challenge.week} — this challenge can no longer be accepted"
+        )
+
     # Guarantees every read from here through db.commit() sees one consistent snapshot
     # of the database, so a concurrent projection refresh or wallet transfer can't land
     # mid-sequence and produce a mismatched result.
@@ -719,9 +826,9 @@ def respond_to_challenge(
     week  = challenge.week
     # Single DB fetch — points_snapshot feeds the staleness check; full bundle
     # feeds the odds recompute below (no second fetch).
-    live_inputs = _fetch_starters_for_odds(
+    live_inputs = _fetch_starters_for_odds_from_snapshot(
         challenge.bet_type, challenge.challenger_team_id, challenge.challenged_team_id,
-        challenge.player_id, week, db,
+        challenge.player_id, week, db, beef_challenge_id=challenge.id,
     )
     stale = _check_staleness(challenge.projection_snapshot, live_inputs.points_snapshot)
     challenge.staleness_warning = 1 if stale else 0
