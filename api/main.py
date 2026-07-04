@@ -488,7 +488,13 @@ def projections(
 
 
 @app.post("/bets/place", response_model=BetOut, status_code=201)
-def place_bet(req: BetRequest, db: Session = Depends(get_db)):
+def place_bet(
+    req:          BetRequest,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_bet_funded),
+):
+    assert_own_wallet(req.wallet_id, current_user, db)
+
     matchup = db.query(Matchup).filter(Matchup.id == req.matchup_id).first()
     if not matchup:
         raise HTTPException(status_code=404, detail="Matchup not found")
@@ -509,47 +515,21 @@ def place_bet(req: BetRequest, db: Session = Depends(get_db)):
             detail="picked_team_id must be one of the two teams in this matchup",
         )
 
-    # Deduct balance
-    wallet.balance = round(wallet.balance - req.amount, 2)
+    # Odds are computed server-side by place_straight_bet() (Monte Carlo, same
+    # engine every other /bets/* route uses) — req.odds is never read here.
+    # Stake deduction, Bet-row creation (status="pending"), and the debit
+    # Transaction all happen inside place_straight_bet()/_place_bet(). This
+    # route never reads matchup.winner_team_id and never pays out — settle_week()
+    # is the only path that resolves a bet.
+    try:
+        result = place_straight_bet(
+            req.matchup_id, req.wallet_id, req.picked_team_id,
+            req.amount, matchup.week, db,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    # Create bet
-    bet = Bet(
-        matchup_id     = req.matchup_id,
-        wallet_id      = req.wallet_id,
-        picked_team_id = req.picked_team_id,
-        amount         = req.amount,
-        odds           = req.odds,
-        status         = "won" if req.picked_team_id == matchup.winner_team_id else "lost",
-        placed_at      = datetime.now(timezone.utc),
-        settled_at     = datetime.now(timezone.utc),
-    )
-    db.add(bet)
-    db.flush()
-
-    # Record transaction
-    db.add(Transaction(
-        wallet_id  = req.wallet_id,
-        amount     = -req.amount,
-        type       = "bet",
-        bet_id     = bet.id,
-        created_at = datetime.now(timezone.utc),
-    ))
-
-    # Pay out immediately if won
-    if bet.status == "won":
-        payout = round(req.amount * req.odds, 2)
-        wallet.balance = round(wallet.balance + payout, 2)
-        db.add(Transaction(
-            wallet_id  = req.wallet_id,
-            amount     = payout,
-            type       = "payout",
-            bet_id     = bet.id,
-            created_at = datetime.now(timezone.utc),
-        ))
-
-    db.commit()
-    db.refresh(bet)
-
+    bet    = db.query(Bet).filter(Bet.id == result.bet_id).first()
     picked = db.query(Team).filter(Team.id == req.picked_team_id).first()
     return BetOut(
         bet_id         = bet.id,
