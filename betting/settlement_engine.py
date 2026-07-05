@@ -14,17 +14,18 @@ On settlement:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from db.schema import Bet, BeefChallenge, Matchup, Projection, Roster, Transaction, Wallet, WeekSettlement
+from db.schema import Bet, BeefChallenge, Matchup, Projection, Roster, Transaction, Wallet
 from feed.league_feed import log_settlement_events
 
 from config import CURRENT_SEASON as SEASON
@@ -77,6 +78,7 @@ class SettlementReport:
     bets_lost:       int
     total_staked:    float
     total_payout:    float
+    already_settled: bool = False
     settlements:     list[BetSettlement]  = field(default_factory=list)
     wallet_movements: list[WalletMovement] = field(default_factory=list)
 
@@ -322,78 +324,44 @@ _EVALUATORS = {
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def _claim_week_settlement(
-    league_id: int,
-    week:      int,
-    existing:  WeekSettlement | None,
-    now:       datetime,
-    db:        Session,
-) -> None:
-    """
-    Atomically claim (league_id, week) as settled, committed on its own,
-    before the payout loop runs. WeekSettlement's UniqueConstraint(league_id,
-    week) is the real race-closing mechanism: if two callers both pass the
-    pre-flight check in settle_week() at nearly the same instant, only one
-    of their commits here can succeed — the other's INSERT collides on the
-    unique constraint, raises IntegrityError, and is converted below into the
-    same "already settled" ValueError the pre-flight check raises. The losing
-    caller never reaches the payout loop.
-
-    Known, accepted tradeoff (not an oversight): if the payout loop below
-    crashes partway through after this commit, the week will show as settled
-    even though not every bet was actually paid. There is no automated
-    crash-recovery for this today — if it happens, the commissioner must
-    manually check settlement completeness for the week and finish payouts
-    by hand. Tracked as a deferred item.
-    """
-    ws = existing or WeekSettlement(league_id=league_id, week=week)
-    ws.settled    = True
-    ws.settled_at = now
-    if existing is None:
-        db.add(ws)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        winner = db.query(WeekSettlement).filter(
-            WeekSettlement.league_id == league_id,
-            WeekSettlement.week      == week,
-        ).first()
-        when = f" at {winner.settled_at.isoformat()}" if winner and winner.settled_at else ""
-        raise ValueError(
-            f"Week {week} (league {league_id}) has already been settled{when} — "
-            f"settle_week() will not run again for an already-settled week."
-        )
-
-
 def settle_week(week: int, db: Session, league_id: int = 1) -> SettlementReport:
     """Settle all pending bets whose matchup is in the given week.
 
     Guarded by WeekSettlement(league_id, week) — independent of Bet.status.
-    Once a week is claimed settled here, this function refuses to run again
-    for it. Bet.status alone ("no pending bets left") used to be the only
-    guard; it no longer is — the WeekSettlement row is now authoritative,
-    and it is claimed before the payout loop runs, not after (see
-    _claim_week_settlement for why).
-    """
-    existing = db.query(WeekSettlement).filter(
-        WeekSettlement.league_id == league_id,
-        WeekSettlement.week      == week,
-    ).first()
-    if existing and existing.settled:
-        when = f" at {existing.settled_at.isoformat()}" if existing.settled_at else ""
-        raise ValueError(
-            f"Week {week} (league {league_id}) has already been settled{when} — "
-            f"settle_week() will not run again for an already-settled week."
-        )
+    Claimed atomically via a single INSERT ... ON CONFLICT DO NOTHING,
+    committed on its own before the payout loop runs. There is no pre-flight
+    SELECT: the INSERT's RETURNING clause is itself the check. If a row for
+    (league_id, week) already exists — no matter how close the timing —
+    this call's INSERT is a no-op, RETURNING yields nothing, and this call
+    returns immediately without touching a single bet or wallet.
 
+    Known, accepted tradeoff (not an oversight): if the payout loop below
+    crashes partway through after the claim commits, the week will show as
+    settled even though not every bet was actually paid. There is no
+    automated crash-recovery for this today — if it happens, the
+    commissioner must manually check settlement completeness for the week
+    and finish payouts by hand. Tracked as a deferred item.
+    """
     now = datetime.now(timezone.utc)
 
-    # Claim this week BEFORE touching a single bet or wallet. This commit is
-    # deliberately its own transaction, separate from the payout loop below —
-    # see _claim_week_settlement's docstring for the race it closes and the
-    # tradeoff it accepts.
-    _claim_week_settlement(league_id, week, existing, now, db)
+    claimed = db.execute(
+        text("""
+            INSERT INTO week_settlements (league_id, week, settled, settled_at)
+            VALUES (:league_id, :week, :settled, :settled_at)
+            ON CONFLICT (league_id, week) DO NOTHING
+            RETURNING id
+        """),
+        {"league_id": league_id, "week": week, "settled": True, "settled_at": now},
+    ).fetchone()
+    db.commit()
+
+    if claimed is None:
+        logging.info(
+            "[settle_week] week=%s league_id=%s already claimed by another caller — skipping",
+            week, league_id,
+        )
+        return SettlementReport(week=week, total_bets=0, bets_won=0, bets_lost=0,
+                                total_staked=0.0, total_payout=0.0, already_settled=True)
 
     pending = (
         db.query(Bet)
