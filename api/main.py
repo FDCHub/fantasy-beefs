@@ -84,6 +84,7 @@ from notifications.tuesday_sync import (
     get_run_detail,
     get_run_history,
     run_tuesday_sync,
+    _assert_slate_fresh,
 )
 from reports.weekly_wrap import (
     WrapUpOut,
@@ -868,7 +869,15 @@ def settle(
 ):
     if not 1 <= week <= 17:
         raise HTTPException(status_code=400, detail="week must be 1–17")
-    report = settle_week(week, db)
+
+    # Single-league deployment today — matches settle_week()'s own default
+    # and the LEAGUE_ID=1 convention used throughout this codebase.
+    league_id = 1
+    is_fresh, reason, _ = _assert_slate_fresh(league_id, week, db, check_refreshed=True)
+    if not is_fresh:
+        raise HTTPException(status_code=400, detail=reason)
+
+    report = settle_week(week, db, league_id=league_id)
     return SettlementOut(
         week             = report.week,
         total_bets       = report.total_bets,

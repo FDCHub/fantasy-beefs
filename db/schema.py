@@ -865,6 +865,24 @@ class PoolPot(Base):
     league = relationship("League")
 
 
+class WeekSettlement(Base):
+    """One row per league per week — tracks whether settle_week() has already
+    run for that week. Independent of Bet.status; this is the run-once guard
+    for bet settlement, modeled on PoolPot's collection/settlement pattern."""
+    __tablename__ = "week_settlements"
+    __table_args__ = (
+        UniqueConstraint("league_id", "week", name="uq_week_settlement_league_week"),
+    )
+
+    id         = Column(Integer,  primary_key=True, autoincrement=True)
+    league_id  = Column(Integer,  ForeignKey("leagues.id"))
+    week       = Column(Integer)
+    settled    = Column(Boolean,  default=False)
+    settled_at = Column(DateTime(timezone=True), nullable=True)
+
+    league = relationship("League")
+
+
 class PoolBetPick(Base):
     """One pick per team per bet_type per week (all 4 pool bets)."""
     __tablename__ = "pool_bet_picks"
