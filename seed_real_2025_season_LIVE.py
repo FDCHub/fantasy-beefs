@@ -70,6 +70,7 @@ from db.schema import (
     SessionLocal, StripeAuditLog, Team, Transaction, TuesdaySyncRun,
     User, Wallet, WeeklyWrapUp, WrapUpGmEdition,
 )
+from yahoo_scoreboard import fetch_week_scoreboard
 
 # ── Configuration (identical to dry run) ─────────────────────────────────────
 
@@ -205,25 +206,6 @@ def _slot_sort_key(slot: DryRosterSlot) -> tuple[int, str]:
     return (idx, slot.player.name)
 
 
-def _get_team_score(team_obj) -> float:
-    for pts_attr in ("team_points", "points", "team_projected_points"):
-        pts = getattr(team_obj, pts_attr, None)
-        if pts is None:
-            continue
-        for sub in ("total", "season_total", "value", "week"):
-            sub_val = getattr(pts, sub, None)
-            if sub_val is not None:
-                try:
-                    return float(_s(sub_val))
-                except (ValueError, TypeError):
-                    pass
-        try:
-            return float(_s(pts))
-        except (ValueError, TypeError):
-            pass
-    return 0.0
-
-
 # ── Yahoo fetch functions (ported verbatim from dry run) ──────────────────────
 
 def _fetch_scoring(query: YahooFantasySportsQuery) -> DryScoringSettings:
@@ -319,48 +301,32 @@ def _fetch_matchups(query: YahooFantasySportsQuery) -> list[DryMatchup]:
     matchups: list[DryMatchup] = []
     for week in range(1, MAX_WEEK + 1):
         try:
-            scoreboard   = query.get_league_scoreboard_by_week(week)
-            raw_matchups = getattr(scoreboard, "matchups", None)
-            if raw_matchups is None:
+            week_data = fetch_week_scoreboard(query, week)
+            if week_data is None:
                 print(f"    Week {week:>2}: no matchups — stopping.", flush=True)
                 break
-            try:
-                raw_list = list(raw_matchups) if not isinstance(raw_matchups, list) else raw_matchups
-            except TypeError:
-                raw_list = []
-            if not raw_list:
+            if not week_data:
                 print(f"    Week {week:>2}: empty — stopping.", flush=True)
                 break
 
-            week_count = 0
-            for m in raw_list:
-                teams = getattr(m, "teams", None) or []
-                try:
-                    teams = list(teams) if not isinstance(teams, list) else teams
-                except TypeError:
-                    teams = []
-                if len(teams) < 2:
-                    print(f"    Week {week:>2}: matchup with <2 teams, skipping", flush=True)
-                    continue
-                t0_id  = int(_s(getattr(teams[0], "team_id", "0")))
-                t1_id  = int(_s(getattr(teams[1], "team_id", "0")))
-                t0_pts = _get_team_score(teams[0])
-                t1_pts = _get_team_score(teams[1])
-                if t0_id <= t1_id:
-                    home_id, away_id, home_pts, away_pts = t0_id, t1_id, t0_pts, t1_pts
-                else:
-                    home_id, away_id, home_pts, away_pts = t1_id, t0_id, t1_pts, t0_pts
-                winner_id = (
-                    home_id if home_pts > away_pts else
-                    away_id if away_pts > home_pts else
-                    None
-                )
+            for m in week_data:
+                # winner_team_id is set by Yahoo when final and not tied;
+                # fall back to score comparison for ties or if the key is absent.
+                winner_id = m["winner_team_id"]
+                if winner_id is None:
+                    if m["home_score"] > m["away_score"]:
+                        winner_id = m["home_team_id"]
+                    elif m["away_score"] > m["home_score"]:
+                        winner_id = m["away_team_id"]
                 matchups.append(DryMatchup(
-                    week=week, home_team_id=home_id, away_team_id=away_id,
-                    home_score=home_pts, away_score=away_pts, winner_id=winner_id,
+                    week=week,
+                    home_team_id=m["home_team_id"],
+                    away_team_id=m["away_team_id"],
+                    home_score=m["home_score"],
+                    away_score=m["away_score"],
+                    winner_id=winner_id,
                 ))
-                week_count += 1
-            print(f"    Week {week:>2}: {week_count} matchup(s)", flush=True)
+            print(f"    Week {week:>2}: {len(week_data)} matchup(s)", flush=True)
 
         except Exception as e:
             print(f"    Week {week:>2}: {e} — stopping.", flush=True)
