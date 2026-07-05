@@ -13,3 +13,6 @@ __pycache__/
 
 # credential rotation output â€” contains a live DB password, never commit
 rotate_db_password_output.txt
+
+# Claude Code local permission settings — machine-specific, may contain credentials
+.claude/settings.local.json
