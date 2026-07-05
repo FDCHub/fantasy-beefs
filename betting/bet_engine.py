@@ -187,8 +187,6 @@ def place_straight_bet(
     wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
     if not wallet:
         raise ValueError(f"Wallet {wallet_id} not found")
-    if wallet.balance < amount:
-        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
 
     _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
     _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
@@ -242,8 +240,6 @@ def place_spread_bet(
     wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
     if not wallet:
         raise ValueError(f"Wallet {wallet_id} not found")
-    if wallet.balance < amount:
-        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
 
     _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
     _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
@@ -300,8 +296,6 @@ def place_over_under(
     wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
     if not wallet:
         raise ValueError(f"Wallet {wallet_id} not found")
-    if wallet.balance < amount:
-        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
 
     _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
     _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
@@ -351,8 +345,6 @@ def place_prop_bet(
     wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
     if not wallet:
         raise ValueError(f"Wallet {wallet_id} not found")
-    if wallet.balance < amount:
-        raise ValueError(f"Insufficient balance: ${wallet.balance:.2f} < ${amount:.2f}")
 
     home_player, home_proj = _top_starter(matchup.home_team_id, week, db)
     away_player, away_proj = _top_starter(matchup.away_team_id, week, db)
