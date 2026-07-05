@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import Bet, Matchup, Player, Projection, Roster, Transaction, Wallet
+from betting.exceptions import NotFoundError, BetValidationError
 from wallet.wallet_manager import validate_bet_amount
 from odds.odds_engine_headless import (
     N_SIMS,
@@ -180,13 +181,13 @@ def place_straight_bet(
     """Pick a team to win outright."""
     matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
     if not matchup:
-        raise ValueError(f"Matchup {matchup_id} not found")
+        raise NotFoundError(f"Matchup {matchup_id} not found")
     if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
-        raise ValueError("picked_team_id must be one of the two teams in this matchup")
+        raise BetValidationError("picked_team_id must be one of the two teams in this matchup")
 
     wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
     if not wallet:
-        raise ValueError(f"Wallet {wallet_id} not found")
+        raise NotFoundError(f"Wallet {wallet_id} not found")
 
     _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
     _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
@@ -233,13 +234,13 @@ def place_spread_bet(
     """
     matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
     if not matchup:
-        raise ValueError(f"Matchup {matchup_id} not found")
+        raise NotFoundError(f"Matchup {matchup_id} not found")
     if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
-        raise ValueError("picked_team_id must be one of the two teams in this matchup")
+        raise BetValidationError("picked_team_id must be one of the two teams in this matchup")
 
     wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
     if not wallet:
-        raise ValueError(f"Wallet {wallet_id} not found")
+        raise NotFoundError(f"Wallet {wallet_id} not found")
 
     _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
     _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
@@ -287,15 +288,15 @@ def place_over_under(
 ) -> BetResult:
     """Bet the combined score is over/under a total line."""
     if pick not in ("over", "under"):
-        raise ValueError("pick must be 'over' or 'under'")
+        raise BetValidationError("pick must be 'over' or 'under'")
 
     matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
     if not matchup:
-        raise ValueError(f"Matchup {matchup_id} not found")
+        raise NotFoundError(f"Matchup {matchup_id} not found")
 
     wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
     if not wallet:
-        raise ValueError(f"Wallet {wallet_id} not found")
+        raise NotFoundError(f"Wallet {wallet_id} not found")
 
     _h_slots = db.query(Roster).filter(Roster.team_id == matchup.home_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
     _a_slots = db.query(Roster).filter(Roster.team_id == matchup.away_team_id).order_by(Roster.id).limit(_STARTER_SLOTS).all()
@@ -338,13 +339,13 @@ def place_prop_bet(
     """Top projected starter vs top projected starter — pick which team's player scores more."""
     matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
     if not matchup:
-        raise ValueError(f"Matchup {matchup_id} not found")
+        raise NotFoundError(f"Matchup {matchup_id} not found")
     if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
-        raise ValueError("picked_team_id must be one of the two teams in this matchup")
+        raise BetValidationError("picked_team_id must be one of the two teams in this matchup")
 
     wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
     if not wallet:
-        raise ValueError(f"Wallet {wallet_id} not found")
+        raise NotFoundError(f"Wallet {wallet_id} not found")
 
     home_player, home_proj = _top_starter(matchup.home_team_id, week, db)
     away_player, away_proj = _top_starter(matchup.away_team_id, week, db)

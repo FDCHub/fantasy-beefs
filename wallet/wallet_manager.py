@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import Bet, BeefChallenge, Transaction, Wallet, Team
+from betting.exceptions import BetValidationError
 
 # ── Bet-sizing constants (imported by bet_engine) ─────────────────────────────
 MIN_BET     = 5.00
@@ -250,12 +251,12 @@ def validate_bet_amount(amount: float, wallet_balance: float) -> None:
     Called by bet_engine before any bet is placed.
     """
     if amount < MIN_BET:
-        raise ValueError(
+        raise BetValidationError(
             f"Bet amount ${amount:.2f} is below the minimum of ${MIN_BET:.2f}"
         )
     max_allowed = round(wallet_balance * MAX_BET_PCT, 2)
     if amount > max_allowed:
-        raise ValueError(
+        raise BetValidationError(
             f"Bet amount ${amount:.2f} exceeds the maximum of "
             f"{MAX_BET_PCT:.0%} of your balance (${max_allowed:.2f})"
         )

@@ -38,6 +38,7 @@ from betting.bet_engine import (
     place_over_under,
     place_prop_bet,
 )
+from betting.exceptions import NotFoundError, BetValidationError
 from betting.settlement_engine import settle_week, SettlementReport
 from beefs.beef_engine import (
     issue_challenge, respond_to_challenge, counter_challenge,
@@ -527,6 +528,10 @@ def place_bet(
             req.matchup_id, req.wallet_id, req.picked_team_id,
             req.amount, matchup.week, db,
         )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except BetValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -764,6 +769,10 @@ def bet_straight(
             req.matchup_id, req.wallet_id, req.picked_team_id,
             req.amount, req.week, db,
         )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except BetValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _bet_out(result)
@@ -781,6 +790,10 @@ def bet_spread(
             req.matchup_id, req.wallet_id, req.picked_team_id,
             req.spread, req.amount, req.week, db,
         )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except BetValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _bet_out(result)
@@ -798,6 +811,10 @@ def bet_over_under(
             req.matchup_id, req.wallet_id, req.total_line,
             req.pick, req.amount, req.week, db,
         )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except BetValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _bet_out(result)
@@ -815,6 +832,10 @@ def bet_prop(
             req.matchup_id, req.wallet_id, req.picked_team_id,
             req.amount, req.week, db,
         )
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except BetValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _bet_out(result)
