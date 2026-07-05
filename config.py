@@ -3,3 +3,4 @@
 # projection data in production right now. Bump to 2026 once real 2026
 # projections are seeded — must happen before Week 1 kickoff.
 CURRENT_SEASON = 2025
+LOCK_SEASON = 2026  # NFL schedule season for kickoff-lock checks; independent of CURRENT_SEASON (projection data year)
