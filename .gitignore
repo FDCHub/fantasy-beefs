@@ -10,3 +10,6 @@ db/fantasy.db
 __pycache__/
 *.pyc
 *.pyo
+
+# credential rotation output — contains a live DB password, never commit
+rotate_db_password_output.txt
