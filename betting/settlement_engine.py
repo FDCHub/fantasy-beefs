@@ -324,7 +324,7 @@ _EVALUATORS = {
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def settle_week(week: int, db: Session, league_id: int = 1) -> SettlementReport:
+def settle_week(week: int, db: Session, league_id: int) -> SettlementReport:
     """Settle all pending bets whose matchup is in the given week.
 
     Guarded by WeekSettlement(league_id, week) — independent of Bet.status.
@@ -502,7 +502,7 @@ if __name__ == "__main__":
     week = int(sys.argv[1]) if len(sys.argv) > 1 else 1
 
     with SessionLocal() as db:
-        report = settle_week(week, db)
+        report = settle_week(week, db, league_id=1)  # dev CLI script — kept working as-is, not a design decision
 
     if report.total_bets == 0:
         print(f"\nNo pending bets found for week {week}.")

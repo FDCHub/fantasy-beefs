@@ -473,7 +473,7 @@ if __name__ == "__main__":
         # ── Settle week 3 ─────────────────────────────────────────────────────
         print(f"\n{'─'*70}")
         print(f"Settling week {WEEK}...\n")
-        report = settle_week(WEEK, db)
+        report = settle_week(WEEK, db, league_id=1)  # demo script — kept working as-is, not a design decision
         if report.total_bets == 0:
             print(f"  No pending bets for week {WEEK}.")
         else:

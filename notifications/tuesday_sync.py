@@ -520,7 +520,7 @@ def _step_settle_bets(
     from betting.settlement_engine import settle_week
     t0 = time.monotonic()
     try:
-        report = settle_week(week, db)
+        report = settle_week(week, db, league_id=league_id)
         ms     = int((time.monotonic() - t0) * 1000)
         msg    = (f"Settled {report.total_bets} bets: "
                   f"{report.bets_won} won, {report.bets_lost} lost")
