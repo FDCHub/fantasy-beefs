@@ -84,17 +84,17 @@ def _get_wallet(wallet_id: int, db: Session) -> Wallet:
     return w
 
 
-def _challenge_reserved(team_id: int, db: Session) -> float:
-    """Sum of stakes in pending/countered BeefChallenges issued by this team (soft-locked until resolved)."""
-    rows = (
-        db.query(BeefChallenge)
-        .filter(
-            BeefChallenge.challenger_team_id == team_id,
-            BeefChallenge.status.in_(["pending", "countered"]),
-        )
-        .all()
+def _challenge_reserved(team_id: int, db: Session, exclude_challenge_id: int | None = None) -> float:
+    query = db.query(BeefChallenge).filter(
+        BeefChallenge.challenger_team_id == team_id,
+        BeefChallenge.status.in_(["pending", "countered"]),
     )
-    return round(sum(c.amount for c in rows), 2)
+    if exclude_challenge_id is not None:
+        query = query.filter(BeefChallenge.id != exclude_challenge_id)
+    total = 0.0
+    for c in query.all():
+        total += c.countered_amount if c.countered_amount is not None else c.amount
+    return round(total, 2)
 
 
 def _wallet_state(w: Wallet, db: Session) -> WalletState:

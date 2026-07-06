@@ -56,7 +56,7 @@ N_START           = 9
 from config import CURRENT_SEASON as SEASON
 from config import LOCK_SEASON
 SOURCE            = "fantasypros"
-from wallet.wallet_manager import MIN_BET
+from wallet.wallet_manager import MIN_BET, _challenge_reserved
 from betting.pool_engine import _nfl_lock_time
 from betting.per_bet_lock import is_bet_locked_for_gm
 from feed.league_feed import (
@@ -608,13 +608,7 @@ def _verify_wallet_available(
     wallet       = db.query(Wallet).filter(Wallet.team_id == team_id).first()
     pending_bets = db.query(Bet).filter(Bet.wallet_id == wallet.id, Bet.status == "pending").all()
     bet_exposure = round(sum(b.amount for b in pending_bets), 2)
-    ch_query     = db.query(BeefChallenge).filter(
-        BeefChallenge.challenger_team_id == team_id,
-        BeefChallenge.status.in_(["pending", "countered"]),
-    )
-    if exclude_challenge_id is not None:
-        ch_query = ch_query.filter(BeefChallenge.id != exclude_challenge_id)
-    ch_reserved = round(sum(c.amount for c in ch_query.all()), 2)
+    ch_reserved = _challenge_reserved(team_id, db, exclude_challenge_id)
     available   = round(wallet.balance - bet_exposure - ch_reserved, 2)
     if available < effective_amount:
         raise ValueError(
@@ -681,11 +675,7 @@ def issue_challenge(
         Bet.wallet_id == challenger_wallet.id, Bet.status == "pending"
     ).all()
     bet_exposure       = round(sum(b.amount for b in pending_bets), 2)
-    pending_challenges = db.query(BeefChallenge).filter(
-        BeefChallenge.challenger_team_id == challenger_team_id,
-        BeefChallenge.status.in_(["pending", "countered"]),
-    ).all()
-    challenge_reserved = round(sum(c.amount for c in pending_challenges), 2)
+    challenge_reserved = _challenge_reserved(challenger_team_id, db)
     available          = round(challenger_wallet.balance - bet_exposure - challenge_reserved, 2)
     if available < amount:
         raise ValueError(
@@ -949,11 +939,7 @@ def counter_challenge(
         Bet.wallet_id == cd_wallet.id, Bet.status == "pending"
     ).all()
     cd_bet_exposure       = round(sum(b.amount for b in cd_pending_bets), 2)
-    cd_pending_challenges = db.query(BeefChallenge).filter(
-        BeefChallenge.challenger_team_id == challenge.challenged_team_id,
-        BeefChallenge.status.in_(["pending", "countered"]),
-    ).all()
-    cd_challenge_reserved = round(sum(c.amount for c in cd_pending_challenges), 2)
+    cd_challenge_reserved = _challenge_reserved(challenge.challenged_team_id, db)
     cd_available          = round(cd_wallet.balance - cd_bet_exposure - cd_challenge_reserved, 2)
     if cd_available < countered_amount:
         raise ValueError(

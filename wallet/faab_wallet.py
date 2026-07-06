@@ -47,6 +47,7 @@ from db.deps import get_db
 from auth.jwt_auth import get_current_gm
 from payments.stripe_connect import get_buyin_gate
 from wallet.wallet_manager import deposit as wm_deposit
+from wallet.wallet_manager import _challenge_reserved
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -214,11 +215,7 @@ def _build_state(fw: FaabWallet, db: Session) -> FaabWalletState:
         Bet.wallet_id == bwallet.id, Bet.status == "pending"
     ).all()
     pending_exp        = round(sum(b.amount for b in open_bets), 2)
-    pending_challenges = db.query(BeefChallenge).filter(
-        BeefChallenge.challenger_team_id == fw.team_id,
-        BeefChallenge.status.in_(["pending", "countered"]),
-    ).all()
-    ch_reserved = round(sum(c.amount for c in pending_challenges), 2)
+    ch_reserved = _challenge_reserved(fw.team_id, db)
 
     return FaabWalletState(
         faab_wallet_id          = fw.id,
@@ -655,11 +652,7 @@ def transfer(
             Bet.wallet_id == bet_wallet.id, Bet.status == "pending"
         ).all()
         pending_exp        = round(sum(b.amount for b in open_bets), 2)
-        pending_challenges = db.query(BeefChallenge).filter(
-            BeefChallenge.challenger_team_id == team_id,
-            BeefChallenge.status.in_(["pending", "countered"]),
-        ).all()
-        ch_reserved = round(sum(c.amount for c in pending_challenges), 2)
+        ch_reserved = _challenge_reserved(team_id, db)
         available   = round(bet_wallet.balance - pending_exp - ch_reserved, 2)
         if amount > available:
             raise ValueError(
