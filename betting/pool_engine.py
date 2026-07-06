@@ -238,7 +238,10 @@ def collect_weekly_entries(league_id: int, week: int, db: Session) -> PoolEntryR
     for team in teams:
         wallet = db.query(Wallet).filter(Wallet.team_id == team.id).first()
         if not wallet:
-            continue
+            raise ValueError(
+                f"Team {team.id} in league {league_id} has no wallet — "
+                f"cannot collect pool entry. Every team must have a wallet."
+            )
         wallet.balance = round(wallet.balance - cfg.weekly_entry, 2)
         db.add(Transaction(
             wallet_id  = wallet.id,
@@ -256,6 +259,7 @@ def collect_weekly_entries(league_id: int, week: int, db: Session) -> PoolEntryR
     pot.worst_beat_rollover_amount = accumulated_rollover
     pot.entries_collected          = True
     pot.settled                    = False
+    pot.total_pot                  = total_pot
     if pot.id is None:
         db.add(pot)
 
@@ -479,14 +483,27 @@ def settle_pool(league_id: int, week: int, db: Session) -> PoolSettlementResult:
     if num_teams == 0:
         raise ValueError(f"No teams found in league {league_id}")
 
-    total_pot     = round(cfg.weekly_entry * num_teams, 2)
-    per_bet_share = round(total_pot / 3, 2)
-    now           = datetime.now(timezone.utc)
+    # Read the dollar total collection actually persisted — do not recompute
+    # weekly_entry * num_teams here. That recompute paid out for every team
+    # in the league, including any that were never debited at collection
+    # (walletless, or added after collection ran). total_pot is the frozen
+    # dollar fact from collect_weekly_entries(); weekly_entry itself could
+    # also have changed since collection, which this read avoids re-reading.
+    if pot.total_pot is None:
+        raise ValueError(
+            f"Pool pot for league {league_id} week {week} has no collected total — "
+            f"collection never ran or predates this fix. Cannot settle."
+        )
+    total_pot = pot.total_pot
+    now       = datetime.now(timezone.utc)
 
     def _credit(team_id: int, amount: float, note: str) -> None:
         wallet = db.query(Wallet).filter(Wallet.team_id == team_id).first()
         if not wallet:
-            return
+            raise ValueError(
+                f"Team {team_id} in league {league_id} has no wallet — "
+                f"cannot pay pool payout. Every team must have a wallet."
+            )
         wallet.balance = round(wallet.balance + amount, 2)
         db.add(Transaction(
             wallet_id  = wallet.id,
@@ -495,22 +512,50 @@ def settle_pool(league_id: int, week: int, db: Session) -> PoolSettlementResult:
             created_at = now,
         ))
 
-    # ── Pot 1: Biggest Winner ─────────────────────────────────────────────────
-    bw_results    = _biggest_winner(league_id, week, db)
-    num_bw        = len(bw_results)
-    bw_each       = round(per_bet_share / num_bw, 2) if num_bw else 0.0
-    bw_winner_id  = bw_results[0][0] if bw_results else None
-    bw_wins       = bw_results[0][1] if bw_results else 0.0
+    def _split_even(team_ids: list[int], total: float) -> dict[int, float]:
+        """
+        Split `total` evenly among team_ids; each gets round(total / n, 2),
+        and the first team_id (ascending) absorbs the rounding remainder so
+        the amounts sum exactly to `total` — no leaked or invented penny.
+        """
+        ordered = sorted(team_ids)
+        n = len(ordered)
+        if n == 0:
+            return {}
+        share = round(total / n, 2)
+        amounts = {tid: share for tid in ordered}
+        amounts[ordered[0]] = round(total - share * (n - 1), 2)
+        return amounts
 
-    for tid, _ in bw_results:
-        _credit(tid, bw_each, f"Biggest Winner pool payout week {week}")
+    # Penny-exact three-way pot split. Three independently-rounded shares
+    # don't sum back to total_pot (each rounds separately and either leaks
+    # or invents a penny). bw_share and wb_share round normally; st_share
+    # absorbs the exact remainder — Special Teams (last pot in settlement
+    # order) takes the odd penny here. Per Fraser's rule the odd penny goes
+    # to a pot's winner, which happens naturally since each pot pays its
+    # own winner below.
+    share    = round(total_pot / 3, 2)
+    bw_share = share
+    wb_share = share
+    st_share = round(total_pot - bw_share - wb_share, 2)
+
+    # ── Pot 1: Biggest Winner ─────────────────────────────────────────────────
+    bw_results   = _biggest_winner(league_id, week, db)
+    num_bw       = len(bw_results)
+    bw_each      = round(bw_share / num_bw, 2) if num_bw else 0.0
+    bw_winner_id = bw_results[0][0] if bw_results else None
+    bw_wins      = bw_results[0][1] if bw_results else 0.0
+
+    bw_amounts = _split_even([tid for tid, _ in bw_results], bw_share)
+    for tid, amt in bw_amounts.items():
+        _credit(tid, amt, f"Biggest Winner pool payout week {week}")
 
     bw_winner_team = db.query(Team).filter(Team.id == bw_winner_id).first() if bw_winner_id else None
     biggest_winner_info = {
         "winner_team_id":  bw_winner_id,
         "winner_name":     bw_winner_team.team_name if bw_winner_team else None,
         "record_vs_field": bw_wins,
-        "payout":          round(bw_each * num_bw, 2),
+        "payout":          bw_share,
     }
 
     # ── Pot 2: Worst Beat ─────────────────────────────────────────────────────
@@ -524,22 +569,24 @@ def settle_pool(league_id: int, week: int, db: Session) -> PoolSettlementResult:
     num_correct = len(correct_preds)
 
     existing_rollover   = round(pot.worst_beat_rollover_amount, 2)
-    wb_total_pool       = round(per_bet_share + existing_rollover, 2)
+    wb_total_pool       = round(wb_share + existing_rollover, 2)
     wb_payout_each      = 0.0
     wb_rolled_over      = 0.0
 
     if num_correct > 0:
         wb_payout_each = round(wb_total_pool / num_correct, 2)
-        for pred in correct_preds:
-            _credit(pred.team_id, wb_payout_each, f"Worst Beat prediction payout week {week}")
+        wb_amounts = _split_even([pred.team_id for pred in correct_preds], wb_total_pool)
+        for tid, amt in wb_amounts.items():
+            _credit(tid, amt, f"Worst Beat prediction payout week {week}")
         pot.worst_beat_rollover_amount = 0.0
     elif bool(cfg.worst_beat_rollover):
         pot.worst_beat_rollover_amount = wb_total_pool
         wb_rolled_over = wb_total_pool
     else:
         split_each = round(wb_total_pool / num_teams, 2)
-        for team in teams:
-            _credit(team.id, split_each, f"Worst Beat no-winner split week {week}")
+        wb_split_amounts = _split_even([team.id for team in teams], wb_total_pool)
+        for tid, amt in wb_split_amounts.items():
+            _credit(tid, amt, f"Worst Beat no-winner split week {week}")
         pot.worst_beat_rollover_amount = 0.0
 
     worst_beat_info = {
@@ -556,10 +603,11 @@ def settle_pool(league_id: int, week: int, db: Session) -> PoolSettlementResult:
     max_st     = max(sc for _, sc in st_scores)
     st_winners = [(tid, sc) for tid, sc in st_scores if sc == max_st]
     num_st     = len(st_winners)
-    st_each    = round(per_bet_share / num_st, 2) if num_st else 0.0
+    st_each    = round(st_share / num_st, 2) if num_st else 0.0
 
-    for tid, _ in st_winners:
-        _credit(tid, st_each, f"Special Teams Supremacy payout week {week}")
+    st_amounts = _split_even([tid for tid, _ in st_winners], st_share)
+    for tid, amt in st_amounts.items():
+        _credit(tid, amt, f"Special Teams Supremacy payout week {week}")
 
     st_winner_id   = st_winners[0][0] if st_winners else None
     st_winner_team = db.query(Team).filter(Team.id == st_winner_id).first() if st_winner_id else None
@@ -571,7 +619,7 @@ def settle_pool(league_id: int, week: int, db: Session) -> PoolSettlementResult:
         "k_pts":          st_k,
         "def_pts":        st_def,
         "total_pts":      round(max_st, 2),
-        "payout":         round(st_each * num_st, 2),
+        "payout":         st_share,
     }
 
     # ── Mark settled ──────────────────────────────────────────────────────────
@@ -579,16 +627,17 @@ def settle_pool(league_id: int, week: int, db: Session) -> PoolSettlementResult:
     pot.settled_at = now
     db.commit()
 
+    # wb_total_pool is always fully distributed except in the rollover
+    # branch (where it carries to next week's pot instead) — _split_even
+    # guarantees the credited amounts sum exactly to wb_total_pool, so this
+    # is exact, not a re-multiplication of a rounded per-winner figure.
     wb_distributed = 0.0
     if num_correct > 0:
-        wb_distributed = round(wb_payout_each * num_correct, 2)
+        wb_distributed = wb_total_pool
     elif not bool(cfg.worst_beat_rollover):
         wb_distributed = wb_total_pool
 
-    total_distributed = round(
-        round(bw_each * num_bw, 2) + wb_distributed + round(st_each * num_st, 2),
-        2,
-    )
+    total_distributed = round(bw_share + wb_distributed + st_share, 2)
 
     return PoolSettlementResult(
         week               = week,

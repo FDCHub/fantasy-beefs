@@ -858,6 +858,7 @@ class PoolPot(Base):
     week                       = Column(Integer)
     worst_beat_rollover_amount = Column(Float,   default=0.0)
     entries_collected          = Column(Boolean,  default=False)
+    total_pot                  = Column(Float,   nullable=True)
     settled                    = Column(Boolean,  default=False)
     settled_at                 = Column(DateTime(timezone=True), nullable=True)
     lock_time                  = Column(DateTime(timezone=True), nullable=True)
