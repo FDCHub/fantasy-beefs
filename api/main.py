@@ -1101,6 +1101,7 @@ class ChallengeOut_API(BaseModel):
     challenger_bet_id:    Optional[int]
     challenged_bet_id:    Optional[int]
     countered_amount:     Optional[float] = None
+    schedule_not_ready:   bool = False
 
 
 class AcceptResultOut(BaseModel):

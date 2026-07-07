@@ -705,7 +705,12 @@ def get_pool_week(league_id: int, week: int, db: Session) -> PoolWeekOut:
         PoolPot.week      == week,
     ).first()
 
-    lock_dt = (pot.lock_time if pot and pot.lock_time else _nfl_lock_time(league.season, week))
+    try:
+        lock_dt = (pot.lock_time if pot and pot.lock_time else _nfl_lock_time(league.season, week))
+    except ScheduleNotReadyError:
+        raise ValueError(
+            f"Week {week}'s schedule isn't ready yet — pool bets can't be viewed until it is"
+        )
     now     = datetime.now(timezone.utc)
     locked  = now >= lock_dt.astimezone(timezone.utc)
 
@@ -780,7 +785,12 @@ def submit_pool_pick(
     pot = db.query(PoolPot).filter(
         PoolPot.league_id == league_id, PoolPot.week == week,
     ).first()
-    lock_dt = (pot.lock_time if pot and pot.lock_time else _nfl_lock_time(league.season, week))
+    try:
+        lock_dt = (pot.lock_time if pot and pot.lock_time else _nfl_lock_time(league.season, week))
+    except ScheduleNotReadyError:
+        raise ValueError(
+            f"Week {week}'s schedule isn't ready yet — pool picks can't be submitted until it is"
+        )
     if datetime.now(timezone.utc) >= lock_dt.astimezone(timezone.utc):
         raise ValueError(f"Pick window is closed for week {week} (locked at {lock_dt.isoformat()})")
 

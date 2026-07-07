@@ -58,6 +58,7 @@ from config import LOCK_SEASON
 SOURCE            = "fantasypros"
 from wallet.wallet_manager import MIN_BET, _challenge_reserved
 from betting.pool_engine import _nfl_lock_time
+from betting.exceptions import ScheduleNotReadyError
 from betting.per_bet_lock import is_bet_locked_for_gm
 from feed.league_feed import (
     log_challenge_issued,
@@ -95,6 +96,7 @@ class ChallengeOut:
     challenger_bet_id:    int | None
     challenged_bet_id:    int | None
     countered_amount:     float | None = None
+    schedule_not_ready:   bool = False
 
 
 @dataclass
@@ -644,7 +646,12 @@ def issue_challenge(
         raise ValueError("A team cannot challenge itself")
     if not 1 <= week <= 17:
         raise ValueError("week must be 1–17")
-    lock_dt = _nfl_lock_time(LOCK_SEASON, week)
+    try:
+        lock_dt = _nfl_lock_time(LOCK_SEASON, week)
+    except ScheduleNotReadyError:
+        raise ValueError(
+            f"Week {week}'s schedule isn't ready yet — no new challenges can be issued for this week"
+        )
     if datetime.now(timezone.utc) >= lock_dt:
         raise ValueError(
             f"Week {week} locked at kickoff — challenges can no longer be issued for this week"
@@ -752,6 +759,11 @@ def respond_to_challenge(
         raise ValueError("Challenge has expired")
     try:
         lock_dt = _nfl_lock_time(LOCK_SEASON, challenge.week)
+    except ScheduleNotReadyError:
+        raise ValueError(
+            f"Week {challenge.week}'s schedule isn't ready yet — "
+            f"this challenge can't be accepted or declined until it is"
+        )
     except ValueError:
         lock_dt = None  # season not yet configured — skip kickoff check
     if lock_dt is not None and now >= lock_dt:
@@ -922,6 +934,10 @@ def counter_challenge(
     # Kickoff lock — same rule as issue_challenge
     try:
         lock_dt = _nfl_lock_time(LOCK_SEASON, challenge.week)
+    except ScheduleNotReadyError:
+        raise ValueError(
+            f"Week {challenge.week}'s schedule isn't ready yet — this challenge can't be countered"
+        )
     except ValueError:
         lock_dt = None
     if lock_dt is not None and now >= lock_dt:
@@ -976,16 +992,23 @@ def get_pending_challenges(team_id: int, db: Session) -> list[ChallengeOut]:
     results: list[ChallengeOut] = []
     for c in candidates:
         ttl_expired = c.expires_at.replace(tzinfo=timezone.utc) < now
+        schedule_not_ready = False
         try:
             lock_expired = now >= _nfl_lock_time(LOCK_SEASON, c.week)
+        except ScheduleNotReadyError:
+            lock_expired = False
+            schedule_not_ready = True
         except ValueError:
-            lock_expired = False  # season not configured — don't auto-expire on kickoff
+            lock_expired = False
+            schedule_not_ready = True  # unconfigured season is the same uncertainty — flag it too
         if ttl_expired or lock_expired:
             c.status = "expired"
             log_challenge_expired(c, db)
             continue
         direction = "sent" if c.challenger_team_id == team_id else "received"
-        results.append(_to_out(c, direction))
+        out = _to_out(c, direction)
+        out.schedule_not_ready = schedule_not_ready
+        results.append(out)
     db.commit()
     return results
 
