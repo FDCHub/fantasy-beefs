@@ -15,5 +15,11 @@ class BetValidationError(ValueError):
     """Raised when a bet request is structurally or numerically invalid."""
 
 
+class ScheduleNotReadyError(ValueError):
+    """Raised when the NFL schedule has no real kickoff for a season/week —
+    week not loaded or only placeholder timestamps present."""
+
+
 assert issubclass(NotFoundError, ValueError)
 assert issubclass(BetValidationError, ValueError)
+assert issubclass(ScheduleNotReadyError, ValueError)

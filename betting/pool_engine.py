@@ -20,12 +20,10 @@ Usage:
 
 from __future__ import annotations
 
-import logging
 import os
 import sys
-import zoneinfo
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func
@@ -33,6 +31,7 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from betting.exceptions import ScheduleNotReadyError
 from db.schema import (
     League,
     Matchup,
@@ -54,11 +53,6 @@ SOURCE = "fantasypros"
 
 # ── Pool bet-type registry ─────────────────────────────────────────────────────
 
-_ET = zoneinfo.ZoneInfo("America/New_York")
-
-# Thursday 8:20 PM ET for NFL 2024 week 1 (first SNF kickoff that opened the week)
-_NFL_2024_W1_LOCK = datetime(2024, 9, 5, 20, 20, 0, tzinfo=_ET)
-
 POOL_BET_TYPES: list[dict] = [
     {"key": "biggest_winner", "label": "Biggest Winner",        "self_pick_allowed": True},
     {"key": "worst_beat",     "label": "Worst Beat",            "self_pick_allowed": False},
@@ -66,9 +60,6 @@ POOL_BET_TYPES: list[dict] = [
     {"key": "bench_burn",     "label": "Bench Burn",            "self_pick_allowed": False},
 ]
 _VALID_BET_TYPES = {b["key"] for b in POOL_BET_TYPES}
-
-
-_log = logging.getLogger(__name__)
 
 
 def _assert_league_exists(league_id: int, db: Session) -> League:
@@ -86,10 +77,12 @@ def _nfl_lock_time(season: int, week: int) -> datetime:
     games for that season/week.  Handles any opener day automatically (Wednesday
     openers, Thursday international games, etc.).
 
-    Fallback — NflSchedule not yet synced for that season/week: uses the
-    hardcoded 2024 Thursday 8:20 PM ET formula (season 2024 only; raises
-    ValueError for any other season).  Logs a WARNING so an unsynced week
-    does not fail silently.
+    Raises ScheduleNotReadyError if:
+      - the week has no NflSchedule rows at all (not loaded — run
+        upsert_week_schedule() first), or
+      - the week is loaded but its earliest kickoff falls outside the real
+        NFL kickoff window (placeholder timestamps ESPN hasn't replaced yet
+        with announced times).
     """
     with SessionLocal() as _db:
         earliest = (
@@ -103,18 +96,29 @@ def _nfl_lock_time(season: int, week: int) -> datetime:
         # Normalise to UTC-aware so callers can always compare against utcnow().
         if earliest.tzinfo is None:
             earliest = earliest.replace(tzinfo=timezone.utc)
+
+        # A real NFL kickoff sits between 09:00 UTC and 02:00 UTC the next
+        # day. Fold hours below 9 up by 24 so that window is one contiguous
+        # band, [9, 26], instead of wrapping past midnight. A kickoff outside
+        # that band means the week is loaded but ESPN hasn't announced real
+        # times yet — only placeholder timestamps are present.
+        hour = earliest.hour
+        if hour < 9:
+            hour += 24
+        if not (9 <= hour <= 26):
+            raise ScheduleNotReadyError(
+                f"season={season} week={week}: schedule is loaded but only has "
+                f"placeholder kickoff times (earliest={earliest.isoformat()}) — "
+                f"ESPN has not announced real times yet. The next refresh will "
+                f"pick them up once ESPN sets them."
+            )
+
         return earliest
 
-    # ── Fallback: no NflSchedule rows for this season/week ────────────────────
-    _log.warning(
-        "_nfl_lock_time fallback: NflSchedule has no rows for season=%s week=%s. "
-        "Run upsert_week_schedule() to populate schedule data. "
-        "Using hardcoded 2024 Thursday formula.",
-        season, week,
+    raise ScheduleNotReadyError(
+        f"season={season} week={week}: NFL schedule not loaded — "
+        f"run upsert_week_schedule() first."
     )
-    if season == 2024:
-        return _NFL_2024_W1_LOCK + timedelta(weeks=week - 1)
-    raise ValueError(f"No lock_time formula defined for season {season}")
 
 
 # ── Result dataclasses ────────────────────────────────────────────────────────
