@@ -34,6 +34,7 @@ from odds.odds_engine_headless import (
     simulate_player_scores,
     simulate_scores,
 )
+from ledger.ledger import post as ledger_post
 
 from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
@@ -41,6 +42,22 @@ SOURCE = "fantasypros"
 _STARTER_SLOTS = 9   # first 9 roster rows are starters
 _BENCH_START   = 9   # roster rows offset _BENCH_START+ are bench
 _BENCH_STD     = 20.0  # aggregate bench score std for Full Beef simulation
+
+
+def _to_cents(amount: float) -> int:
+    """Dollars → integer cents, for ledger.post() calls. Rounds first —
+    never truncates raw float multiplication — per the L1 spec's integer-
+    cents-only requirement.
+
+    Duplicated from beefs/beef_engine.py's own _to_cents() rather than
+    imported from there: betting/ is the lower-level module (beefs/ already
+    imports FROM betting/, never the reverse) — importing this one trivial
+    line the other way round would be a backwards dependency for no benefit.
+    Not centralized in ledger/ledger.py either, since that file stays
+    untouched in this pass. Matches this file's own existing convention of
+    small local helpers (_ml_to_decimal, _prob_to_american) rather than
+    importing trivial utilities cross-package."""
+    return round(amount * 100)
 
 
 # ── Result dataclass ──────────────────────────────────────────────────────────
@@ -91,7 +108,6 @@ def _place_bet(
 ) -> Bet:
     """Deduct stake and write a pending bet + debit transaction."""
     validate_bet_amount(amount, wallet.balance)
-    wallet.balance = round(wallet.balance - amount, 2)
 
     bet = Bet(
         matchup_id     = matchup_id,
@@ -109,6 +125,26 @@ def _place_bet(
     )
     db.add(bet)
     db.flush()
+
+    # Ledger posting — replaces the old direct wallet.balance mutation.
+    # escrow:{bet.id} needs bet.id, hence this runs after the flush above.
+    # session=db, NOT session=None: db.flush() above already opened an
+    # uncommitted write transaction on `db`. On SQLite, a second connection
+    # (what session=None would open) can't get a write lock while that's
+    # open — it deadlocks with "database is locked" on every call, not just
+    # under failure (confirmed by running this against the test suite before
+    # settling on session=db). Passing session=db instead makes the ledger
+    # write part of this SAME transaction, so it commits together with the
+    # Bet/Transaction rows in this function's own db.commit() below — one
+    # commit, no deadlock, and no orphaned-ledger-entry risk either.
+    ledger_post(
+        [
+            (f"wallet:{wallet.team_id}", -_to_cents(amount)),
+            (f"escrow:{bet.id}",          _to_cents(amount)),
+        ],
+        door="wager_placed",
+        session=db,
+    )
 
     db.add(Transaction(
         wallet_id  = wallet.id,
