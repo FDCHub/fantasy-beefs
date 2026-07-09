@@ -286,6 +286,24 @@ with SessionLocal() as _db:
     t7_id, t8_id, t9_id, t10_id  = t7.id, t8.id, t9.id, t10.id
     lv_player_id                 = lv_player.id
 
+# Session L3: _place_beef_side() now posts through the ledger (wager_placed,
+# door-guarded by MS-L1-5.1) instead of mutating Wallet.balance directly. No
+# code path anywhere in this repo funds a team's wallet:{team_id} ledger
+# account yet — Wallet rows are still seeded directly, as above, exactly like
+# production. Without a matching ledger credit, every accept below would now
+# raise InsufficientFundsError for every team. This posting is a TEST-ONLY
+# stand-in for funding that nothing in production actually performs yet —
+# it makes this suite exercise the conversion correctly, but does not fix
+# the real gap: a real accepted beef in production would still fail until
+# something (deposit()/buy-in flow) credits wallet:{team_id} in the ledger.
+from ledger.ledger import create_ledger_table, post as _ledger_seed_post
+create_ledger_table()
+for _tid in (t1_id, t2_id, t3_id, t4_id, t5_id, t6_id, t7_id, t8_id, t9_id, t10_id):
+    _ledger_seed_post(
+        [("world", -100_000_00), (f"wallet:{_tid}", 100_000_00)],
+        door="buy_in_paid",
+    )
+
 
 # ── TEST 1: issue_challenge writes beef_starters with correct team_id ──────────
 

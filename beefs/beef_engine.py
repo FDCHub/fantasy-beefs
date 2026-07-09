@@ -67,8 +67,16 @@ from feed.league_feed import (
     log_challenge_declined,
     log_challenge_expired,
 )
+from ledger.ledger import post as ledger_post
 
 CHALLENGE_TTL_HOURS = 24
+
+
+def _to_cents(amount: float) -> int:
+    """Dollars → integer cents, for ledger.post() calls. Rounds first —
+    never truncates raw float multiplication — per the L1 spec's integer-
+    cents-only requirement."""
+    return round(amount * 100)
 
 
 # ── Result dataclasses ────────────────────────────────────────────────────────
@@ -565,7 +573,6 @@ def _place_beef_side(
             f"{wallet.team.team_name}'s wallet has insufficient funds: "
             f"${wallet.balance:.2f} < ${amount:.2f}"
         )
-    wallet.balance = round(wallet.balance - amount, 2)
 
     bet = Bet(
         matchup_id        = matchup_id,
@@ -584,6 +591,21 @@ def _place_beef_side(
     )
     db.add(bet)
     db.flush()
+
+    # Ledger posting — replaces the old direct wallet.balance mutation.
+    # escrow:{bet.id} needs bet.id, hence this runs after the flush above.
+    # Transition period (Finding 2 is a separate, later pass): the
+    # Transaction row below stays alongside this for now — wallet.balance
+    # is still what api/main.py's /faab/wallet/{team_id} route reads, so
+    # both are written in parallel until that route is migrated too.
+    ledger_post(
+        [
+            (f"wallet:{wallet.team_id}", -_to_cents(amount)),
+            (f"escrow:{bet.id}",          _to_cents(amount)),
+        ],
+        door="wager_placed",
+        session=db,
+    )
 
     db.add(Transaction(
         wallet_id  = wallet.id,
