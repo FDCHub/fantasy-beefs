@@ -48,7 +48,6 @@ from beefs.beef_engine import (
 from feed.league_feed import get_league_feed, get_week_feed, FeedPage, FeedEventOut
 from wallet.wallet_manager import (
     deposit     as wm_deposit,
-    withdraw    as wm_withdraw,
     balance_check_by_team,
     transaction_history as wm_history,
 )
@@ -934,11 +933,6 @@ class DepositRequest(BaseModel):
     amount:    float = Field(..., gt=0, description="Amount to deposit")
 
 
-class WithdrawRequest(BaseModel):
-    wallet_id: int
-    amount:    float = Field(..., gt=0, description="Amount to withdraw")
-
-
 class WalletStateOut(BaseModel):
     wallet_id:        int
     team_id:          int
@@ -998,20 +992,6 @@ def wallet_deposit(
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
         state = wm_deposit(req.wallet_id, req.amount, db)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _state_out(state)
-
-
-@app.post("/wallet/withdraw", response_model=WalletStateOut, status_code=200)
-def wallet_withdraw(
-    req:          WithdrawRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
-):
-    assert_own_wallet(req.wallet_id, current_user, db)
-    try:
-        state = wm_withdraw(req.wallet_id, req.amount, db)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _state_out(state)

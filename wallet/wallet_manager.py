@@ -150,42 +150,6 @@ def deposit(wallet_id: int, amount: float, db: Session) -> WalletState:
     return _wallet_state(w, db)
 
 
-def withdraw(wallet_id: int, amount: float, db: Session) -> WalletState:
-    """Debit wallet and write a withdrawal transaction."""
-    if amount <= 0:
-        raise ValueError("Withdrawal amount must be positive")
-
-    w = _get_wallet(wallet_id, db)
-    if amount > w.balance:
-        raise ValueError(
-            f"Insufficient balance: requested ${amount:.2f}, available ${w.balance:.2f}"
-        )
-
-    open_bets          = db.query(Bet).filter(
-        Bet.wallet_id == wallet_id, Bet.status == "pending"
-    ).all()
-    pending_exposure   = sum(b.amount for b in open_bets)
-    ch_reserved        = _challenge_reserved(w.team_id, db)
-    available          = round(w.balance - pending_exposure - ch_reserved, 2)
-    if amount > available:
-        raise ValueError(
-            f"Cannot withdraw ${amount:.2f}: ${pending_exposure:.2f} is locked in "
-            f"{len(open_bets)} pending bet(s) and ${ch_reserved:.2f} is reserved for "
-            f"pending challenges. Available to withdraw: ${available:.2f}"
-        )
-
-    w.balance = round(w.balance - amount, 2)
-    db.add(Transaction(
-        wallet_id  = wallet_id,
-        amount     = -amount,
-        type       = "withdrawal",
-        created_at = datetime.now(timezone.utc),
-    ))
-    db.commit()
-    db.refresh(w)
-    return _wallet_state(w, db)
-
-
 def balance_check(wallet_id: int, db: Session) -> WalletState:
     """Return current wallet state without modifying anything."""
     return _wallet_state(_get_wallet(wallet_id, db), db)
@@ -290,11 +254,6 @@ if __name__ == "__main__":
         # Max bet (20 % of new balance)
         max_bet = state.max_single_bet
         print(f"  Max single bet at this balance: ${max_bet:,.2f}\n")
-
-        # Withdraw a small amount
-        small_wd = 50.0
-        state2 = withdraw(w0.id, small_wd, db)
-        print(f"  withdraw(${small_wd:.2f})  → balance ${state2.balance:,.2f}")
 
         # Balance check
         bc = balance_check(w0.id, db)
