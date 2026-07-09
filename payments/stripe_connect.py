@@ -43,6 +43,8 @@ from db.schema import (
 )
 from db.deps import get_db
 from auth.jwt_auth import get_current_gm
+from payments.economy_config import find_stop_by_buyin_cents
+from ledger.ledger import post as ledger_post
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -204,7 +206,13 @@ def create_buyin_link(
     )
     if not treasury:
         raise ValueError(f"Treasury not configured for league {league_id}")
-    if treasury.buy_in_amount_cents <= 0:
+
+    # B1 Discrete-Stop Economy Table — treasury.buy_in_amount_cents is now
+    # used only as a selector, matched exactly against one of the five
+    # certified stops; it is never used directly as a charge amount. No
+    # freeform amount, no interpolation between stops (Build Step 1, rule 4).
+    stop = find_stop_by_buyin_cents(treasury.buy_in_amount_cents)
+    if stop is None:
         raise ValueError("Buy-in amount not set — call setup_league_treasury first")
 
     team = db.query(Team).filter(Team.id == team_id).first()
@@ -229,12 +237,18 @@ def create_buyin_link(
             mock_mode    = MOCK_MODE,
         )
 
+    # Snapshot the full triple from the active stop NOW, atomically with
+    # record creation — a later slider change can't split one buy-in
+    # across two different stops between this and payment confirmation.
     record = existing or BuyInRecord(
-        league_id    = league_id,
-        team_id      = team_id,
-        user_id      = team.user.id if team.user else None,
-        amount_cents = treasury.buy_in_amount_cents,
-        status       = "pending",
+        league_id     = league_id,
+        team_id       = team_id,
+        user_id       = team.user.id if team.user else None,
+        amount_cents  = stop.buyin_cents,
+        buyin_cents   = stop.buyin_cents,
+        wallet_cents  = stop.wallet_cents,
+        reserve_cents = stop.reserve_cents,
+        status        = "pending",
     )
     if not existing:
         db.add(record)
@@ -247,7 +261,7 @@ def create_buyin_link(
         raw      = {"id": link_id, "url": link_url, "mock": True}
     else:
         price = _stripe.Price.create(
-            unit_amount  = treasury.buy_in_amount_cents,
+            unit_amount  = stop.buyin_cents,
             currency     = "usd",
             product_data = {
                 "name": f"Fantasy Beefs Buy-In — {team.team_name}",
@@ -273,9 +287,9 @@ def create_buyin_link(
     record.stripe_payment_link_url = link_url
 
     _log(db, "payment_link_created",
-         f"{team.team_name} buy-in {treasury.buy_in_amount_cents}¢",
+         f"{team.team_name} buy-in {stop.buyin_cents}¢",
          league_id=league_id, team_id=team_id,
-         stripe_object=link_id, amount_cents=treasury.buy_in_amount_cents,
+         stripe_object=link_id, amount_cents=stop.buyin_cents,
          raw=raw, performed_by=performer_id)
 
     db.commit()
@@ -308,6 +322,24 @@ def confirm_buyin_payment(
     if record.status == "paid":
         return record
 
+    # Door 1 — post the buy-in through the ledger BEFORE flipping status to
+    # "paid", inside this function's existing transaction (session=db, no
+    # extra commit here). Reads buyin_cents/wallet_cents/reserve_cents from
+    # THIS RECORD's own snapshot, never from live config. If post() raises
+    # (LedgerImbalanceError or InsufficientFundsError), it propagates and
+    # everything below — including the eventual db.commit() — never runs,
+    # so status can never reach "paid" without a real, balanced posting
+    # behind it.
+    ledger_post(
+        [
+            ("world", -record.buyin_cents),
+            (f"wallet:{record.team_id}",  record.wallet_cents),
+            (f"reserve:{record.team_id}", record.reserve_cents),
+        ],
+        door="buy_in_paid",
+        session=db,
+    )
+
     record.status  = "paid"
     record.paid_at = datetime.now(timezone.utc)
     if stripe_session_id:
@@ -320,14 +352,10 @@ def confirm_buyin_payment(
         if user:
             user.buy_in_paid = 1
 
-    treasury = (
-        db.query(LeagueTreasury)
-        .filter(LeagueTreasury.league_id == record.league_id)
-        .first()
-    )
-    if treasury:
-        treasury.total_collected_cents += record.amount_cents
-        treasury.updated_at = datetime.now(timezone.utc)
+    # LeagueTreasury.total_collected_cents is retired from this call site —
+    # the ledger's world account balance is now the source of truth for
+    # total collected. See this session's report for other readers of this
+    # field that were NOT touched and now see a stale value.
 
     _log(db, "buy_in_confirmed",
          f"Buy-in confirmed for team {record.team_id}",

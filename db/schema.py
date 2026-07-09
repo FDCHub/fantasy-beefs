@@ -405,6 +405,14 @@ class BuyInRecord(Base):
     team_id                  = Column(Integer,  ForeignKey("teams.id"),   nullable=False)
     user_id                  = Column(Integer,  ForeignKey("users.id"),   nullable=True)
     amount_cents             = Column(Integer,  nullable=False)
+    # B1 Discrete-Stop Economy Table snapshot — populated once, at link
+    # creation, from whichever stop is active at that moment. Read at
+    # confirmation time FROM THIS RECORD, never from live config, so a
+    # later slider change can't split one buy-in across two different
+    # stops between link creation and payment confirmation.
+    buyin_cents              = Column(Integer,  nullable=False)
+    wallet_cents             = Column(Integer,  nullable=False)
+    reserve_cents            = Column(Integer,  nullable=False)
     status                   = Column(String,   nullable=False, default="pending")
     stripe_payment_link_id   = Column(String,   nullable=True)
     stripe_payment_link_url  = Column(String,   nullable=True)
