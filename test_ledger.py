@@ -220,6 +220,34 @@ _assert("exactly 2 rows written for the N=1 posting (no remainder row)", len(n1_
 _assert("no zero-amount row exists in the N=1 posting", len(zero_rows) == 0, f"got {len(zero_rows)}")
 
 
+# ── session-provided path: caller owns the transaction ────────────────────────
+
+print("\nSession-provided path: post() writes into the caller's session, caller commits")
+tb_before_session_commit = trial_balance()
+with SessionLocal() as _caller_db:
+    posting_id_session = post(
+        [("world", -30_00), ("wallet:t_session1", 30_00)],
+        door="buy_in_paid",
+        session=_caller_db,
+    )
+    _caller_db.commit()
+_assert("posting_id returned on session-provided path", posting_id_session is not None)
+_assert("wallet:t_session1 credited after caller's own commit", balance_of("wallet:t_session1") == 30_00, f"got {balance_of('wallet:t_session1')}")
+_assert("trial_balance reflects it after caller's own commit", trial_balance() == tb_before_session_commit, f"before={tb_before_session_commit} after={trial_balance()}")
+
+print("\nSession-provided path: post() must NOT commit internally — rollback proves it")
+tb_before_rollback_test = trial_balance()
+with SessionLocal() as _caller_db2:
+    post(
+        [("world", -40_00), ("wallet:t_session2", 40_00)],
+        door="buy_in_paid",
+        session=_caller_db2,
+    )
+    _caller_db2.rollback()
+_assert("wallet:t_session2 balance is 0 after caller rolled back (never committed)", balance_of("wallet:t_session2") == 0, f"got {balance_of('wallet:t_session2')}")
+_assert("trial_balance unchanged after the rolled-back posting", trial_balance() == tb_before_rollback_test, f"before={tb_before_rollback_test} after={trial_balance()}")
+
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 print(f"\n{'='*52}")

@@ -120,7 +120,71 @@ def trial_balance() -> int:
         return int(result)
 
 
-def post(entries: list[tuple[str, int]], door: str) -> uuid.UUID:
+def _run_checks_and_write(
+    db: Session,
+    entries: list[tuple[str, int]],
+    door: str,
+    posting_id: uuid.UUID,
+    now: datetime,
+) -> None:
+    """
+    Runs checks (b) and (c) and writes (d) — see post()'s docstring for the
+    full check semantics and ordering rationale. Shared by both of post()'s
+    paths (its own session, or a caller-supplied one) so the checks and the
+    write behave identically either way; does not commit — the caller (post())
+    decides who owns and commits the transaction.
+    """
+    # (c) MS-L1-5.2 — once-only settlement guard, wager_settled doors only.
+    # Deliberately checked BEFORE (b) below, for wager_settled postings
+    # only: an escrow account already at 0 will ALWAYS also fail (b)'s
+    # generic funded-balance test (debiting anything from a zero balance
+    # is negative by definition), so if (b) ran first a repeated
+    # settlement attempt would surface as a generic InsufficientFundsError
+    # and this more specific, more diagnostic AlreadySettledError would
+    # never actually be reachable. Checking (c) first for this one door
+    # gives the caller the correct, specific reason without weakening (b)
+    # — every other debited account in this same posting, and every
+    # other door, still goes through the unmodified check below.
+    if door == "wager_settled":
+        escrow_debits = [a for a, amt in entries if amt < 0 and a.startswith("escrow:")]
+        for escrow_account in escrow_debits:
+            current = _balance_of_in_session(db, escrow_account)
+            if current == 0:
+                raise AlreadySettledError(
+                    f"{escrow_account!r} is already at 0 cents — this bet has "
+                    f"already been settled. Posting rejected, nothing written."
+                )
+
+    # (b) MS-L1-5.1 — funded-balance guard, every door, every debited account,
+    # except "world" and "receivable:*" — see docstring above for why these
+    # two are exempt (unbounded external/IOU accounts, not real pools).
+    for account, amount in entries:
+        if amount < 0 and account != "world" and not account.startswith("receivable:"):
+            current = _balance_of_in_session(db, account)
+            if current + amount < 0:
+                raise InsufficientFundsError(
+                    f"Posting for door {door!r} would take {account!r} to "
+                    f"{current + amount} cents (current {current}, debit {amount}) "
+                    f"— insufficient funds. Posting rejected, nothing written."
+                )
+
+    # (d) All checks passed — write every entry under the same posting_id,
+    # in this one transaction. Commits together or not at all.
+    for account, amount in entries:
+        db.add(LedgerEntry(
+            account=account,
+            amount_cents=amount,
+            posting_id=posting_id,
+            door=door,
+            created_at=now,
+        ))
+
+
+def post(
+    entries: list[tuple[str, int]],
+    door: str,
+    session: Session | None = None,
+) -> uuid.UUID:
     """
     Atomically write one posting — a balanced set of ledger entries sharing
     one new posting_id — after three checks, in order, all before any write:
@@ -149,20 +213,36 @@ def post(entries: list[tuple[str, int]], door: str) -> uuid.UUID:
     InsufficientFundsError instead of the more specific AlreadySettledError.
     Every other debited account, and every other door, is unaffected.
 
-    (b) and (c) read balances inside the same transaction as the write
-    below (not as separate earlier queries), and — on Postgres — that
-    transaction runs at REPEATABLE READ, so a concurrent posting against
-    the same account can't land between the check and the commit and
-    produce a stale read. SQLite's own locking model already serializes
-    writers and doesn't support this execution option, so it's skipped
-    there (same pattern already used in beefs/beef_engine.py's
-    respond_to_challenge()).
+    session=None (default): post() opens its own SessionLocal(), runs all
+    checks and the write against it, and commits internally before
+    returning — this is the original L2 behavior, unchanged.
 
-    If all three checks pass, every entry writes in one transaction —
-    all rows commit together or none do, under any failure (exception,
-    crash, connection loss) mid-write.
+    session=<a Session>: post() runs the exact same checks (same ordering,
+    same exemptions) and the same write against the CALLER's session
+    instead of opening its own, and does NOT call commit() — the caller
+    owns and commits (or rolls back) that transaction. This lets a caller
+    like beefs/beef_engine.py's respond_to_challenge() — which commits
+    once, covering both sides of an accepted beef plus a challenge status
+    flip, as one atomic unit — post through the ledger as part of that
+    same atomic unit instead of the ledger silently committing early on
+    its own and breaking that atomicity. Because it's the same session,
+    the funded-balance and once-only-settlement reads also see any of the
+    caller's own uncommitted writes earlier in that same transaction.
 
-    Returns the new posting_id on success.
+    Either way, (b) and (c) read balances inside the same transaction as
+    the write (not as separate earlier queries), and — on Postgres, and
+    only on the session=None path where post() opens its own connection —
+    that transaction runs at REPEATABLE READ, so a concurrent posting
+    against the same account can't land between the check and the commit
+    and produce a stale read (same pattern already used in
+    beefs/beef_engine.py's respond_to_challenge()). On the session=provided
+    path, isolation level is the caller's responsibility — the caller
+    already owns the transaction and may already have set its own
+    isolation level before ever calling post().
+
+    Returns the new posting_id either way — on the session=None path only
+    after a successful commit; on the session=provided path, once the
+    entries are written to that session (still uncommitted).
     """
     total = sum(amount for _, amount in entries)
     if total != 0:
@@ -174,55 +254,17 @@ def post(entries: list[tuple[str, int]], door: str) -> uuid.UUID:
     posting_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
 
+    if session is not None:
+        _run_checks_and_write(session, entries, door, posting_id, now)
+        return posting_id
+
     with SessionLocal() as db:
         # Elevated isolation for Postgres only — see docstring above.
+        # Only applies here, where post() opens its own connection.
         if db.get_bind().dialect.name != "sqlite":
             db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
 
-        # (c) MS-L1-5.2 — once-only settlement guard, wager_settled doors only.
-        # Deliberately checked BEFORE (b) below, for wager_settled postings
-        # only: an escrow account already at 0 will ALWAYS also fail (b)'s
-        # generic funded-balance test (debiting anything from a zero balance
-        # is negative by definition), so if (b) ran first a repeated
-        # settlement attempt would surface as a generic InsufficientFundsError
-        # and this more specific, more diagnostic AlreadySettledError would
-        # never actually be reachable. Checking (c) first for this one door
-        # gives the caller the correct, specific reason without weakening (b)
-        # — every other debited account in this same posting, and every
-        # other door, still goes through the unmodified check below.
-        if door == "wager_settled":
-            escrow_debits = [a for a, amt in entries if amt < 0 and a.startswith("escrow:")]
-            for escrow_account in escrow_debits:
-                current = _balance_of_in_session(db, escrow_account)
-                if current == 0:
-                    raise AlreadySettledError(
-                        f"{escrow_account!r} is already at 0 cents — this bet has "
-                        f"already been settled. Posting rejected, nothing written."
-                    )
-
-        # (b) MS-L1-5.1 — funded-balance guard, every door, every debited account,
-        # except "world" and "receivable:*" — see docstring above for why these
-        # two are exempt (unbounded external/IOU accounts, not real pools).
-        for account, amount in entries:
-            if amount < 0 and account != "world" and not account.startswith("receivable:"):
-                current = _balance_of_in_session(db, account)
-                if current + amount < 0:
-                    raise InsufficientFundsError(
-                        f"Posting for door {door!r} would take {account!r} to "
-                        f"{current + amount} cents (current {current}, debit {amount}) "
-                        f"— insufficient funds. Posting rejected, nothing written."
-                    )
-
-        # (d) All checks passed — write every entry under the same posting_id,
-        # in this one transaction. Commits together or not at all.
-        for account, amount in entries:
-            db.add(LedgerEntry(
-                account=account,
-                amount_cents=amount,
-                posting_id=posting_id,
-                door=door,
-                created_at=now,
-            ))
+        _run_checks_and_write(db, entries, door, posting_id, now)
         db.commit()
 
     return posting_id
