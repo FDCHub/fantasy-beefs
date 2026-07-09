@@ -384,15 +384,35 @@ if __name__ == "__main__":
             print(f"  warning text: {warned4}")
 
         # ── Case 5: placeholder-only week → expect schedule_not_ready ──────────
-        # Confirmed placeholder weeks this session: 16, 17, 18 (one shared
-        # timestamp per week, every game in that week). Use whichever team
-        # played in week 16 in this season's real data.
+        # Finds a team still sitting in a genuine placeholder cluster — a
+        # timestamp shared by MORE THAN 2 rows, matching CR-1's own >2
+        # threshold in _is_placeholder_week(). Production data moves forward
+        # over time (real kickoffs get posted), so a plain LIMIT 1 on the
+        # week can land on an already-confirmed real game instead of a
+        # placeholder one — this query specifically targets a row still
+        # inside a qualifying placeholder cluster. Tries week 16 first, then
+        # 17 as a fallback if 16 no longer has a qualifying cluster
+        # (production notes this session: weeks 16-18 were the
+        # placeholder-heavy range).
         print(f"\nCase 5 — placeholder-only week (schedule not yet posted)")
+
+        def _find_placeholder_cluster_row(week: int):
+            return conn.execute(text(
+                "SELECT home_team, kickoff_utc FROM nfl_schedule "
+                "WHERE season = :s AND week = :w AND kickoff_utc = ("
+                "  SELECT kickoff_utc FROM nfl_schedule "
+                "  WHERE season = :s AND week = :w "
+                "  GROUP BY kickoff_utc "
+                "  HAVING COUNT(*) > 2 "
+                "  LIMIT 1"
+                ") LIMIT 1"
+            ), {"s": LOCK_SEASON, "w": week}).fetchone()
+
         ph_week = 16
-        ph_row = conn.execute(text(
-            "SELECT home_team, kickoff_utc FROM nfl_schedule "
-            "WHERE season = :s AND week = :w LIMIT 1"
-        ), {"s": LOCK_SEASON, "w": ph_week}).fetchone()
+        ph_row = _find_placeholder_cluster_row(ph_week)
+        if not ph_row:
+            ph_week = 17
+            ph_row = _find_placeholder_cluster_row(ph_week)
 
         if ph_row:
             ph_team, ph_kickoff = ph_row
@@ -402,7 +422,8 @@ if __name__ == "__main__":
             print(f"  result={result5}  expected locked=True, reason=schedule_not_ready  "
                   f"{'PASS' if result5.locked is True and result5.reason == 'schedule_not_ready' else 'FAIL'}")
         else:
-            print(f"  SKIP: no rows found for week {ph_week} season {LOCK_SEASON} — cannot verify live")
+            print(f"  SKIP: no placeholder cluster (>2 rows sharing one timestamp) found in "
+                  f"week 16 or 17 season {LOCK_SEASON} — cannot verify live")
 
         return True
 
