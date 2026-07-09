@@ -806,14 +806,29 @@ def respond_to_challenge(
     cd_nfl_teams = [s.nfl_team or "" for s in all_starters
                     if s.team_id == challenge.challenged_team_id]
     raw_conn = db.connection()
-    ch_locked = is_bet_locked_for_gm(raw_conn, ch_nfl_teams, challenge.week)
-    cd_locked = is_bet_locked_for_gm(raw_conn, cd_nfl_teams, challenge.week)
-    if ch_locked or cd_locked:
-        locked_side = challenge.challenger_team.team_name if ch_locked else challenge.challenged_team.team_name
-        raise ValueError(
-            f"{locked_side}'s staked players are in a game that has already kicked off "
-            f"for week {challenge.week} — this challenge can no longer be accepted"
-        )
+    ch_result = is_bet_locked_for_gm(raw_conn, ch_nfl_teams, challenge.week)
+    cd_result = is_bet_locked_for_gm(raw_conn, cd_nfl_teams, challenge.week)
+    if ch_result.locked or cd_result.locked:
+        locked_result = ch_result if ch_result.locked else cd_result
+        locked_side = challenge.challenger_team.team_name if ch_result.locked else challenge.challenged_team.team_name
+
+        if locked_result.reason == "in_progress":
+            raise ValueError(
+                f"{locked_side}'s staked players are in a game that has already kicked off "
+                f"for week {challenge.week} — this challenge can no longer be accepted"
+            )
+        elif locked_result.reason == "schedule_not_ready":
+            raise ValueError(
+                f"This challenge can't be accepted yet — the NFL hasn't posted an official "
+                f"kickoff time for one of {locked_side}'s players in week {challenge.week}. "
+                f"Try again once the schedule is confirmed."
+            )
+        else:  # "data_gap"
+            raise ValueError(
+                f"This challenge can't be accepted right now — we're missing schedule data "
+                f"for one of {locked_side}'s players in week {challenge.week}. "
+                f"Contact the commissioner to check."
+            )
 
     # Guarantees every read from here through db.commit() sees one consistent snapshot
     # of the database, so a concurrent projection refresh or wallet transfer can't land

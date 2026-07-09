@@ -39,7 +39,13 @@ from db.schema import (
 )
 from beefs.beef_engine import issue_challenge, respond_to_challenge
 import beefs.beef_engine as _beef_engine          # for monkey-patching
-from betting.per_bet_lock import LOCK_SEASON, is_bet_locked_for_gm as _real_is_bet_locked_for_gm
+from betting.per_bet_lock import (
+    LOCK_SEASON,
+    LockCheck,
+    is_bet_locked_for_gm as _real_is_bet_locked_for_gm,
+    _is_real_kickoff,
+    _is_placeholder_week,
+)
 from config import CURRENT_SEASON as SEASON
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -131,7 +137,38 @@ with SessionLocal() as _db:
         _db.add(p); _db.flush()
         _db.add(Roster(team_id=t6.id, player_id=p.id))
 
-    for team in (t1, t2, t3, t4, t5, t6):
+    # ── Teams 7-10 — week 13 fixture for schedule_not_ready / data_gap tests ──
+    # t7: TB (placeholder-only in week 13, 2026-12-20 06:00Z)
+    # t8: DAL (real, confirmed kickoff in week 13 — keeps issue_challenge's own
+    #     week-level check passing, since _nfl_lock_time finds DAL's real row
+    #     as the week's overall earliest — see the week-13 NflSchedule setup)
+    # t9: ZZZ (unmapped team code — appears nowhere in nfl_schedule at all)
+    # t10: dummy opponent, only exists so t9 has its own week-10 matchup
+    t7  = Team(league_id=league.id, team_name="Team TB",  owner="Gina",  email="gina@t.com")
+    t8  = Team(league_id=league.id, team_name="Team DAL", owner="Hank",  email="hank@t.com")
+    t9  = Team(league_id=league.id, team_name="Team ZZZ", owner="Ivy",   email="ivy@t.com")
+    t10 = Team(league_id=league.id, team_name="Team Dummy", owner="Jack", email="jack@t.com")
+    _db.add_all([t7, t8, t9, t10])
+    _db.flush()
+
+    for i in range(9):
+        p = Player(name=f"T7-P{i}", position="WR", nfl_team="TB")
+        _db.add(p); _db.flush()
+        _db.add(Roster(team_id=t7.id, player_id=p.id))
+    for i in range(9):
+        p = Player(name=f"T8-P{i}", position="WR", nfl_team="DAL")
+        _db.add(p); _db.flush()
+        _db.add(Roster(team_id=t8.id, player_id=p.id))
+    for i in range(9):
+        p = Player(name=f"T9-P{i}", position="WR", nfl_team="ZZZ")
+        _db.add(p); _db.flush()
+        _db.add(Roster(team_id=t9.id, player_id=p.id))
+    for i in range(9):
+        p = Player(name=f"T10-P{i}", position="WR", nfl_team="SEA")
+        _db.add(p); _db.flush()
+        _db.add(Roster(team_id=t10.id, player_id=p.id))
+
+    for team in (t1, t2, t3, t4, t5, t6, t7, t8, t9, t10):
         _db.add(Wallet(team_id=team.id, balance=1000.0))
 
     # ── Matchups ──────────────────────────────────────────────────────────────
@@ -150,6 +187,14 @@ with SessionLocal() as _db:
                     home_score=0.0, away_score=0.0))
     _db.add(Matchup(league_id=league.id, week=5,
                     home_team_id=t1.id, away_team_id=t2.id,
+                    home_score=0.0, away_score=0.0))
+    # Week 13 — t7/t8 share a matchup, t9/t10 share a matchup (each team needs
+    # its own week-13 matchup for issue_challenge's _find_own_matchup lookup)
+    _db.add(Matchup(league_id=league.id, week=13,
+                    home_team_id=t7.id, away_team_id=t8.id,
+                    home_score=0.0, away_score=0.0))
+    _db.add(Matchup(league_id=league.id, week=13,
+                    home_team_id=t9.id, away_team_id=t10.id,
                     home_score=0.0, away_score=0.0))
 
     # ── NflSchedule — all future so week-level lock never fires ───────────────
@@ -170,11 +215,76 @@ with SessionLocal() as _db:
     _db.add(NflSchedule(season=LOCK_SEASON, week=5,
                         home_team="KC", away_team="PHI",
                         kickoff_utc=FUTURE_KO))
+    # Week 13 — used by Tests C/D (through issue_challenge/respond_to_challenge).
+    # DAL's real row (Dec 18) sorts BEFORE TB's placeholder (Dec 20) overall,
+    # so _nfl_lock_time's own whole-week MIN (fixed earlier this session, but
+    # only band-filters the aggregate MIN, not per-team like is_bet_locked_
+    # for_gm does) finds DAL's real row as week 13's earliest and does not
+    # raise ScheduleNotReadyError — issue_challenge's week-level gate passes.
+    # TB's per-bet lock is still independently placeholder-only when queried
+    # for TB specifically, which is what Tests C/D exercise.
+    PLACEHOLDER_KO   = datetime(2026, 12, 20, 6, 0, 0)
+    REAL_KO_W13      = datetime(2026, 12, 18, 18, 0, 0)
+    _db.add(NflSchedule(season=LOCK_SEASON, week=13,
+                        home_team="DAL", away_team="NYG",
+                        kickoff_utc=REAL_KO_W13))
+    _db.add(NflSchedule(season=LOCK_SEASON, week=13,
+                        home_team="TB", away_team="ATL",
+                        kickoff_utc=PLACEHOLDER_KO))
+    # Week 14 — used ONLY by Test E (direct is_bet_locked_for_gm call, never
+    # through issue_challenge/respond_to_challenge, so _nfl_lock_time's own
+    # week-level gate is never invoked for this data). Same calendar day:
+    # TB's placeholder (06:00) sorts BEFORE DAL's real kickoff (18:00) under
+    # a raw, unfiltered MIN() — the exact trap this whole fix closes.
+    REAL_KO_W14 = datetime(2026, 12, 20, 18, 0, 0)
+    _db.add(NflSchedule(season=LOCK_SEASON, week=14,
+                        home_team="TB", away_team="ATL",
+                        kickoff_utc=PLACEHOLDER_KO))
+    _db.add(NflSchedule(season=LOCK_SEASON, week=14,
+                        home_team="DAL", away_team="NYG",
+                        kickoff_utc=REAL_KO_W14))
+    # Week 11 — YYY's ONLY appearance all season is this placeholder row.
+    # Used by the bye-detection-fix test: querying YYY for a DIFFERENT week
+    # (12, zero rows) must return data_gap, not a true bye, since YYY has no
+    # real (non-placeholder) row anywhere in the season.
+    _db.add(NflSchedule(season=LOCK_SEASON, week=11,
+                        home_team="YYY", away_team="XXX",
+                        kickoff_utc=PLACEHOLDER_KO))
+    # Week 15 — exactly ONE game row. Used by the one-game-week guard test
+    # (_is_placeholder_week must return False here — a single loaded game
+    # trivially has one distinct timestamp and must not be misread as a
+    # whole-week placeholder).
+    _db.add(NflSchedule(season=LOCK_SEASON, week=15,
+                        home_team="SSS", away_team="RRR",
+                        kickoff_utc=REAL_KO_W14))
+    # Week 17 — THREE rows sharing one IDENTICAL timestamp whose HOUR happens
+    # to fall INSIDE the band's accepted range (18:00, same hour as
+    # REAL_KO_W14/W13) — a genuine whole-week placeholder week under CR-1's
+    # revised threshold (MORE THAN TWO rows sharing one stamp, not more than
+    # one — a real week can coincidentally have exactly two games at the
+    # same kickoff slot, so >2 is required to still read as a placeholder
+    # week) despite passing _is_real_kickoff() individually. WWW's only
+    # season appearance is here. Used by the Fix 2 bye-path integration
+    # test: querying WWW for a different week (18, zero rows) must still
+    # return data_gap, not a false "true bye" — proving has_real_row now
+    # requires BOTH _is_real_kickoff() AND not _is_placeholder_week(), not
+    # _is_real_kickoff() alone.
+    INBAND_PLACEHOLDER_KO = datetime(2026, 12, 21, 18, 0, 0)
+    _db.add(NflSchedule(season=LOCK_SEASON, week=17,
+                        home_team="WWW", away_team="VVV",
+                        kickoff_utc=INBAND_PLACEHOLDER_KO))
+    _db.add(NflSchedule(season=LOCK_SEASON, week=17,
+                        home_team="UUU3", away_team="TTT3",
+                        kickoff_utc=INBAND_PLACEHOLDER_KO))
+    _db.add(NflSchedule(season=LOCK_SEASON, week=17,
+                        home_team="UUU4", away_team="TTT4",
+                        kickoff_utc=INBAND_PLACEHOLDER_KO))
 
     _db.commit()
-    t1_id, t2_id, t3_id, t4_id = t1.id, t2.id, t3.id, t4.id
-    t5_id, t6_id                = t5.id, t6.id
-    lv_player_id                = lv_player.id
+    t1_id, t2_id, t3_id, t4_id   = t1.id, t2.id, t3.id, t4.id
+    t5_id, t6_id                 = t5.id, t6.id
+    t7_id, t8_id, t9_id, t10_id  = t7.id, t8.id, t9.id, t10.id
+    lv_player_id                 = lv_player.id
 
 
 # ── TEST 1: issue_challenge writes beef_starters with correct team_id ──────────
@@ -202,7 +312,7 @@ with SessionLocal() as db:
 print("\nTest 2: respond_to_challenge blocks accept when per-bet lock returns True")
 
 def _mock_always_locked(conn, teams, week, now_utc=None, *, season=LOCK_SEASON):
-    return True
+    return LockCheck(locked=True, reason="in_progress")
 
 _original_lock_fn = _beef_engine.is_bet_locked_for_gm
 _beef_engine.is_bet_locked_for_gm = _mock_always_locked
@@ -315,7 +425,7 @@ with SessionLocal() as db:
 
 # Mock: locked only when "LV" is in the teams list
 def _mock_lv_locked(conn, teams, week, now_utc=None, *, season=LOCK_SEASON):
-    return "LV" in teams
+    return LockCheck(locked=("LV" in teams), reason="in_progress" if "LV" in teams else None)
 
 _beef_engine.is_bet_locked_for_gm = _mock_lv_locked
 try:
@@ -389,7 +499,7 @@ with SessionLocal() as db:
     locked = _real_is_bet_locked_for_gm(raw_conn, ["KC"], week=4, season=LOCK_SEASON)
     _assert(
         "A1: is_bet_locked_for_gm(real fn) returns True for past kickoff",
-        locked is True,
+        locked.locked is True,
         f"got {locked!r}",
     )
 
@@ -427,7 +537,7 @@ with SessionLocal() as db:
     locked = _real_is_bet_locked_for_gm(raw_conn, ["KC"], week=5, season=LOCK_SEASON)
     _assert(
         "B1: is_bet_locked_for_gm(real fn) returns False for future kickoff",
-        locked is False,
+        locked.locked is False,
         f"got {locked!r}",
     )
 
@@ -447,6 +557,188 @@ with SessionLocal() as db:
         _assert("B2: 2 Bet rows created",        bet_count == 2, f"got {bet_count}")
         _assert("B2: challenger_bet_id set",     result.challenger_bet_id is not None)
         _assert("B2: challenged_bet_id set",     result.challenged_bet_id is not None)
+
+
+# ── TEST C: schedule_not_ready message via respond_to_challenge ───────────────
+# t7 (TB, placeholder-only in week 13) vs t8 (DAL, real confirmed kickoff).
+# issue_challenge's own week-level lock passes (DAL's real row, 2026-12-18,
+# sorts before TB's placeholder, 2026-12-20, so _nfl_lock_time's whole-week
+# MIN finds DAL's real row as week 13's earliest). The per-bet lock for TB
+# specifically must independently come back schedule_not_ready, and respond_
+# to_challenge must raise the split "hasn't posted an official kickoff time"
+# message — not the generic "kicked off" message from Tests 2/5/A.
+
+print("\nTest C: respond_to_challenge — schedule_not_ready message (real function, no mock)")
+with SessionLocal() as db:
+    out = issue_challenge(t7_id, t8_id, week=13, bet_type="straight", amount=10.0, db=db)
+    cid_c = out.challenge_id
+
+    raised    = False
+    error_msg = ""
+    try:
+        respond_to_challenge(cid_c, accept=True, db=db)
+    except ValueError as e:
+        raised    = True
+        error_msg = str(e)
+
+    _assert("C: accept raises ValueError",                       raised, error_msg)
+    _assert("C: message mentions 'hasn't posted an official kickoff time'",
+            "hasn't posted an official kickoff time" in error_msg, error_msg)
+    _assert("C: message does NOT use the generic 'kicked off' wording",
+            "kicked off" not in error_msg, error_msg)
+    # Fix 6 (MS-PBL-5): explicitly confirm this came from the PER-BET lock
+    # layer, not respond_to_challenge's own week-level _nfl_lock_time gate —
+    # that gate's own ScheduleNotReadyError message reads "this challenge
+    # can't be accepted or declined until it is". Without this check, a
+    # future change to the week-level gate could make this test pass for
+    # the wrong reason (week-level firing first) without anyone noticing.
+    _assert("C: message is NOT the week-level _nfl_lock_time gate's wording",
+            "can't be accepted or declined until it is" not in error_msg, error_msg)
+
+    bet_count = db.query(Bet).filter(Bet.beef_challenge_id == cid_c).count()
+    _assert("C: no Bet rows created", bet_count == 0, f"got {bet_count}")
+
+
+# ── TEST D: data_gap message via respond_to_challenge ─────────────────────────
+# t9 (ZZZ, unmapped team code — zero rows anywhere in nfl_schedule) vs t8
+# (DAL, real). Week-level lock still passes via DAL's real row. The per-bet
+# lock for ZZZ must come back data_gap, and respond_to_challenge must raise
+# the "missing schedule data ... contact the commissioner" message — distinct
+# from Test C's schedule_not_ready wording.
+
+print("\nTest D: respond_to_challenge — data_gap message via respond_to_challenge (real function, no mock)")
+with SessionLocal() as db:
+    out = issue_challenge(t9_id, t8_id, week=13, bet_type="straight", amount=10.0, db=db)
+    cid_d = out.challenge_id
+
+    raised    = False
+    error_msg = ""
+    try:
+        respond_to_challenge(cid_d, accept=True, db=db)
+    except ValueError as e:
+        raised    = True
+        error_msg = str(e)
+
+    _assert("D: accept raises ValueError",                    raised, error_msg)
+    _assert("D: message mentions 'missing schedule data'",    "missing schedule data" in error_msg, error_msg)
+    _assert("D: message mentions 'contact the commissioner'", "contact the commissioner" in error_msg.lower(), error_msg)
+    _assert("D: message distinct from Test C's schedule_not_ready wording",
+            "hasn't posted an official kickoff time" not in error_msg, error_msg)
+
+    bet_count = db.query(Bet).filter(Bet.beef_challenge_id == cid_d).count()
+    _assert("D: no Bet rows created", bet_count == 0, f"got {bet_count}")
+
+
+# ── TEST E: mixed real+placeholder week — real row wins MIN(), not placeholder ──
+# Direct call to the real is_bet_locked_for_gm, spanning BOTH TB (placeholder,
+# 06:00Z) and DAL (real, 18:00Z), same calendar day, in week 14 — the exact
+# shape that would fool a raw, unfiltered MIN() into picking the earlier-
+# sorting placeholder. This bypasses issue_challenge/respond_to_challenge
+# entirely (direct call), so _nfl_lock_time's own week-level gate never
+# comes into play — unlike week 13 (Tests C/D), which had to keep the real
+# row sorting first overall for that gate to pass. now_utc sits after 06:00Z
+# but before 18:00Z: the buggy (unfiltered) behavior would report locked=True
+# (thinks TB's 06:00 stamp already passed); the fix must report locked=False
+# (DAL's real 18:00 hasn't happened yet, and TB's placeholder is correctly
+# excluded from the decision).
+
+print("\nTest E: is_bet_locked_for_gm — mixed week, real row must win MIN() over placeholder")
+with SessionLocal() as db:
+    raw_conn = db.connection()
+    # Fix 4 (MS-PBL-3): confirm the fixture's chosen hours actually sit on
+    # the sides of the band they're meant to, before trusting the
+    # sort-order assertions below.
+    _assert(
+        "E: fixture check — REAL_KO_W14's hour still passes the band",
+        _is_real_kickoff(REAL_KO_W14) is True,
+    )
+    _assert(
+        "E: fixture check — PLACEHOLDER_KO's hour still fails the band",
+        _is_real_kickoff(PLACEHOLDER_KO) is False,
+    )
+
+    now_between = datetime(2026, 12, 20, 10, 0, 0, tzinfo=timezone.utc)
+    result_e = _real_is_bet_locked_for_gm(raw_conn, ["TB", "DAL"], week=14, now_utc=now_between, season=LOCK_SEASON)
+    _assert(
+        "E: mixed week — real DAL kickoff (18:00Z) governs, not TB's placeholder (06:00Z)",
+        result_e.locked is False and result_e.reason is None,
+        f"got {result_e!r}",
+    )
+
+    # Companion — after the real 18:00Z kickoff, must correctly flip to locked.
+    now_after = datetime(2026, 12, 20, 19, 0, 0, tzinfo=timezone.utc)
+    result_e2 = _real_is_bet_locked_for_gm(raw_conn, ["TB", "DAL"], week=14, now_utc=now_after, season=LOCK_SEASON)
+    _assert(
+        "E: same mixed week, after real kickoff — locked=True, reason=in_progress",
+        result_e2.locked is True and result_e2.reason == "in_progress",
+        f"got {result_e2!r}",
+    )
+
+
+# ── TEST F: bye-detection fix — placeholder-only-elsewhere team is data_gap ────
+# YYY's only appearance anywhere in the season is a week-11 placeholder row.
+# Querying week 12 (zero rows for YYY) must NOT be read as a true bye, since
+# no real (non-placeholder) row anywhere confirms YYY is genuinely tracked.
+
+print("\nTest F: is_bet_locked_for_gm — placeholder-only-elsewhere team is data_gap, not a bye")
+with SessionLocal() as db:
+    raw_conn = db.connection()
+    now_f = datetime(2026, 7, 2, 12, 0, 0, tzinfo=timezone.utc)  # arbitrary, real wall-clock is before either fixture week
+    result_f = _real_is_bet_locked_for_gm(raw_conn, ["YYY"], week=12, now_utc=now_f, season=LOCK_SEASON)
+    _assert(
+        "F: YYY (placeholder-only all season) queried for a bye week — data_gap, not a bye",
+        result_f.locked is True and result_f.reason == "data_gap",
+        f"got {result_f!r}",
+    )
+
+
+# ── TEST G (Verification 3): _is_placeholder_week's one-game-week guard ───────
+# Week 15 has exactly ONE row. A single loaded game trivially has one
+# distinct timestamp — _is_placeholder_week must return False, not True,
+# or every mid-sync week with only one game loaded so far would be
+# misread as a whole-week placeholder.
+
+print("\nTest G: _is_placeholder_week — one-game week must be False, not True")
+with SessionLocal() as db:
+    raw_conn = db.connection()
+    result_g = _is_placeholder_week(raw_conn, week=15, season=LOCK_SEASON)
+    _assert(
+        "G: week 15 (exactly one row) is NOT read as a placeholder week",
+        result_g is False,
+        f"got {result_g!r}",
+    )
+
+
+# ── TEST H (Verification 4): Fix 2 bye-path integration, in-band placeholder ──
+# Week 17 is a genuine whole-week placeholder (three rows sharing one
+# identical timestamp — CR-1 requires MORE THAN TWO, not more than one)
+# whose shared hour (18:00) happens to fall INSIDE the band's
+# accepted range — the exact case that would slip past a has_real_row check
+# using _is_real_kickoff() alone. WWW's only season appearance is this row.
+# Querying WWW for week 18 (zero rows) must still return data_gap, not a
+# false "true bye", proving has_real_row now requires BOTH conditions.
+
+print("\nTest H: is_bet_locked_for_gm — Fix 2 bye-path integration, in-band placeholder week")
+with SessionLocal() as db:
+    raw_conn = db.connection()
+    # Confirm the fixture actually is a placeholder week despite the in-band hour.
+    is_ph_week = _is_placeholder_week(raw_conn, week=17, season=LOCK_SEASON)
+    _assert(
+        "H: fixture check — week 17 (shared identical in-band timestamp) IS a placeholder week",
+        is_ph_week is True,
+        f"got {is_ph_week!r}",
+    )
+    _assert(
+        "H: fixture check — that shared timestamp individually passes _is_real_kickoff (the trap)",
+        _is_real_kickoff(INBAND_PLACEHOLDER_KO) is True,
+    )
+
+    result_h = _real_is_bet_locked_for_gm(raw_conn, ["WWW"], week=18, now_utc=now_f, season=LOCK_SEASON)
+    _assert(
+        "H: WWW (in-band placeholder-week-only all season) queried for a bye week — data_gap, not a bye",
+        result_h.locked is True and result_h.reason == "data_gap",
+        f"got {result_h!r}",
+    )
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
