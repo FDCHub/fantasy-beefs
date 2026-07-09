@@ -43,7 +43,7 @@ from db.schema import (
 )
 from db.deps import get_db
 from auth.jwt_auth import get_current_gm
-from payments.economy_config import find_stop_by_buyin_cents
+from payments.economy_config import get_league_economy_stop
 from ledger.ledger import post as ledger_post
 
 # ── Config ─────────────────────────────────────────────────────────────────────
@@ -199,21 +199,12 @@ def create_buyin_link(
     performer_id: Optional[int] = None,
 ) -> BuyInLink:
     """Generate (or return existing) Stripe Payment Link for a GM's buy-in."""
-    treasury = (
-        db.query(LeagueTreasury)
-        .filter(LeagueTreasury.league_id == league_id)
-        .first()
-    )
-    if not treasury:
-        raise ValueError(f"Treasury not configured for league {league_id}")
-
-    # B1 Discrete-Stop Economy Table — treasury.buy_in_amount_cents is now
-    # used only as a selector, matched exactly against one of the five
-    # certified stops; it is never used directly as a charge amount. No
-    # freeform amount, no interpolation between stops (Build Step 1, rule 4).
-    stop = find_stop_by_buyin_cents(treasury.buy_in_amount_cents)
-    if stop is None:
-        raise ValueError("Buy-in amount not set — call setup_league_treasury first")
+    # B1-12 — the Discrete-Stop Economy Table's selection now lives on the
+    # league itself (League.economy_stop_weekly_min_cents), independent of
+    # LeagueTreasury entirely. get_league_economy_stop() always returns a
+    # valid stop (falls back to the default if unconfigured) — no
+    # LeagueTreasury row is read, checked for existence, or required here.
+    stop = get_league_economy_stop(league_id, db)
 
     team = db.query(Team).filter(Team.id == team_id).first()
     if not team:

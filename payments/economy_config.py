@@ -19,7 +19,15 @@ constant fails loudly at process startup, not silently at request time):
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
+
+from sqlalchemy.orm import Session
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from db.schema import League
 
 
 @dataclass(frozen=True)
@@ -71,6 +79,67 @@ def find_stop_by_buyin_cents(buyin_cents: int) -> EconomyStop | None:
         if stop.buyin_cents == buyin_cents:
             return stop
     return None
+
+
+def find_stop_by_weekly_min_cents(weekly_min_cents: int) -> EconomyStop | None:
+    """Exact-match lookup only — symmetric to find_stop_by_buyin_cents(),
+    same guarantee: returns None if weekly_min_cents doesn't match one of
+    the five stops exactly (no nearest-stop fallback, no rounding)."""
+    for stop in ECONOMY_STOPS:
+        if stop.weekly_min_cents == weekly_min_cents:
+            return stop
+    return None
+
+
+# ── B1-12: League's own economy-stop selector, independent of LeagueTreasury ──
+
+def set_league_economy_stop(league_id: int, weekly_min_cents: int, db: Session) -> EconomyStop:
+    """
+    Commissioner-facing setter. Validates weekly_min_cents matches one of
+    the five stops exactly — same "no freeform entry" rule as Build Step 1
+    of the original B1 spec — and writes it to
+    League.economy_stop_weekly_min_cents. Raises ValueError (no partial
+    write) if it doesn't match a stop. Returns the matched stop.
+    """
+    stop = find_stop_by_weekly_min_cents(weekly_min_cents)
+    if stop is None:
+        raise ValueError(
+            f"{weekly_min_cents} is not one of the five certified economy "
+            f"stops (must be one of "
+            f"{[s.weekly_min_cents for s in ECONOMY_STOPS]})"
+        )
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if not league:
+        raise ValueError(f"League {league_id} not found")
+
+    league.economy_stop_weekly_min_cents = weekly_min_cents
+    db.commit()
+    return stop
+
+
+def get_league_economy_stop(league_id: int, db: Session) -> EconomyStop:
+    """
+    Reads League.economy_stop_weekly_min_cents; if null (unconfigured),
+    returns DEFAULT_STOP. Always returns a valid Stop, never None — this
+    function cannot fail on an unconfigured league, unlike the old
+    LeagueTreasury-backed path it replaces.
+    """
+    league = db.query(League).filter(League.id == league_id).first()
+    if not league or league.economy_stop_weekly_min_cents is None:
+        return DEFAULT_STOP
+
+    stop = find_stop_by_weekly_min_cents(league.economy_stop_weekly_min_cents)
+    if stop is None:
+        # Stored value no longer matches any certified stop (e.g. the table
+        # itself changed) — fail loudly rather than silently substitute a
+        # different stop's numbers into a real charge.
+        raise ValueError(
+            f"League {league_id}'s stored economy_stop_weekly_min_cents "
+            f"({league.economy_stop_weekly_min_cents}) does not match any "
+            f"certified stop"
+        )
+    return stop
 
 
 # Fail loudly at import time if a stop was ever mistyped, rather than at

@@ -36,7 +36,7 @@ os.environ.pop("STRIPE_SECRET_KEY", None)  # force MOCK_MODE regardless of shell
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from db.schema import Base, engine, SessionLocal, BuyInRecord, League, LeagueTreasury, Team
-from payments.economy_config import ECONOMY_STOPS
+from payments.economy_config import ECONOMY_STOPS, set_league_economy_stop
 from payments.stripe_connect import (
     setup_league_treasury,
     create_buyin_link,
@@ -82,8 +82,16 @@ print("\nScenario 1: create_buyin_link() + confirm_buyin_payment() across all fi
 for i, stop in enumerate(ECONOMY_STOPS):
     league_id, team_id = _make_league_and_team(f"stop{i}")
 
+    # B1-12: create_buyin_link() no longer reads LeagueTreasury at all — the
+    # stop is now selected via League.economy_stop_weekly_min_cents. This
+    # setup_league_treasury() call is kept deliberately, configuring a
+    # LeagueTreasury row with the SAME buyin_cents value, specifically to
+    # prove its continued presence is now irrelevant to this path, not
+    # broken by it (item 4 of the B1-12 follow-up).
     with SessionLocal() as db:
         setup_league_treasury(league_id, stop.buyin_cents, db)
+    with SessionLocal() as db:
+        set_league_economy_stop(league_id, stop.weekly_min_cents, db)
 
     with SessionLocal() as db:
         link = create_buyin_link(league_id, team_id, db)

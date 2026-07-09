@@ -50,6 +50,11 @@ class League(Base):
     season            = Column(Integer, nullable=False)
     name              = Column(String,  nullable=False)
     projection_source = Column(String,  nullable=False, default="fantasypros")
+    # B1-12 — the league's own Discrete-Stop Economy Table selector,
+    # independent of LeagueTreasury. Nullable: an unconfigured league falls
+    # back to the default stop (weekly_min_cents=1000) rather than erroring —
+    # this must never be a hard requirement the way LeagueTreasury was.
+    economy_stop_weekly_min_cents = Column(Integer, nullable=True)
 
     teams    = relationship("Team",         back_populates="league")
     matchups = relationship("Matchup",      back_populates="league")
