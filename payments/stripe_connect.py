@@ -45,7 +45,7 @@ from db.schema import (
 from db.deps import get_db
 from auth.jwt_auth import get_current_gm
 from payments.economy_config import get_league_economy_stop
-from ledger.ledger import post as ledger_post
+from ledger.ledger import post as ledger_post, balance_of
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -489,6 +489,35 @@ class PayoutPreview:
     blocking_issues: list[str]
 
 
+def _championship_total(league_id: int, db: Session) -> int:
+    """
+    Finding 5.2 — the corrected championship-payout source of truth.
+
+    Under BAB, each GM's buy-in splits into wallet:{team_id} (wagerable)
+    and reserve:{team_id} (their committed share of the championship pot)
+    at confirmation (Door 1, confirm_buyin_payment() — confirmed this
+    session as the SOLE writer to reserve:{team_id} anywhere in the
+    codebase; see 5.2-1 and this module's test suite's regression guard).
+    reserve:{team_id} IS that GM's contribution to the pot already — it
+    never moves anywhere else, never gets refunded, and is summed here,
+    not relocated.
+
+    The B2 shortfall sweep separately credits the shared "championship"
+    account for money that isn't any one GM's own contribution (unmet
+    weekly minimums swept from the league at large). Two funding sources,
+    same pot, tracked separately because their provenance differs —
+    summed only here, at payout-computation time.
+
+    LeagueTreasury.total_collected_cents is NOT read here — it went stale
+    the moment Session B1 moved buy-in confirmation onto the ledger and
+    stopped writing that field. Retired from this path, not deleted from
+    the schema (a column removal is separate, lower-priority cleanup).
+    """
+    team_ids = [t.id for t in db.query(Team).filter(Team.league_id == league_id).all()]
+    reserve_total = sum(balance_of(f"reserve:{tid}") for tid in team_ids)
+    return reserve_total + balance_of("championship")
+
+
 def preview_payouts(
     league_id:       int,
     db:              Session,
@@ -513,6 +542,21 @@ def preview_payouts(
     split = json.loads(treasury.payout_split_json)
     order = standings_order or _compute_standings_order(league_id, db)
 
+    # Finding 5.2 — championship_total computed once per call, not
+    # recomputed per team in the loop below; the same total divides
+    # across every row.
+    championship_total = _championship_total(league_id, db)
+
+    # 5.2-3 (ruled, Option A) — floor each place's share, then hand the
+    # leftover cents to 1st place, so the three amounts sum to
+    # championship_total EXACTLY, every time. championship isn't a
+    # destination the remainder can sweep to here (unlike Door 4) — it's
+    # the account being paid out — so 1st place absorbs it instead.
+    raw_amounts = [(championship_total * pct) // 100 for pct in split]
+    remainder = championship_total - sum(raw_amounts)
+    if raw_amounts:
+        raw_amounts[0] += remainder
+
     issues: list[str] = []
     rows:   list[PayoutPreviewRow] = []
 
@@ -522,7 +566,7 @@ def preview_payouts(
         team_id = order[i]
         team    = db.query(Team).filter(Team.id == team_id).first()
         user    = team.user if team else None
-        amount  = (treasury.total_collected_cents * pct) // 100
+        amount  = raw_amounts[i]
 
         stripe_acct = user.stripe_account_id if user else None
         can_receive = bool(stripe_acct)
@@ -545,7 +589,7 @@ def preview_payouts(
 
     return PayoutPreview(
         league_id       = league_id,
-        treasury_cents  = treasury.total_collected_cents,
+        treasury_cents  = championship_total,
         payout_split    = split,
         rows            = rows,
         mock_mode       = MOCK_MODE,
@@ -574,7 +618,10 @@ def execute_payouts(
         raise ValueError(f"Treasury not configured for league {league_id}")
     if treasury.season_payout_done:
         raise ValueError("Season payouts already completed")
-    if treasury.total_collected_cents <= 0:
+
+    # Finding 5.2 — same corrected source of truth as preview_payouts().
+    championship_total = _championship_total(league_id, db)
+    if championship_total <= 0:
         raise ValueError("No funds in treasury to pay out")
 
     preview = preview_payouts(league_id, db, standings_order)
