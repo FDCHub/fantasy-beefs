@@ -55,6 +55,12 @@ class League(Base):
     # back to the default stop (weekly_min_cents=1000) rather than erroring —
     # this must never be a hard requirement the way LeagueTreasury was.
     economy_stop_weekly_min_cents = Column(Integer, nullable=True)
+    # B2, Finding 5.3 — explicit, commissioner-set activation for the buy-in
+    # gate, independent of LeagueTreasury. Default False matches the real
+    # current behavior of every league in production today (the old gate
+    # already went inactive under B1 once LeagueTreasury stopped being
+    # written to) — this migration changes nothing for existing leagues.
+    buyin_enforcement_active = Column(Boolean, nullable=False, default=False)
 
     teams    = relationship("Team",         back_populates="league")
     matchups = relationship("Matchup",      back_populates="league")
@@ -895,6 +901,35 @@ class WeekSettlement(Base):
     settled_at = Column(DateTime(timezone=True), nullable=True)
 
     league = relationship("League")
+
+
+class ShortfallSweepRecord(Base):
+    """One row per team per week — records a shortfall sweep's computed
+    amounts and its ledger posting_id (B2, Section 6). Idempotency guard,
+    modeled on WeekSettlement/PoolPot's run-once pattern: calling the sweep
+    twice for the same team/week must not double-drain a wallet. The
+    ledger's own entries remain the source of truth for money movement —
+    this table is metadata about what was posted, used for idempotency and
+    reporting only."""
+    __tablename__ = "shortfall_sweep_records"
+    __table_args__ = (
+        UniqueConstraint("league_id", "team_id", "week", name="uq_shortfall_sweep_team_week"),
+    )
+
+    id               = Column(Integer,  primary_key=True, autoincrement=True)
+    league_id        = Column(Integer,  ForeignKey("leagues.id"), nullable=False)
+    team_id          = Column(Integer,  ForeignKey("teams.id"),   nullable=False)
+    week             = Column(Integer,  nullable=False)
+    weekly_min_cents = Column(Integer,  nullable=False)
+    wagered_cents    = Column(Integer,  nullable=False)
+    shortfall_cents  = Column(Integer,  nullable=False)
+    covered_cents    = Column(Integer,  nullable=False)
+    uncovered_cents  = Column(Integer,  nullable=False)
+    posting_id       = Column(String,   nullable=True)   # null when shortfall_cents == 0 (nothing posted)
+    created_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+    team   = relationship("Team")
 
 
 class PoolBetPick(Base):

@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import (
     BuyInRecord,
+    League,
     LeagueTreasury,
     Matchup,
     PayoutRecord,
@@ -777,6 +778,39 @@ def get_audit_log(
     ]
 
 
+# ── B2, Finding 5.3 — explicit buy-in enforcement activation ──────────────────
+
+def set_buyin_enforcement_active(
+    league_id:    int,
+    active:       bool,
+    db:           Session,
+    performer_id: Optional[int] = None,
+) -> bool:
+    """
+    Commissioner-facing setter. Flips League.buyin_enforcement_active.
+    Independent of LeagueTreasury entirely — no row there is read or
+    required. Takes effect on the very next request (get_buyin_gate reads
+    this column fresh every call; nothing caches it).
+    """
+    league = db.query(League).filter(League.id == league_id).first()
+    if not league:
+        raise ValueError(f"League {league_id} not found")
+
+    league.buyin_enforcement_active = active
+    _log(db, "buyin_enforcement_toggled",
+         f"Buy-in enforcement {'activated' if active else 'deactivated'} for league {league_id}",
+         league_id=league_id, performed_by=performer_id)
+    db.commit()
+    return league.buyin_enforcement_active
+
+
+def get_buyin_enforcement_active(league_id: int, db: Session) -> bool:
+    """Reads League.buyin_enforcement_active. False (inactive) if the
+    league doesn't exist — same fail-open posture as an unconfigured stop."""
+    league = db.query(League).filter(League.id == league_id).first()
+    return bool(league.buyin_enforcement_active) if league else False
+
+
 # ── FastAPI dependency — buy-in gate ─────────────────────────────────────────
 
 def get_buyin_gate(
@@ -786,7 +820,9 @@ def get_buyin_gate(
     """
     FastAPI dependency — blocks GMs from betting/beefs until their buy-in is paid.
     Commissioner always bypasses.
-    If no treasury is configured (buy_in_amount_cents == 0), gate is inactive.
+    Gate is inactive unless the league's commissioner has explicitly turned
+    on League.buyin_enforcement_active (B2, Finding 5.3) — independent of
+    LeagueTreasury entirely.
     """
     if current_user.role == "commissioner":
         return current_user
@@ -799,13 +835,9 @@ def get_buyin_gate(
     if not team:
         return current_user
 
-    treasury = (
-        db.query(LeagueTreasury)
-        .filter(LeagueTreasury.league_id == team.league_id)
-        .first()
-    )
-    if not treasury or treasury.buy_in_amount_cents == 0:
-        return current_user  # buy-in not configured — gate inactive
+    league = db.query(League).filter(League.id == team.league_id).first()
+    if not league or not league.buyin_enforcement_active:
+        return current_user  # enforcement off — gate inactive by explicit choice
 
     if not current_user.buy_in_paid:
         raise HTTPException(

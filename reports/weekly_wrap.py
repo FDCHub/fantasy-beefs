@@ -46,6 +46,7 @@ from db.schema import (
     Matchup,
     Projection,
     Roster,
+    ShortfallSweepRecord,
     Team,
     User,
     Wallet,
@@ -53,6 +54,7 @@ from db.schema import (
     WrapUpGmEdition,
     SessionLocal,
 )
+from betting.shortfall_sweep import SweepResult, sweep_explanation_text
 
 # ── AI config ─────────────────────────────────────────────────────────────────
 
@@ -135,6 +137,7 @@ class GmWeekData:
     bet_won:           int
     bet_lost:          int
     bet_net:           float
+    sweep_explanation: str   # B2, Section 6 — plain-language shortfall-sweep summary
 
 
 @dataclass
@@ -341,6 +344,36 @@ def _pick_beef_of_week(
     return best
 
 
+def _sweep_explanation_for(league_id: int, team_id: int, week: int, db: Session) -> str:
+    """
+    Reads an EXISTING ShortfallSweepRecord for this team/week, if the sweep
+    has already run (B2, Section 6) — never triggers a new sweep as a side
+    effect of generating a wrap. If the sweep hasn't run yet for this week,
+    returns a neutral placeholder (template-fallback-safe, matching this
+    file's own 'always produces output' convention)."""
+    record = (
+        db.query(ShortfallSweepRecord)
+        .filter(
+            ShortfallSweepRecord.league_id == league_id,
+            ShortfallSweepRecord.team_id   == team_id,
+            ShortfallSweepRecord.week      == week,
+        )
+        .first()
+    )
+    if not record:
+        return "Shortfall sweep for this week hasn't run yet."
+    return sweep_explanation_text(SweepResult(
+        team_id=team_id, week=week,
+        weekly_min_cents=record.weekly_min_cents,
+        wagered_cents=record.wagered_cents,
+        shortfall_cents=record.shortfall_cents,
+        covered_cents=record.covered_cents,
+        uncovered_cents=record.uncovered_cents,
+        swept=record.shortfall_cents > 0,
+        already_run=True,
+    ))
+
+
 def _gather_week_data(league_id: int, week: int, db: Session) -> WeekData:
     league = db.query(League).filter(League.id == league_id).first()
     teams  = db.query(Team).filter(Team.league_id == league_id).order_by(Team.id).all()
@@ -466,6 +499,7 @@ def _gather_week_data(league_id: int, week: int, db: Session) -> WeekData:
             prob_change=round(prob - prob_prev, 3),
             status_tag=status,
             bet_won=bet_won, bet_lost=bet_lost, bet_net=round(bet_net, 2),
+            sweep_explanation=_sweep_explanation_for(league_id, t.id, week, db),
         )
         gm_list.append(gm)
 
@@ -539,13 +573,14 @@ THEIR WEEK {week}:
   Result: {result_line}
   Lineup grade: {lineup_grade} (left {pts_left:.1f} pts on bench; best possible was {best_possible:.1f})
   Betting: {bet_line}
+  Weekly wagering minimum: {sweep_line}
   Record: {wins}-{losses}, Rank #{rank} of {total_teams}
   Status: {status_display}
   Playoff probability: {playoff_prob:.0%} ({prob_change:+.1%} from last week)
 
 Write a personalized 3-paragraph update:
   Para 1: Their matchup — their score, opponent, what went right/wrong. Make it specific to them. Playful.
-  Para 2: Lineup grade and betting. If grade C or D, gently roast the lineup decision. If bets went well, celebrate; if not, commiserate.
+  Para 2: Lineup grade and betting. If grade C or D, gently roast the lineup decision. If bets went well, celebrate; if not, commiserate. If any shortfall swept, mention it plainly — no shaming, just the facts.
   Para 3: Status update with the energy of "{status_display}". Specific advice for next week based on their situation.
 
 Tone: {tone}
@@ -618,6 +653,7 @@ def _gm_prompt(gm: GmWeekData, data: WeekData) -> str:
         pts_left       = gm.pts_left,
         best_possible  = gm.best_possible,
         bet_line       = bet_line,
+        sweep_line     = gm.sweep_explanation,
         wins           = gm.wins,
         losses         = gm.losses,
         rank           = gm.rank,
@@ -789,6 +825,7 @@ def _template_gm_edition(gm: GmWeekData) -> str:
             lines.append(f"Bets: {gm.bet_won}W / {gm.bet_lost}L — ${gm.bet_net:.2f}. Double down or sit out.")
     else:
         lines.append("No bets placed this week. Bold strategy.")
+    lines.append(gm.sweep_explanation)
     lines.append("")
 
     status_advice = {

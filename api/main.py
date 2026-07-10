@@ -72,11 +72,13 @@ from payments.stripe_connect import (
     create_connect_onboarding_link,
     execute_payouts,
     get_audit_log,
+    get_buyin_enforcement_active,
     get_buyin_gate,
     get_buyin_status,
     get_treasury_state,
     handle_stripe_webhook,
     preview_payouts,
+    set_buyin_enforcement_active,
     setup_league_treasury,
 )
 from notifications.tuesday_sync import (
@@ -95,6 +97,8 @@ from reports.weekly_wrap import (
     send_wrap_up,
     update_wrap_up,
 )
+from reports.my_account import get_my_account_summary
+from reports.settlement_report import championship_settlement_report
 from admin.commissioner_rules import (
     EscrowOut,
     ParsePreview,
@@ -124,7 +128,6 @@ from wallet.faab_wallet import (
     confirm_topup,
     create_bet_topup,
     create_waiver_topup,
-    get_bet_funded,
     get_faab_config,
     get_faab_transactions,
     get_faab_wallet,
@@ -492,7 +495,7 @@ def projections(
 def place_bet(
     req:          BetRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
+    current_user: User    = Depends(get_buyin_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
 
@@ -760,7 +763,7 @@ class PropBetRequest(BaseModel):
 def bet_straight(
     req:          StraightBetRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
+    current_user: User    = Depends(get_buyin_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
@@ -781,7 +784,7 @@ def bet_straight(
 def bet_spread(
     req:          SpreadBetRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
+    current_user: User    = Depends(get_buyin_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
@@ -802,7 +805,7 @@ def bet_spread(
 def bet_over_under(
     req:          OverUnderRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
+    current_user: User    = Depends(get_buyin_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
@@ -823,7 +826,7 @@ def bet_over_under(
 def bet_prop(
     req:          PropBetRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
+    current_user: User    = Depends(get_buyin_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
@@ -1106,7 +1109,7 @@ def _challenge_out(c: ChallengeOut) -> ChallengeOut_API:
 def beef_challenge(
     req:          ChallengeRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_bet_funded),
+    current_user: User    = Depends(get_buyin_gate),
 ):
     assert_own_team(req.challenger_team_id, current_user)
     try:
@@ -1269,6 +1272,16 @@ class TreasurySetupRequest(BaseModel):
     )
 
 
+class BuyinEnforcementRequest(BaseModel):
+    league_id: int
+    active:    bool
+
+
+class BuyinEnforcementOut(BaseModel):
+    league_id: int
+    active:    bool
+
+
 class TreasuryOut(BaseModel):
     league_id:             int
     buy_in_amount_cents:   int
@@ -1423,6 +1436,29 @@ def payments_setup_treasury(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _treasury_out(state)
+
+
+@app.post("/payments/buyin-enforcement", response_model=BuyinEnforcementOut, status_code=200)
+def payments_set_buyin_enforcement(
+    req:   BuyinEnforcementRequest,
+    db:    Session = Depends(get_db),
+    _comm: User    = Depends(require_commissioner),
+):
+    """Commissioner turns buy-in enforcement on/off for a league (B2, Finding 5.3)."""
+    try:
+        active = set_buyin_enforcement_active(
+            req.league_id, req.active, db, performer_id=_comm.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return BuyinEnforcementOut(league_id=req.league_id, active=active)
+
+
+@app.get("/payments/buyin-enforcement/{league_id}", response_model=BuyinEnforcementOut)
+def payments_get_buyin_enforcement(league_id: int, db: Session = Depends(get_db)):
+    """Read current buy-in enforcement status for a league (open endpoint)."""
+    active = get_buyin_enforcement_active(league_id, db)
+    return BuyinEnforcementOut(league_id=league_id, active=active)
 
 
 @app.get("/payments/treasury/{league_id}", response_model=TreasuryOut)
@@ -2624,6 +2660,96 @@ def reports_rankings_team_history(
     if not out:
         raise HTTPException(404, f"No rankings found for team {team_id} in league {league_id}")
     return out
+
+
+# ── My Account (B2, Section 6) ────────────────────────────────────────────────
+
+class MyAccountOut(BaseModel):
+    team_id:                  int
+    skunk_pot_cents:          int
+    skunk_pot_dollars:        str
+    championship_pot_cents:   int
+    championship_pot_dollars: str
+    my_open_receivable_cents: int
+    my_open_receivable_dollars: str
+
+
+@app.get("/account/{team_id}/summary", response_model=MyAccountOut)
+def account_summary(
+    team_id:      int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """Skunk pot, championship pot, and this team's own open receivable (B2-6.5)."""
+    assert_own_team(team_id, current_user)
+    try:
+        summary = get_my_account_summary(team_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return MyAccountOut(
+        team_id=summary.team_id,
+        skunk_pot_cents=summary.skunk_pot_cents,
+        skunk_pot_dollars=_cents_to_dollars(summary.skunk_pot_cents),
+        championship_pot_cents=summary.championship_pot_cents,
+        championship_pot_dollars=_cents_to_dollars(summary.championship_pot_cents),
+        my_open_receivable_cents=summary.my_open_receivable_cents,
+        my_open_receivable_dollars=_cents_to_dollars(summary.my_open_receivable_cents),
+    )
+
+
+# ── Season-end settlement report decomposition (B2-6.3-R) ────────────────────
+
+class SettlementRowOut(BaseModel):
+    place:                    int
+    team_id:                  int
+    team_name:                str
+    pct:                      int
+    payout_cents:             int
+    payout_dollars:           str
+    collected_cents:          int
+    collected_dollars:        str
+    contingent_cents:         int
+    contingent_dollars:       str
+
+
+class SettlementReportOut(BaseModel):
+    league_id:               int
+    pot_total_cents:         int
+    pot_total_dollars:       str
+    collected_cents:         int
+    collected_dollars:       str
+    contingent_cents:        int
+    contingent_dollars:      str
+    rows:                    list[SettlementRowOut]
+
+
+@app.get("/reports/settlement/{league_id}", response_model=SettlementReportOut)
+def reports_settlement(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_commissioner),
+):
+    """Season-end settlement report: each winner's payout decomposed into
+    collected vs. contingent-on-outstanding-receivables (B2-6.3-R)."""
+    report = championship_settlement_report(league_id, db)
+    return SettlementReportOut(
+        league_id=report.league_id,
+        pot_total_cents=report.pot_total_cents,
+        pot_total_dollars=_cents_to_dollars(report.pot_total_cents),
+        collected_cents=report.collected_cents,
+        collected_dollars=_cents_to_dollars(report.collected_cents),
+        contingent_cents=report.contingent_cents,
+        contingent_dollars=_cents_to_dollars(report.contingent_cents),
+        rows=[
+            SettlementRowOut(
+                place=r.place, team_id=r.team_id, team_name=r.team_name, pct=r.pct,
+                payout_cents=r.payout_cents, payout_dollars=_cents_to_dollars(r.payout_cents),
+                collected_cents=r.collected_cents, collected_dollars=_cents_to_dollars(r.collected_cents),
+                contingent_cents=r.contingent_cents, contingent_dollars=_cents_to_dollars(r.contingent_cents),
+            )
+            for r in report.rows
+        ],
+    )
 
 
 # ── Decision Engine health routes ─────────────────────────────────────────────
