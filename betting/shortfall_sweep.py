@@ -81,7 +81,7 @@ def _compute_wagered_cents(team_id: int, league_id: int, week: int, db: Session)
             .scalar()
         ) or 0.0
 
-    pool_dollars = 0.0
+    pool_cents = 0
     pot = (
         db.query(PoolPot)
         .filter(PoolPot.league_id == league_id, PoolPot.week == week)
@@ -90,9 +90,9 @@ def _compute_wagered_cents(team_id: int, league_id: int, week: int, db: Session)
     if pot and pot.entries_collected:
         cfg = db.query(PoolConfig).filter(PoolConfig.league_id == league_id).first()
         if cfg:
-            pool_dollars = cfg.weekly_entry
+            pool_cents = cfg.weekly_entry_cents
 
-    return _to_cents(versus_dollars) + _to_cents(pool_dollars)
+    return _to_cents(versus_dollars) + pool_cents
 
 
 def sweep_shortfall_for_team(team_id: int, league_id: int, week: int, db: Session) -> SweepResult:

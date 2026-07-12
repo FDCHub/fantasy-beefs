@@ -12,7 +12,7 @@ Worst Beat pot rolls over when no GM predicts correctly (if worst_beat_rollover=
 or is split evenly among all GMs (if False).
 
 Usage:
-  setup_pool_config(league_id, weekly_entry=10.0, worst_beat_rollover=True, db=db)
+  setup_pool_config(league_id, weekly_entry_cents=1000, worst_beat_rollover=True, db=db)
   collect_weekly_entries(league_id, week, db)
   submit_worst_beat_prediction(league_id, team_id, predicted_team_id, week, db)
   settle_pool(league_id, week, db)
@@ -128,6 +128,7 @@ def _nfl_lock_time(season: int, week: int) -> datetime:
 class PoolConfigOut:
     league_id:           int
     weekly_entry:        float
+    weekly_entry_cents:  int
     worst_beat_rollover: bool
 
 
@@ -162,20 +163,22 @@ class PoolSettlementResult:
 
 def setup_pool_config(
     league_id:           int,
-    weekly_entry:        float,
+    weekly_entry_cents:  int,
     worst_beat_rollover: bool,
     db:                  Session,
 ) -> PoolConfigOut:
     """Create or update PoolConfig for a league. Safe to call multiple times."""
-    if weekly_entry <= 0:
-        raise ValueError("weekly_entry must be positive")
+    if weekly_entry_cents <= 0:
+        raise ValueError("weekly_entry_cents must be positive")
 
     cfg = db.query(PoolConfig).filter(PoolConfig.league_id == league_id).first()
     if cfg is None:
         cfg = PoolConfig(league_id=league_id)
         db.add(cfg)
 
-    cfg.weekly_entry        = round(weekly_entry, 2)
+    cfg.weekly_entry_cents  = weekly_entry_cents
+    # Float mirror, stays live until migrate_pool_cents.py's DROP step runs.
+    cfg.weekly_entry        = weekly_entry_cents / 100
     cfg.worst_beat_rollover = worst_beat_rollover
     db.commit()
     return _cfg_out(cfg)
@@ -193,6 +196,7 @@ def _cfg_out(cfg: PoolConfig) -> PoolConfigOut:
     return PoolConfigOut(
         league_id           = cfg.league_id,
         weekly_entry        = cfg.weekly_entry,
+        weekly_entry_cents  = cfg.weekly_entry_cents,
         worst_beat_rollover = bool(cfg.worst_beat_rollover),
     )
 

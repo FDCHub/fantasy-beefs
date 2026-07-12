@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import dataclasses
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -53,6 +54,21 @@ class SettleRequest(BaseModel):
     week:      int
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _dollars_to_cents(dollars: float) -> int:
+    """Exact dollars -> cents. Rejects (never rounds) an amount that isn't
+    a whole number of cents — e.g. 10.005 is a bad request, not silently
+    rounded to 1000 or 1001 cents."""
+    cents = Decimal(str(dollars)) * 100
+    if cents != cents.to_integral_value():
+        raise ValueError(
+            f"{dollars} is not a whole number of cents — amounts must be "
+            f"in exact dollars-and-cents (at most two decimal places)"
+        )
+    return int(cents)
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/config", response_model=PoolConfigOut)
@@ -62,9 +78,10 @@ def create_pool_config(
     _comm: User    = Depends(require_commissioner),
 ) -> PoolConfigOut:
     try:
+        weekly_entry_cents = _dollars_to_cents(req.weekly_entry)
         return setup_pool_config(
             league_id           = req.league_id,
-            weekly_entry        = req.weekly_entry,
+            weekly_entry_cents  = weekly_entry_cents,
             worst_beat_rollover = req.worst_beat_rollover,
             db                  = db,
         )

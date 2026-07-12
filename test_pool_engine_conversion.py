@@ -111,9 +111,7 @@ def _make_league(name: str, worst_beat_rollover: bool = True, entry_cents: int =
         db.add(league)
         db.flush()
         league_id = league.id
-        setup_pool_config(league_id, entry_cents / 100.0, worst_beat_rollover, db)
-        cfg = db.query(PoolConfig).filter(PoolConfig.league_id == league_id).first()
-        cfg.weekly_entry_cents = entry_cents
+        setup_pool_config(league_id, entry_cents, worst_beat_rollover, db)
         db.commit()
         return league_id
 
