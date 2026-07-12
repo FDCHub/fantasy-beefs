@@ -67,11 +67,20 @@ def championship_settlement_report(
     """
     Decomposes the championship pot's payout across the configured split
     (default 60/30/10) into collected vs. contingent, per winner.
+
+    FR-5.5 interim bridge (SC-1/SC-2, Opus-reviewed): pot_total_cents sums
+    the bare "championship" account (still written by shortfall_sweep.py)
+    and the league-scoped "championship:{league_id}" account (written by
+    pool_engine.py's settle_pool()). Interim measure until
+    shortfall_sweep.py is converted to scoped keys (full FR-5.5
+    resolution, separate scope) — see payments/stripe_connect.py's
+    _championship_total() for the same bridge and its single-league-only
+    caveat.
     """
     order = standings_order or _compute_standings_order(league_id, db)
     split = payout_split or DEFAULT_PAYOUT_SPLIT
 
-    pot_total_cents = balance_of("championship")
+    pot_total_cents = balance_of("championship") + balance_of(f"championship:{league_id}")
 
     teams = db.query(Team).filter(Team.league_id == league_id).all()
     contingent_cents = sum(
