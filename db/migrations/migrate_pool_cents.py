@@ -189,16 +189,24 @@ try:
                     )
         print(f"  pool_pots: {len(verify_pot_rows)} row(s) verified against a fresh re-derivation")
 
-        # Belt-and-suspenders sanity check -- not the primary gate.
-        default_stop_hit = any(row.weekly_entry_cents == 1000 for row in verify_config_rows)
-        if not default_stop_hit:
-            raise RuntimeError(
-                "VERIFICATION FAILED (sanity check): no pool_config row has "
-                "weekly_entry_cents == 1000 -- expected at least one league on "
-                "the known $10.00 default stop. Refusing to proceed."
-            )
-        print("  sanity check: at least one pool_config row confirmed at the "
-              "$10.00 default stop (1000 cents)")
+        # Belt-and-suspenders sanity check -- not the primary gate. Only
+        # meaningful if pool_config has rows at all; zero rows means no
+        # league has configured a pool yet, which is a valid, unconfigured
+        # state, not a failure -- skip rather than false-positive on an
+        # empty table.
+        if not verify_config_rows:
+            print("  sanity check skipped: pool_config has zero rows -- "
+                  "no league has configured a pool yet.")
+        else:
+            default_stop_hit = any(row.weekly_entry_cents == 1000 for row in verify_config_rows)
+            if not default_stop_hit:
+                raise RuntimeError(
+                    "VERIFICATION FAILED (sanity check): no pool_config row has "
+                    "weekly_entry_cents == 1000 -- expected at least one league on "
+                    "the known $10.00 default stop. Refusing to proceed."
+                )
+            print("  sanity check: at least one pool_config row confirmed at the "
+                  "$10.00 default stop (1000 cents)")
 
         print("\n  VERIFICATION GATE PASSED -- proceeding to finalize columns and drop the old ones.")
 
