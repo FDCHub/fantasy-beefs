@@ -213,8 +213,8 @@ m_e = _make_opponent_matchup(league_e, t_e, week=1)
 _fund_ledger_wallet(t_e, 100_000_00)
 
 with SessionLocal() as db:
-    db.add(PoolConfig(league_id=league_e, weekly_entry=10.0))
-    db.add(PoolPot(league_id=league_e, week=1, entries_collected=True, total_pot=10.0))
+    db.add(PoolConfig(league_id=league_e, weekly_entry_cents=1000))
+    db.add(PoolPot(league_id=league_e, week=1, entries_collected=True, total_pot_cents=1000))
     db.commit()
 
 # No versus bets, no PoolBetPick row for this team at all — but the pool

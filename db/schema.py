@@ -839,11 +839,6 @@ class PoolConfig(Base):
 
     id                      = Column(Integer, primary_key=True, autoincrement=True)
     league_id               = Column(Integer, ForeignKey("leagues.id"), unique=True)
-    weekly_entry            = Column(Float,   default=10.0)
-    # Integer-cents migration (db/migrations/migrate_pool_cents.py) — added
-    # alongside weekly_entry, not yet replacing it. weekly_entry stays live
-    # (pool_engine.py still reads it) until that migration's DROP step runs,
-    # which itself is gated on pool_engine.py being converted first.
     weekly_entry_cents      = Column(Integer, nullable=False, default=1000)
     worst_beat_rollover     = Column(Boolean, default=True)
     created_at              = Column(DateTime(timezone=True),
@@ -881,13 +876,8 @@ class PoolPot(Base):
     id                         = Column(Integer,  primary_key=True, autoincrement=True)
     league_id                  = Column(Integer,  ForeignKey("leagues.id"))
     week                       = Column(Integer)
-    worst_beat_rollover_amount = Column(Float,   default=0.0)
-    # Integer-cents migration (db/migrations/migrate_pool_cents.py) — added
-    # alongside the float columns, not yet replacing them. See the matching
-    # comment on PoolConfig.weekly_entry_cents above.
     worst_beat_rollover_cents  = Column(BigInteger, default=0)
     entries_collected          = Column(Boolean,  default=False)
-    total_pot                  = Column(Float,   nullable=True)
     total_pot_cents            = Column(BigInteger, nullable=True)
     settled                    = Column(Boolean,  default=False)
     settled_at                 = Column(DateTime(timezone=True), nullable=True)

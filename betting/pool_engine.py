@@ -177,8 +177,6 @@ def setup_pool_config(
         db.add(cfg)
 
     cfg.weekly_entry_cents  = weekly_entry_cents
-    # Float mirror, stays live until migrate_pool_cents.py's DROP step runs.
-    cfg.weekly_entry        = weekly_entry_cents / 100
     cfg.worst_beat_rollover = worst_beat_rollover
     db.commit()
     return _cfg_out(cfg)
@@ -195,7 +193,7 @@ def get_pool_config(league_id: int, db: Session) -> PoolConfigOut:
 def _cfg_out(cfg: PoolConfig) -> PoolConfigOut:
     return PoolConfigOut(
         league_id           = cfg.league_id,
-        weekly_entry        = cfg.weekly_entry,
+        weekly_entry        = cfg.weekly_entry_cents / 100,
         weekly_entry_cents  = cfg.weekly_entry_cents,
         worst_beat_rollover = bool(cfg.worst_beat_rollover),
     )
@@ -307,11 +305,9 @@ def collect_weekly_entries(league_id: int, week: int, db: Session) -> PoolEntryR
         ))
         charged += 1
 
-    # Derived from entry_cents, not cfg.weekly_entry — that column is
-    # dropped. total_pot (float) is written alongside total_pot_cents —
-    # settle_pool() now requires total_pot_cents, and nothing else in the
-    # codebase has been confirmed to no longer need the float field, so
-    # both get populated.
+    # total_pot (dollars) is derived here only for PoolEntryResult's return
+    # value — the persisted fact is total_pot_cents; there's no float
+    # column to keep in sync anymore.
     total_pot_cents = entry_cents * charged
     total_pot       = round(total_pot_cents / 100, 2)
     per_bet_share   = round(total_pot / 3, 2)
@@ -321,7 +317,6 @@ def collect_weekly_entries(league_id: int, week: int, db: Session) -> PoolEntryR
     pot.worst_beat_rollover_cents = accumulated_rollover_cents
     pot.entries_collected          = True
     pot.settled                    = False
-    pot.total_pot                  = total_pot
     pot.total_pot_cents             = total_pot_cents
     if pot.id is None:
         db.add(pot)
