@@ -2,660 +2,1579 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>THE BEEKEEPER</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Odds Calculator · Rev 1.9</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg-primary: #0a0e14;
-    --bg-card: #0f1520;
-    --bg-card-hover: #141c2a;
-    --border: #1e2d40;
-    --accent-gold: #f5a623;
-    --accent-green: #39d353;
-    --accent-red: #ff4444;
-    --accent-amber: #ffaa00;
-    --accent-blue: #4d9fff;
-    --text-primary: #e8edf3;
-    --text-secondary: #6b7f96;
-    --text-muted: #3a4a5c;
-    --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
-  }
+:root {
+  --blue:    #006BB6;
+  --orange:  #F58426;
+  --jets:    #003F2D;
+  --jets-lt: #1A6B4A;
+  --orange-lt: #FDD5A8;
+  --white-lt: #E8E4DF;
+  --navy:    #1C2841;
+  --navy-lt: #B0BACE;
+  --green:   #1A6B3C;
+  --red:     #8B1A1A;
+  --gold:    #7A5C0A;
+  --gold-lt: #C9A84C;
+  --slate:   #1E2535;
+  --ink:     #0D0D0D;
+  --bg:      #F5F2ED;
+  --surface: #FFFFFF;
+  --border:  #DDD9D2;
+  --muted:   #7A746E;
+  --rangers: #C8102E;
+  --rangers-lt: #E8606E;
+  --mono:    ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --sans:    -apple-system,'SF Pro Display','Helvetica Neue',Arial,sans-serif;
+}
 
-  html, body {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    height: 100%;
-    overflow: hidden;
-  }
+html { overflow-x: hidden; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  padding: 0 0 60px;
+  min-height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+  overflow-x: hidden;
+  width: 100%;
+}
 
-  /* ── LAYOUT ── */
-  .app {
-    display: grid;
-    grid-template-rows: 48px 1fr 56px 140px;
-    height: 100vh;
-    gap: 0;
-  }
+/* ── HEADER ───────────────────── */
+.header {
+  background: var(--ink);
+  padding: 14px 16px 10px;
+  border-bottom: 3px solid var(--orange);
+}
+.header-title {
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 800;
+  color: white;
+  letter-spacing: -0.02em;
+}
+.header-title em { color: var(--orange); font-style: normal; transition: color 0.2s; }
+.header-sub {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6B7280;
+  margin-top: 2px;
+}
 
-  /* ── HEADER ── */
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 24px;
-    background: #080c12;
-    border-bottom: 1px solid var(--border);
-  }
+/* ── MODE SWITCHER ────────────── */
+.mode-bar {
+  background: var(--slate);
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+.mode-btn {
+  background: #2C3140;
+  border: 1px solid #3A4055;
+  border-radius: 6px;
+  color: #8A8F9E;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0;
+  aspect-ratio: 1 / 0.7;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-align: center;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mode-btn:hover { background: #3A4055; color: white; }
+.mode-btn.active {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: white;
+  font-weight: 700;
+}
+.mode-btn.orange { background: var(--orange); border-color: var(--orange); color: white; font-weight: 700; }
+.mode-btn.white  { background: #FFFFFF; border-color: #CCCCCC; color: var(--ink); font-weight: 700; }
+.mode-btn.jets   { background: var(--jets); border-color: var(--jets); color: white; font-weight: 700; }
+.mode-btn.navy    { background: var(--navy); border-color: var(--navy); color: white; font-weight: 700; }
+.mode-btn.rangers { background: var(--rangers); border-color: var(--rangers); color: white; font-weight: 700; }
 
-  .header-title {
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.25em;
-    color: var(--accent-gold);
-  }
+/* ── MAIN PANEL ───────────────── */
+.panel { padding: 16px 14px; }
 
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-  }
+/* ── FORMULA STRIP ────────────── */
+.formula-strip {
+  background: var(--slate);
+  border-radius: 8px;
+  padding: 13px 15px;
+  margin-bottom: 16px;
+}
+.strip-orange { background: #F58426; }
+.strip-navy   { background: #1C2841; }
+.strip-white  { background: #FFFFFF; }
+.strip-jets    { background: #003F2D; }
+.strip-rangers { background: #C8102E; }
+.fs-label {
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #FFFFFF;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+.strip-white .fs-label { color: #111111; }
+.strip-white .fs-formula { color: #111111; }
+.strip-white .fs-tag { opacity: 0.85; }
+.fs-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 7px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.fs-row.lit { background: rgba(255,214,0,0.1); }
+.strip-white .fs-row.lit { background: rgba(0,0,0,0.06); }
+.strip-orange .fs-row.lit { background: rgba(255,255,255,0.15); }
+.strip-navy .fs-row.lit { background: rgba(255,255,255,0.1); }
+.strip-jets .fs-row.lit { background: rgba(255,255,255,0.1); }
+.fs-row:last-child { margin-bottom: 0; }
+.fs-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 3px;
+  white-space: nowrap;
+  min-width: 58px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.tag-fav  { background: rgba(139,26,26,0.55);  color: #FF9A9A; }
+.tag-dog  { background: rgba(26,107,60,0.55);   color: #7AFFB2; }
+.tag-gold { background: rgba(122,92,10,0.45);   color: #FFD97A; }
+.fs-formula {
+  font-size: 13px;
+  font-weight: 700;
+  color: #FFFFFF;
+  line-height: 1.6;
+}
+.fs-dim { color: #8A8F9E; font-size: 12px; }
 
-  .header-clock {
-    font-size: 13px;
-    color: var(--text-secondary);
-    letter-spacing: 0.1em;
-  }
+/* ── INPUTS ───────────────────── */
+.input-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 7px;
+  font-weight: 700;
+}
+.input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.sign-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sgn {
+  width: 38px;
+  height: 44px;
+  border: none;
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--muted);
+  transition: all 0.15s;
+}
+.sgn.on-neg { background: var(--red);   color: white; }
+.sgn.on-pos { background: var(--green); color: white; }
 
-  .cluster-health {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    color: var(--text-secondary);
-  }
+input.mi {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--ink);
+  outline: none;
+  -moz-appearance: textfield;
+}
+input.mi::-webkit-outer-spin-button,
+input.mi::-webkit-inner-spin-button { -webkit-appearance: none; }
+input.mi:focus { border-color: var(--blue); background: white; }
 
-  .health-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--accent-green);
-    box-shadow: 0 0 6px var(--accent-green);
-    animation: pulse 2s infinite;
-  }
+.pct { font-size: 18px; color: var(--muted); flex-shrink: 0; }
 
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
+/* ── STAKE / VIG ROW ──────────── */
+.sv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.sv-lbl {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  font-weight: 700;
+}
+input.si {
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  outline: none;
+  -moz-appearance: textfield;
+  width: 88px;
+}
+input.si.narrow { width: 66px; }
+input.si::-webkit-outer-spin-button,
+input.si::-webkit-inner-spin-button { -webkit-appearance: none; }
+input.si:focus { border-color: var(--blue); }
+.sv-opt { font-size: 9px; color: var(--muted); }
 
-  /* ── MAIN CONTENT ── */
-  .main {
-    display: grid;
-    grid-template-columns: 280px 1fr;
-    overflow: hidden;
-    border-bottom: 1px solid var(--border);
-  }
+/* ── TWO-COL ODDS INPUT ───────── */
+.two-odds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.odds-side-lbl {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
 
-  /* ── TOPOLOGY MAP ── */
-  .topology {
-    background: var(--bg-card);
-    border-right: 1px solid var(--border);
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    overflow: hidden;
-  }
+/* ── CALCULATE BUTTON ─────────── */
+.calc-btn {
+  width: 100%;
+  padding: 14px;
+  background: var(--slate);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: opacity 0.15s;
+}
+.calc-btn:hover { opacity: 0.85; }
+.calc-btn.orange-btn { background: var(--orange); }
+.calc-btn.white-btn  { background: #FFFFFF; color: var(--ink); border: 1px solid var(--border); }
+.calc-btn.white-btn:hover { background: #F0EDE8; }
+.calc-btn.jets-btn   { background: var(--jets); }
+.calc-btn.navy-btn   { background: var(--navy); }
 
-  .topology-label {
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    color: var(--text-muted);
-    text-transform: uppercase;
-  }
+/* ── RESULT ───────────────────── */
+.result { display: none; }
+.result.show { display: block; }
 
-  .topology-svg {
-    flex: 1;
-  }
+/* ── TABLE ────────────────────── */
+.ba-wrap {
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.ba-table { width: 100%; border-collapse: collapse; }
+.ba-table th {
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  background: var(--slate);
+  border-bottom: 1px solid #444;
+}
+.ba-table th.th-y { color: #5BB8FF; }
+.ba-table th.th-t { color: #FFB347; }
+.ba-table th:first-child { color: white; font-size: 9px; letter-spacing: 0.08em; }
+.ba-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.ba-table tr:last-child td { border-bottom: none; }
+.ba-alt td { background: #F0EDE8; }
+.ba-row-lbl  { font-size: 12px; font-weight: 500; color: var(--ink); }
+.ba-val-y    { color: var(--blue);   font-weight: 500; }
+.ba-val-t    { color: var(--orange); font-weight: 500; }
+.ba-val-dim  { color: var(--muted);  font-size: 12px; }
+.ba-val-gold { color: var(--gold);   font-weight: 500; }
+.ba-note {
+  padding: 4px 12px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
 
-  /* ── NODE CARDS ── */
-  .nodes {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 1px;
-    background: var(--border);
-    overflow: hidden;
-  }
+/* ── DIVIDER ──────────────────── */
+.divider { height: 1px; background: var(--border); margin: 12px 0; }
 
-  .node-card {
-    background: var(--bg-card);
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    transition: background 0.2s;
-    cursor: pointer;
-    overflow: hidden;
-  }
+/* ── WORK STEPS ───────────────── */
+.work { font-size: 12px; color: var(--muted); line-height: 2.2; }
+.ws { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.wn {
+  font-size: 9px;
+  background: var(--border);
+  color: var(--ink);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+.we { color: var(--ink); font-weight: 600; }
 
-  .node-card:hover { background: var(--bg-card-hover); }
+/* ── VIG BAR ──────────────────── */
+.vig-track { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+.vig-fill  { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.vig-none { background: var(--green); }
+.vig-low  { background: var(--gold-lt); }
+.vig-high { background: var(--red); }
 
-  .node-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
+.verdict {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 12px;
+  border-radius: 7px;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.verdict-fair { background: var(--green); color: white; }
+.verdict-med  { background: var(--gold-lt); color: var(--ink); }
+.verdict-high { background: var(--red);   color: white; }
 
-  .node-name {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    color: var(--text-primary);
-  }
+/* ── ESCROW PANEL ─────────────── */
+.escrow-inherited {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.inh-lbl {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.inh-grid { display: grid; align-items: start;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.inh-grid-3 { grid-template-columns: 1fr 1fr 1fr; align-items: start; }
+.inh-field-lbl {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 2px;
+  font-weight: 700;
+}
+.inh-field-val { font-size: 15px; font-weight: 700; }
 
-  .node-status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-  }
+/* ── NOVIG NOTE ───────────────── */
+.novig-note {
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  margin-bottom: 12px;
+}
+.vig-note {
+  font-size: 11px;
+  color: var(--gold-lt);
+  font-style: italic;
+  margin-bottom: 8px;
+}
 
-  .status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-  }
+/* ── RESET ────────────────────── */
+.reset-link {
+  display: block;
+  text-align: right;
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.reset-link:hover { color: var(--ink); }
+.fav-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.fav-check input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--blue);
+  flex-shrink: 0;
+}
+#mode-0 .fav-check input[type="checkbox"] { accent-color: var(--orange); }
+#mode-1 .fav-check input[type="checkbox"] { accent-color: var(--navy); }
+#mode-2 .fav-check input[type="checkbox"] { accent-color: var(--rangers); }
+#mode-3 .fav-check input[type="checkbox"] { accent-color: #333333; }
+#mode-4 .fav-check input[type="checkbox"] { accent-color: var(--jets); }
+.fav-check-lbl {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fav-check input:checked + .fav-check-lbl {
+  color: var(--muted);
+}
 
-  .status-dot.online { background: var(--accent-green); box-shadow: 0 0 5px var(--accent-green); }
-  .status-dot.offline { background: var(--accent-red); box-shadow: 0 0 5px var(--accent-red); }
-  .status-dot.pending { background: var(--accent-amber); box-shadow: 0 0 5px var(--accent-amber); }
 
-  .node-ip {
-    font-size: 10px;
-    color: var(--text-secondary);
-    letter-spacing: 0.05em;
-  }
+.clear-btn {
+  width: 100%;
+  padding: 11px;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.clear-btn.orange-reset { background: var(--orange-lt); color: #8B4000; }
+.clear-btn.orange-reset:hover { background: #F9C07A; }
+.clear-btn.white-reset  { background: var(--white-lt); color: var(--muted); border: 1px solid var(--border); }
+.clear-btn.white-reset:hover  { background: #D8D4CE; color: var(--ink); }
+.clear-btn.jets-reset   { background: #A8D4C4; color: var(--jets); }
+.clear-btn.jets-reset:hover   { background: #7BBFAA; }
+.clear-btn.navy-reset   { background: var(--navy-lt); color: var(--navy); }
+.clear-btn.navy-reset:hover   { background: #8A9AB8; }
 
-  .node-meta {
-    display: flex;
-    gap: 16px;
-    font-size: 10px;
-    color: var(--text-secondary);
-  }
-
-  .node-meta span { display: flex; flex-direction: column; gap: 2px; }
-  .node-meta .label { color: var(--text-muted); font-size: 9px; letter-spacing: 0.1em; }
-  .node-meta .value { color: var(--text-primary); }
-
-  /* ── METRIC BARS ── */
-  .metrics { display: flex; flex-direction: column; gap: 6px; }
-
-  .metric-row {
-    display: grid;
-    grid-template-columns: 32px 1fr 32px;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .metric-label { font-size: 9px; color: var(--text-muted); letter-spacing: 0.1em; }
-  .metric-pct { font-size: 9px; color: var(--text-secondary); text-align: right; }
-
-  .bar-track {
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.5s ease;
-  }
-
-  .bar-fill.cpu { background: var(--accent-blue); }
-  .bar-fill.ram { background: var(--accent-gold); }
-  .bar-fill.gpu { background: var(--accent-green); }
-  .bar-fill.gpu.warn { background: var(--accent-amber); }
-  .bar-fill.gpu.crit { background: var(--accent-red); }
-
-  .inferring-badge {
-    display: inline-block;
-    padding: 1px 6px;
-    font-size: 8px;
-    letter-spacing: 0.15em;
-    background: rgba(57, 211, 83, 0.15);
-    color: var(--accent-green);
-    border: 1px solid rgba(57, 211, 83, 0.3);
-    border-radius: 2px;
-    animation: blink 1.2s step-end infinite;
-  }
-
-  .pending-badge {
-    display: inline-block;
-    padding: 1px 6px;
-    font-size: 8px;
-    letter-spacing: 0.1em;
-    background: rgba(255, 170, 0, 0.1);
-    color: var(--accent-amber);
-    border: 1px solid rgba(255, 170, 0, 0.25);
-    border-radius: 2px;
-  }
-
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
-
-  /* ── SERVICES BAR ── */
-  .services {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 24px;
-    background: #080c12;
-    border-bottom: 1px solid var(--border);
-    overflow-x: auto;
-  }
-
-  .services-label {
-    font-size: 9px;
-    letter-spacing: 0.2em;
-    color: var(--text-muted);
-    white-space: nowrap;
-    margin-right: 4px;
-  }
-
-  .service-pill {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
-    border-radius: 3px;
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: opacity 0.2s;
-    border: 1px solid;
-  }
-
-  .service-pill:hover { opacity: 0.8; }
-
-  .service-pill.up {
-    background: rgba(57, 211, 83, 0.08);
-    color: var(--accent-green);
-    border-color: rgba(57, 211, 83, 0.25);
-  }
-
-  .service-pill.down {
-    background: rgba(255, 68, 68, 0.08);
-    color: var(--accent-red);
-    border-color: rgba(255, 68, 68, 0.25);
-  }
-
-  .service-pill.restarting {
-    background: rgba(255, 170, 0, 0.08);
-    color: var(--accent-amber);
-    border-color: rgba(255, 170, 0, 0.25);
-  }
-
-  .pill-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-
-  /* ── ACTIVITY LOG ── */
-  .log {
-    background: #080c12;
-    padding: 10px 24px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .log-entry {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 10px;
-    line-height: 1.5;
-    opacity: 0;
-    animation: fadeIn 0.3s forwards;
-  }
-
-  @keyframes fadeIn { to { opacity: 1; } }
-
-  .log-time { color: var(--text-muted); width: 68px; flex-shrink: 0; }
-
-  .log-model { width: 90px; flex-shrink: 0; }
-  .log-model.coder { color: var(--accent-blue); }
-  .log-model.vision { color: #b57aff; }
-
-  .log-arrow { color: var(--text-muted); }
-  .log-endpoint { color: var(--text-secondary); flex: 1; }
-  .log-tokens { color: var(--text-secondary); width: 60px; text-align: right; flex-shrink: 0; }
-  .log-latency { color: var(--accent-gold); width: 54px; text-align: right; flex-shrink: 0; }
+/* ── SECTION HIDDEN ───────────── */
+.mode-panel { display: none; }
+.mode-panel.active { display: block; }
 </style>
 </head>
 <body>
-<div class="app">
 
-  <!-- HEADER -->
-  <header class="header">
-    <div class="header-title">THE BEEKEEPER</div>
-    <div class="header-right">
-      <div class="cluster-health">
-        <div class="health-dot"></div>
-        <span>CLUSTER NOMINAL</span>
-      </div>
-      <div class="header-clock" id="clock">--:--:--</div>
-    </div>
-  </header>
-
-  <!-- MAIN -->
-  <div class="main">
-
-    <!-- TOPOLOGY MAP -->
-    <div class="topology">
-      <div class="topology-label">network topology</div>
-      <svg class="topology-svg" viewBox="0 0 248 320" xmlns="http://www.w3.org/2000/svg">
-        <!-- Lines from switch to nodes -->
-        <g stroke="#1e2d40" stroke-width="1">
-          <line x1="124" y1="100" x2="124" y2="148"/>
-          <line x1="124" y1="100" x2="54" y2="220"/>
-          <line x1="124" y1="100" x2="124" y2="220"/>
-          <line x1="124" y1="100" x2="194" y2="220"/>
-          <line x1="124" y1="100" x2="54" y2="290"/>
-        </g>
-
-        <!-- Animated pulse dots -->
-        <circle r="3" fill="#4d9fff" opacity="0.8">
-          <animateMotion dur="1.8s" repeatCount="indefinite">
-            <mpath href="#path-coder"/>
-          </animateMotion>
-        </circle>
-        <path id="path-coder" d="M124,100 L54,220" fill="none"/>
-
-        <circle r="3" fill="#f5a623" opacity="0.6">
-          <animateMotion dur="2.4s" repeatCount="indefinite" begin="0.8s">
-            <mpath href="#path-vision"/>
-          </animateMotion>
-        </circle>
-        <path id="path-vision" d="M124,100 L124,220" fill="none"/>
-
-        <!-- GL.iNet Opal -->
-        <g>
-          <rect x="94" y="16" width="60" height="26" rx="3" fill="#0f1520" stroke="#1e2d40" stroke-width="1"/>
-          <text x="124" y="27" text-anchor="middle" fill="#6b7f96" font-size="7" font-family="'JetBrains Mono',monospace" letter-spacing="1">GL.INET OPAL</text>
-          <text x="124" y="37" text-anchor="middle" fill="#3a4a5c" font-size="6" font-family="'JetBrains Mono',monospace">192.168.8.1</text>
-        </g>
-
-        <!-- Line opal to switch -->
-        <line x1="124" y1="42" x2="124" y2="68" stroke="#1e2d40" stroke-width="1"/>
-
-        <!-- TP-Link Switch -->
-        <g>
-          <rect x="89" y="68" width="70" height="22" rx="2" fill="#0f1520" stroke="#1e2d40" stroke-width="1"/>
-          <text x="124" y="78" text-anchor="middle" fill="#6b7f96" font-size="7" font-family="'JetBrains Mono',monospace" letter-spacing="1">TP-LINK SW</text>
-          <text x="124" y="87" text-anchor="middle" fill="#3a4a5c" font-size="6" font-family="'JetBrains Mono',monospace">5-PORT GbE</text>
-        </g>
-
-        <!-- Dell Queen Bee (hexagon-ish) -->
-        <g>
-          <rect x="94" y="148" width="60" height="34" rx="3" fill="#0f1520" stroke="#f5a623" stroke-width="1"/>
-          <text x="124" y="160" text-anchor="middle" fill="#f5a623" font-size="7" font-family="'JetBrains Mono',monospace" font-weight="bold" letter-spacing="1">QUEEN BEE</text>
-          <text x="124" y="171" text-anchor="middle" fill="#6b7f96" font-size="6" font-family="'JetBrains Mono',monospace">.10  Dell i7</text>
-          <text x="124" y="179" text-anchor="middle" fill="#3a4a5c" font-size="6" font-family="'JetBrains Mono',monospace">8 Docker svcs</text>
-        </g>
-
-        <!-- coder-node -->
-        <g>
-          <rect x="24" y="220" width="60" height="30" rx="3" fill="#0f1520" stroke="#39d353" stroke-width="1"/>
-          <text x="54" y="231" text-anchor="middle" fill="#39d353" font-size="7" font-family="'JetBrains Mono',monospace" font-weight="bold">CODER</text>
-          <text x="54" y="241" text-anchor="middle" fill="#6b7f96" font-size="6" font-family="'JetBrains Mono',monospace">.11  :11434</text>
-          <text x="54" y="249" text-anchor="middle" fill="#3a4a5c" font-size="6" font-family="'JetBrains Mono',monospace">qwen-coder</text>
-        </g>
-
-        <!-- vision-node -->
-        <g>
-          <rect x="94" y="220" width="60" height="30" rx="3" fill="#0f1520" stroke="#39d353" stroke-width="1"/>
-          <text x="124" y="231" text-anchor="middle" fill="#39d353" font-size="7" font-family="'JetBrains Mono',monospace" font-weight="bold">VISION</text>
-          <text x="124" y="241" text-anchor="middle" fill="#6b7f96" font-size="6" font-family="'JetBrains Mono',monospace">.12  :11435</text>
-          <text x="124" y="249" text-anchor="middle" fill="#3a4a5c" font-size="6" font-family="'JetBrains Mono',monospace">qwen-vl</text>
-        </g>
-
-        <!-- inference-node -->
-        <g>
-          <rect x="164" y="220" width="60" height="30" rx="3" fill="#0f1520" stroke="#ffaa00" stroke-width="1" stroke-dasharray="3,2"/>
-          <text x="194" y="231" text-anchor="middle" fill="#ffaa00" font-size="7" font-family="'JetBrains Mono',monospace" font-weight="bold">INFERENCE</text>
-          <text x="194" y="241" text-anchor="middle" fill="#6b7f96" font-size="6" font-family="'JetBrains Mono',monospace">.13  :11436</text>
-          <text x="194" y="249" text-anchor="middle" fill="#ffaa00" font-size="6" font-family="'JetBrains Mono',monospace">PENDING</text>
-        </g>
-
-        <!-- Swarm label -->
-        <g>
-          <rect x="24" y="290" width="60" height="22" rx="3" fill="#080c12" stroke="#1e2d40" stroke-width="1" stroke-dasharray="2,2"/>
-          <text x="54" y="301" text-anchor="middle" fill="#3a4a5c" font-size="7" font-family="'JetBrains Mono',monospace">THE SWARM</text>
-          <text x="54" y="309" text-anchor="middle" fill="#3a4a5c" font-size="6" font-family="'JetBrains Mono',monospace">Pi cluster</text>
-        </g>
-      </svg>
-    </div>
-
-    <!-- NODE CARDS -->
-    <div class="nodes">
-
-      <!-- coding-node (Dell) -->
-      <div class="node-card">
-        <div class="node-header">
-          <div class="node-name">CODING-NODE</div>
-          <div class="node-status">
-            <div class="status-dot online"></div>
-            <span style="color: var(--accent-green); font-size:9px;">ONLINE</span>
-          </div>
-        </div>
-        <div class="node-ip">192.168.8.10 — Dell Latitude 5330 — Queen Bee</div>
-        <div class="metrics">
-          <div class="metric-row">
-            <span class="metric-label">CPU</span>
-            <div class="bar-track"><div class="bar-fill cpu" style="width:34%"></div></div>
-            <span class="metric-pct">34%</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">RAM</span>
-            <div class="bar-track"><div class="bar-fill ram" style="width:52%"></div></div>
-            <span class="metric-pct">52%</span>
-          </div>
-        </div>
-        <div class="node-meta">
-          <span><span class="label">UPTIME</span><span class="value">1d 4h 12m</span></span>
-          <span><span class="label">DOCKER</span><span class="value">8 / 8 up</span></span>
-          <span><span class="label">IP</span><span class="value">eth static</span></span>
-        </div>
-      </div>
-
-      <!-- coder-node -->
-      <div class="node-card">
-        <div class="node-header">
-          <div class="node-name">CODER-NODE</div>
-          <div class="node-status">
-            <div class="status-dot online"></div>
-            <span class="inferring-badge">INFERRING</span>
-          </div>
-        </div>
-        <div class="node-ip">192.168.8.11 — Jetson Orin Nano — :11434</div>
-        <div class="metrics">
-          <div class="metric-row">
-            <span class="metric-label">CPU</span>
-            <div class="bar-track"><div class="bar-fill cpu" style="width:62%"></div></div>
-            <span class="metric-pct">62%</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">RAM</span>
-            <div class="bar-track"><div class="bar-fill ram" style="width:48%"></div></div>
-            <span class="metric-pct">48%</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">GPU</span>
-            <div class="bar-track"><div class="bar-fill gpu crit" style="width:91%"></div></div>
-            <span class="metric-pct" style="color:var(--accent-red)">91%</span>
-          </div>
-        </div>
-        <div class="node-meta">
-          <span><span class="label">TEMP</span><span class="value">48°C</span></span>
-          <span><span class="label">POWER</span><span class="value">15W MAX</span></span>
-          <span><span class="label">CTX</span><span class="value">32K</span></span>
-        </div>
-      </div>
-
-      <!-- vision-node -->
-      <div class="node-card">
-        <div class="node-header">
-          <div class="node-name">VISION-NODE</div>
-          <div class="node-status">
-            <div class="status-dot online"></div>
-            <span style="color: var(--accent-green); font-size:9px;">ONLINE</span>
-          </div>
-        </div>
-        <div class="node-ip">192.168.8.12 — Jetson Orin Nano — :11435</div>
-        <div class="metrics">
-          <div class="metric-row">
-            <span class="metric-label">CPU</span>
-            <div class="bar-track"><div class="bar-fill cpu" style="width:18%"></div></div>
-            <span class="metric-pct">18%</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">RAM</span>
-            <div class="bar-track"><div class="bar-fill ram" style="width:41%"></div></div>
-            <span class="metric-pct">41%</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">GPU</span>
-            <div class="bar-track"><div class="bar-fill gpu warn" style="width:55%"></div></div>
-            <span class="metric-pct" style="color:var(--accent-amber)">55%</span>
-          </div>
-        </div>
-        <div class="node-meta">
-          <span><span class="label">TEMP</span><span class="value">41°C</span></span>
-          <span><span class="label">POWER</span><span class="value">15W MAX</span></span>
-          <span><span class="label">MODEL</span><span class="value">qwen-vl</span></span>
-        </div>
-      </div>
-
-      <!-- inference-node -->
-      <div class="node-card" style="opacity:0.6;">
-        <div class="node-header">
-          <div class="node-name">INFERENCE-NODE</div>
-          <div class="node-status">
-            <div class="status-dot pending"></div>
-            <span class="pending-badge">PENDING</span>
-          </div>
-        </div>
-        <div class="node-ip">192.168.8.13 — Jetson Orin Nano — :11436</div>
-        <div style="font-size:10px; color:var(--text-muted); line-height:1.8; margin-top:8px;">
-          SSD arriving ~Jun 5<br>
-          Flash JetPack 6.2 after install<br>
-          Model: qwen2.5:7b base<br>
-          Role: Pi business app inference
-        </div>
-        <div class="node-meta" style="margin-top:auto;">
-          <span><span class="label">STATUS</span><span class="value" style="color:var(--accent-amber)">NOT FLASHED</span></span>
-        </div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- SERVICES BAR -->
-  <div class="services">
-    <span class="services-label">SERVICES</span>
-    <div class="service-pill up" onclick="window.location='http://192.168.8.10:80'">
-      <div class="pill-dot"></div>nginx
-    </div>
-    <div class="service-pill up" onclick="window.location='http://192.168.8.10:4000'">
-      <div class="pill-dot"></div>litellm
-    </div>
-    <div class="service-pill up" onclick="window.location='http://192.168.8.10:3000'">
-      <div class="pill-dot"></div>the-hive
-    </div>
-    <div class="service-pill up" onclick="window.location='http://192.168.8.10:3001'">
-      <div class="pill-dot"></div>gitea
-    </div>
-    <div class="service-pill up">
-      <div class="pill-dot"></div>redis
-    </div>
-    <div class="service-pill up" onclick="window.location='http://192.168.8.10:3002'">
-      <div class="pill-dot"></div>grafana
-    </div>
-    <div class="service-pill up">
-      <div class="pill-dot"></div>chromadb
-    </div>
-    <div class="service-pill down">
-      <div class="pill-dot"></div>beekeeper
-    </div>
-  </div>
-
-  <!-- ACTIVITY LOG -->
-  <div class="log" id="log"></div>
-
+<div class="header">
+  <div class="header-title">Odds <em id="title-accent">Calculator</em></div>
+  <div class="header-sub">American Odds · Rev 1.9 · Fraser D Coleman · 6/4/26</div>
 </div>
 
-<script>
-  const clock = document.getElementById('clock');
-  function updateClock() {
-    const now = new Date();
-    clock.textContent = now.toLocaleTimeString('en-US', { hour12: false });
-  }
-  updateClock();
-  setInterval(updateClock, 1000);
+<!-- MODE SWITCHER -->
+<div class="mode-bar">
+  <button class="mode-btn orange" id="btn-0" onclick="switchMode(0)">Prob<br>→ Odds</button>
+  <button class="mode-btn" id="btn-1" onclick="switchMode(1)">Odds<br>→ Prob</button>
+  <button class="mode-btn" id="btn-2" onclick="switchMode(2)">Scores<br>→ Lines</button>
+  <button class="mode-btn" id="btn-3" onclick="switchMode(3)">Vig<br>Solver</button>
+  <button class="mode-btn" id="btn-4" onclick="switchMode(4)">Escrow<br>Recalc</button>
+</div>
 
-  const mockRequests = [
-    { model: 'qwen-coder', modelClass: 'coder', tokens: 35, latency: 192, client: '192.168.8.101' },
-    { model: 'qwen-vision', modelClass: 'vision', tokens: 112, latency: 840, client: '192.168.8.101' },
-    { model: 'qwen-coder', modelClass: 'coder', tokens: 8, latency: 98, client: '192.168.8.101' },
-    { model: 'qwen-coder', modelClass: 'coder', tokens: 247, latency: 1240, client: '192.168.8.248' },
-    { model: 'qwen-vision', modelClass: 'vision', tokens: 58, latency: 510, client: '192.168.8.101' },
-    { model: 'qwen-coder', modelClass: 'coder', tokens: 19, latency: 145, client: '192.168.8.101' },
-    { model: 'qwen-coder', modelClass: 'coder', tokens: 88, latency: 432, client: '192.168.8.248' },
+<div class="panel">
+
+<!-- ══════════════════════════════════════════ -->
+<!-- MODE 0: PROB → ODDS                        -->
+<!-- ══════════════════════════════════════════ -->
+<div class="mode-panel active" id="mode-0">
+  <div class="formula-strip strip-orange">
+    <div class="fs-label">Formula — Probability → Odds</div>
+    <div class="fs-row"><span class="fs-formula">If Fav &gt;50%&nbsp;&nbsp;then&nbsp;&nbsp;&minus;(p / (1&minus;p)) &times; 100</span></div>
+    <div class="fs-row"><span class="fs-formula">If Dog &lt;50%&nbsp;&nbsp;then&nbsp;&nbsp;((1&minus;p) / p) &times; 100</span></div>
+  </div>
+
+  <div class="input-label">Your Win Probability</div>
+  <div class="input-row">
+    <input class="mi" type="number" id="m0-prob" placeholder="60" min="1" max="99">
+    <span class="pct">%</span>
+  </div>
+
+  <div class="sv-row">
+    <span class="sv-lbl">$ Stake</span>
+    <input class="si" type="number" id="m0-stake" value="100" min="1">
+    <span class="sv-lbl" style="margin-left:4px;">Vig %</span>
+    <input class="si narrow" type="number" id="m0-vig" placeholder="—" min="0" max="30" step="0.1" oninput="updateM0Btn()" onchange="updateM0Btn()" onkeyup="updateM0Btn()">
+    <span class="sv-opt">(optional)</span>
+  </div>
+
+  <button class="calc-btn orange-btn" id="m0-calc-btn" onclick="calcM0()">Calculate Odds</button>
+  <button class="clear-btn orange-reset" onclick="resetM0()">Reset</button>
+
+  <div class="result" id="m0-result">
+    <div id="m0-table"></div>
+    <div class="divider"></div>
+    <div class="work" id="m0-work"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- MODE 1: ODDS → PROB                        -->
+<!-- ══════════════════════════════════════════ -->
+<div class="mode-panel" id="mode-1">
+  <div class="formula-strip strip-navy">
+    <div class="fs-label">Formula — Odds → Probability</div>
+    <div class="fs-row"><span class="fs-formula">If Fav (&minus;)&nbsp;&nbsp;then&nbsp;&nbsp;&minus;odds / (&minus;odds + 100)</span></div>
+    <div class="fs-row"><span class="fs-formula">If Dog (+)&nbsp;&nbsp;then&nbsp;&nbsp;100 / (odds + 100)</span></div>
+  </div>
+
+  <div class="input-label">American Odds</div>
+  <div class="input-row" style="margin-bottom:6px;">
+    <span id="m1-odds-prefix" class="odds-prefix">+</span>
+    <input class="mi" type="number" id="m1-odds" placeholder="150" min="1" oninput="m1FavChange()">
+  </div>
+  <label class="fav-check">
+    <input type="checkbox" id="m1-fav-cb" onchange="m1FavChange()">
+    <span class="fav-check-lbl">Favorite? (shows as negative)</span>
+  </label>
+
+  <div class="sv-row">
+    <span class="sv-lbl">$ Stake</span>
+    <input class="si" type="number" id="m1-stake" value="100" min="1">
+    <span class="sv-lbl" style="margin-left:4px;">Vig %</span>
+    <input class="si narrow" type="number" id="m1-vig" placeholder="—" min="0" max="30" step="0.1" oninput="updateM1Btn()" onchange="updateM1Btn()" onkeyup="updateM1Btn()">
+    <span class="sv-opt">(optional)</span>
+  </div>
+
+  <button class="calc-btn navy-btn" id="m1-calc-btn" onclick="calcM1()">Calculate Probability</button>
+  <button class="clear-btn navy-reset" onclick="resetM1()">Reset</button>
+
+  <div class="result" id="m1-result">
+    <div id="m1-table"></div>
+    <div class="divider"></div>
+    <div class="work" id="m1-work"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+
+<!-- ══════════════════════════════════════════ -->
+<!-- MODE 2: SPREAD / O/U (COMBINED) -->
+<div class="mode-panel" id="mode-2">
+  <div class="formula-strip strip-rangers">
+    <div class="fs-label">Scores → Spread &amp; O/U Lines</div>
+    <div class="fs-row"><span class="fs-formula">Spread line = floor(|A &minus; B|) + 0.5</span></div>
+    <div class="fs-row"><span class="fs-formula">O/U line&nbsp;&nbsp;&nbsp;= floor(A + B) + 0.5</span></div>
+    <div class="fs-row"><span class="fs-formula">Both sides 50/50 &rarr; fair even money (+100)</span></div>
+  </div>
+
+  <div class="input-label">Projected Scores</div>
+  <div style="display:flex;gap:10px;margin-bottom:12px;width:100%;">
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:700;">GM A Score</div>
+      <input class="mi" type="number" id="m2sl-a" placeholder="142" min="0" step="0.01" style="font-size:20px;width:100%;">
+    </div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;font-weight:700;">GM B Score</div>
+      <input class="mi" type="number" id="m2sl-b" placeholder="118" min="0" step="0.01" style="font-size:20px;width:100%;">
+    </div>
+  </div>
+
+  <div class="sv-row">
+    <span class="sv-lbl">$ Stake</span>
+    <input class="si" type="number" id="m2sl-stake" value="10" min="1">
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:14px;">
+    <button class="calc-btn" onclick="calcM2sl('spread')"
+      style="flex:1;background:var(--rangers);color:white;margin-bottom:0;">Calc Spread</button>
+    <button class="calc-btn" onclick="calcM2sl('ou')"
+      style="flex:1;background:var(--rangers);color:white;margin-bottom:0;">Calc Over/Under</button>
+  </div>
+  <button class="clear-btn" onclick="resetM2sl()"
+    style="background:#F5C6CE;color:#8B0000;margin-bottom:14px;">Reset</button>
+
+  <div class="result" id="m2sl-result">
+    <div id="m2sl-spread-section" style="display:none;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--rangers);margin-bottom:6px;margin-top:4px;">Spread Bet</div>
+      <div id="m2sl-spread-table"></div>
+    </div>
+    <div id="m2sl-ou-section" style="display:none;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--rangers);margin-bottom:6px;margin-top:14px;">Over / Under Bet</div>
+      <div id="m2sl-ou-table"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODE 4: VIG SOLVER                      -->
+<!-- ══════════════════════════════════════════ -->
+<div class="mode-panel" id="mode-3">
+  <div class="formula-strip strip-white">
+    <div class="fs-label">Method — Vig Solver</div>
+    <div class="fs-row"><span class="fs-formula">Convert both sides &rarr; sum implied probabilities<br>Sum &minus; 100% = <span style="font-weight:700;">vig %</span></span></div>
+  </div>
+
+  <div class="two-odds">
+    <div>
+      <div class="odds-side-lbl" style="color:var(--blue);">Your Side (A)</div>
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:6px;">
+        <span id="m2-a-prefix" class="odds-prefix" style="font-size:24px;">+</span>
+        <input class="mi" type="number" id="m2-a" placeholder="110" min="1" style="width:100%;font-size:18px;" oninput="m2FavChange('a')">
+      </div>
+      <label class="fav-check">
+        <input type="checkbox" id="m2a-fav-cb" onchange="m2FavChange('a')">
+        <span class="fav-check-lbl">Favorite?</span>
+      </label>
+    </div>
+    <div>
+      <div class="odds-side-lbl" style="color:var(--orange);">Their Side (B)</div>
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:6px;">
+        <span id="m2-b-prefix" class="odds-prefix" style="font-size:24px;">+</span>
+        <input class="mi" type="number" id="m2-b" placeholder="110" min="1" style="width:100%;font-size:18px;" oninput="m2FavChange('b')">
+      </div>
+      <label class="fav-check">
+        <input type="checkbox" id="m2b-fav-cb" onchange="m2FavChange('b')">
+        <span class="fav-check-lbl">Favorite?</span>
+      </label>
+    </div>
+  </div>
+  <div class="sv-row">
+    <span class="sv-lbl">$ Stake</span>
+    <input class="si" type="number" id="m2-stake" value="100" min="1">
+    <span class="sv-lbl" style="margin-left:4px;">Override Vig %</span>
+    <input class="si narrow" type="number" id="m2-vig" placeholder="—" min="0" max="30" step="0.1">
+    <span class="sv-opt">(optional)</span>
+  </div>
+
+  <button class="calc-btn white-btn" onclick="calcM4()">Solve for Vig</button>
+  <button class="clear-btn white-reset" onclick="resetM4()">Reset</button>
+
+  <div class="result" id="m2-result">
+    <div id="m2-table"></div>
+    <div class="vig-track"><div class="vig-fill" id="m2-bar"></div></div>
+    <div class="verdict" id="m2-verdict"></div>
+    <div class="divider"></div>
+    <div class="work" id="m2-work"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- MODE 5: ESCROW RECALCULATOR                -->
+<!-- ══════════════════════════════════════════ -->
+<div class="mode-panel" id="mode-4">
+  <div class="formula-strip strip-jets">
+    <div class="fs-label">Flexible Stakes · Max Total Stake Ceiling</div>
+    <div class="fs-row"><span class="fs-formula" style="font-size:11px;line-height:2.0;white-space:nowrap;">
+      A: Refund to underdog only (their stake shrinks)<br>
+      B: Refund to favorite only (your stake shrinks)<br>
+      C: Refund to both sides (both stakes shrink)
+    </span></div>
+    <div class="fs-row" style="margin-top:6px;">
+      <span class="fs-formula" style="font-size:10px;line-height:1.7;white-space:normal;color:#7AFFB2;">
+      D &mdash; Governing rule: every stake is capped at its original amount, so the pot only ever shrinks. No GM is ever asked for more. This applies across cases A, B, and C.
+      </span>
+    </div>
+    <div class="fs-row" style="margin-top:6px;">
+      <span class="fs-tag tag-gold" style="min-width:88px;font-size:9px;">New stake</span>
+      <span class="fs-formula" style="font-size:11px;white-space:nowrap;">min(origPot &times; newProb, origStake)</span>
+    </div>
+    <div class="fs-row">
+      <span class="fs-tag tag-gold" style="min-width:88px;font-size:9px;">Refund</span>
+      <span class="fs-formula" style="font-size:11px;white-space:nowrap;">origStake &minus; newStake</span>
+    </div>
+  </div>
+
+  <!-- STEP 1 INPUTS -->
+  <div class="escrow-inherited">
+    <div class="inh-lbl">Step 1 — Original Wager at Acceptance</div>
+    <div class="inh-grid inh-grid-3" style="margin-bottom:0;align-items:start;">
+      <div>
+        <div class="inh-field-lbl">Your odds</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <span id="e-orig-odds-prefix" class="odds-prefix" style="font-size:20px;">+</span>
+          <input class="si" type="number" id="e-orig-odds" min="1" placeholder="163" style="flex:1;" oninput="eOrigFavChange()">
+        </div>
+        <label class="fav-check" style="margin-bottom:0;">
+          <input type="checkbox" id="e-orig-fav-cb" onchange="eOrigFavChange()">
+          <span class="fav-check-lbl" style="font-size:9px;">Favorite?</span>
+        </label>
+      </div>
+      <div>
+        <div class="inh-field-lbl">Your stake ($)</div>
+        <input class="si" type="number" id="e-orig-stake" placeholder="20" min="1" style="width:100%;">
+      </div>
+      <div>
+        <div class="inh-field-lbl">Their odds (optional)</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <span id="e-their-odds-prefix" class="odds-prefix" style="font-size:20px;">+</span>
+          <input class="si" type="number" id="e-their-odds" min="1" placeholder="143" style="flex:1;" oninput="eTheirOddsChange()">
+        </div>
+        <label class="fav-check" style="margin-bottom:0;">
+          <input type="checkbox" id="e-their-odds-fav-cb" onchange="eTheirOddsChange()">
+          <span class="fav-check-lbl" style="font-size:9px;">Favorite?</span>
+        </label>
+      </div>
+    </div>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+      <span class="inh-field-lbl" style="white-space:nowrap;">Vig % (optional)</span>
+      <input class="si narrow" type="number" id="e-orig-vig" placeholder="—" min="0" max="30" step="0.1" style="width:66px;">
+      <span style="font-size:10px;color:var(--muted);font-style:italic;">Used if their odds not entered</span>
+    </div>
+  </div>
+
+  <button class="calc-btn jets-btn" onclick="calcM5step1()">Calculate Original Escrow</button>
+
+  <!-- STEP 1 RESULT -->
+  <div class="result" id="m3-step1-result">
+    <div id="m3-step1-table"></div>
+
+    <!-- STEP 2 -->
+    <div style="margin-top:20px;">
+      <div class="escrow-inherited">
+        <div class="inh-lbl">Step 2 — Recalculate After Odds Shift</div>
+        <div style="font-size:13px;color:var(--muted);font-style:italic;line-height:1.5;margin-bottom:14px;">Use when a lineup change or updated projection shifts the odds after this bet was accepted.</div>
+
+        <div class="inh-grid inh-grid-3" style="margin-bottom:0;align-items:start;" id="e-their-row-no-vig">
+          <div>
+            <div class="inh-field-lbl">Your updated odds</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+              <span id="e-new-odds-prefix" class="odds-prefix" style="font-size:20px;">+</span>
+              <input class="si" type="number" id="e-new-odds" min="1" placeholder="220" style="flex:1;" oninput="eNewFavChange()">
+            </div>
+            <label class="fav-check" style="margin-bottom:0;">
+              <input type="checkbox" id="e-new-fav-cb" onchange="eNewFavChange()">
+              <span class="fav-check-lbl" style="font-size:9px;">Favorite?</span>
+            </label>
+          </div>
+          <div id="e-their-row" style="display:none;">
+            <div class="inh-field-lbl">Their new odds</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+              <span id="e-new-b-prefix" class="odds-prefix" style="font-size:20px;">+</span>
+              <input class="si" type="number" id="e-new-b" min="1" placeholder="220" style="flex:1;" oninput="eNewBFavChange()">
+            </div>
+            <label class="fav-check" style="margin-bottom:0;">
+              <input type="checkbox" id="e-new-b-fav-cb" onchange="eNewBFavChange()">
+              <span class="fav-check-lbl" style="font-size:9px;">Favorite?</span>
+            </label>
+          </div>
+          <div id="e-novig-note" style="display:block;">
+            <div class="inh-field-lbl">&nbsp;</div>
+            <div id="e-novig-note-text" style="font-size:12px;color:var(--muted);font-style:italic;padding-top:6px;line-height:1.5;">Their odds derived as complement.</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="calc-btn jets-btn" onclick="calcM5step2()">Recalculate Escrow</button>
+
+      <!-- STEP 2 RESULT -->
+      <div class="result" id="m3-step2-result">
+        <div id="m3-step2-table"></div>
+        <div class="work" id="m3-work" style="margin-top:12px;"></div>
+        <div id="m3-footnote" style="font-family:var(--serif,serif);font-size:12px;color:var(--muted);font-style:italic;margin-top:10px;line-height:1.6;"></div>
+      </div>
+    </div>
+
+    <!-- RESET — bottom, only visible after step 1 -->
+    <div style="margin-top:24px;">
+      <button class="clear-btn jets-reset" onclick="resetM5()">Reset</button>
+    </div>
+  </div>
+
+</div>
+</div><!-- end panel -->
+
+</div><!-- end page -->
+
+<script>
+
+var titleColors = ['#F58426', '#6B9FD4', '#C8102E', '#CCCCCC', '#4CAF7A'];
+function switchMode(n) {
+  var activeClasses = ['mode-btn orange', 'mode-btn navy', 'mode-btn rangers', 'mode-btn white', 'mode-btn jets'];
+  for (var i = 0; i < 5; i++) {
+    document.getElementById('btn-' + i).className = i === n ? activeClasses[i] : 'mode-btn';
+    document.getElementById('mode-' + i).className = 'mode-panel' + (i === n ? ' active' : '');
+  }
+  document.getElementById('title-accent').style.color = titleColors[n];
+  if (n === 0) resetM0();
+  if (n === 1) resetM1();
+  if (n === 2) resetM2sl();
+  if (n === 3) resetM4();
+  if (n === 4) resetM5();
+  updateEscrowPreview();
+}
+
+// ── HELPERS ───────────────────────────────────────────────
+
+function o2p(odds, isNeg) {
+  return isNeg ? odds / (odds + 100) : 100 / (odds + 100);
+}
+
+function p2o(p) {
+  if (Math.abs(p - 0.5) < 0.0001) return { val: 100, neg: false }; // even money = +100
+  if (p > 0.5) return { val: Math.round(p / (1 - p) * 100), neg: true };
+  return { val: Math.round((1 - p) / p * 100), neg: false };
+}
+
+function fmtO(o) {
+  return (o.neg ? '\u2212' : '+') + o.val;
+}
+
+function fmtD(n) {
+  return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function calcProfit(stake, val, isNeg) {
+  return isNeg ? (stake / val) * 100 : (stake * val) / 100;
+}
+
+function baHTML(rows) {
+  var trs = rows.map(function(r) {
+    var alt = r.alt ? ' class="ba-alt"' : '';
+    var yc  = r.dim ? 'ba-val-dim' : (r.gold ? 'ba-val-gold' : 'ba-val-y');
+    var tc  = r.dim ? 'ba-val-dim' : (r.gold ? 'ba-val-gold' : 'ba-val-t');
+    var cells = r.gold
+      ? '<td class="ba-row-lbl">' + r.label + '</td><td class="' + yc + '" colspan="2">' + r.yours + '</td>'
+      : '<td class="ba-row-lbl">' + r.label + '</td><td class="' + yc + '">' + r.yours + '</td><td class="' + tc + '">' + r.theirs + '</td>';
+    var note = r.note ? '<tr><td colspan="3" class="ba-note">' + r.note + '</td></tr>' : '';
+    return '<tr' + alt + '>' + cells + '</tr>' + note;
+  }).join('');
+  return '<div class="ba-wrap"><table class="ba-table"><thead><tr><th></th><th class="th-y">Your Side</th><th class="th-t">Their Side</th></tr></thead><tbody>' + trs + '</tbody></table></div>';
+}
+
+// ── CHECKBOX HELPERS ──────────────────────────────────────
+
+var eOrigS = 'neg';
+
+function getFavVal(inputId, cbId) {
+  var raw = parseFloat(document.getElementById(inputId).value);
+  var isFav = document.getElementById(cbId).checked;
+  if (isNaN(raw)) return { val: NaN, isNeg: isFav };
+  return { val: Math.abs(raw), isNeg: isFav };
+}
+
+function updateInputDisplay(inputId, cbId) {
+  var el    = document.getElementById(inputId);
+  var isFav = document.getElementById(cbId).checked;
+  var prefix = document.getElementById(inputId + '-prefix');
+  if (prefix) {
+    prefix.textContent = isFav ? '−' : '+';
+    var panel = el.closest ? el.closest('.mode-panel') : null;
+    var color = 'var(--muted)';
+    if (panel) {
+      if (panel.id === 'mode-0') color = isFav ? 'var(--orange)' : 'var(--muted)';
+      else if (panel.id === 'mode-1') color = isFav ? 'var(--navy)' : 'var(--muted)';
+      else if (panel.id === 'mode-3') color = isFav ? '#333333' : 'var(--muted)';
+      else if (panel.id === 'mode-4') color = isFav ? 'var(--jets)' : 'var(--muted)';
+    }
+    prefix.style.color = isFav ? color : 'var(--muted)';
+    prefix.style.fontWeight = isFav ? '800' : '500';
+    prefix.style.opacity = isFav ? '1' : '0.4';
+  }
+}
+
+function m1FavChange() {
+  updateInputDisplay('m1-odds','m1-fav-cb');
+}
+
+function m2FavChange(side) {
+  if (side === 'a') updateInputDisplay('m2-a','m2a-fav-cb');
+  else              updateInputDisplay('m2-b','m2b-fav-cb');
+}
+
+function isFavChecked(cbId) {
+  return document.getElementById(cbId).checked;
+}
+
+function getOddsVal(inputId, cbId) {
+  var raw = parseFloat(document.getElementById(inputId).value);
+  if (isNaN(raw)) return NaN;
+  var isFav = document.getElementById(cbId).checked;
+  return isFav ? -Math.abs(raw) : Math.abs(raw);
+}
+
+function isNegOdds(inputId, cbId) {
+  var val = parseFloat(document.getElementById(inputId).value);
+  if (isNaN(val)) return document.getElementById(cbId).checked;
+  return val < 0 || document.getElementById(cbId).checked;
+}
+
+function getAbsOdds(inputId) {
+  return Math.abs(parseFloat(document.getElementById(inputId).value) || 0);
+}
+
+function updateM0Btn() {
+  var v = parseFloat(document.getElementById('m0-vig').value);
+  var hasVig = !isNaN(v) && v > 0;
+  document.getElementById('m0-calc-btn').textContent = hasVig ? 'Recalculate Odds' : 'Calculate Odds';
+}
+function updateM1Btn() {
+  var v = parseFloat(document.getElementById('m1-vig').value);
+  var hasVig = !isNaN(v) && v > 0;
+  document.getElementById('m1-calc-btn').textContent = hasVig ? 'Recalculate Probability' : 'Calculate Probability';
+}
+
+// ── MODE 0: PROB → ODDS ───────────────────────────────────
+
+function calcM0() {
+  var raw = parseFloat(document.getElementById('m0-prob').value);
+  if (isNaN(raw) || raw <= 0 || raw >= 100) { alert('Enter 1-99'); return; }
+  var p = raw / 100; var cp = 1 - p; var isFav = p > 0.5;
+  var vigRaw = parseFloat(document.getElementById('m0-vig').value);
+  var hasVig = !isNaN(vigRaw) && vigRaw > 0;
+  var stake  = parseFloat(document.getElementById('m0-stake').value) || 100;
+
+  var fO = p2o(p); var fOStr = fmtO(fO);
+  var fC = p2o(cp); var fCStr = fmtO(fC);
+  var rows, work;
+
+  if (hasVig) {
+    var vf = vigRaw / 100;
+    var pY = p * (1 + vf);
+    var pT = cp * (1 + vf);
+    var clamped = pY >= 1 || pT >= 1;
+    if (clamped) { alert('Warning: vig too high for these odds — one side exceeds 100%. Try a lower vig %.'); return; }
+    var sY = p2o(pY); var sYStr = fmtO(sY);
+    var sT = p2o(pT); var sTStr = fmtO(sT);
+    var pctY = (pY * 100).toFixed(1); var pctT = (pT * 100).toFixed(1);
+    var profY = calcProfit(stake, sY.val, sY.neg);
+    var fairY = calcProfit(stake, fO.val, fO.neg);
+    var lost  = fairY - profY;
+    var house = Math.max(0, lost);
+    var pot   = stake + profY;
+
+    rows = [
+      { label: 'Base probability (no vig)', yours: raw + '%', theirs: (100-raw) + '%', alt: true },
+      { label: 'Base odds (no vig)', yours: fOStr, theirs: fCStr },
+      { label: 'Probability after vig', yours: pctY + '%', theirs: pctT + '%', alt: true,
+        note: 'Vig applied proportionally (' + vigRaw + '%). Each side scaled by (1 + vig). Base probability ratio unchanged.' },
+      { label: 'Odds after vig', yours: sYStr, theirs: sTStr,
+        note: 'Posted odds with vig baked in. Your win chances unchanged - you get paid less.' },
+      { label: 'Profit lost to vig', yours: '-' + fmtD(lost), theirs: '-', alt: true,
+        note: 'Vig applied proportionally (' + vigRaw + '%) for display illustration only. Each side scaled by (1 + vig). Stake sizing uses normalization.' },
+      { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY) },
+      { label: 'Profit if win', yours: fmtD(profY), theirs: fmtD(stake), alt: true },
+      { label: 'Total return (escrowed)', yours: fmtD(pot), theirs: fmtD(pot) },
+      { label: 'Vig cost', yours: fmtD(house), theirs: '', gold: true, alt: true,
+        note: 'Estimated cost of vig on this bet. Grows with vig %.' }
+    ];
+    work = '';
+  } else {
+    var fp = calcProfit(stake, fO.val, fO.neg);
+    var pot0 = stake + fp;
+    rows = [
+      { label: 'Base probability (no vig)', yours: raw + '%', theirs: (100-raw) + '%', alt: true },
+      { label: 'Base odds (no vig)', yours: fOStr, theirs: fCStr },
+      { label: 'Probability after vig', yours: '-', theirs: '-', dim: true, alt: true },
+      { label: 'Odds after vig', yours: '-', theirs: '-', dim: true },
+      { label: 'Stake', yours: fmtD(stake), theirs: fmtD(fp), alt: true },
+      { label: 'Profit if win', yours: fmtD(fp), theirs: fmtD(stake) },
+      { label: 'Total return (escrowed)', yours: fmtD(pot0), theirs: fmtD(pot0), alt: true },
+      { label: 'Vig cost', yours: '$0.00', theirs: '', gold: true,
+        note: 'No vig - fair market. Enter a vig % to see your cost.' }
+    ];
+    work = '';
+  }
+
+  document.getElementById('m0-table').innerHTML = baHTML(rows);
+  document.getElementById('m0-work').innerHTML  = work;
+  document.getElementById('m0-result').classList.add('show');
+}
+
+function resetM0() {
+  document.getElementById('m0-prob').value = '';
+  document.getElementById('m0-vig').value  = '';
+  if(document.getElementById('m0-calc-btn')) document.getElementById('m0-calc-btn').textContent = 'Calculate Odds';
+  document.getElementById('m0-result').classList.remove('show');
+}
+
+// ── MODE 1: ODDS → PROB ───────────────────────────────────
+
+function calcM1() {
+  var raw = getAbsOdds('m1-odds');
+  if (isNaN(raw) || raw < 100) { alert('Enter 100 or higher'); return; }
+  var isNeg = isNegOdds('m1-odds','m1-fav-cb');
+  var stake = parseFloat(document.getElementById('m1-stake').value) || 100;
+  var vigRaw = parseFloat(document.getElementById('m1-vig').value);
+  var hasVig = !isNaN(vigRaw) && vigRaw > 0;
+  var oddsLabel = (isNeg ? '-' : '+') + raw;
+
+  var yProb = o2p(raw, isNeg);
+  var yPct  = (yProb * 100).toFixed(1);
+  var tProb = 1 - yProb;
+  var tPct  = (tProb * 100).toFixed(1);
+
+  var rows, work;
+
+  if (hasVig) {
+    var bYraw = yProb / (1 + vigRaw/100);
+    var bTraw = tProb / (1 + vigRaw/100);
+    var bY  = (bYraw * 100).toFixed(1);
+    var bT  = (bTraw * 100).toFixed(1);
+    var bOY = p2o(bYraw); var bOYStr = fmtO(bOY);
+    var bOT = p2o(bTraw); var bOTStr = fmtO(bOT);
+    var profY = calcProfit(stake, raw, isNeg);
+    var fairY = calcProfit(stake, bOY.val, bOY.neg);
+    var lost  = fairY - profY;
+    var house = Math.max(0, lost);
+    var pot   = stake + profY;
+
+    rows = [
+      { label: 'Base probability (no vig)', yours: bY + '%', theirs: bT + '%', alt: true },
+      { label: 'Base odds (no vig)', yours: bOYStr, theirs: bOTStr },
+      { label: 'Probability after vig', yours: yPct + '%', theirs: tPct + '%', alt: true,
+        note: 'Vig applied proportionally (' + vigRaw + '%). Each side scaled by (1 + vig).' },
+      { label: 'Odds after vig', yours: oddsLabel, theirs: bOTStr,
+        note: 'Posted odds with vig embedded. Payout reduced vs base odds.' },
+      { label: 'Profit lost to vig', yours: '-' + fmtD(Math.max(0, lost)), theirs: '-', alt: true,
+        note: 'Vig applied proportionally (' + vigRaw + '%) for display illustration only. Each side scaled by (1 + vig). Stake sizing uses normalization.' },
+      { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY) },
+      { label: 'Profit if win', yours: fmtD(profY), theirs: fmtD(stake), alt: true },
+      { label: 'Total return (escrowed)', yours: fmtD(pot), theirs: fmtD(pot) },
+      { label: 'Vig cost', yours: fmtD(house), theirs: '', gold: true, alt: true,
+        note: 'Estimated cost of vig on this bet. Increases as vig % rises.' }
+    ];
+    work = '';
+  } else {
+    var tO   = p2o(tProb); var tOStr = fmtO(tO);
+    var profY0 = calcProfit(stake, raw, isNeg);
+    var pot0 = stake + profY0;
+    rows = [
+      { label: 'Implied probability', yours: yPct + '%', theirs: tPct + '%', alt: true },
+      { label: 'Fair odds (no vig)', yours: oddsLabel, theirs: tOStr },
+      { label: 'Probability after vig', yours: '-', theirs: '-', dim: true, alt: true },
+      { label: 'Odds after vig', yours: '-', theirs: '-', dim: true },
+      { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY0), alt: true },
+      { label: 'Profit if win', yours: fmtD(profY0), theirs: fmtD(stake) },
+      { label: 'Total return (escrowed)', yours: fmtD(pot0), theirs: fmtD(pot0), alt: true },
+      { label: 'Vig cost', yours: '$0.00', theirs: '', gold: true,
+        note: 'No vig - fair market. Enter a vig % to see your cost.' }
+    ];
+    work = '';
+  }
+
+  document.getElementById('m1-table').innerHTML = baHTML(rows);
+  document.getElementById('m1-work').innerHTML  = work;
+  document.getElementById('m1-result').classList.add('show');
+}
+
+function resetM1() {
+  document.getElementById('m1-odds').value = '';
+  document.getElementById('m1-vig').value  = '';
+  if(document.getElementById('m1-calc-btn')) document.getElementById('m1-calc-btn').textContent = 'Calculate Probability';
+  document.getElementById('m1-fav-cb').checked = false;
+  document.getElementById('m1-result').classList.remove('show');
+}
+
+
+// ── MODE 2: SCORES → SPREAD & O/U LINES ────────────────────
+
+function calcM2sl(type) {
+  var sA = parseFloat(document.getElementById('m2sl-a').value);
+  var sB = parseFloat(document.getElementById('m2sl-b').value);
+  if (isNaN(sA) || sA < 0) { alert('Enter GM A projected score'); return; }
+  if (isNaN(sB) || sB < 0) { alert('Enter GM B projected score'); return; }
+  var stake  = parseFloat(document.getElementById('m2sl-stake').value) || 10;
+
+  var margin     = sA - sB;
+  var favIsA     = margin >= 0;
+  var absMarg    = Math.abs(margin);
+  var spreadLine = Math.floor(absMarg) + 0.5;
+  var combined   = sA + sB;
+  var ouLine     = Math.floor(combined) + 0.5;
+  // Spread and O/U are always 50/50 by construction: the line is set at the
+  // midpoint so both sides are equally likely. Both GMs escrow an equal stake
+  // at fair even money (+100). No vig in line generation.
+  var theirStake = stake;
+  var pot        = stake + theirStake;
+  var oddsStr    = '+100';
+  var favLabel   = favIsA ? 'GM A (Fav)' : 'GM B (Fav)';
+  var dogLabel   = favIsA ? 'GM B (Dog)' : 'GM A (Dog)';
+  var spreadFavStr = (favIsA ? 'GM A' : 'GM B') + ' −' + spreadLine.toFixed(1);
+  var spreadDogStr = (favIsA ? 'GM B' : 'GM A') + ' +' + spreadLine.toFixed(1);
+
+  if (type === 'spread') {
+    var spreadRows = [
+      { label: 'Projected scores', yours: 'GM A: ' + sA.toFixed(1), theirs: 'GM B: ' + sB.toFixed(1), alt: true },
+      { label: 'Spread line', yours: spreadFavStr, theirs: spreadDogStr },
+      { label: 'Odds', yours: oddsStr + ' (' + favLabel + ')', theirs: oddsStr + ' (' + dogLabel + ')', alt: true },
+      { label: 'Implied probability', yours: '50.0%', theirs: '50.0%' },
+      { label: 'Stake escrowed', yours: fmtD(stake), theirs: fmtD(theirStake), alt: true },
+      { label: 'Total pot', yours: fmtD(pot), theirs: '', gold: true },
+      { label: 'Settlement', yours: (favIsA ? 'GM A' : 'GM B') + ' must win by more than ' + spreadLine.toFixed(1) + ' pts to cover', theirs: '', gold: true, alt: true }
+    ];
+    document.getElementById('m2sl-spread-table').innerHTML = baHTML(spreadRows);
+    document.getElementById('m2sl-spread-section').style.display = 'block';
+    document.getElementById('m2sl-ou-section').style.display = 'none';
+  } else {
+    var ouRows = [
+      { label: 'Projected scores', yours: 'GM A: ' + sA.toFixed(1), theirs: 'GM B: ' + sB.toFixed(1), alt: true },
+      { label: 'O/U line', yours: 'Over ' + ouLine.toFixed(1), theirs: 'Under ' + ouLine.toFixed(1) },
+      { label: 'Odds', yours: oddsStr + ' (Over)', theirs: oddsStr + ' (Under)', alt: true },
+      { label: 'Implied probability', yours: '50.0%', theirs: '50.0%' },
+      { label: 'Stake escrowed', yours: fmtD(stake), theirs: fmtD(theirStake), alt: true },
+      { label: 'Total pot', yours: fmtD(pot), theirs: '', gold: true },
+      { label: 'Settlement', yours: 'Combined score must exceed ' + ouLine.toFixed(1) + '. Winner irrelevant.', theirs: '', gold: true, alt: true }
+    ];
+    document.getElementById('m2sl-ou-table').innerHTML = baHTML(ouRows);
+    document.getElementById('m2sl-ou-section').style.display = 'block';
+    document.getElementById('m2sl-spread-section').style.display = 'none';
+  }
+
+  document.getElementById('m2sl-result').classList.add('show');
+}
+
+function resetM2sl() {
+  ['m2sl-a','m2sl-b'].forEach(function(id) {
+    var el = document.getElementById(id); if(el) el.value = '';
+  });
+  document.getElementById('m2sl-stake').value = '10';
+  document.getElementById('m2sl-result').classList.remove('show');
+  document.getElementById('m2sl-spread-table').innerHTML = '';
+  document.getElementById('m2sl-ou-table').innerHTML = '';
+  document.getElementById('m2sl-spread-section').style.display = 'none';
+  document.getElementById('m2sl-ou-section').style.display = 'none';
+}
+
+// ── MODE 2: VIG DETECTION ─────────────────────────────────
+
+function calcM4() {
+  var rA = getAbsOdds('m2-a');
+  var rB = getAbsOdds('m2-b');
+  if (isNaN(rA) || isNaN(rB) || rA < 100 || rB < 100) { alert('Enter valid odds for both sides (100+)'); return; }
+  var stake    = parseFloat(document.getElementById('m2-stake').value) || 100;
+  var knownVig = parseFloat(document.getElementById('m2-vig').value);
+  var hasKnown = !isNaN(knownVig) && knownVig > 0;
+
+  var pA = o2p(rA, isNegOdds('m2-a','m2a-fav-cb')) * 100;
+  var pB = o2p(rB, isNegOdds('m2-b','m2b-fav-cb')) * 100;
+  var total = pA + pB;
+  var vig   = total - 100;
+  var lA = (isNegOdds('m2-a','m2a-fav-cb') ? '-' : '+') + Math.abs(rA);
+  var lB = (isNegOdds('m2-b','m2b-fav-cb') ? '-' : '+') + Math.abs(rB);
+
+  // Use known vig if entered, otherwise use auto-detected vig
+  var vigForBase = hasKnown ? knownVig : vig;
+  var hasBase = vigForBase > 0.1;
+  var truePA = hasBase ? (pA * 100 / (pA + pB)).toFixed(1) : null;
+  var truePB = hasBase ? (pB * 100 / (pA + pB)).toFixed(1) : null;
+  var fairA  = truePA ? fmtO(p2o(parseFloat(truePA) / 100)) : '-';
+  var fairB  = truePB ? fmtO(p2o(parseFloat(truePB) / 100)) : '-';
+  vig = (pA + pB) - 100;
+  var vig = (pA + pB) - 100;
+  var vigDisplay = vig.toFixed(1);
+
+  var isNegA = isNegOdds('m2-a','m2a-fav-cb');
+  var profY = calcProfit(stake, Math.abs(rA), isNegA);
+  var pot   = stake + profY;
+  var house = pot * (vig / (pA + pB));
+
+  var rows = [
+    { label: 'Posted odds', yours: lA, theirs: lB },
+    { label: 'Probability after vig', yours: pA.toFixed(1) + '%', theirs: pB.toFixed(1) + '%', alt: true,
+      note: 'Both sides inflated by the vig. Excess above 100% (' + vigDisplay + '%) is the book rake.' },
+    { label: 'Detected vig', yours: vigDisplay + '%', theirs: '', gold: true,
+      note: vig <= 0.5 ? 'Near-zero vig — fair market.' : vig <= 5 ? 'Standard sportsbook juice.' : 'High juice — recreational book.' },
+    { label: 'Base probability (no vig)', yours: truePA ? truePA + '%' : '-', theirs: truePB ? truePB + '%' : '-', dim: !hasBase, alt: true,
+      note: hasBase && !hasKnown ? 'Auto-derived using detected vig (' + vigDisplay + '%). Enter an override vig % to use a different value.' : hasBase ? null : 'Enter an override vig % to calculate true underlying probabilities.' },
+    { label: 'Base odds (no vig)', yours: fairA, theirs: fairB, dim: !hasBase,
+      note: hasBase ? null : 'Enter an override vig % to see fair market odds.' },
+    { label: 'Stake', yours: fmtD(stake), theirs: fmtD(profY), alt: true },
+    { label: 'Profit if win', yours: fmtD(profY), theirs: fmtD(stake) },
+    { label: 'Total return', yours: fmtD(pot), theirs: fmtD(pot), alt: true },
+    { label: 'Vig cost (est.)', yours: fmtD(Math.max(0, house)), theirs: '', gold: true,
+      note: vig <= 0.5 ? 'Near-zero vig - effectively a fair market.' : 'Approx. book margin on a ' + fmtD(stake) + ' one-sided stake. Rough indicator, not an exact cash figure.' }
   ];
 
-  const log = document.getElementById('log');
+  document.getElementById('m2-table').innerHTML = baHTML(rows);
 
-  function addLogEntry() {
-    const req = mockRequests[Math.floor(Math.random() * mockRequests.length)];
-    const now = new Date();
-    const time = now.toLocaleTimeString('en-US', { hour12: false });
-    const jitter = Math.floor(Math.random() * 40) - 20;
-    const tokens = req.tokens + Math.floor(Math.random() * 20);
-    const latency = req.latency + jitter;
+  var fill = Math.min(100, (vig / 15) * 100); // 15% = full bar (recreational book ceiling)
+  var bar  = document.getElementById('m2-bar');
+  bar.style.width = fill + '%';
+  bar.className = 'vig-fill ' + (vig <= 0.5 ? 'vig-none' : vig <= 5 ? 'vig-low' : 'vig-high');
 
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
-    entry.innerHTML = `
-      <span class="log-time">[${time}]</span>
-      <span class="log-model ${req.modelClass}">${req.model}</span>
-      <span class="log-arrow">←</span>
-      <span class="log-endpoint">POST /chat/completions  ${req.client}</span>
-      <span class="log-tokens">${tokens} tok</span>
-      <span class="log-latency">${latency}ms</span>
-    `;
-    log.appendChild(entry);
-    if (log.children.length > 20) log.removeChild(log.firstChild);
-    log.scrollTop = log.scrollHeight;
+  var v = document.getElementById('m2-verdict');
+  if (vig <= 0.5) { v.className = 'verdict verdict-fair'; v.textContent = 'Near-zero vig - fair market or sharp book (scale: 0-15%)'; }
+  else if (vig <= 5) { v.className = 'verdict verdict-med'; v.textContent = vigDisplay + '% vig - standard sportsbook (scale: 0-15%)'; }
+  else { v.className = 'verdict verdict-high'; v.textContent = vigDisplay + '% vig - high juice, recreational book (scale: 0-15%)'; }
+
+  document.getElementById('m2-work').innerHTML =
+    (hasKnown ? '<div class="ws"><span class="wn">→</span> True prob A: <span class="we">' + truePA + '%</span> / B: <span class="we">' + truePB + '%</span></div>' : '');
+
+  document.getElementById('m2-result').classList.add('show');
+}
+
+function resetM4() {
+  ['m2-a','m2-b','m2-vig'].forEach(function(id){document.getElementById(id).value='';});
+  ['m2a-fav-cb','m2b-fav-cb'].forEach(function(id){document.getElementById(id).checked=false;});
+  document.getElementById('m2-result').classList.remove('show');
+}
+
+// ── MODE 3: ESCROW RECALCULATOR ───────────────────────────
+
+var eState = null;
+
+function eOrigFavChange() {
+  updateInputDisplay('e-orig-odds','e-orig-fav-cb');
+  eOrigS = document.getElementById('e-orig-fav-cb').checked ? 'neg' : 'pos';
+}
+function eTheirOddsChange() {
+  updateInputDisplay('e-their-odds','e-their-odds-fav-cb');
+  updateStep2TheirRow();
+}
+function eNewFavChange() {
+  updateInputDisplay('e-new-odds','e-new-fav-cb');
+}
+function eNewBFavChange() {
+  updateInputDisplay('e-new-b','e-new-b-fav-cb');
+}
+
+function updateStep2TheirRow() {
+  var theirOdds = getAbsOdds('e-their-odds');
+  var hasTheirs = !isNaN(theirOdds) && theirOdds >= 100;
+  var theirRow  = document.getElementById('e-their-row');
+  var novigNote = document.getElementById('e-novig-note');
+  if (theirRow)  theirRow.style.display  = hasTheirs ? 'block' : 'none';
+  if (novigNote) novigNote.style.display = hasTheirs ? 'none'  : 'block';
+}
+
+function updateEscrowPreview() { updateStep2TheirRow(); }
+
+['e-orig-odds','e-orig-stake','e-their-odds'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateStep2TheirRow);
+});
+
+// ── STEP 1: Calculate Original Escrow ────────────────────
+
+function calcM5step1() {
+  var origOdds  = getAbsOdds('e-orig-odds');
+  var origStake = parseFloat(document.getElementById('e-orig-stake').value);
+  var theirOdds = getAbsOdds('e-their-odds');
+  var isNegY    = isNegOdds('e-orig-odds','e-orig-fav-cb');
+  var isNegT    = isNegOdds('e-their-odds','e-their-odds-fav-cb');
+  var hasTheirs = !isNaN(theirOdds) && theirOdds >= 100;
+
+  if (isNaN(origOdds) || origOdds < 100) { alert('Enter your original odds (100+)'); return; }
+  if (isNaN(origStake) || origStake <= 0) { alert('Enter your original stake'); return; }
+  if (!isNaN(theirOdds) && theirOdds > 0 && theirOdds < 100) { alert('Their odds must be 100 or higher. American odds are always 100+.'); return; }
+
+  var yourOddsStr  = (isNegY ? '-' : '+') + origOdds;
+  var enteredVig   = parseFloat(document.getElementById('e-orig-vig').value);
+  var hasVigEntry  = !isNaN(enteredVig) && enteredVig > 0;
+  var theirOddsStr, yourProb, theirProb, detectedVig;
+
+  if (hasTheirs) {
+    // Both sides posted — detect vig from the pair, normalize to true probs
+    if (isNegY && isNegT) { alert('Both sides cannot be favorites. One side must be the underdog (+). Check your Favorite? checkboxes.'); return; }
+    var rawY = o2p(origOdds, isNegY) * 100;
+    var rawT = o2p(theirOdds, isNegT) * 100;
+    var total = rawY + rawT;
+    detectedVig  = total - 100;
+    yourProb  = rawY / total;
+    theirProb = rawT / total;
+    theirOddsStr = (isNegT ? '-' : '+') + theirOdds;
+  } else if (hasVigEntry) {
+    // Your odds + vig % — strip half-vig to get true prob, derive their odds
+    var rawYvig  = o2p(origOdds, isNegY) * 100;          // implied prob with vig
+    var trueYpct = rawYvig / (1 + enteredVig / 100);     // strip vig proportionally
+    var trueTpct = 100 - trueYpct;                        // complement
+    yourProb     = trueYpct / 100;
+    theirProb    = trueTpct / 100;
+    // Re-add vig proportionally to get their posted odds
+    var theirPosted = trueTpct * (1 + enteredVig / 100);
+    if (theirPosted >= 100) { alert('Vig too high for these odds — their side exceeds 100%. Try a lower vig %.'); return; }
+    var theirO   = p2o(theirPosted / 100);
+    theirOddsStr = fmtO(theirO);
+    detectedVig  = enteredVig;
+  } else {
+    // Only your odds — zero vig assumed
+    detectedVig  = null;
+    yourProb  = o2p(origOdds, isNegY);
+    theirProb = 1 - yourProb;
+    theirOddsStr = fmtO(p2o(theirProb));
   }
 
-  for (let i = 0; i < 8; i++) {
-    setTimeout(() => addLogEntry(), i * 200);
+  // Option C: size both stakes on fair (devigged) prob basis for consistent redistribution
+  // yourStake is fixed; their stake = yourStake * (theirProb / yourProb)
+  // This ensures zero-move recalc is a true no-op and pot drop = total refunds exactly
+  var fairPot    = origStake / yourProb;          // total pot implied by your stake at fair prob
+  var theirStake = fairPot * theirProb;           // their fair share of the pot
+
+  var origPot  = origStake + theirStake;
+  var isFavY   = yourProb >= 0.5;
+  var favLabel = isFavY ? 'Favorite' : 'Underdog';
+  var dogLabel = isFavY ? 'Underdog' : 'Favorite';
+
+  eState = {
+    yourOddsStr:  yourOddsStr,
+    theirOddsStr: theirOddsStr,
+    yourOddsVal:  origOdds,
+    yourOddsNeg:  isNegY,
+    theirOddsVal: hasTheirs ? theirOdds : null,
+    theirOddsNeg: isNegT,
+    yourProb:     yourProb,
+    theirProb:    theirProb,
+    yourStake:    origStake,
+    theirStake:   theirStake,
+    origPot:      origPot,
+    hasTheirs:    hasTheirs,
+    isFavY:       isFavY,
+    origVig:      hasVigEntry ? enteredVig : (hasTheirs ? detectedVig : 0)
+  };
+
+  // Update Step 2 complement note to reflect vig context
+  var noteEl = document.getElementById('e-novig-note-text');
+  if (noteEl) {
+    if (hasVigEntry) {
+      noteEl.textContent = 'Their odds derived as complement with original vig (' + enteredVig.toFixed(2) + '%) applied proportionally.';
+    } else {
+      noteEl.textContent = 'Their odds derived as complement (zero vig assumed).';
+    }
   }
 
-  setInterval(addLogEntry, 3000 + Math.random() * 2000);
+  var potEq = fmtD(origStake) + ' + ' + fmtD(theirStake) + ' = ' + fmtD(origPot);
+  var vigNote = hasTheirs ? null
+    : hasVigEntry ? 'Their odds derived from complement with ' + enteredVig.toFixed(2) + '% vig applied proportionally. Stakes sized on fair prob basis.'
+    : '⚠ Their odds estimated as complement (zero vig assumed). Stakes sized on fair prob basis. Enter their posted odds for real figures.';
+
+  // ── Build Step 1 rows ────────────────────────────────
+  var rows = [
+    { label: 'Odds',
+      yours: yourOddsStr + ' (' + favLabel + ')',
+      theirs: theirOddsStr + ' (' + dogLabel + ')',
+      note: vigNote },
+    { label: 'Implied probability',
+      yours: (yourProb * 100).toFixed(1) + '%',
+      theirs: (theirProb * 100).toFixed(1) + '%', alt: true }
+  ];
+
+  if (hasTheirs) {
+    var vigLabel, vigNote2;
+    if (detectedVig < 0.1) {
+      vigLabel = '~0% (fair market)';
+      vigNote2 = 'No meaningful vig detected. Probabilities used as posted.';
+    } else {
+      vigLabel = detectedVig.toFixed(2) + '%';
+      vigNote2 = 'Vig stripped before prob calculation. True probs normalized to sum to 100%.';
+    }
+    rows.push({
+      label: 'Detected vig',
+      yours: vigLabel,
+      theirs: '',
+      gold: true,
+      note: vigNote2
+    });
+  } else if (hasVigEntry) {
+    rows.push({
+      label: 'Vig applied',
+      yours: enteredVig.toFixed(2) + '%',
+      theirs: '',
+      gold: true,
+      note: 'Vig (' + enteredVig.toFixed(2) + '%) stripped proportionally from your implied prob. Their odds derived from the complement.'
+    });
+  }
+
+  var vigAmt      = (detectedVig && detectedVig > 0.1) ? origPot * (detectedVig / (100 + detectedVig)) : 0;
+  var vigDisplayPot = origPot - vigAmt; // renamed to avoid shadowing Option C fairPot
+
+  rows = rows.concat([
+    { label: 'Stake escrowed',
+      yours: fmtD(origStake),
+      theirs: fmtD(theirStake), alt: !hasTheirs },
+    { label: 'Total pot held in escrow',
+      yours: potEq, theirs: '', gold: true, alt: hasTheirs,
+      note: 'Both stakes sized on fair (devigged) probability basis. Pot drop always equals total refunds exactly.' }
+  ]);
+
+  // Option C: pot is already fair (devigged before sizing) — no vig portion to display
+
+  document.getElementById('m3-step1-table').innerHTML = baHTML(rows);
+  document.getElementById('m3-step1-result').classList.add('show');
+  document.getElementById('m3-step2-result').classList.remove('show');
+  updateStep2TheirRow();
+}
+
+// ── STEP 2: Recalculate Escrow ────────────────────────────
+
+function calcM5step2() {
+  if (!eState) { alert('Run Step 1 first.'); return; }
+
+  var newOdds = getAbsOdds('e-new-odds');
+  if (isNaN(newOdds) || newOdds < 100) { alert('Enter your new odds (100+)'); return; }
+
+  var newIsNeg  = isNegOdds('e-new-odds','e-new-fav-cb');
+  var hasVig    = eState.hasTheirs;
+  var origVig   = eState.origVig || 0;
+  var hasOrigVig = !hasVig && origVig > 0;
+  var origPot   = eState.origPot;
+
+  var newYProb, newTProb, newYOddsStr, newTOddsStr;
+
+  if (hasVig) {
+    // Both sides were posted — require both new odds
+    var newB = getAbsOdds('e-new-b');
+    if (isNaN(newB) || newB < 100) { alert('Vig is set - enter their new posted odds too.'); return; }
+    var newBNeg = isNegOdds('e-new-b','e-new-b-fav-cb');
+    // Sanity check: two favorites is impossible
+    if (newIsNeg && newBNeg) { alert('Both sides cannot be favorites. One side must be the underdog (+). Check your Favorite? checkboxes.'); return; }
+    var ry = o2p(newOdds, newIsNeg);
+    var rt = o2p(newB,    newBNeg);
+    var tot = ry + rt;
+    newYProb = ry / tot;
+    newTProb = rt / tot;
+    newYOddsStr = (newIsNeg ? '-' : '+') + newOdds;
+    newTOddsStr = (newBNeg  ? '-' : '+') + newB;
+  } else if (hasOrigVig) {
+    // Original vig was entered — strip vig proportionally, derive their complement
+    var rawYnew   = o2p(newOdds, newIsNeg) * 100;
+    var trueYnew  = rawYnew / (1 + origVig / 100);
+    var trueTnew  = 100 - trueYnew;
+    newYProb      = trueYnew / 100;
+    newTProb      = trueTnew / 100;
+    var theirPostedNew = trueTnew * (1 + origVig / 100);
+    if (theirPostedNew >= 100) { alert('Vig too high for these odds — their side exceeds 100%. Try a lower vig %.'); return; }
+    var theirOnew = p2o(theirPostedNew / 100);
+    newYOddsStr   = (newIsNeg ? '-' : '+') + newOdds;
+    newTOddsStr   = fmtO(theirOnew);
+  } else {
+    // Zero vig — derive complement directly
+    newYProb = o2p(newOdds, newIsNeg);
+    newTProb = 1 - newYProb;
+    newYOddsStr = (newIsNeg ? '-' : '+') + newOdds;
+    newTOddsStr = fmtO(p2o(newTProb));
+  }
+
+  // Calculate stakes and refunds first
+  var newYStake = Math.min(origPot * newYProb, eState.yourStake);
+  var newTStake = Math.min(origPot * newTProb, eState.theirStake);
+  var refY      = eState.yourStake - newYStake;
+  var refT      = eState.theirStake - newTStake;
+  var newPot    = newYStake + newTStake;
+  var potDrop   = origPot - newPot;
+
+  // ── Invariant guards. Real money — fail loud, show nothing. ──
+  if (Math.abs((newYProb + newTProb) - 1) >= 0.0001) {
+    alert('Escrow invariant failed: new probabilities do not sum to 1 (' +
+      (newYProb + newTProb).toFixed(6) + '). No result shown. Check the entered odds.');
+    return;
+  }
+  if (Math.abs((refY + refT) - potDrop) >= 0.005) {
+    alert('Escrow invariant failed: refunds (' + fmtD(refY + refT) +
+      ') do not equal pot drop (' + fmtD(potDrop) + '). No result shown.');
+    return;
+  }
+
+  var rule, ruleNote;
+  var probDiff = Math.abs(newYProb - eState.yourProb);
+
+  // Derive rule label from actual computed refunds
+
+  if (probDiff < 0.0001) {
+    rule = 'No Change';
+    ruleNote = 'No Change — odds are effectively unchanged. No refunds issued.';
+  } else if (refY > 0.005 && refT <= 0.005) {
+    rule = 'Favorite Refunded';
+    ruleNote = 'Favorite Refunded — Favorite odds declined. Your stake reduced, refund issued to you.';
+  } else if (refT > 0.005 && refY <= 0.005) {
+    rule = 'Underdog Refunded';
+    ruleNote = 'Underdog Refunded — Favorite odds improved. Their stake reduced, refund issued to them.';
+  } else if (refY > 0.005 && refT > 0.005) {
+    rule = 'Both Refunded';
+    ruleNote = 'Both Refunded — Roles reversed. Both stakes recalculated, refunds issued to both sides.';
+  } else {
+    rule = 'No Change';
+    ruleNote = 'No Change — stakes unchanged at new odds.';
+  }
+
+  var rows = [
+    { label: 'Original odds',
+      yours: eState.yourOddsStr, theirs: eState.theirOddsStr, alt: true },
+    { label: 'Your updated odds',
+      yours: newYOddsStr, theirs: newTOddsStr },
+    { label: 'Original implied prob',
+      yours: (eState.yourProb * 100).toFixed(1) + '%',
+      theirs: (eState.theirProb * 100).toFixed(1) + '%', alt: true },
+    { label: 'New implied prob',
+      yours: (newYProb * 100).toFixed(1) + '%',
+      theirs: (newTProb * 100).toFixed(1) + '%' },
+    { label: 'Original stake',
+      yours: fmtD(eState.yourStake), theirs: fmtD(eState.theirStake), alt: true },
+    { label: 'New stake',
+      yours: fmtD(newYStake), theirs: fmtD(newTStake),
+      note: ruleNote },
+    { label: 'Refund',
+      yours: refY > 0.005 ? '-' + fmtD(refY) : '$0.00',
+      theirs: refT > 0.005 ? '-' + fmtD(refT) : '$0.00', alt: true,
+      note: 'Returned to each GM wallet immediately. No GM asked for additional funds.' },
+    { label: 'Original pot',
+      yours: fmtD(origPot), theirs: '', gold: true },
+    { label: 'New pot',
+      yours: fmtD(newPot), theirs: '', gold: true, alt: true,
+      note: 'Pot dropped by ' + fmtD(potDrop) + '. Escrow never grows - only shrinks.' }
+  ];
+
+  document.getElementById('m3-step2-table').innerHTML = baHTML(rows);
+  document.getElementById('m3-work').innerHTML = '';
+  document.getElementById('m3-footnote').textContent = '';
+  document.getElementById('m3-step2-result').classList.add('show');
+}
+
+function resetM5() {
+  ['e-orig-odds','e-orig-stake','e-their-odds','e-orig-vig','e-new-odds','e-new-b'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.value = '';
+  });
+  ['e-orig-fav-cb','e-their-odds-fav-cb','e-new-fav-cb','e-new-b-fav-cb'].forEach(function(id){
+    var el = document.getElementById(id); if(el) el.checked = false;
+  });
+  ['e-orig-odds-prefix','e-their-odds-prefix','e-new-odds-prefix','e-new-b-prefix'].forEach(function(id){
+    var el = document.getElementById(id); if(el) { el.textContent = '+'; el.style.color = 'var(--muted)'; el.style.fontWeight = '500'; el.style.opacity = '0.4'; }
+  });
+  document.getElementById('m3-step1-result').classList.remove('show');
+  document.getElementById('m3-step2-result').classList.remove('show');
+  document.getElementById('m3-step1-table').innerHTML = '';
+  document.getElementById('m3-step2-table').innerHTML = '';
+  document.getElementById('m3-work').innerHTML = '';
+  document.getElementById('m3-footnote').textContent = '';
+  updateEscrowPreview();
+  eState = null;
+}
 </script>
 </body>
 </html>
