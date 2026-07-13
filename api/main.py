@@ -882,6 +882,7 @@ class SettlementOut(BaseModel):
     house_edge:       float
     settlements:      list[BetSettlementOut]
     wallet_movements: list[WalletMovementOut]
+    already_settled:  bool = False
 
 
 @app.get("/settle/{week}", response_model=SettlementOut)
@@ -909,6 +910,7 @@ def settle(
         total_staked     = report.total_staked,
         total_payout     = report.total_payout,
         house_edge       = report.house_edge,
+        already_settled  = report.already_settled,
         settlements      = [
             BetSettlementOut(
                 bet_id=s.bet_id, bet_type=s.bet_type, description=s.description,
