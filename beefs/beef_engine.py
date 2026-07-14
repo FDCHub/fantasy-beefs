@@ -686,14 +686,12 @@ def issue_challenge(
     if not challenged_team:
         raise ValueError(f"Team {challenged_team_id} not found")
 
-    if bet_type not in ("straight", "spread", "over_under", "prop"):
+    if bet_type not in ("straight", "spread", "over_under"):
         raise ValueError(f"Unknown bet_type {bet_type!r}")
     if bet_type == "spread" and line is None:
         raise ValueError("spread bets require line")
     if bet_type == "over_under" and (line is None or side not in ("over", "under")):
         raise ValueError("over_under bets require line and side ('over'/'under')")
-    if bet_type == "prop" and (player_id is None or line is None or side not in ("over", "under")):
-        raise ValueError("prop bets require player_id, line, and side")
     if amount < MIN_BET:
         raise ValueError(f"Amount ${amount:.2f} is below the minimum ${MIN_BET:.2f}")
 

@@ -31,7 +31,6 @@ from odds.odds_engine_headless import (
     ScoringSettings,
     HALF_PPR,
     INJURY_MULTIPLIERS,
-    simulate_player_scores,
     simulate_scores,
 )
 from ledger.ledger import post as ledger_post
@@ -157,30 +156,6 @@ def _place_bet(
     db.commit()
     db.refresh(bet)
     return bet
-
-
-def _top_starter(team_id: int, week: int, db: Session) -> tuple[Player, float]:
-    """Return the starter (slots 1–9) with the highest projected points."""
-    slots = (
-        db.query(Roster)
-        .filter(Roster.team_id == team_id)
-        .order_by(Roster.id)
-        .limit(_STARTER_SLOTS)
-        .all()
-    )
-    best_player: Player | None = None
-    best_proj = -1.0
-    for slot in slots:
-        proj = db.query(Projection).filter_by(
-            player_id=slot.player_id, week=week, season=SEASON, source=SOURCE
-        ).first()
-        pts = proj.projected_points if proj else 0.0
-        if pts > best_proj:
-            best_proj  = pts
-            best_player = slot.player
-    if best_player is None:
-        raise ValueError(f"No starters found for team {team_id}")
-    return best_player, best_proj
 
 
 def _position_player(team_id: int, position: str, week: int, db: Session) -> tuple[Player, float]:
@@ -372,47 +347,13 @@ def place_prop_bet(
     week:           int,
     db:             Session,
 ) -> BetResult:
-    """Top projected starter vs top projected starter — pick which team's player scores more."""
-    matchup = db.query(Matchup).filter(Matchup.id == matchup_id).first()
-    if not matchup:
-        raise NotFoundError(f"Matchup {matchup_id} not found")
-    if picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
-        raise BetValidationError("picked_team_id must be one of the two teams in this matchup")
-
-    wallet = db.query(Wallet).filter(Wallet.id == wallet_id).first()
-    if not wallet:
-        raise NotFoundError(f"Wallet {wallet_id} not found")
-
-    home_player, home_proj = _top_starter(matchup.home_team_id, week, db)
-    away_player, away_proj = _top_starter(matchup.away_team_id, week, db)
-
-    home_scores = simulate_player_scores(home_proj, home_player.id, week)
-    away_scores = simulate_player_scores(away_proj, away_player.id, week)
-
-    home_win_prob = float((home_scores > away_scores).mean())
-    win_prob = home_win_prob if picked_team_id == matchup.home_team_id else 1 - home_win_prob
-
-    ml  = _prob_to_american(win_prob)
-    dec = _ml_to_decimal(ml)
-
-    if picked_team_id == matchup.home_team_id:
-        picked_player, opp_player, picked_proj = home_player, away_player, home_proj
-    else:
-        picked_player, opp_player, picked_proj = away_player, home_player, away_proj
-
-    desc = (f"Prop: {picked_player.name} ({picked_proj:.1f}pt) "
-            f"vs {opp_player.name} (week {week})")
-
-    # player_id = home top player; side = str(away top player id) for settlement
-    bet = _place_bet(db, wallet, amount, "prop", matchup_id,
-                     picked_team_id, home_player.id, None, str(away_player.id), desc, dec)
-
-    return BetResult(
-        bet_id=bet.id, bet_type="prop", description=desc,
-        amount=amount, odds_dec=dec, moneyline=ml,
-        win_prob=round(win_prob, 4), to_win=round(amount * dec - amount, 2),
-        status="pending",
-    )
+    """RETIRED — prop bets can no longer be placed. Kept as a callable stub
+    (not deleted) so existing callers, including the /bets/prop route, get
+    a clear rejection instead of an import error or a 404. Settlement
+    (_eval_prop() in settlement_engine.py) and audit_deprecated_bet_types.py
+    are untouched — historical prop rows, if any ever exist, still settle
+    and audit correctly."""
+    raise BetValidationError("Prop bets are retired and can no longer be placed.")
 
 
 # ── CLI smoke test ────────────────────────────────────────────────────────────
@@ -443,8 +384,7 @@ if __name__ == "__main__":
         r1 = place_straight_bet(MATCHUP_ID, WALLET_ID, home.id, 10.0, WEEK, db)
         r2 = place_spread_bet(MATCHUP_ID, WALLET_ID, home.id, 5.0, 10.0, WEEK, db)
         r3 = place_over_under(MATCHUP_ID, WALLET_ID, 240.0, "over", 10.0, WEEK, db)
-        r4 = place_prop_bet(MATCHUP_ID, WALLET_ID, home.id, 10.0, WEEK, db)
-        results = [r1, r2, r3, r4]
+        results = [r1, r2, r3]
 
         print("┌────────┬────────────┬──────────────────────────────────────────────┬────────┬──────────┬────────┬─────────┐")
         print("│ Bet ID │ Type       │ Description                                  │  Stake │ Moneyline│ Prob   │ Status  │")

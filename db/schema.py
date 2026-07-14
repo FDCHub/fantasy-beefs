@@ -282,7 +282,7 @@ class BeefChallenge(Base):
             name="ck_beef_status",
         ),
         CheckConstraint(
-            "bet_type IN ('straight','spread','over_under','prop')",
+            "bet_type IN ('straight','spread','over_under')",
             name="ck_beef_bet_type",
         ),
     )
