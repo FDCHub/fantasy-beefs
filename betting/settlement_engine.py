@@ -344,6 +344,12 @@ def settle_week(week: int, db: Session, league_id: int) -> SettlementReport:
     """
     now = datetime.now(timezone.utc)
 
+    # NOTE: Finding 5.9 (beef escrow settlement) depends on this claim serializing
+    # callers per (league_id, week) — the beef-level escrow-close skip check is only
+    # concurrency-safe because this INSERT guarantees exactly one caller reaches the
+    # settlement loop for a given week. If this claim's behavior changes (e.g. made
+    # more permissive, moved, or parallelized), Finding 5.9's design must be
+    # re-reviewed. See FINDING_5_9_BEEF_SETTLEMENT_ESCROW_GAP_MODULE_SPEC for detail.
     claimed = db.execute(
         text("""
             INSERT INTO week_settlements (league_id, week, settled, settled_at)
