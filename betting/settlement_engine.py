@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import Bet, BeefChallenge, Matchup, Projection, Roster, Transaction, Wallet
 from feed.league_feed import log_settlement_events
+from ledger.ledger import post as ledger_post, balance_of
 
 from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
@@ -387,27 +388,172 @@ def settle_week(week: int, db: Session, league_id: int) -> SettlementReport:
     balance_before = {wid: wallets[wid].balance for wid in wallet_ids}
 
     settlements: list[BetSettlement] = []
+    # bets_by_id: pending is a one-time snapshot (.all(), no mid-loop
+    # commit or re-query below) — safe to index once and rely on it for
+    # the whole pass, per Finding 5.9/5.10.
+    bets_by_id: dict[int, Bet] = {b.id: b for b in pending}
+    handled_beef_bet_ids: set[int] = set()
 
     for bet in pending:
+        # ── Beef bets: settled jointly, both sides in one pass ────────────
+        # (Finding 5.9/5.10 — replaces the old per-bet amount*odds payout
+        # and the direct wallet.balance mutation for matched beef bets.
+        # Single-party straight/spread/over_under/prop/the_lineup bets are
+        # untouched below; this branch never runs for them.)
+        if bet.beef_challenge_id is not None:
+            if bet.id in handled_beef_bet_ids:
+                continue  # already settled jointly via its partner, earlier in this pass
+
+            c = bet.beef_challenge
+            other_bet_id = (
+                c.challenged_bet_id if bet.id == c.challenger_bet_id else c.challenger_bet_id
+            )
+            other_bet = bets_by_id.get(other_bet_id)
+            if other_bet is None:
+                raise ValueError(
+                    f"Beef challenge {c.id}: bet {bet.id}'s partner bet "
+                    f"{other_bet_id} is not pending for week {week} — cannot "
+                    f"settle this beef jointly. Both sides of an accepted "
+                    f"beef must settle together."
+                )
+
+            result = _eval_beef(bet, db)
+            handled_beef_bet_ids.add(bet.id)
+            handled_beef_bet_ids.add(other_bet.id)
+
+            if result == "push":
+                # Two independent postings, each escrow-sourced — no
+                # cross-crediting between sides on a push.
+                for side_bet in (bet, other_bet):
+                    side_wallet         = wallets[side_bet.wallet_id]
+                    side_escrow_cents   = balance_of(f"escrow:{side_bet.id}")
+                    ledger_post(
+                        [
+                            (f"escrow:{side_bet.id}",         -side_escrow_cents),
+                            (f"wallet:{side_wallet.team_id}",  side_escrow_cents),
+                        ],
+                        door="wager_settled",
+                        session=db,
+                    )
+                    side_bet.status     = "push"
+                    side_bet.settled_at = now
+                    side_payout = round(side_escrow_cents / 100, 2)
+                    db.add(Transaction(
+                        wallet_id  = side_wallet.id,
+                        amount     = side_payout,
+                        type       = "payout",
+                        bet_id     = side_bet.id,
+                        created_at = now,
+                    ))
+                    settlements.append(BetSettlement(
+                        bet_id      = side_bet.id,
+                        bet_type    = side_bet.bet_type,
+                        description = side_bet.description or "",
+                        wallet_id   = side_bet.wallet_id,
+                        owner       = side_wallet.team.owner,
+                        team_name   = side_wallet.team.team_name,
+                        amount      = side_payout,
+                        odds_dec    = side_bet.odds,
+                        payout      = side_payout,
+                        profit      = 0.0,
+                        status      = "push",
+                    ))
+            else:
+                winner_bet, loser_bet = (bet, other_bet) if result == "won" else (other_bet, bet)
+                winner_wallet = wallets[winner_bet.wallet_id]
+                loser_wallet  = wallets[loser_bet.wallet_id]
+
+                # Escrow-sourced: debit each side's ACTUAL current ledger
+                # balance, never a recomputed bet.amount — this is the
+                # fix itself, not the 2x-amount shortcut it replaces.
+                # Both balances are already integer cents (balance_of()'s
+                # native unit), so no dollars->cents conversion happens
+                # anywhere in this branch.
+                winner_escrow_cents   = balance_of(f"escrow:{winner_bet.id}")
+                loser_escrow_cents    = balance_of(f"escrow:{loser_bet.id}")
+                combined_credit_cents = winner_escrow_cents + loser_escrow_cents
+
+                ledger_post(
+                    [
+                        (f"escrow:{winner_bet.id}",         -winner_escrow_cents),
+                        (f"escrow:{loser_bet.id}",           -loser_escrow_cents),
+                        (f"wallet:{winner_wallet.team_id}",  combined_credit_cents),
+                    ],
+                    door="wager_settled",
+                    session=db,
+                )
+
+                winner_bet.status     = "won"
+                winner_bet.settled_at = now
+                loser_bet.status      = "lost"
+                loser_bet.settled_at  = now
+
+                winner_payout = round(combined_credit_cents / 100, 2)
+                winner_stake  = round(winner_escrow_cents / 100, 2)
+                loser_stake   = round(loser_escrow_cents / 100, 2)
+
+                # Transaction-row shape is deliberately asymmetric (FR-5.9
+                # Rev4 Section 4 — confirmed safe to build as specified: no
+                # report/frontend code assumes one row per bet or aggregates
+                # on bet_id). The winner's row carries the FULL combined
+                # credit (both stakes flow through it); the loser's row
+                # carries only its own stake leaving, no credit. "type" for
+                # the loser's debit-only row isn't specified by either spec —
+                # using "withdrawal" (the closest fit in ck_tx_type) rather
+                # than "bet" (already means the original placement debit) or
+                # "payout" (a credit); flag if a different value is wanted.
+                db.add(Transaction(
+                    wallet_id  = winner_wallet.id,
+                    amount     = winner_payout,
+                    type       = "payout",
+                    bet_id     = winner_bet.id,
+                    created_at = now,
+                ))
+                db.add(Transaction(
+                    wallet_id  = loser_wallet.id,
+                    amount     = -loser_stake,
+                    type       = "withdrawal",
+                    bet_id     = loser_bet.id,
+                    created_at = now,
+                ))
+
+                settlements.append(BetSettlement(
+                    bet_id      = winner_bet.id,
+                    bet_type    = winner_bet.bet_type,
+                    description = winner_bet.description or "",
+                    wallet_id   = winner_bet.wallet_id,
+                    owner       = winner_wallet.team.owner,
+                    team_name   = winner_wallet.team.team_name,
+                    amount      = winner_stake,
+                    odds_dec    = winner_bet.odds,
+                    payout      = winner_payout,
+                    profit      = round(winner_payout - winner_stake, 2),
+                    status      = "won",
+                ))
+                settlements.append(BetSettlement(
+                    bet_id      = loser_bet.id,
+                    bet_type    = loser_bet.bet_type,
+                    description = loser_bet.description or "",
+                    wallet_id   = loser_bet.wallet_id,
+                    owner       = loser_wallet.team.owner,
+                    team_name   = loser_wallet.team.team_name,
+                    amount      = loser_stake,
+                    odds_dec    = loser_bet.odds,
+                    payout      = 0.0,
+                    profit      = round(0.0 - loser_stake, 2),
+                    status      = "lost",
+                ))
+            continue
+        # ── End beef branch ────────────────────────────────────────────────
+
         matchup = bet.matchup
 
-        # Resolve outcome -------------------------------------------------
+        # Resolve outcome (single-party bets only — beef always continues above) --
         if bet.bet_type == "the_lineup":
             result = _eval_the_lineup(bet, db)
             if result == "push":
                 status = "push"
                 payout = bet.amount          # return stake, no profit
-                profit = 0.0
-            else:
-                status = "won" if result == "won" else "lost"
-                payout = round(bet.amount * bet.odds, 2) if status == "won" else 0.0
-                profit = round(payout - bet.amount, 2)
-        elif bet.beef_challenge_id is not None:
-            # Beef bets compare weekly scores across different matchups
-            result = _eval_beef(bet, db)
-            if result == "push":
-                status = "push"
-                payout = bet.amount
                 profit = 0.0
             else:
                 status = "won" if result == "won" else "lost"
