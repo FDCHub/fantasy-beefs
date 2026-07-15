@@ -30,6 +30,7 @@ from db.schema import (
 )
 
 from db.deps import get_db
+from ledger.ledger import balance_of, _balance_of_in_session, _to_cents
 from odds.monte_carlo import OddsResult, run as mc_run
 from betting.bet_engine import (
     BetResult,
@@ -447,7 +448,7 @@ def roster(team_id: int, db: Session = Depends(get_db)):
         team_name=team.team_name,
         owner=team.owner,
         email=team.email,
-        wallet_balance=wallet.balance if wallet else 0.0,
+        wallet_balance=(balance_of(f"wallet:{team_id}") / 100) if wallet else 0.0,  # FR-7.12: ledger, not stale column
         players=players,
     )
 
@@ -507,10 +508,13 @@ def place_bet(
     if not wallet:
         raise HTTPException(status_code=404, detail="Wallet not found")
 
-    if wallet.balance < req.amount:
+    # FR-7.12: funds check reads the ledger (source of truth) in this same
+    # request transaction, compared in integer cents — not the stale column.
+    _bal_cents = _balance_of_in_session(db, f"wallet:{wallet.team_id}")
+    if _bal_cents < _to_cents(req.amount):
         raise HTTPException(
             status_code=400,
-            detail=f"Insufficient balance: ${wallet.balance:.2f} < ${req.amount:.2f}",
+            detail=f"Insufficient balance: ${_bal_cents / 100:.2f} < ${req.amount:.2f}",
         )
 
     if req.picked_team_id not in (matchup.home_team_id, matchup.away_team_id):
@@ -615,7 +619,7 @@ def wallet(team_id: int, db: Session = Depends(get_db)):
         wallet_id     = w.id,
         team_id       = team_id,
         team_name     = team.team_name,
-        balance       = w.balance,
+        balance       = balance_of(f"wallet:{team_id}") / 100,  # FR-7.12: ledger, not stale column
         open_bets     = open_bets,
         total_wagered = round(wagered_sum, 2),
         transactions  = [
@@ -980,7 +984,7 @@ class TransactionHistoryOut(BaseModel):
 def _state_out(s) -> WalletStateOut:
     return WalletStateOut(
         wallet_id=s.wallet_id, team_id=s.team_id, team_name=s.team_name,
-        owner=s.owner, balance=s.balance, max_single_bet=s.max_single_bet,
+        owner=s.owner, balance=s.balance, max_single_bet=s.max_single_bet,  # FR-7.12: stays on the stale column until FR-7.28 posts wm_deposit() to the ledger; converting now would race/omit the just-made deposit (spec Rev4 §3, MS-7.12-D-3)
         open_bets=s.open_bets, pending_exposure=s.pending_exposure,
         total_deposited=s.total_deposited, total_withdrawn=s.total_withdrawn,
         total_wagered=s.total_wagered, total_payout=s.total_payout,
@@ -1023,7 +1027,7 @@ def wallet_history(
         wallet_id   = hist.wallet_id,
         team_name   = hist.team_name,
         owner       = hist.owner,
-        balance     = hist.balance,
+        balance     = balance_of(f"wallet:{team_id}") / 100,  # FR-7.12: ledger, not stale column
         total       = hist.total,
         page_size   = hist.page_size,
         page_offset = hist.page_offset,

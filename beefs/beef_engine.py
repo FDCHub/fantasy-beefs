@@ -67,7 +67,7 @@ from feed.league_feed import (
     log_challenge_declined,
     log_challenge_expired,
 )
-from ledger.ledger import post as ledger_post
+from ledger.ledger import post as ledger_post, _balance_of_in_session
 
 CHALLENGE_TTL_HOURS = 24
 
@@ -629,16 +629,21 @@ def _verify_wallet_available(
     beef reservations. Raises ValueError with a breakdown if not.
     Returns the Wallet row on success.
     """
-    wallet       = db.query(Wallet).filter(Wallet.team_id == team_id).first()
-    pending_bets = db.query(Bet).filter(Bet.wallet_id == wallet.id, Bet.status == "pending").all()
-    bet_exposure = round(sum(b.amount for b in pending_bets), 2)
-    ch_reserved = _challenge_reserved(team_id, db, exclude_challenge_id)
-    available   = round(wallet.balance - bet_exposure - ch_reserved, 2)
-    if available < effective_amount:
+    # FR-7.12: funds check reads the LEDGER (source of truth), in this same
+    # session/transaction, compared in integer cents. bet_exposure is dropped
+    # entirely — pending bets' stakes have already left wallet:{team_id} in the
+    # ledger via the wager_placed escrow debit, so the ledger balance already
+    # reflects them; subtracting bet_exposure again would double-count. ch_reserved
+    # is retained — a pending/countered BeefChallenge has no ledger posting yet.
+    wallet          = db.query(Wallet).filter(Wallet.team_id == team_id).first()
+    ledger_cents    = _balance_of_in_session(db, f"wallet:{team_id}")
+    ch_reserved     = _challenge_reserved(team_id, db, exclude_challenge_id)
+    available_cents = ledger_cents - _to_cents(ch_reserved)
+    if available_cents < _to_cents(effective_amount):
         raise ValueError(
             f"Team {team_id}'s wallet has insufficient funds: "
-            f"${effective_amount:.2f} needed, ${available:.2f} available "
-            f"(${wallet.balance:.2f} balance, ${bet_exposure:.2f} in pending bets, "
+            f"${effective_amount:.2f} needed, ${available_cents / 100:.2f} available "
+            f"(${ledger_cents / 100:.2f} wallet balance, "
             f"${ch_reserved:.2f} in challenge reservations)"
         )
     return wallet
@@ -698,17 +703,16 @@ def issue_challenge(
     challenger_wallet = db.query(Wallet).filter(Wallet.team_id == challenger_team_id).first()
     if not challenger_wallet:
         raise ValueError(f"No wallet found for team {challenger_team_id}")
-    pending_bets       = db.query(Bet).filter(
-        Bet.wallet_id == challenger_wallet.id, Bet.status == "pending"
-    ).all()
-    bet_exposure       = round(sum(b.amount for b in pending_bets), 2)
+    # FR-7.12: ledger-sourced, in-session, integer-cents funds check. bet_exposure
+    # dropped (already reflected in the ledger balance via wager_placed escrow
+    # debits); challenge_reserved retained (no ledger posting at challenge stage).
+    ledger_cents       = _balance_of_in_session(db, f"wallet:{challenger_team_id}")
     challenge_reserved = _challenge_reserved(challenger_team_id, db)
-    available          = round(challenger_wallet.balance - bet_exposure - challenge_reserved, 2)
-    if available < amount:
+    available_cents    = ledger_cents - _to_cents(challenge_reserved)
+    if available_cents < _to_cents(amount):
         raise ValueError(
             f"Challenger wallet has insufficient available funds: "
-            f"${available:.2f} available (${challenger_wallet.balance:.2f} balance, "
-            f"${bet_exposure:.2f} in pending bets, "
+            f"${available_cents / 100:.2f} available (${ledger_cents / 100:.2f} balance, "
             f"${challenge_reserved:.2f} reserved for pending challenges)"
         )
 
@@ -986,17 +990,16 @@ def counter_challenge(
     cd_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
     if not cd_wallet:
         raise ValueError(f"No wallet found for team {challenge.challenged_team_id}")
-    cd_pending_bets       = db.query(Bet).filter(
-        Bet.wallet_id == cd_wallet.id, Bet.status == "pending"
-    ).all()
-    cd_bet_exposure       = round(sum(b.amount for b in cd_pending_bets), 2)
+    # FR-7.12: ledger-sourced, in-session, integer-cents funds check. bet_exposure
+    # dropped (already in the ledger balance via wager_placed escrow debits);
+    # challenge_reserved retained (no ledger posting at challenge stage).
+    cd_ledger_cents       = _balance_of_in_session(db, f"wallet:{challenge.challenged_team_id}")
     cd_challenge_reserved = _challenge_reserved(challenge.challenged_team_id, db)
-    cd_available          = round(cd_wallet.balance - cd_bet_exposure - cd_challenge_reserved, 2)
-    if cd_available < countered_amount:
+    cd_available_cents    = cd_ledger_cents - _to_cents(cd_challenge_reserved)
+    if cd_available_cents < _to_cents(countered_amount):
         raise ValueError(
             f"Challenged wallet has insufficient funds to propose a ${countered_amount:.2f} counter: "
-            f"${cd_available:.2f} available (${cd_wallet.balance:.2f} balance, "
-            f"${cd_bet_exposure:.2f} in pending bets, "
+            f"${cd_available_cents / 100:.2f} available (${cd_ledger_cents / 100:.2f} balance, "
             f"${cd_challenge_reserved:.2f} in challenge reservations)"
         )
 

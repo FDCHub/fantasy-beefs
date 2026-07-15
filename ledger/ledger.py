@@ -89,7 +89,14 @@ def _balance_of_in_session(db: Session, account: str) -> int:
     """Same query as balance_of(), but reusing an already-open session/
     transaction — used by post() so its funded-balance and once-only-
     settlement reads are part of the SAME transaction as the write below,
-    not a separate earlier query that a concurrent posting could race past."""
+    not a separate earlier query that a concurrent posting could race past.
+
+    EXPORTED entry point (FR-7.12): funds-check sites that read a balance
+    immediately before a write in the SAME request transaction import this
+    instead of balance_of() so the pre-check sees the same data the write
+    will. The leading underscore is retained for continuity, but this is a
+    supported cross-module import (see FR-7.12 §4). No caller precondition
+    beyond ordinary autoflush, which is the codebase-wide default."""
     result = db.execute(
         text("SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries WHERE account = :account"),
         {"account": account},
@@ -105,6 +112,17 @@ def balance_of(account: str) -> int:
     """
     with SessionLocal() as db:
         return _balance_of_in_session(db, account)
+
+
+def _to_cents(amount: float) -> int:
+    """Dollars (float) -> integer cents, for funds-check comparisons that must
+    happen in the same integer-cents space as balance_of()/_balance_of_in_session().
+
+    Single home (FR-7.12 §3): api/main.py imports this instead of defining its
+    own copy. beefs/beef_engine.py keeps its own pre-existing _to_cents() (used
+    by the out-of-scope wager_placed posting) — see FR-7.12 §7. Exported
+    alongside balance_of()."""
+    return round(amount * 100)
 
 
 def trial_balance() -> int:
