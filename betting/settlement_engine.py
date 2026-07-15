@@ -25,7 +25,8 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from db.schema import Bet, BeefChallenge, Matchup, Projection, Roster, Transaction, Wallet
+from db.schema import Bet, BeefChallenge, Matchup, Projection, Transaction, Wallet
+from db.roster_read import _roster_for_week
 from feed.league_feed import log_settlement_events
 from ledger.ledger import post as ledger_post, balance_of
 
@@ -130,23 +131,6 @@ def _eval_prop(bet: Bet, db: Session) -> str:
     return "won" if away_actual > home_actual else "lost"
 
 
-def _position_actual(team_id: int, position: str, week: int, db: Session) -> float:
-    """Actual points for the first rostered player at `position` in `week`."""
-    slots = (
-        db.query(Roster)
-        .filter(Roster.team_id == team_id)
-        .order_by(Roster.id)
-        .all()
-    )
-    for slot in slots:
-        if slot.player.position == position:
-            proj = db.query(Projection).filter_by(
-                player_id=slot.player_id, week=week, season=SEASON, source=SOURCE
-            ).first()
-            return proj.actual_points if proj else 0.0
-    return 0.0
-
-
 def _team_score_for_week(team_id: int, week: int, db: Session) -> float:
     """Actual weekly score for a team from their own scheduled matchup."""
     m = (
@@ -221,16 +205,14 @@ class LineupPlayer:
 def _starters_for_team(team_id: int, week: int, db: Session) -> list[LineupPlayer]:
     """
     Return LineupPlayer records for every starter on this team this week.
-    Filters on Roster.slot to exclude BN/IR (never on player.position —
-    that misidentifies FLEX players). If slot is NULL (pre-migration rows),
-    includes the player rather than silently dropping them.
+    Reads the week's RosterSlot snapshot (via _roster_for_week), falling back
+    to the static Roster when no slots exist for the week. Filters on slot to
+    exclude BN/IR (never on player.position — that misidentifies FLEX players).
+    On the RosterSlot path slot is non-nullable; on the Roster fallback path a
+    NULL slot means "unknown" and the player is included, not silently dropped
+    — which is what the `slot is not None` guard preserves.
     """
-    roster_rows = (
-        db.query(Roster)
-        .filter(Roster.team_id == team_id)
-        .order_by(Roster.id)
-        .all()
-    )
+    roster_rows = _roster_for_week(team_id, week, db)
     players: list[LineupPlayer] = []
     for r in roster_rows:
         if r.slot is not None and r.slot in ("BN", "IR"):

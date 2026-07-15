@@ -45,7 +45,6 @@ from db.schema import (
     League,
     Matchup,
     Projection,
-    Roster,
     ShortfallSweepRecord,
     Team,
     User,
@@ -55,6 +54,7 @@ from db.schema import (
     SessionLocal,
 )
 from betting.shortfall_sweep import SweepResult, sweep_explanation_text
+from db.roster_read import _roster_for_week
 
 # ── AI config ─────────────────────────────────────────────────────────────────
 
@@ -186,15 +186,21 @@ class WrapUpOut:
 # ── Data gathering ────────────────────────────────────────────────────────────
 
 def _player_actual(team_id: int, week: int, db: Session) -> tuple[float, float, float]:
-    """Returns (starter_pts, bench_pts, best_possible) for a team/week."""
-    roster = (
-        db.query(Roster)
-        .filter(Roster.team_id == team_id)
-        .order_by(Roster.id)
-        .all()
-    )
-    starter_ids = [r.player_id for r in roster[:9]]
-    bench_ids   = [r.player_id for r in roster[9:]]
+    """Returns (starter_pts, bench_pts, best_possible) for a team/week.
+
+    Starter/bench identity is read from the week's roster slots (via
+    _roster_for_week), NOT from Roster insertion order. Slot BN/IR = bench,
+    everything else = starter. The old roster[:9]/roster[9:] positional slice
+    was only ever correct while Roster never moved; once weekly slots exist it
+    would have mislabeled a benched-but-early player as a starter.
+
+    On the Roster fallback path a NULL slot is unknown, so it is counted as a
+    starter (`slot not in (...)`) rather than dropped — matching settlement's
+    fallback behavior.
+    """
+    roster = _roster_for_week(team_id, week, db)
+    starter_ids = [r.player_id for r in roster if r.slot not in ("BN", "IR")]
+    bench_ids   = [r.player_id for r in roster if r.slot in ("BN", "IR")]
     all_ids     = starter_ids + bench_ids
 
     projs = (

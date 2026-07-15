@@ -41,12 +41,12 @@ from db.schema import (
     PoolPot,
     PoolPrediction,
     Projection,
-    Roster,
     SessionLocal,
     Team,
     Transaction,
     Wallet,
 )
+from db.roster_read import _roster_for_week
 from ledger.ledger import post as ledger_post, balance_of
 
 from config import CURRENT_SEASON as SEASON
@@ -480,8 +480,14 @@ def _worst_beat(league_id: int, week: int, db: Session) -> int:
 
 
 def _special_teams_score(team_id: int, week: int, db: Session) -> float:
-    """Return sum of K actual_points + DEF actual_points (first rostered at each position)."""
-    slots = db.query(Roster).filter(Roster.team_id == team_id).order_by(Roster.id).all()
+    """Return sum of K actual_points + DEF actual_points (first rostered at each position).
+
+    Reads the week's roster (RosterSlot snapshot, falling back to static Roster)
+    so a settled week scores the K/DEF that were rostered THAT week, not whoever
+    is rostered now. The K/DEF match on slot.player.position is a separate
+    pre-existing bug and is intentionally left unchanged here.
+    """
+    slots = _roster_for_week(team_id, week, db)
     total = 0.0
     for pos in ("K", "DEF"):
         for slot in slots:
@@ -495,8 +501,9 @@ def _special_teams_score(team_id: int, week: int, db: Session) -> float:
 
 
 def _st_breakdown(team_id: int, week: int, db: Session) -> tuple[float, float]:
-    """Return (k_pts, def_pts) for a team."""
-    slots = db.query(Roster).filter(Roster.team_id == team_id).order_by(Roster.id).all()
+    """Return (k_pts, def_pts) for a team, from the week's roster (RosterSlot
+    snapshot, falling back to static Roster). Position matching left as-is."""
+    slots = _roster_for_week(team_id, week, db)
     k_pts = def_pts = 0.0
     for pos in ("K", "DEF"):
         for slot in slots:

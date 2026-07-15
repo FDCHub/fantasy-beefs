@@ -480,6 +480,149 @@ def _step_refresh_scores(
     )
 
 
+# ── Step 0.5: Capture weekly roster slots (FR-5.7) ────────────────────────────
+
+def _step_capture_roster_slots(league_id: int, week: int, db: Session) -> StepResult:
+    """
+    Snapshot each team's per-week lineup into roster_slots (FR-5.7).
+
+    Insert-only and idempotent. If roster_slots already holds rows for this
+    (league_id, week) the step is a no-op success — it never overwrites a
+    captured week and never relies on catching per-row IntegrityError.
+
+    A failed capture NEVER blocks settlement: the sequence continues and the
+    settlement path falls back to the static Roster table when no slots exist
+    for the week. Failure is surfaced loudly in the commissioner email via the
+    standard step summary.
+
+    Slot label comes from Yahoo's per-week selected_position.position
+    (QB/RB/WR/TE/W/R/T/BN/IR) — the lineup slot, NOT display_position, which is
+    eligibility and would erase bench identity. Yahoo team IDs bridge to DB team
+    IDs through TeamResolver (never +10 arithmetic); Yahoo players bridge to DB
+    players by name (lowercased), the same mapping the projection seed uses.
+
+    Capture is all-or-nothing: if any player on any roster fails to resolve, the
+    step writes nothing and fails, so settlement cleanly falls back to Roster
+    rather than reading a half-populated week.
+    """
+    from db.team_resolver import build_team_resolver, TeamResolverError
+    from db.schema import Player, RosterSlot, Team
+
+    yahoo_league_id = os.getenv("YAHOO_LEAGUE_ID", "488800")
+    t0 = time.monotonic()
+
+    def _fail(reason: str, error: str | None = None) -> StepResult:
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            "capture_roster_slots", False, reason, {"captured": False}, error, ms
+        )
+
+    def _s(v) -> str:
+        return v.decode() if isinstance(v, bytes) else str(v)
+
+    # ── Idempotency: any rows for this week → no-op success ───────────────────
+    existing = (
+        db.query(RosterSlot)
+        .filter(RosterSlot.league_id == league_id, RosterSlot.week == week)
+        .count()
+    )
+    if existing:
+        ms  = int((time.monotonic() - t0) * 1000)
+        msg = f"week {week}: already captured ({existing} slot row(s)) — no-op"
+        return StepResult(
+            "capture_roster_slots", True, msg,
+            {"captured": False, "existing_rows": existing, "idempotent_noop": True},
+            None, ms,
+        )
+
+    # ── Resolvers (one DB round-trip each) ────────────────────────────────────
+    try:
+        resolver = build_team_resolver(db, league_id)
+    except TeamResolverError as exc:
+        return _fail(f"week {week}: team resolver failed — {exc}", str(exc))
+    except Exception as exc:
+        return _fail(f"week {week}: unexpected resolver error — {exc}", str(exc))
+
+    teams = db.query(Team).filter(Team.league_id == league_id).all()
+    if not teams:
+        return _fail(f"week {week}: no teams found for league {league_id}")
+
+    player_map = {
+        name.lower(): pid for pid, name in db.query(Player.id, Player.name).all()
+    }
+
+    # ── Build the authenticated Yahoo query (existing credential path) ───────
+    try:
+        query = _build_yahoo_query(yahoo_league_id)
+    except Exception as exc:
+        return _fail(
+            f"week {week}: Yahoo query build failed — {type(exc).__name__}: {exc}",
+            str(exc),
+        )
+
+    # ── Fetch + resolve every team's roster before writing anything ──────────
+    rows: list[dict] = []
+    unresolved: list[str] = []
+    for team in teams:
+        try:
+            yahoo_id = resolver.db_to_yahoo(team.id)
+        except TeamResolverError as exc:
+            return _fail(f"week {week}: {exc}", str(exc))
+        try:
+            roster = query.get_team_roster_by_week(yahoo_id, chosen_week=week)
+        except Exception as exc:
+            return _fail(
+                f"week {week}: Yahoo roster fetch failed for team {team.id} "
+                f"(yahoo {yahoo_id}) — {type(exc).__name__}: {exc}",
+                str(exc),
+            )
+        for p in roster.players:
+            slot = p.selected_position.position  # per-week lineup slot
+            name = _s(p.full_name)
+            if not slot:
+                unresolved.append(f"{name} (team {team.id}: no selected_position)")
+                continue
+            pid = player_map.get(name.lower())
+            if pid is None:
+                unresolved.append(f"{name} (team {team.id}: unmatched player)")
+                continue
+            rows.append({
+                "league_id": league_id,
+                "team_id":   team.id,
+                "player_id": pid,
+                "week":      week,
+                "slot":      slot,
+            })
+
+    if unresolved:
+        return _fail(
+            f"week {week}: {len(unresolved)} unresolved player(s), nothing written "
+            f"— {'; '.join(unresolved[:10])}"
+            f"{' …' if len(unresolved) > 10 else ''}",
+            f"unresolved players: {unresolved}",
+        )
+
+    # ── Insert-only, single transaction ──────────────────────────────────────
+    try:
+        db.add_all([RosterSlot(**row) for row in rows])
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        return _fail(
+            f"week {week}: roster_slots insert failed — {type(exc).__name__}: {exc}",
+            str(exc),
+        )
+
+    ms  = int((time.monotonic() - t0) * 1000)
+    msg = (f"week {week}: captured {len(rows)} roster slot(s) across "
+           f"{len(teams)} team(s)")
+    return StepResult(
+        "capture_roster_slots", True, msg,
+        {"captured": True, "rows_written": len(rows), "teams": len(teams)},
+        None, ms,
+    )
+
+
 # ── Step 1: Settle bets ───────────────────────────────────────────────────────
 
 def _step_settle_bets(
@@ -1116,6 +1259,13 @@ def run_tuesday_sync(
     r, refresh_result = _step_refresh_scores(league_id, week, db)
     steps.append(r)
     print(f"  [0] refresh_scores  — {'OK' if r.success else 'FAILED'}: {r.message}")
+
+    # Step 0.5 — capture this week's roster slots (FR-5.7). Independent of the
+    # settlement gate: a failed capture must NOT block settlement — settlement
+    # falls back to the static Roster when no slots exist for the week.
+    r = _step_capture_roster_slots(league_id, week, db)
+    steps.append(r)
+    print(f"  [0.5] capture_slots — {'OK' if r.success else 'FAILED'}: {r.message}")
 
     # Step 1 — GATE: settlement runs only when step 0 confirmed a full, final slate.
     # This is the only step that breaks log-and-continue isolation — skipping
