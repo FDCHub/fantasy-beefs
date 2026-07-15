@@ -691,6 +691,18 @@ def issue_challenge(
     if not challenged_team:
         raise ValueError(f"Team {challenged_team_id} not found")
 
+    # FR-5.12: both teams must actually be playing this week. Without a Matchup
+    # row a team scores nothing, so the beef could never settle. Fail here at
+    # issue time rather than deep inside _place_beef_side() during accept.
+    for role, team_id in (("Challenger", challenger_team_id), ("Challenged", challenged_team_id)):
+        try:
+            _find_own_matchup(team_id, week, db)
+        except ValueError:
+            raise ValueError(
+                f"{role} team {team_id} has no matchup in week {week} — "
+                f"no challenge can be issued for a team that isn't playing this week"
+            )
+
     if bet_type not in ("straight", "spread", "over_under"):
         raise ValueError(f"Unknown bet_type {bet_type!r}")
     if bet_type == "spread" and line is None:

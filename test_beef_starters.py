@@ -759,6 +759,49 @@ with SessionLocal() as db:
     )
 
 
+# ── TEST I (FR-5.12): active-game gate — no-matchup team rejected at issue ─────
+# A challenge can only be issued for a week both teams are actually playing.
+# Week 2's NflSchedule is future (issue_challenge's lock-time gate passes) and
+# has a valid schedule (no ScheduleNotReadyError), but only t3/t4 have a week-2
+# Matchup — t1 has none. Issuing must be rejected immediately, BEFORE any
+# BeefChallenge row is written, and the message must name which side is missing.
+
+print("\nTest I: FR-5.12 — team with no week-2 matchup is rejected before any BeefChallenge row")
+with SessionLocal() as db:
+    before = db.query(BeefChallenge).count()
+
+    # I1 — challenger (t1) has no week-2 matchup
+    raised    = False
+    error_msg = ""
+    try:
+        issue_challenge(t1_id, t3_id, week=2, bet_type="straight", amount=10.0, db=db)
+    except ValueError as e:
+        raised    = True
+        error_msg = str(e)
+    _assert("I1: issue raises ValueError (challenger missing matchup)", raised, error_msg)
+    _assert("I1: message names the Challenger side",   "Challenger" in error_msg, error_msg)
+    _assert("I1: message mentions 'no matchup in week 2'",
+            "no matchup in week 2" in error_msg, error_msg)
+
+    # I2 — challenged (t1) has no week-2 matchup; challenger (t3) does
+    raised    = False
+    error_msg = ""
+    try:
+        issue_challenge(t3_id, t1_id, week=2, bet_type="straight", amount=10.0, db=db)
+    except ValueError as e:
+        raised    = True
+        error_msg = str(e)
+    _assert("I2: issue raises ValueError (challenged missing matchup)", raised, error_msg)
+    _assert("I2: message names the Challenged side",   "Challenged" in error_msg, error_msg)
+    _assert("I2: message mentions 'no matchup in week 2'",
+            "no matchup in week 2" in error_msg, error_msg)
+
+    # No BeefChallenge row may have been written by either rejected attempt.
+    after = db.query(BeefChallenge).count()
+    _assert("I: no BeefChallenge rows written by rejected issues", after == before,
+            f"before={before} after={after}")
+
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 print(f"\n{'='*52}")
