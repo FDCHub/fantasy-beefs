@@ -17,7 +17,7 @@ rotate_db_password_output.txt
 # Claude Code local permission settings � machine-specific, may contain credentials
 .claude/settings.local.json
 
-# DB snapshots � not source, already synced via OneDrive
+# DB snapshots - not source, already synced via OneDrive
 backups/
 
 # Loose planning docs at repo root — keep them local, never track.
