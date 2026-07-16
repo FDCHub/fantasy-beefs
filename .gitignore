@@ -28,7 +28,7 @@ backups/
 # Current plan/handoff docs — live only in the Claude project panel, never
 # tracked here. Exact names, not globs, since future versioned files
 # (v8, v49, etc.) should be a deliberate decision each time, not auto-caught.
-/FantasyBeefs_MasterPlan_BAB_Reconciled_v7.md
+/FantasyBeefs_MasterPlan_BAB_Reconciled_v7_APPENDICES_ONLY.md
 /FantasyBeefs_New_Thread_Handoff_v48.md
 /FantasyBeefs_v48_NextThread_Opener.md
 /FantasyBeefs_MasterPlan_v8_LaunchPath.md
