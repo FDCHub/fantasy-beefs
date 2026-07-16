@@ -480,6 +480,138 @@ def _step_refresh_scores(
     )
 
 
+# ── Step 0.25: Sync players from live rosters (FR-7.30) ───────────────────────
+
+def _step_sync_players(
+    league_id: int, week: int, db: Session
+) -> tuple[StepResult, list | None]:
+    """
+    Grow the players table from the live Yahoo rosters (FR-7.30).
+
+    The players table is otherwise seeder-only — a mid-season call-up exists on
+    no DB row, is invisible everywhere, and (pre-FR-7.30) broke the all-or-
+    nothing roster-slot capture indefinitely. This step inserts any rostered
+    Yahoo player we don't already have, keyed on the stable Yahoo player_id
+    (players.yahoo_id, backfilled in FR-7.30 step 3) — never name matching.
+
+    Insert-only and idempotent: a player already present by yahoo_id is skipped,
+    so a re-run inserts nothing. Yahoo team IDs bridge to DB team IDs through
+    TeamResolver (never +10 arithmetic).
+
+    Returns (StepResult, rosters) where rosters is the list of fetched Yahoo
+    Roster objects, handed forward so the capture step (0.5) can reuse them
+    instead of re-fetching. On ANY failure returns (StepResult(success=False),
+    None) — the sequence continues and capture falls back to its own fetch.
+
+    position comes from display_position (eligibility), NOT selected_position —
+    standing rule. editorial_team_abbr is upper-cased ("Bal" -> "BAL") to match
+    the DB column's convention.
+    """
+    from db.team_resolver import build_team_resolver, TeamResolverError
+    from db.schema import Player, Team
+
+    yahoo_league_id = os.getenv("YAHOO_LEAGUE_ID", "488800")
+    t0 = time.monotonic()
+
+    def _fail(reason: str, error: str | None = None) -> tuple[StepResult, None]:
+        ms = int((time.monotonic() - t0) * 1000)
+        return (
+            StepResult("sync_players", False, reason, {"inserted": 0}, error, ms),
+            None,
+        )
+
+    def _s(v) -> str:
+        return v.decode() if isinstance(v, bytes) else str(v)
+
+    # ── Resolvers (one DB round-trip each) ────────────────────────────────────
+    try:
+        resolver = build_team_resolver(db, league_id)
+    except TeamResolverError as exc:
+        return _fail(f"week {week}: team resolver failed — {exc}", str(exc))
+    except Exception as exc:
+        return _fail(f"week {week}: unexpected resolver error — {exc}", str(exc))
+
+    teams = db.query(Team).filter(Team.league_id == league_id).all()
+    if not teams:
+        return _fail(f"week {week}: no teams found for league {league_id}")
+
+    # ── Build the authenticated Yahoo query (existing credential path) ───────
+    try:
+        query = _build_yahoo_query(yahoo_league_id)
+    except Exception as exc:
+        return _fail(
+            f"week {week}: Yahoo query build failed — {type(exc).__name__}: {exc}",
+            str(exc),
+        )
+
+    # ── Fetch every team's roster; keep the Roster objects to hand forward ───
+    rosters: list = []
+    for team in teams:
+        try:
+            yahoo_id = resolver.db_to_yahoo(team.id)
+        except TeamResolverError as exc:
+            return _fail(f"week {week}: {exc}", str(exc))
+        try:
+            roster = query.get_team_roster_by_week(yahoo_id, chosen_week=week)
+        except Exception as exc:
+            return _fail(
+                f"week {week}: Yahoo roster fetch failed for team {team.id} "
+                f"(yahoo {yahoo_id}) — {type(exc).__name__}: {exc}",
+                str(exc),
+            )
+        rosters.append(roster)
+
+    # ── Insert players we don't already have (keyed on yahoo_id) ─────────────
+    existing = {
+        yid: pid
+        for pid, yid in db.query(Player.id, Player.yahoo_id)
+        .filter(Player.yahoo_id.isnot(None))
+        .all()
+    }
+    seen: set[str] = set()          # dedupe within this run
+    new_players: list = []
+    inserted_log: list[tuple[str, str, str | None, str]] = []
+    for roster in rosters:
+        for p in roster.players:
+            yid = str(p.player_id)
+            if yid in existing or yid in seen:
+                continue
+            seen.add(yid)
+            name      = _s(p.full_name)
+            position  = p.display_position                              # eligibility, not slot
+            nfl_team  = (p.editorial_team_abbr or "").upper() or None   # "Bal" -> "BAL"
+            new_players.append(Player(
+                name=name, position=position, nfl_team=nfl_team, yahoo_id=yid,
+            ))
+            inserted_log.append((name, position, nfl_team, yid))
+
+    # ── Insert-only, single transaction ──────────────────────────────────────
+    try:
+        db.add_all(new_players)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        return _fail(
+            f"week {week}: players insert failed — {type(exc).__name__}: {exc}",
+            str(exc),
+        )
+
+    for name, position, nfl_team, yid in inserted_log:
+        print(f"    [sync_players] inserted {name} ({position}, {nfl_team}) yahoo_id={yid}")
+
+    ms  = int((time.monotonic() - t0) * 1000)
+    msg = (f"week {week}: inserted {len(new_players)} new player(s) across "
+           f"{len(teams)} team(s)")
+    return (
+        StepResult(
+            "sync_players", True, msg,
+            {"inserted": len(new_players), "teams": len(teams)},
+            None, ms,
+        ),
+        rosters,
+    )
+
+
 # ── Step 0.5: Capture weekly roster slots (FR-5.7) ────────────────────────────
 
 def _step_capture_roster_slots(league_id: int, week: int, db: Session) -> StepResult:
@@ -1259,6 +1391,12 @@ def run_tuesday_sync(
     r, refresh_result = _step_refresh_scores(league_id, week, db)
     steps.append(r)
     print(f"  [0] refresh_scores  — {'OK' if r.success else 'FAILED'}: {r.message}")
+
+    # Step 0.25 — grow the players table from live rosters (FR-7.30), and
+    # hand the fetched rosters forward so capture doesn't re-fetch.
+    r, rosters = _step_sync_players(league_id, week, db)
+    steps.append(r)
+    print(f"  [0.25] sync_players  — {'OK' if r.success else 'FAILED'}: {r.message}")
 
     # Step 0.5 — capture this week's roster slots (FR-5.7). Independent of the
     # settlement gate: a failed capture must NOT block settlement — settlement
