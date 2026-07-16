@@ -14,7 +14,7 @@ __pycache__/
 # credential rotation output — contains a live DB password, never commit
 rotate_db_password_output.txt
 
-# Claude Code local permission settings � machine-specific, may contain credentials
+# Claude Code local permission settings - machine-specific, may contain credentials
 .claude/settings.local.json
 
 # DB snapshots - not source, already synced via OneDrive
