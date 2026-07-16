@@ -70,9 +70,10 @@ class _FakeSelPos:
 
 
 class _FakePlayer:
-    def __init__(self, full_name: str, slot: str) -> None:
+    def __init__(self, full_name: str, slot: str, player_id: str) -> None:
         self.full_name = full_name
         self.selected_position = _FakeSelPos(slot)
+        self.player_id = player_id          # capture resolves on str(player_id)
 
 
 class _FakeRoster:
@@ -82,15 +83,16 @@ class _FakeRoster:
 
 class _FakeQuery:
     """Returns a canned roster per Yahoo team ID; records every call so the
-    test can prove which Yahoo ID was fetched for each DB team."""
-    def __init__(self, by_yahoo: dict[int, list[tuple[str, str]]]) -> None:
+    test can prove which Yahoo ID was fetched for each DB team.
+    Entries are (full_name, slot, player_id)."""
+    def __init__(self, by_yahoo: dict[int, list[tuple[str, str, str]]]) -> None:
         self._by = by_yahoo
         self.calls: list[tuple[int, int]] = []
 
     def get_team_roster_by_week(self, team_id, chosen_week="current"):
         self.calls.append((team_id, chosen_week))
         entries = self._by.get(team_id, [])
-        return _FakeRoster([_FakePlayer(n, s) for n, s in entries])
+        return _FakeRoster([_FakePlayer(n, s, pid) for n, s, pid in entries])
 
 
 def _install_fake(by_yahoo: dict[int, list[tuple[str, str]]]) -> _FakeQuery:
@@ -130,14 +132,15 @@ with SessionLocal() as _db:
     cap_y2 = Team(league_id=l1.id, team_name="Cap Y2", owner="c2", email=_email(2))
     _db.add_all([cap_y3, cap_y1, cap_y2]); _db.flush()
 
-    # Players the fake rosters reference (name-matched, lowercased).
-    cap_player_names = [
-        "Alpha One", "Alpha Bench",
-        "Bravo One", "Bravo Bench",
-        "Charlie One", "Charlie Flex",
+    # Players the fake rosters reference. Capture now resolves by yahoo_id, so
+    # each carries the yahoo_id its fake roster player will report.
+    cap_players = [
+        ("Alpha One", "1001"), ("Alpha Bench", "1002"),
+        ("Bravo One", "2001"), ("Bravo Bench", "2002"),
+        ("Charlie One", "3001"), ("Charlie Flex", "3002"),
     ]
-    for nm in cap_player_names:
-        _db.add(Player(name=nm, position="WR"))
+    for nm, yid in cap_players:
+        _db.add(Player(name=nm, position="WR", yahoo_id=yid))
     _db.flush()
 
     # L2 settlement/helper teams (Yahoo 4,5 — so the L1 resolver is unaffected).
@@ -222,6 +225,19 @@ with SessionLocal() as _db:
         _db.add(Projection(player_id=pl.id, week=ST_FALLBACK_WEEK, season=SEASON,
                            source="fantasypros", actual_points=pts))
 
+    # ── FR-7.30 4b: yahoo_id-resolution capture fixtures (league L3) ──────────
+    # These exercise capture with pre-fetched rosters + resolution by yahoo_id.
+    # Key fixture: a DB name that DIVERGES from the Yahoo full_name (Joshua vs
+    # Josh Palmer), same yahoo_id — proving resolution is by id, not name.
+    l3 = League(season=SEASON, name="Capture-YID", projection_source="fantasypros")
+    _db.add(l3); _db.flush()
+    t_yid = Team(league_id=l3.id, team_name="YID Team", owner="y", email=_email(7))
+    _db.add(t_yid); _db.flush()
+    p_palmer = Player(name="Joshua Palmer", position="WR",  yahoo_id="33465")   # Yahoo: "Josh Palmer"
+    p_ravens = Player(name="Ravens",        position="DEF", yahoo_id="100033")  # Yahoo: "Ravens"
+    p_sync   = Player(name="Sync Guy",      position="RB",  yahoo_id="5000")
+    _db.add_all([p_palmer, p_ravens, p_sync]); _db.flush()
+
     _db.commit()
 
     # Capture ids for later assertions
@@ -234,6 +250,10 @@ with SessionLocal() as _db:
     tpa_id  = t_pa.id
     tst_id  = t_st.id
     px_id, py_id = px.id, py.id
+    l3_id   = l3.id
+    tyid_id = t_yid.id
+    palmer_id = p_palmer.id
+    ravens_id = p_ravens.id
 
 
 # ── TEST 1: week-divergence — settlement reads week-N slots, not current Roster ─
@@ -284,9 +304,9 @@ with SessionLocal() as db:
 print("\nTest 5: capture writes rows and bridges Yahoo->DB via resolver (not +10)")
 CAP_WEEK = 1
 fake = _install_fake({
-    1: [("Alpha One", "QB"),  ("Alpha Bench", "BN")],
-    2: [("Bravo One", "RB"),  ("Bravo Bench", "IR")],
-    3: [("Charlie One", "WR"), ("Charlie Flex", "W/R/T")],
+    1: [("Alpha One", "QB", "1001"),  ("Alpha Bench", "BN", "1002")],
+    2: [("Bravo One", "RB", "2001"),  ("Bravo Bench", "IR", "2002")],
+    3: [("Charlie One", "WR", "3001"), ("Charlie Flex", "W/R/T", "3002")],
 })
 with SessionLocal() as db:
     res = _step_capture_roster_slots(l1_id, CAP_WEEK, db)
@@ -350,9 +370,10 @@ with SessionLocal() as db:
 print("\nTest 6: fail-safe — unresolved player fails capture, writes nothing")
 UNRES_WEEK = 2
 _install_fake({
-    1: [("Alpha One", "QB"), ("Ghost Player", "BN")],   # Ghost Player not in DB
-    2: [("Bravo One", "RB")],
-    3: [("Charlie One", "WR")],
+    1: [("Alpha One", "QB", "1001"),
+        ("Ghost Player", "BN", "9999999")],   # yahoo_id 9999999 not in DB
+    2: [("Bravo One", "RB", "2001")],
+    3: [("Charlie One", "WR", "3001")],
 })
 with SessionLocal() as db:
     res = _step_capture_roster_slots(l1_id, UNRES_WEEK, db)
@@ -381,6 +402,87 @@ with SessionLocal() as db:
     st_fb = _special_teams_score(tst_id, ST_FALLBACK_WEEK, db)
     _assert("fallback week (no slots) scores static-Roster K_old = 57.0",
             st_fb == 57.0, f"got {st_fb}")
+
+
+# ── TEST 8 (4b-b): rosters provided → capture does NOT build the Yahoo query ──
+# Fetch-once proof: monkeypatch _build_yahoo_query to raise; pass pre-fetched
+# rosters. If capture tried to build its own query it would fail — success
+# proves it reused the passed rosters.
+
+print("\nTest 8: capture reuses pre-fetched rosters (does not call _build_yahoo_query)")
+
+def _boom(*_a, **_k):
+    raise RuntimeError("capture must not build the Yahoo query when rosters are provided")
+tsync._build_yahoo_query = _boom
+
+with SessionLocal() as db:
+    roster = _FakeRoster([_FakePlayer("Sync Guy", "RB", "5000")])
+    res = _step_capture_roster_slots(l3_id, 13, db, rosters=[(tyid_id, roster)])
+    _assert("capture succeeds with pre-fetched rosters (no query build)",
+            res.success, res.message)
+    _assert("1 row written from the passed roster",
+            res.data.get("rows_written") == 1, f"got {res.data.get('rows_written')}")
+    n = (db.query(RosterSlot)
+           .filter(RosterSlot.league_id == l3_id, RosterSlot.week == 13,
+                   RosterSlot.team_id == tyid_id).count())
+    _assert("RosterSlot row present for the passed team", n == 1, f"got {n}")
+
+
+# ── TEST 9 (4b-c): resolution by yahoo_id where the NAME diverges ─────────────
+# DB row is "Joshua Palmer"; Yahoo returns "Josh Palmer"; same yahoo_id 33465.
+# A name-keyed resolver would MISS; the yahoo_id resolver must hit. This is the
+# test that proves the finding — a fixture where name and id both match proves
+# nothing.
+
+print("\nTest 9: capture resolves by yahoo_id even when DB name != Yahoo full_name")
+with SessionLocal() as db:
+    roster = _FakeRoster([_FakePlayer("Josh Palmer", "WR", "33465")])
+    res = _step_capture_roster_slots(l3_id, 14, db, rosters=[(tyid_id, roster)])
+    _assert("capture succeeds despite name divergence", res.success, res.message)
+    row = (db.query(RosterSlot)
+             .filter(RosterSlot.league_id == l3_id, RosterSlot.week == 14,
+                     RosterSlot.team_id == tyid_id).one())
+    _assert("resolved to the DB 'Joshua Palmer' row via yahoo_id, not name",
+            row.player_id == palmer_id,
+            f"got player_id={row.player_id}, expected {palmer_id}")
+
+
+# ── TEST 10 (4b-d): unknown yahoo_id → all-or-nothing, nothing written ────────
+# The resolvable player (33465) rides alongside an unknown yahoo_id (8888888).
+# The unknown one must abort the whole write — the resolvable row is NOT kept.
+
+print("\nTest 10: capture fails all-or-nothing on an unknown yahoo_id")
+with SessionLocal() as db:
+    roster = _FakeRoster([
+        _FakePlayer("Josh Palmer", "WR", "33465"),   # resolvable
+        _FakePlayer("Nobody",      "BN", "8888888"),  # yahoo_id not in players
+    ])
+    res = _step_capture_roster_slots(l3_id, 15, db, rosters=[(tyid_id, roster)])
+    _assert("capture fails on unknown yahoo_id", not res.success, res.message)
+    _assert("failure cites the unresolved yahoo_id",
+            "8888888" in (res.error or ""), res.error or "")
+    n = (db.query(RosterSlot)
+           .filter(RosterSlot.league_id == l3_id, RosterSlot.week == 15).count())
+    _assert("nothing written (all-or-nothing, even the resolvable one)",
+            n == 0, f"got {n}")
+
+
+# ── TEST 11 (4b-e): DEF round-trip by yahoo_id ────────────────────────────────
+# DEF gets a real numeric Yahoo id (100033) and the DB stores it by nickname
+# "Ravens"; resolution by yahoo_id must land it cleanly.
+
+print("\nTest 11: DEF resolves by yahoo_id (Ravens / 100033)")
+with SessionLocal() as db:
+    roster = _FakeRoster([_FakePlayer("Ravens", "DEF", "100033")])
+    res = _step_capture_roster_slots(l3_id, 16, db, rosters=[(tyid_id, roster)])
+    _assert("capture succeeds for DEF", res.success, res.message)
+    row = (db.query(RosterSlot)
+             .filter(RosterSlot.league_id == l3_id, RosterSlot.week == 16,
+                     RosterSlot.team_id == tyid_id).one())
+    _assert("DEF resolved to the 'Ravens' DB row via yahoo_id",
+            row.player_id == ravens_id,
+            f"got player_id={row.player_id}, expected {ravens_id}")
+    _assert("DEF slot captured as 'DEF'", row.slot == "DEF", f"got {row.slot}")
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────

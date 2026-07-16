@@ -498,9 +498,10 @@ def _step_sync_players(
     so a re-run inserts nothing. Yahoo team IDs bridge to DB team IDs through
     TeamResolver (never +10 arithmetic).
 
-    Returns (StepResult, rosters) where rosters is the list of fetched Yahoo
-    Roster objects, handed forward so the capture step (0.5) can reuse them
-    instead of re-fetching. On ANY failure returns (StepResult(success=False),
+    Returns (StepResult, team_rosters) where team_rosters is a list of
+    (team_id, Yahoo Roster) pairs — the team_id pairing is preserved so the
+    capture step (0.5) can attribute each roster to its DB team without re-
+    running the resolver. On ANY failure returns (StepResult(success=False),
     None) — the sequence continues and capture falls back to its own fetch.
 
     position comes from display_position (eligibility), NOT selected_position —
@@ -544,8 +545,9 @@ def _step_sync_players(
             str(exc),
         )
 
-    # ── Fetch every team's roster; keep the Roster objects to hand forward ───
-    rosters: list = []
+    # ── Fetch every team's roster; keep (team_id, roster) pairs to hand
+    # forward so capture can attribute each roster to its DB team ─────────────
+    team_rosters: list = []
     for team in teams:
         try:
             yahoo_id = resolver.db_to_yahoo(team.id)
@@ -559,7 +561,7 @@ def _step_sync_players(
                 f"(yahoo {yahoo_id}) — {type(exc).__name__}: {exc}",
                 str(exc),
             )
-        rosters.append(roster)
+        team_rosters.append((team.id, roster))
 
     # ── Insert players we don't already have (keyed on yahoo_id) ─────────────
     existing = {
@@ -571,7 +573,7 @@ def _step_sync_players(
     seen: set[str] = set()          # dedupe within this run
     new_players: list = []
     inserted_log: list[tuple[str, str, str | None, str]] = []
-    for roster in rosters:
+    for _team_id, roster in team_rosters:
         for p in roster.players:
             yid = str(p.player_id)
             if yid in existing or yid in seen:
@@ -608,13 +610,15 @@ def _step_sync_players(
             {"inserted": len(new_players), "teams": len(teams)},
             None, ms,
         ),
-        rosters,
+        team_rosters,
     )
 
 
 # ── Step 0.5: Capture weekly roster slots (FR-5.7) ────────────────────────────
 
-def _step_capture_roster_slots(league_id: int, week: int, db: Session) -> StepResult:
+def _step_capture_roster_slots(
+    league_id: int, week: int, db: Session, rosters=None
+) -> StepResult:
     """
     Snapshot each team's per-week lineup into roster_slots (FR-5.7).
 
@@ -629,9 +633,15 @@ def _step_capture_roster_slots(league_id: int, week: int, db: Session) -> StepRe
 
     Slot label comes from Yahoo's per-week selected_position.position
     (QB/RB/WR/TE/W/R/T/BN/IR) — the lineup slot, NOT display_position, which is
-    eligibility and would erase bench identity. Yahoo team IDs bridge to DB team
-    IDs through TeamResolver (never +10 arithmetic); Yahoo players bridge to DB
-    players by name (lowercased), the same mapping the projection seed uses.
+    eligibility and would erase bench identity. Yahoo players bridge to DB
+    players by yahoo_id (players.yahoo_id), never by name — after
+    _step_sync_players (0.25) runs, every rostered player exists by yahoo_id.
+
+    rosters, when provided by _step_sync_players (0.25), is a list of
+    (team_id, Yahoo Roster) pairs already fetched this run; capture reuses them
+    and skips its own query build + per-team fetch. When rosters is None (sync
+    failed, or capture is called directly) it builds the query and fetches
+    itself via TeamResolver (never +10 arithmetic) — the unchanged fallback.
 
     Capture is all-or-nothing: if any player on any roster fails to resolve, the
     step writes nothing and fails, so settlement cleanly falls back to Roster
@@ -667,60 +677,75 @@ def _step_capture_roster_slots(league_id: int, week: int, db: Session) -> StepRe
             None, ms,
         )
 
-    # ── Resolvers (one DB round-trip each) ────────────────────────────────────
-    try:
-        resolver = build_team_resolver(db, league_id)
-    except TeamResolverError as exc:
-        return _fail(f"week {week}: team resolver failed — {exc}", str(exc))
-    except Exception as exc:
-        return _fail(f"week {week}: unexpected resolver error — {exc}", str(exc))
-
-    teams = db.query(Team).filter(Team.league_id == league_id).all()
-    if not teams:
-        return _fail(f"week {week}: no teams found for league {league_id}")
-
+    # ── Resolve DB players by Yahoo id (players.yahoo_id), never by name ─────
     player_map = {
-        name.lower(): pid for pid, name in db.query(Player.id, Player.name).all()
+        yid: pid
+        for pid, yid in db.query(Player.id, Player.yahoo_id)
+        .filter(Player.yahoo_id.isnot(None))
+        .all()
     }
 
-    # ── Build the authenticated Yahoo query (existing credential path) ───────
-    try:
-        query = _build_yahoo_query(yahoo_league_id)
-    except Exception as exc:
-        return _fail(
-            f"week {week}: Yahoo query build failed — {type(exc).__name__}: {exc}",
-            str(exc),
-        )
-
-    # ── Fetch + resolve every team's roster before writing anything ──────────
-    rows: list[dict] = []
-    unresolved: list[str] = []
-    for team in teams:
+    # ── Obtain (team_id, roster) pairs: reuse pre-fetched, else fetch here ───
+    if rosters is None:
         try:
-            yahoo_id = resolver.db_to_yahoo(team.id)
+            resolver = build_team_resolver(db, league_id)
         except TeamResolverError as exc:
-            return _fail(f"week {week}: {exc}", str(exc))
+            return _fail(f"week {week}: team resolver failed — {exc}", str(exc))
+        except Exception as exc:
+            return _fail(f"week {week}: unexpected resolver error — {exc}", str(exc))
+
+        teams = db.query(Team).filter(Team.league_id == league_id).all()
+        if not teams:
+            return _fail(f"week {week}: no teams found for league {league_id}")
+
         try:
-            roster = query.get_team_roster_by_week(yahoo_id, chosen_week=week)
+            query = _build_yahoo_query(yahoo_league_id)
         except Exception as exc:
             return _fail(
-                f"week {week}: Yahoo roster fetch failed for team {team.id} "
-                f"(yahoo {yahoo_id}) — {type(exc).__name__}: {exc}",
+                f"week {week}: Yahoo query build failed — {type(exc).__name__}: {exc}",
                 str(exc),
             )
+
+        team_rosters: list = []
+        for team in teams:
+            try:
+                yahoo_id = resolver.db_to_yahoo(team.id)
+            except TeamResolverError as exc:
+                return _fail(f"week {week}: {exc}", str(exc))
+            try:
+                roster = query.get_team_roster_by_week(yahoo_id, chosen_week=week)
+            except Exception as exc:
+                return _fail(
+                    f"week {week}: Yahoo roster fetch failed for team {team.id} "
+                    f"(yahoo {yahoo_id}) — {type(exc).__name__}: {exc}",
+                    str(exc),
+                )
+            team_rosters.append((team.id, roster))
+    else:
+        team_rosters = rosters
+
+    # ── Resolve every roster player by yahoo_id before writing anything ──────
+    rows: list[dict] = []
+    unresolved: list[str] = []
+    for team_id, roster in team_rosters:
         for p in roster.players:
             slot = p.selected_position.position  # per-week lineup slot
             name = _s(p.full_name)
             if not slot:
-                unresolved.append(f"{name} (team {team.id}: no selected_position)")
+                unresolved.append(
+                    f"{name} (yahoo {p.player_id}, team {team_id}: no selected_position)"
+                )
                 continue
-            pid = player_map.get(name.lower())
+            pid = player_map.get(str(p.player_id))
             if pid is None:
-                unresolved.append(f"{name} (team {team.id}: unmatched player)")
+                unresolved.append(
+                    f"{name} (yahoo {p.player_id}, team {team_id}: "
+                    f"not in players — sync did not insert)"
+                )
                 continue
             rows.append({
                 "league_id": league_id,
-                "team_id":   team.id,
+                "team_id":   team_id,
                 "player_id": pid,
                 "week":      week,
                 "slot":      slot,
@@ -747,10 +772,10 @@ def _step_capture_roster_slots(league_id: int, week: int, db: Session) -> StepRe
 
     ms  = int((time.monotonic() - t0) * 1000)
     msg = (f"week {week}: captured {len(rows)} roster slot(s) across "
-           f"{len(teams)} team(s)")
+           f"{len(team_rosters)} team(s)")
     return StepResult(
         "capture_roster_slots", True, msg,
-        {"captured": True, "rows_written": len(rows), "teams": len(teams)},
+        {"captured": True, "rows_written": len(rows), "teams": len(team_rosters)},
         None, ms,
     )
 
@@ -1401,7 +1426,7 @@ def run_tuesday_sync(
     # Step 0.5 — capture this week's roster slots (FR-5.7). Independent of the
     # settlement gate: a failed capture must NOT block settlement — settlement
     # falls back to the static Roster when no slots exist for the week.
-    r = _step_capture_roster_slots(league_id, week, db)
+    r = _step_capture_roster_slots(league_id, week, db, rosters=rosters)
     steps.append(r)
     print(f"  [0.5] capture_slots — {'OK' if r.success else 'FAILED'}: {r.message}")
 
