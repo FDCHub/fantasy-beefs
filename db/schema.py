@@ -118,6 +118,7 @@ class Player(Base):
     name     = Column(String,     nullable=False, unique=True)
     position = Column(String,     nullable=False)      # QB | RB | WR | TE | FLEX | K | DEF
     nfl_team = Column(String(4),  nullable=True)       # NFL team abbreviation, e.g. "KC", "BAL"
+    yahoo_id = Column(String,     nullable=True, unique=True)  # Yahoo player_id; NULL until resolved (FR-7.30)
 
     rosters      = relationship("Roster",     back_populates="player")
     projections  = relationship("Projection", back_populates="player")
