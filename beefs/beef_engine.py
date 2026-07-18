@@ -67,7 +67,7 @@ from feed.league_feed import (
     log_challenge_declined,
     log_challenge_expired,
 )
-from ledger.ledger import post as ledger_post, _balance_of_in_session
+from ledger.ledger import post as ledger_post, _balance_of_in_session, _dollars_to_cents
 
 CHALLENGE_TTL_HOURS = 24
 
@@ -709,6 +709,10 @@ def issue_challenge(
         raise ValueError("spread bets require line")
     if bet_type == "over_under" and (line is None or side not in ("over", "under")):
         raise ValueError("over_under bets require line and side ('over'/'under')")
+    # FR-7.50: reject a sub-cent stake before the MIN_BET check — malformed
+    # input reports before a well-formed below-minimum request does. Return
+    # value discarded (validation only); the ValueError is left to propagate.
+    _dollars_to_cents(amount)
     if amount < MIN_BET:
         raise ValueError(f"Amount ${amount:.2f} is below the minimum ${MIN_BET:.2f}")
 
@@ -977,6 +981,9 @@ def counter_challenge(
             f"Cannot counter: challenge is {challenge.status!r} — "
             f"only a pending challenge can be countered (one counter max)"
         )
+    # FR-7.50: reject a sub-cent counter before the MIN_BET check (same
+    # ordering and error posture as issue_challenge()).
+    _dollars_to_cents(countered_amount)
     if countered_amount < MIN_BET:
         raise ValueError(
             f"Counter-offer amount ${countered_amount:.2f} is below the minimum ${MIN_BET:.2f}"

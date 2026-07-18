@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import dataclasses
-from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from db.deps import get_db
 from auth.jwt_auth import assert_own_team, require_commissioner, get_current_gm, User
+from ledger.ledger import _dollars_to_cents
 from betting.pool_engine import (
     setup_pool_config,
     get_pool_config,
@@ -52,21 +52,6 @@ class PredictionRequest(BaseModel):
 class SettleRequest(BaseModel):
     league_id: int
     week:      int
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _dollars_to_cents(dollars: float) -> int:
-    """Exact dollars -> cents. Rejects (never rounds) an amount that isn't
-    a whole number of cents — e.g. 10.005 is a bad request, not silently
-    rounded to 1000 or 1001 cents."""
-    cents = Decimal(str(dollars)) * 100
-    if cents != cents.to_integral_value():
-        raise ValueError(
-            f"{dollars} is not a whole number of cents — amounts must be "
-            f"in exact dollars-and-cents (at most two decimal places)"
-        )
-    return int(cents)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

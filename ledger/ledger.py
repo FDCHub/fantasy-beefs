@@ -25,6 +25,7 @@ import os
 import sys
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Uuid, text
 from sqlalchemy.orm import Session, declarative_base
@@ -123,6 +124,27 @@ def _to_cents(amount: float) -> int:
     by the out-of-scope wager_placed posting) — see FR-7.12 §7. Exported
     alongside balance_of()."""
     return round(amount * 100)
+
+
+def _dollars_to_cents(dollars: float) -> int:
+    """Exact dollars -> cents. Rejects (never rounds) an amount that isn't
+    a whole number of cents — e.g. 10.005 is a bad request, not silently
+    rounded to 1000 or 1001 cents.
+
+    Promoted to the money-path's shared home (FR-7.50 §3) from its original
+    single site in api/pool_routes.py. Callers: api/pool_routes.py (unchanged
+    behavior), beefs/beef_engine.py's issue_challenge()/counter_challenge(),
+    and betting/bet_engine.py's _place_bet() — each validating a stake at
+    entry before its MIN_BET check. Dependency surface is stdlib Decimal only
+    (FR-7.50 §3, q5), so the move is clean. Raises ValueError on a sub-cent
+    stake; callers let it propagate (never catch/round/coerce)."""
+    cents = Decimal(str(dollars)) * 100
+    if cents != cents.to_integral_value():
+        raise ValueError(
+            f"{dollars} is not a whole number of cents — amounts must be "
+            f"in exact dollars-and-cents (at most two decimal places)"
+        )
+    return int(cents)
 
 
 def trial_balance() -> int:

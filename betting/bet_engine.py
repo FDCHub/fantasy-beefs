@@ -33,7 +33,7 @@ from odds.odds_engine_headless import (
     INJURY_MULTIPLIERS,
     simulate_scores,
 )
-from ledger.ledger import post as ledger_post
+from ledger.ledger import post as ledger_post, _dollars_to_cents
 
 from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
@@ -106,6 +106,11 @@ def _place_bet(
     odds_dec: float,
 ) -> Bet:
     """Deduct stake and write a pending bet + debit transaction."""
+    # FR-7.50: reject a sub-cent stake before validate_bet_amount()'s
+    # MIN_BET/MAX_BET_PCT guard. Single funnel for all four single-party
+    # entry points (place_straight_bet/spread/over_under/prop). Return value
+    # discarded (validation only); the ValueError propagates.
+    _dollars_to_cents(amount)
     validate_bet_amount(amount, wallet.balance)
 
     bet = Bet(
