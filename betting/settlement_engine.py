@@ -307,7 +307,7 @@ _EVALUATORS = {
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def settle_week(week: int, db: Session, league_id: int) -> SettlementReport:
+def settle_week(week: int, db: Session, league_id: int, recovery_token: str | None = None) -> SettlementReport:
     """Settle all pending bets whose matchup is in the given week.
 
     Guarded by WeekSettlement(league_id, week) — independent of Bet.status.
@@ -333,24 +333,83 @@ def settle_week(week: int, db: Session, league_id: int) -> SettlementReport:
     # settlement loop for a given week. If this claim's behavior changes (e.g. made
     # more permissive, moved, or parallelized), Finding 5.9's design must be
     # re-reviewed. See FINDING_5_9_BEEF_SETTLEMENT_ESCROW_GAP_MODULE_SPEC for detail.
+    # FR-8.7 Phase 1 — claimant_type is set here and consumed by Phase 2 in a
+    # later step (Step 3); nothing in Phase 2 reads it yet. Local only, never
+    # module-level state. Values: "normal" (fresh claim) | "recovery"
+    # (authorized recovery rerun holding the row's recovery_token).
+    claimant_type = "normal"
+
+    # settled_at is deliberately NOT written here — it is the COMPLETION
+    # timestamp, set at the Phase-2 flip (a later step). A CLAIMED row leaves
+    # settled_at NULL until it actually completes.
     claimed = db.execute(
         text("""
-            INSERT INTO week_settlements (league_id, week, settled, settled_at)
-            VALUES (:league_id, :week, :settled, :settled_at)
+            INSERT INTO week_settlements (league_id, week, settled, status)
+            VALUES (:league_id, :week, :settled, :status)
             ON CONFLICT (league_id, week) DO NOTHING
             RETURNING id
         """),
-        {"league_id": league_id, "week": week, "settled": True, "settled_at": now},
+        {"league_id": league_id, "week": week, "settled": False, "status": "CLAIMED"},
     ).fetchone()
     db.commit()
 
     if claimed is None:
-        logging.info(
-            "[settle_week] week=%s league_id=%s already claimed by another caller — skipping",
-            week, league_id,
-        )
-        return SettlementReport(week=week, total_bets=0, bets_won=0, bets_lost=0,
-                                total_staked=0.0, total_payout=0.0, already_settled=True)
+        # Conflict — a WeekSettlement row for (league_id, week) already exists.
+        # Read its lifecycle status and recovery_token on this same session to
+        # decide whether this caller may proceed or must stop for manual
+        # recovery. This SELECT runs only on the losing/conflict path; the
+        # winning claimant never issues it.
+        existing = db.execute(
+            text("""
+                SELECT status, recovery_token FROM week_settlements
+                WHERE league_id = :league_id AND week = :week
+            """),
+            {"league_id": league_id, "week": week},
+        ).fetchone()
+        existing_status = existing.status
+        existing_token  = existing.recovery_token
+
+        if existing_status == "COMPLETED":
+            # Idempotent no-op — the week is fully settled. Reuses the exact
+            # already-settled report the pre-FR-8.7 conflict path returned;
+            # no payouts implied.
+            logging.info(
+                "[settle_week] week=%s league_id=%s already COMPLETED — idempotent no-op",
+                week, league_id,
+            )
+            return SettlementReport(week=week, total_bets=0, bets_won=0, bets_lost=0,
+                                    total_staked=0.0, total_payout=0.0, already_settled=True)
+
+        elif existing_status == "CLAIMED":
+            # Claimed but not proven COMPLETED: a prior settlement may have
+            # crashed mid-payout. Only an authorized recovery caller holding
+            # this row's recovery_token may proceed; everyone else must stop
+            # and defer to manual recovery.
+            if recovery_token is None:
+                raise ValueError(
+                    f"[settle_week] week={week} league_id={league_id} is CLAIMED but not "
+                    f"COMPLETED and no recovery_token was supplied — a prior settlement "
+                    f"may have crashed mid-payout. Manual recovery required; refusing to settle."
+                )
+            if existing_token is not None and recovery_token == existing_token:
+                # Authorized recovery rerun. Revalidation under FOR UPDATE is Step 3;
+                # here we only tag the claimant and fall through to Phase 2 unchanged.
+                claimant_type = "recovery"
+            else:
+                raise ValueError(
+                    f"[settle_week] week={week} league_id={league_id} is CLAIMED but the "
+                    f"supplied recovery_token does not match the row's token — a stale or "
+                    f"wrong token authorizes nothing. Manual recovery required; refusing to settle."
+                )
+
+        else:
+            # Fail closed — NULL, malformed, or any unknown/future status is
+            # never silently treated as CLAIMED. Refuse to settle rather than
+            # guess at an unrecognized lifecycle state.
+            raise ValueError(
+                f"[settle_week] week_settlements row for week={week} league_id={league_id} "
+                f"has unexpected status={existing_status!r} — refusing to settle (fail-closed)."
+            )
 
     pending = (
         db.query(Bet)
