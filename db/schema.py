@@ -901,6 +901,13 @@ class WeekSettlement(Base):
     week       = Column(Integer)
     settled    = Column(Boolean,  default=False)
     settled_at = Column(DateTime(timezone=True), nullable=True)
+    # FR-8.7 — explicit settlement lifecycle status ('CLAIMED' at claim
+    # time) and crash-recovery token, enabling detection/resumption of a
+    # payout loop that died after the claim committed but before payouts
+    # finished. Additive; the run-once claim still keys off
+    # uq_week_settlement_league_week, not off these columns.
+    status         = Column(String, nullable=False, default="CLAIMED")
+    recovery_token = Column(String, nullable=True)
 
     league = relationship("League")
 
