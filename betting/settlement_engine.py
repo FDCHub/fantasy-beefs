@@ -491,7 +491,11 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
     pending = (
         db.query(Bet)
         .join(Matchup)
-        .filter(Matchup.week == week, Bet.status == "pending")
+        .filter(
+            Matchup.league_id == league_id,
+            Matchup.week == week,
+            Bet.status == "pending",
+        )
         .order_by(Bet.id)
         .all()
     )
