@@ -14,12 +14,14 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     UniqueConstraint,
     create_engine,
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 # ── Engine / session ──────────────────────────────────────────────────────────
@@ -1002,6 +1004,34 @@ class PlayerIdMap(Base):
     team           = Column(String,   nullable=True)   # NFL team abbreviation, e.g. "KC"; "FA" = free agent
     last_updated   = Column(DateTime, nullable=False,
                             default=lambda: datetime.now(timezone.utc))
+
+
+# ── Settlement recovery audit ─────────────────────────────────────────────────
+
+class SettlementRecoveryAudit(Base):
+    """Append-only audit of authorized week-settlement recoveries (FR-8.7 §5b).
+    One immutable row per recover_week() authorization — code INSERTs, never
+    updates or deletes. Records who authorized the recovery, the operator-
+    supplied process-exit evidence, and the structured pre-recovery facts
+    observed under the week_settlements row lock at authorization time.
+
+    exit_evidence and observed_pre_state are JSON columns — JSONB on Postgres,
+    degrading to SQLAlchemy's generic JSON (TEXT-backed, native dict round-trip)
+    on the SQLite test path, via JSON().with_variant(JSONB(), "postgresql").
+    Python dicts are stored and read back directly; no manual json.dumps."""
+    __tablename__ = "settlement_recovery_audit"
+
+    id                           = Column(Integer,  primary_key=True, autoincrement=True)
+    league_id                    = Column(Integer,  ForeignKey("leagues.id"), nullable=False)
+    week                         = Column(Integer,  nullable=False)
+    actor                        = Column(String,   nullable=False)   # who authorized the recovery
+    exit_evidence                = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)   # {category, detail}
+    observed_pre_state           = Column(JSON().with_variant(JSONB(), "postgresql"), nullable=False)   # structured locked facts
+    recovered_at                 = Column(DateTime(timezone=True), nullable=False)
+    recovery_token_fingerprint   = Column(String,   nullable=False)   # one-way SHA-256 hash; never the live recovery credential
+    prior_recovery_token_present = Column(Boolean,  nullable=False, default=False)   # was a stale token already on the row (prior recovery crashed)
+
+    league = relationship("League")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

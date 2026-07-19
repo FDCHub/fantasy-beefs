@@ -14,9 +14,15 @@ On settlement:
 
 from __future__ import annotations
 
+import hashlib
+# json is used ONLY for pre-lock exit_evidence serializability validation in
+# recover_week() — NOT for storage. The audit's JSON/JSONB columns store Python
+# dicts directly (no json.dumps into the DB).
+import json
 import logging
 import os
 import sys
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -25,10 +31,10 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from db.schema import Bet, BeefChallenge, Matchup, Projection, Transaction, Wallet
+from db.schema import Bet, BeefChallenge, Matchup, Projection, SettlementRecoveryAudit, Transaction, Wallet
 from db.roster_read import _roster_for_week
 from feed.league_feed import log_settlement_events
-from ledger.ledger import post as ledger_post, balance_of
+from ledger.ledger import post as ledger_post, balance_of, _balance_of_in_session
 
 from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
@@ -805,6 +811,229 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
         settlements   = settlements,
         wallet_movements = wallet_movements,
     )
+
+
+# ── Authorized recovery ───────────────────────────────────────────────────────
+
+def recover_week(
+    week: int,
+    db: Session,
+    league_id: int,
+    actor: str,
+    exit_evidence,
+) -> SettlementReport:
+    """Authorize and execute recovery of a week whose settle_week() crashed
+    after claiming (status='CLAIMED') but before completing (never reached the
+    atomic COMPLETED flip). FR-8.7 §5b.
+
+    actor and exit_evidence are MANDATORY (no defaults): the caller must supply
+    proof that the original settlement process/container has EXITED. This
+    function does NOT verify liveness itself — it records the operator-supplied
+    evidence and refuses to run without it. exit_evidence MUST be a dict with a
+    nonempty "category" and a nonempty "detail".
+
+    On success: writes one immutable SettlementRecoveryAudit row, mints a fresh
+    recovery_token onto the still-CLAIMED row (under lock), commits both
+    together, then invokes settle_week() as the authorized recovery claimant and
+    returns its SettlementReport. Every post-lock abort rolls back first (to
+    release the FOR UPDATE lock). Does NOT use balance_of() (which opens its own
+    session) — all reads are transaction-local on the passed db.
+    """
+    # STEP 1 — operational precondition. No liveness check here; the caller must
+    # have confirmed the dead process and passed evidence. exit_evidence must be
+    # a dict whose "category" AND "detail" are nonempty (stripped) strings — a
+    # bare truthy string does NOT qualify. All STEP-1 raises fire before any DB
+    # work / lock, so a bare raise (no rollback) is correct.
+    if not isinstance(exit_evidence, dict):
+        raise ValueError(
+            f"[recover_week] week={week} league_id={league_id}: exit_evidence must be a dict with "
+            f"nonempty 'category' and 'detail' — refusing to recover."
+        )
+    if not isinstance(actor, str) or not actor.strip():
+        raise ValueError(
+            f"[recover_week] week={week} league_id={league_id}: actor is required "
+            f"(nonempty string identifying who authorized the recovery) — refusing to recover."
+        )
+    actor = actor.strip()
+    category = exit_evidence.get("category")
+    detail   = exit_evidence.get("detail")
+    if (
+        not isinstance(category, str) or not category.strip()
+        or not isinstance(detail, str) or not detail.strip()
+    ):
+        raise ValueError(
+            f"[recover_week] week={week} league_id={league_id}: exit_evidence 'category' and "
+            f"'detail' must be nonempty strings — refusing to recover."
+        )
+    category = category.strip()
+    detail   = detail.strip()
+    # Normalize the evidence actually recorded: stripped category/detail, while
+    # preserving any additional keys the caller supplied. Validate it is
+    # JSON-serializable BEFORE any lock — this catches a non-serializable extra
+    # caller key at the door, not at flush/commit while the row lock is held.
+    normalized_exit_evidence = {
+        **exit_evidence,
+        "category": category,
+        "detail": detail,
+    }
+    try:
+        json.dumps(normalized_exit_evidence)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"[recover_week] week={week} league_id={league_id}: "
+            f"exit_evidence must be JSON-serializable — refusing to recover."
+        ) from exc
+
+    now = datetime.now(timezone.utc)
+
+    # STEP 2 — all DB work below runs on the passed db session, under the lock
+    # acquired in STEP 3 and held through the STEP 8 commit.
+    #
+    # recover_week cannot reach settle_week's nested _abort_phase2, so it uses
+    # its own local equivalent — same shape: rollback (to release the FOR UPDATE
+    # lock) then raise. Used for every abort AFTER the lock is acquired.
+    def _abort_recovery(message: str):
+        db.rollback()
+        raise ValueError(message)
+
+    # STEP 3 — lock the settlement row; hold the lock through the STEP 8 commit.
+    locked = db.execute(
+        text("""
+            SELECT status, recovery_token FROM week_settlements
+            WHERE league_id = :league_id AND week = :week
+            FOR UPDATE
+        """),
+        {"league_id": league_id, "week": week},
+    ).fetchone()
+    if locked is None:
+        _abort_recovery(
+            f"[recover_week] week={week} league_id={league_id}: no week_settlements row to "
+            f"recover (SELECT FOR UPDATE returned nothing) — nothing to recover."
+        )
+
+    # STEP 4 — only a CLAIMED (claimed-but-not-completed) week is recoverable.
+    if locked.status == "COMPLETED":
+        _abort_recovery(
+            f"[recover_week] week={week} league_id={league_id}: week is already COMPLETED — a "
+            f"completed week must never be recovered (double-pay risk). Refusing."
+        )
+    if locked.status != "CLAIMED":
+        _abort_recovery(
+            f"[recover_week] week={week} league_id={league_id}: unexpected status="
+            f"{locked.status!r} — refusing to recover (fail-closed)."
+        )
+
+    prior_token = locked.recovery_token
+    prior_recovery_token_present = prior_token is not None
+
+    # STEP 5 — verify NO Phase-2 effects committed, TRANSACTION-LOCALLY on this
+    # same locked session (never balance_of(), which opens its own session).
+    pending_bets = (
+        db.query(Bet)
+        .join(Matchup)
+        .filter(
+            Matchup.league_id == league_id,
+            Matchup.week == week,
+            Bet.status == "pending",
+        )
+        .order_by(Bet.id)
+        .all()
+    )
+    pending_bet_ids   = [b.id for b in pending_bets]
+    pending_bet_count = len(pending_bet_ids)
+
+    # Recoverability gate is bet-status: a cleanly-crashed Phase 2 (a single
+    # transaction that never committed) leaves EVERY league/week bet still
+    # pending. Any non-pending bet means payouts already committed — not cleanly
+    # recoverable. League-scoped, consistent with settle_week's pending query.
+    non_pending_bet_count = (
+        db.query(Bet)
+        .join(Matchup)
+        .filter(
+            Matchup.league_id == league_id,
+            Matchup.week == week,
+            Bet.status != "pending",
+        )
+        .count()
+    )
+    if non_pending_bet_count > 0:
+        _abort_recovery(
+            f"[recover_week] week={week} league_id={league_id}: {non_pending_bet_count} bet(s) for "
+            f"this league/week are already settled (status != 'pending') — committed payout effects "
+            f"present, week is not cleanly recoverable. Refusing."
+        )
+
+    # Record each escrow-backed (beef) pending bet's ACTUAL transaction-local
+    # balance as EVIDENCE ONLY — not a pass/fail gate, and no claim that escrow
+    # equals any canonical amount. Read via the ledger's session-scoped
+    # summation (_balance_of_in_session), never balance_of().
+    escrow_accounts_verified: dict[str, int] = {}
+    for b in pending_bets:
+        if b.beef_challenge_id is not None:
+            account = f"escrow:{b.id}"
+            escrow_accounts_verified[account] = _balance_of_in_session(db, account)
+
+    # STEP 6 — record an immutable audit row of the locked facts used to
+    # authorize this recovery. Append-only: insert only, never update/delete.
+    # exit_evidence is already validated as a dict with category+detail (STEP 1).
+    observed_pre_state = {
+        "claim_status":             locked.status,
+        "prior_token_present":      prior_recovery_token_present,
+        "pending_bet_count":        pending_bet_count,
+        "pending_bet_ids":          pending_bet_ids,
+        # actual escrow balances observed under lock at authorization time —
+        # evidence only, not an integrity proof.
+        "escrow_accounts_verified": escrow_accounts_verified,
+        # 0 == the all-pending bet-status recoverability gate held.
+        "non_pending_bet_count":    non_pending_bet_count,
+        "exit_evidence_category":   category,   # stripped (STEP 1)
+        "exit_evidence_detail":     detail,     # stripped (STEP 1)
+    }
+
+    # STEP 7 (token minted here, written under the lock just below).
+    fresh_token = str(uuid.uuid4())
+    # One-way SHA-256 hash — a non-reversible reference for the audit, NOT the
+    # live credential. The raw fresh_token is written ONLY to
+    # week_settlements.recovery_token (the UPDATE below) and the STEP-9
+    # settle_week call; it never appears in the audit row.
+    token_fingerprint = hashlib.sha256(fresh_token.encode()).hexdigest()
+
+    db.add(SettlementRecoveryAudit(
+        league_id                    = league_id,
+        week                         = week,
+        actor                        = actor,
+        exit_evidence                = normalized_exit_evidence,   # normalized dict stored directly (JSONB/JSON column)
+        observed_pre_state           = observed_pre_state,         # dict stored directly (JSONB/JSON column)
+        recovered_at                 = now,
+        recovery_token_fingerprint   = token_fingerprint,
+        prior_recovery_token_present = prior_recovery_token_present,
+    ))
+
+    # STEP 7 — overwrite the row's recovery_token with the fresh one UNDER THE
+    # LOCK. status stays 'CLAIMED'; the row is never deleted or made generally
+    # claimable. This same overwrite handles a crashed prior recovery — a stale
+    # token is simply replaced (prior_recovery_token_present recorded above).
+    result = db.execute(
+        text("""
+            UPDATE week_settlements
+            SET recovery_token = :tok
+            WHERE league_id = :league_id AND week = :week AND status = 'CLAIMED'
+        """),
+        {"tok": fresh_token, "league_id": league_id, "week": week},
+    )
+    if result.rowcount != 1:
+        _abort_recovery(
+            f"[recover_week] week={week} league_id={league_id}: token-overwrite UPDATE affected "
+            f"{result.rowcount} row(s) (expected 1) — refusing to recover (fail-closed)."
+        )
+
+    # STEP 8 — audit insert + token overwrite land together.
+    db.commit()
+
+    # STEP 9 — invoke settle_week as the authorized recovery claimant. It will
+    # re-lock and re-validate the fresh token under its own Phase-2 lock and, on
+    # success, run payouts + the atomic COMPLETED flip (which clears the token).
+    return settle_week(week, db, league_id, recovery_token=fresh_token)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
