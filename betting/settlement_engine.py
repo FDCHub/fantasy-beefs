@@ -411,6 +411,83 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
                 f"has unexpected status={existing_status!r} — refusing to settle (fail-closed)."
             )
 
+    # From here on a SELECT ... FOR UPDATE holds an OPEN transaction and a row
+    # lock. A bare raise/return does NOT release either — the SQLAlchemy session
+    # stays mid-transaction with the lock held. Every Phase-2 abort must
+    # db.rollback() first. This helper closes over `db` and is defined before the
+    # lock is acquired so every abort path below can route through it.
+    def _abort_phase2(message: str):
+        db.rollback()
+        raise ValueError(message)
+
+    # ── Phase 2 begins here ─ under-lock revalidation FIRST, before any payout ──
+    # Re-read the WeekSettlement row FOR UPDATE and re-validate the Phase-1
+    # decision under the row lock (held until this transaction commits or rolls
+    # back). The Phase-1 status/recovery_token read was UNLOCKED and may now be
+    # stale; no money may move until this lock-held recheck passes. Every abort
+    # below rolls back (releasing the lock) before it raises or returns.
+    locked = db.execute(
+        text("""
+            SELECT status, recovery_token FROM week_settlements
+            WHERE league_id = :league_id AND week = :week
+            FOR UPDATE
+        """),
+        {"league_id": league_id, "week": week},
+    ).fetchone()
+
+    if locked is None:
+        # The row vanished between the Phase-1 claim and this lock (SELECT FOR
+        # UPDATE returned nothing). Fail closed — and roll back the open lock
+        # transaction — rather than AttributeError on locked.status below.
+        _abort_phase2(
+            f"[settle_week] week={week} league_id={league_id}: week_settlements row "
+            f"vanished under lock (SELECT FOR UPDATE returned no row) — refusing to "
+            f"settle (fail-closed)."
+        )
+
+    if locked.status == "COMPLETED":
+        # Another caller completed this week between our Phase-1 claim/read and
+        # acquiring this lock. No money moved in this transaction, but the FOR
+        # UPDATE transaction is OPEN and holding the row lock — roll back to
+        # RELEASE THE LOCK before returning the idempotent no-op.
+        db.rollback()
+        logging.info(
+            "[settle_week] week=%s league_id=%s already COMPLETED at Phase-2 revalidation — idempotent no-op",
+            week, league_id,
+        )
+        return SettlementReport(week=week, total_bets=0, bets_won=0, bets_lost=0,
+                                total_staked=0.0, total_payout=0.0, already_settled=True)
+
+    if locked.status != "CLAIMED":
+        # Fail closed — NULL / unknown / unexpected status under the lock.
+        _abort_phase2(
+            f"[settle_week] week={week} league_id={league_id} has unexpected status="
+            f"{locked.status!r} under lock — refusing to settle (fail-closed)."
+        )
+
+    if claimant_type == "normal":
+        # A normal claimant must never execute against a row carrying a live
+        # recovery token — that token belongs to an authorized recovery caller.
+        if locked.recovery_token is not None:
+            _abort_phase2(
+                f"[settle_week] week={week} league_id={league_id}: normal claimant found a "
+                f"live recovery_token on the row under lock — refusing to settle (fail-closed)."
+            )
+    elif claimant_type == "recovery":
+        # Re-prove the presented token still matches under the lock.
+        if locked.recovery_token is None or locked.recovery_token != recovery_token:
+            _abort_phase2(
+                f"[settle_week] week={week} league_id={league_id}: recovery_token revalidation "
+                f"failed under lock — refusing to settle (fail-closed)."
+            )
+    else:
+        # Defensive fail-closed — claimant_type is only ever set to the two
+        # values above in Phase 1; anything else is a programming error.
+        _abort_phase2(
+            f"[settle_week] week={week} league_id={league_id}: unknown claimant_type="
+            f"{claimant_type!r} — refusing to settle (fail-closed)."
+        )
+
     pending = (
         db.query(Bet)
         .join(Matchup)
@@ -647,6 +724,48 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
             profit      = profit,
             status      = status,
         ))
+
+    # FR-8.7 completion — atomically flip this week to COMPLETED in the SAME
+    # transaction as the payouts above, immediately before commit #2. The WHERE
+    # is claimant-specific and re-asserts the row is still exactly as
+    # revalidated under the lock (status='CLAIMED' plus the matching token
+    # state). If it is not, rowcount is 0 and we raise BEFORE the commit, so the
+    # payouts roll back rather than committing under a claimant mismatch.
+    # settled_at / settled=TRUE / recovery_token=NULL are written here at
+    # completion, never at claim time.
+    if claimant_type == "normal":
+        result = db.execute(
+            text("""
+                UPDATE week_settlements
+                SET status='COMPLETED', settled_at=:now, settled=TRUE, recovery_token=NULL
+                WHERE league_id=:league_id AND week=:week
+                  AND status='CLAIMED' AND recovery_token IS NULL
+            """),
+            {"now": now, "league_id": league_id, "week": week},
+        )
+    else:  # claimant_type == "recovery"
+        result = db.execute(
+            text("""
+                UPDATE week_settlements
+                SET status='COMPLETED', settled_at=:now, settled=TRUE, recovery_token=NULL
+                WHERE league_id=:league_id AND week=:week
+                  AND status='CLAIMED' AND recovery_token=:presented_token
+            """),
+            {"now": now, "league_id": league_id, "week": week,
+             "presented_token": recovery_token},
+        )
+
+    if result.rowcount != 1:
+        # Fail closed — the claimant-specific WHERE matched no row (or, under the
+        # unique (league_id, week) constraint, could only ever be 0 or 1). Payouts
+        # are already STAGED in this session, so roll back (via _abort_phase2)
+        # before raising — nothing commits under a claimant/token mismatch. This
+        # is the most important rollback of the function.
+        _abort_phase2(
+            f"[settle_week] week={week} league_id={league_id}: COMPLETED flip affected "
+            f"{result.rowcount} row(s) (expected 1) for claimant_type={claimant_type!r} — "
+            f"refusing to commit payouts (fail-closed)."
+        )
 
     db.commit()
     log_settlement_events(pending, db)
