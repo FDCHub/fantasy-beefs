@@ -157,6 +157,24 @@ The escrow obligation's current source composition is derivable by summing legs;
 
 `UNIQUE(event_id)` suppresses duplicates; a repeated delivery returns the **original committed result**, posts nothing new. This is the domain idempotency key; the ledger's internal `posting_id` remains the posting-group id only.
 
+### §7 SUPERSESSION NOTE (added 2026-07-21 — Foundation Correction Plan, Ruling 1)
+
+The ledger-linkage recommendation in this section — option (a), an `event_id` column on `LedgerEntry`, recommended over (b) a side-table — is **SUPERSEDED** by Ruling 1 of the Foundation Correction Plan (`spec/FantasyBeefs_Foundation_Correction_Plan_2026-07-21.md`).
+
+Governing topology is now three-tier:
+
+```
+ProtocolEvent  1 → many  LedgerPostingBatch  1 → many  LedgerEntry
+```
+
+- `ProtocolEvent` is the single idempotency authority, with database-enforced `UNIQUE(event_id)`, generalized across challenge, Beef, pool, buy-in, settlement, shortfall, and any other governed operation.
+- `LedgerPostingBatch` carries the balanced accounting-transaction identity; the existing `posting_id` is retained as this batch identity, durably associated with its governing `ProtocolEvent`.
+- `LedgerEntry` remains a simple accounting leg. A denormalized `event_id` on the entry is permitted for **traceability only** — it is **not** the idempotency authority, and there is **no** independent `LedgerEntry`-level uniqueness rule for `event_id`.
+
+Clearance check (2026-07-21): no cleared Spec 2 finding (MS-2-1 rejected, MS-2-2, MS-2-3) relied on entry-level `LedgerEntry` uniqueness. The idempotency guarantee in this section was always stated at the event level; option (a) placed the column on the entry but the uniqueness authority it described was already the event. Moving uniqueness up-tier changes no cleared math.
+
+The prose of §7 options (a)/(b) below is retained for history but is no longer the recommendation. This section is revised in full at the next session close; this note is the binding interim record.
+
 **Ledger linkage.** Each ledger posting references the protocol event. Two options — outline flags for Opus:
 - (a) add an optional `event_id` argument to `post()`, stored on `LedgerEntry`, or
 - (b) an `event_link` side-table keyed by `posting_id → event_id`.

@@ -672,3 +672,40 @@ No remediation was authorized or performed during Step 1.
 No code, schema, migration, test, or production data was changed. Database activity was limited to read-only connection discovery and SELECT queries.
 
 Step 2 remains separately authorized and begins with a read-only Foundation Correction Plan.
+
+---
+
+## Section 14 — Foundation Correction Plan · Opus Issues-Only Review Dispositions (2026-07-21)
+
+Append-only. Records the plan-level Opus Math Review of the committed Foundation Correction Plan (`spec/FantasyBeefs_Foundation_Correction_Plan_2026-07-21.md`, first committed `1a9678a`). No code, schema, tests, or migrations changed.
+
+**Gate result: plan-level Opus Math Review CLEARED. Implementation UNAUTHORIZED** — P1-L2 requires separate explicit authorization from a fresh thread that begins at this documentation commit.
+
+Opus independently re-verified all twelve Spec 2 posting tables zero-sum by hand and confirmed the three pot totals (1750 / 1950 / 1550). No settled math reopened.
+
+### Ten findings — all APPROVED, dispositioned individually
+
+- **OPR-1** — Event topology contradiction (Spec 2 §7 vs Ruling 1). APPROVED Option 1: Ruling 1 governs. Clearance check passed — no cleared finding (MS-2-1/2/3) relied on entry-level `LedgerEntry` uniqueness. Spec 2 §7 supersession note added.
+- **OPR-2** — `post()` blast radius. APPROVED with mandatory "no trailing positional arguments" caller check.
+- **OPR-3** — Event→batch cardinality. APPROVED: one batch per zero-sum group; lower-branch fixed release-before-migrate.
+- **OPR-4** — Zero-posting counter idempotency. APPROVED as ruled: `ProtocolEvent` allows zero-to-many batches.
+- **OPR-5** — Wallet-row mutex under reset. APPROVED: row grain verified at least as coarse as funding scope.
+- **OPR-6** — Refund reconciliation target. APPROVED as ruled: refund = funded-leg sum; acceptance = proposal Anchor; fail-closed every path.
+- **OPR-7** — Strict reverse-order release. APPROVED: unequal-split reversal test mandatory.
+- **OPR-8** — Acceptance capacity revalidation. APPROVED with explicit no-write-before-revalidation obligation.
+- **OPR-9** — L6→L7 concurrency window. APPROVED: all intermediate Foundation states remain disabled and unreleased through the L6→L7 gap.
+- **OPR-10** — Zero-reset stop-condition sufficiency. APPROVED: the 24-value legacy-float review is a hard migration gate.
+
+### Seven binding obligations (folded into plan + Spec 2 §7)
+
+1. Spec 2 §7 supersession note (Spec 2 v2).
+2. `post()` caller check for trailing positional arguments (plan Section 3).
+3. Lower-branch release-before-migrate ordering (plan Section 5).
+4. Wallet mutex grain requirement (plan Section 4).
+5. No write before acceptance revalidation (plan Section 5).
+6. Foundation feature gate through the L6→L7 intermediate state (plan Section 5).
+7. Mandatory substantive review of all 24 legacy float values before reset (plan Section 6a).
+
+### Status
+
+Plan finalized, Opus-gated, dispositions written. Next action outside this thread: a fresh P1-L2 implementation-authorization thread, beginning at this documentation commit, read-only until P1-L2 is explicitly authorized. Master Plan, architecture diagram, and handoff unchanged this commit (narrow disposition commit only).

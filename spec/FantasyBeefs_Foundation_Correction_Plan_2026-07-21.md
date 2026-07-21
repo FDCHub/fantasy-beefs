@@ -92,6 +92,8 @@ The `post()` signature change is source-compatible with the inventoried 10 calle
 
 **Build-time flag (mandatory).** Re-grep `post()`, `posting_id`, and all callers at HEAD before the migration. Confirm the 10-caller `session=db` inventory and the self-minted `posting_id` still hold on the branch the day this ships.
 
+> The re-grep must confirm no caller passes trailing positional arguments to `post()` — not merely that the new event argument is optional. A trailing positional would bind `event_id` by position and break. (Obligation 2, OPR-2.)
+
 ---
 
 ## Section 4 — P1-L7: lock discipline
@@ -106,6 +108,8 @@ The `post()` signature change is source-compatible with the inventoried 10 calle
 **Governing authority.** Section 12 §1, §3. The P3-S3 `week_settlements` lock is CONFIRMED sound (§5) — **preserve it, model on it, do not regress it.** Spec 2 recon confirms no existing Wallet-row lock, so this establishes the first canonical order: ascending `team_id`, no deadlock.
 
 **Correction shape.** Row-lock the money-path reads that precede a posting, on ascending `team_id`. Do not rely on the isolation level. Consistent with the retained settlement lock.
+
+> The mutex is the `Wallet` row's existence, not its value. The row is team-keyed (12 rows); the funding scope is team-season. Confirm the row grain is at least as coarse as the funding scope — team-coarser-than-team-season over-serializes harmlessly; a scope finer than the row would leave the mutex absent. Guarantee the row's presence by constraint, not by seeding. (Obligation 4, OPR-5.)
 
 **Migration touch.** None. Behavioral, not structural.
 
@@ -138,6 +142,14 @@ Builds last, on the four above. This is the Spec 2 core, not a fifth prerequisit
 
 **Test obligations.** Issue posts real escrow. Availability math no longer reads `_challenge_reserved`. Source split across min-only / wallet-only / mixed / min-absent-reads-zero. Provenance round-trip returns the exact mix. Strict reverse-order release on an **unequal** min/wallet split — proportional refund is the wrong answer; recorded-leg-order is the right one. Each terminal (cancel, expire, reject) reverses exact escrow. Fail-closed expiry on a deliberately mismatched balance. Acceptance capacity drift: party spends BAB after counter, acceptance revalidation fails atomically, posts nothing. Anchor-role-vs-authorship: a recipient-authored counter that raises the Anchor tops up the original issuer's sources, never the recipient's.
 
+**Opus obligations folded in (2026-07-21).**
+
+> Lower-branch ordering: in the lower true-up branch, release and migrate both touch `escrow:challenge`. Release must sequence before migrate, or migrate reads a stale balance. (Obligation 3, OPR-3.)
+>
+> No write before revalidation: no write — Bet rows, migrate, Derived fund, or top-up — commits before acceptance revalidation passes against the re-read balances. The single-transaction boundary makes this atomic; the plan states it explicitly so no implementer adds an early commit. (Obligation 5, OPR-8.)
+>
+> Foundation feature gate (sequencing): all intermediate Foundation states remain disabled and unreleased through the L6→L7 gap. The money path stays gated until L7 lands, not merely until L4. Idempotency (L6) guards duplicate delivery; the row lock (L7) guards concurrent distinct operations on one funding scope. Between L6 and L7, event-keyed idempotent posting exists without the serialization mutex — safe only while no money path is live. (Obligation 6, OPR-9.)
+
 ---
 
 ## Section 6 — Consolidated migration plan (described only)
@@ -168,6 +180,8 @@ The 12 `wallet` and 12 `faab_wallet` rows are classified as **reviewed non-econo
 3. **STOP** if any value is linked to a real economic event or obligation. That would reopen Ruling 2.
 
 This aligns with the four-bucket $0-wallet model (I-1): wallet starts at $0; real balances arrive through Spec 5's Door-1 buy-in postings and weekly-min release, as proper economic events with real contra postings.
+
+> The 24-value review is a hard migration gate, not a logged formality. The four zero-counts prove the ledger side is empty; they do not by themselves prove the 24 legacy floats are non-economic. The capture-and-review of all 24 values against economic history is what licenses the reset. Stop if any float ties to a real economic event or obligation. (Obligation 7, OPR-10.)
 
 ### 6b. Separate deployment dependency — not a Foundation finding
 
@@ -214,6 +228,39 @@ From Section 12 §5. Four Foundation blockers remaining does not mean these are 
 2. Documentation-only write and commit.
 3. Opus issues-only review.
 4. Separately authorize **P1-L2 implementation first.**
+
+---
+
+## Section 11 — Opus Issues-Only Review Dispositions (2026-07-21)
+
+Plan-level Opus Math Review complete. All ten findings dispositioned individually by Fraser. **Plan-level Opus gate CLEARED.** Implementation remains UNAUTHORIZED — P1-L2 requires separate explicit authorization from a fresh thread beginning at this documentation commit.
+
+Opus independently re-verified all twelve Spec 2 posting tables zero-sum by hand and confirmed the three pot totals (1750 / 1950 / 1550). No settled math reopened.
+
+### Disposition record
+
+| Finding | Disposition |
+|---|---|
+| OPR-1 Event topology contradiction | APPROVED — Option 1. Ruling 1 governs. Spec 2 §7 clearance check passed: no cleared finding (MS-2-1/2/3) relied on entry-level `LedgerEntry` uniqueness. Spec 2 §7 supersession note added. |
+| OPR-2 `post()` blast radius | APPROVED — with mandatory "no trailing positional arguments" caller check. |
+| OPR-3 Event→batch cardinality | APPROVED — one batch per zero-sum group. Lower-branch fixed as release-before-migrate. |
+| OPR-4 Zero-posting counter idempotency | APPROVED as ruled — `ProtocolEvent` allows zero-to-many batches. |
+| OPR-5 Wallet-row mutex under reset | APPROVED — Wallet-row grain verified at least as coarse as the funding scope. |
+| OPR-6 Refund reconciliation target | APPROVED as ruled — refund target = funded-leg sum; acceptance target = proposal Anchor; fail-closed every path. |
+| OPR-7 Strict reverse-order release | APPROVED — unequal-split reversal test mandatory. |
+| OPR-8 Acceptance capacity revalidation | APPROVED — with explicit no-write-before-revalidation obligation. |
+| OPR-9 L6→L7 concurrency window | APPROVED — all intermediate Foundation states remain disabled and unreleased through the L6→L7 gap. |
+| OPR-10 Zero-reset stop-condition sufficiency | APPROVED — the 24-value review is a hard migration gate, not a logged formality. |
+
+### Seven binding obligations (folded into this plan)
+
+1. **Spec 2 §7 supersession** — recorded in Spec 2 v2 §7 (not this plan). Ruling 1 governs; entry-level `event_id` is traceability only.
+2. **`post()` trailing-positional check** — folded into Section 3 build-time flag.
+3. **Lower-branch release-before-migrate ordering** — folded into Section 5 (P1-L4).
+4. **Wallet mutex grain requirement** — folded into Section 4 (P1-L7).
+5. **No write before acceptance revalidation** — folded into Section 5 (P1-L4).
+6. **Foundation feature gate through L6→L7** — folded into Section 5 sequencing.
+7. **Mandatory 24-value review before reset** — folded into Section 6a.
 
 ---
 
