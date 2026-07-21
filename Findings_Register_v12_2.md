@@ -397,3 +397,113 @@ System-wide, every settlement/pool money test hand-supplies `home_score`/`actual
 ### Pass status
 
 Pass 5 (Yahoo Authority & Data Readers) complete and recorded — the final scoped audit pass. Evidence-gathering complete. No consolidation or remediation performed.
+
+---
+
+## Section 12 — Consolidated Audit Package & Correction-Thread Handoff (2026-07-20)
+
+Read-only against the approved Step 0 authority hierarchy (cleared spec text ▸ Register v12.2 ▸ approved register-incorporated source docs ▸ Merged Sections 1–8; live code/tests are evidence only, never governing). Append-only record. No code, schema, tests, or migrations were changed.
+
+### Preamble
+
+Consolidated synthesis of the five-pass scoped audit (Sections 7–11) plus the two closed product rulings, as a single correction-thread handoff. Read-only synthesis — no new findings, no code/schema/test/migration changes. Does **NOT** authorize remediation; defines what remediation must address, in what order, and what proves each finding closed. Remediation begins only under separate explicit authorization.
+
+### 1. Stable Spec 1/2 Foundation Blockers (correction-pass prerequisites)
+
+Held unchanged across all five passes. Spec 2 reads/depends on each; Spec 2 cannot be correct until they resolve. All in the challenge-escrow/funding path.
+
+- **P1-L2** — Off-ledger balance mutation (proven live: `wallet_manager.deposit:141` via `faab init_season:330`/`create_bet_topup:420`; `faab_wallet.transfer:656-679`). Commissioner-rule paths reachability-pending. Extended by P2-W5 (`settlement_engine:715` single-party credit — now scope-narrowed).
+- **P1-L3B** — Challenge funding decision on float (`beef_engine._place_beef_side:571`). Extended by P2-W4 (`faab_wallet.transfer:656`, second gate). Rule: all funding/withdrawal gates read ledger cents.
+- **P1-L6** — No persistent uniqueness-enforced protocol-event identity. Implementation-neutral; shared ledger-event primitive is one design. Sharpened by P3-S2, P4-B5.
+- **P1-L7** — No deterministic Wallet-row lock in issue/accept. Relieved at beef-settlement by P3-S3, NOT at issue/accept or pool settlement.
+
+Cross-pass concurrency pattern (sequencing, not a blocker): issue/accept UNPROTECTED (P1-L7); beef settlement SERIALIZED (P3-S3); pool settlement UNPROTECTED (P4-B5). The P1-L6 primitive + lock discipline should cover all three uniformly.
+
+### 2. Approved Product Rulings (closed at product level)
+
+**Single-party taxonomy — P3-S1 product ruling CLOSED:** true single-party odds wagers unsupported; no house-funded BAB liability ever (hard identity line); above-stake payout requires a second funded side or approved funded pool. Matchup straight/spread/over-under → **bilateral challenges OPEN TO ANY ELIGIBLE GM** (matchup opponent featured as default, not exclusive), reusing the certified beef flow. Player props + legacy single-party `the_lineup` → **RETIRED** (may return only via funded pool/bilateral). "Retire" = removed from new placement+settlement; historical rows readable (B2-a). Converted wagers settle on finalized `Matchup.home_score/away_score`.
+
+**B4 Lineup Rank Pool tie behavior — CLOSED:** rank eligible GMs by count of starters beating their frozen Yahoo projection; ALL tied for highest win; funded pool splits evenly in integer BAB cents; indivisible remainder → `championship:{league_id}`; no secondary tiebreaker, no rollover. Rank Pool survives as a legitimate consumer of finalized weekly player totals.
+
+**NOTE:** a closed product ruling does NOT close the corresponding implementation work — see P3-S1 in section 3.
+
+### 3. Rescoped Blockers by Home (post-ruling)
+
+**Foundation (section 1):** P1-L2, P1-L3B, P1-L6, P1-L7.
+
+**Spec 2 core deliverable (required for completion, not a blocker against starting):**
+- **P1-L4** — issue-time `escrow:challenge:{challenge_id}` MISSING. `issue_challenge` posts zero ledger today; real issuer Anchor escrow at issue is Spec 2's core build.
+
+**Single-party taxonomy — implementation remediation (product ruling closed, code NOT):**
+- **P3-S1** — Product ruling closed; implementation remediation still required: disable new single-party placement immediately/fail closed; convert straight/spread/O-U to bilateral (open to any eligible GM); retire prop + legacy `the_lineup` placement/settlement branches; preserve historical-row readability; remove float-only payout/stranded-escrow behavior in existing single-party code (couples P2-W5); **DEFINE REVIEWED TREATMENT OF LIVE HISTORICAL/UNSETTLED SINGLE-PARTY ROWS** (existing-data disposition, not just code). Home: dedicated single-party retirement/conversion work item; couples P1-L2 and the beef flow.
+
+**Spec 4 (Pool Catalog & Settlement):**
+- P4-B1 Bench Burn block/build/de-scope; P4-B2 Worst Beat retire (independent of Skunk); P4-B3 dynamic denominator + remainder-to-`championship:{league_id}`; P4-B4 build Lineup Rank Pool (even-split tie rule), retire legacy `the_lineup`; P4-B5 pool row-lock + shared event primitive.
+
+**Spec 5 (Economy / Account Identity / Availability / Config / Season-close):**
+- **P2-W1** — two-bucket buy-in seed conflicts with four-bucket $0-wallet; reshape Door 1 (`wallet:=0`, `min_reserve:=full`, reserve per R1). Related P1-L5b.
+- **P2-W3** — Available-to-Bet wrong (`ledger_cents − challenge_reserved`); target posted wallet + current-week min, `−challenge_reserved` retired under real escrow. Couples P1-L3B, Spec 2.
+- **P2-W6** — missing config/season freezes (B6): no first-accepted-wager freeze (economy stop, pool fee), no season-kickoff freeze (unspent-min), no `frozen:{team_id}`.
+- **P1-L3A** — Float-denominated money columns remain in the persistent model. Migrate surviving BAB state to integer cents, or ensure floats never authoritative for money decisions/postings. Coordinate P1-L3B + reviewed migration/backfill. Later-spec remediation, NOT a Spec 1/2 prerequisite.
+- **P1-L1** championship split-brain (narrowed to `shortfall_sweep`; `pool_engine` correct); **P1-L5a** four-bucket topology MISSING; **P1-L5b** two-bucket seed RETIRED ASSUMPTION (couples P2-W1); **P5-Y1/I-5** postseason placement reader + fail-closed + `placement_order`; **P5-Y3/P2-W2** Yahoo-derived `season_final_week` replaces hardcoded 14; **Skunk submodule** (I-3, R2/R3) separately Opus-gated.
+
+**Launch-only / cross-cutting:**
+- **P5-Y2** — finalized `actual_points` ingestion SCOPED TO the surviving Lineup Rank Pool + any expressly-retained pool mechanic using player totals — NOT retired props/`the_lineup`. Rider: verify frozen-projection baseline AND finalized `actual_points` are immutable-at-settlement.
+- **Silent 0.0 fallback** → fail-closed/pending on surviving paths.
+
+**Shared infrastructure (built once, keyed by many):**
+- **P1-L6 event-identity primitive + lock discipline** — serves beef settlement (Spec 2), pool settlement (P4-B5); uniform answer to the concurrency pattern.
+
+### 3a. Absorbed / Extended Findings Map (no approved finding disappears)
+
+- P2-W4 → remediated with P1-L3B.
+- P2-W5 → remediated with P1-L2 + the P3-S1 implementation disposition.
+- P2-W2 → remediated with P5-Y3.
+- P3-S2 → remediated through P1-L6 shared event identity.
+- P1-L8 → remediated with P5-Y1/I-5 (same defect, confirmed live at HEAD).
+- P3-S3 → RETAINED as a conforming beef-settlement control, NOT a remediation item. Preserve.
+
+### 4. Dependency / Build Order
+
+1. **Foundation corrections** — P1-L2, P1-L3B, P1-L6, P1-L7 (the four prerequisites that block STARTING Spec 2). Then, Spec 2 core deliverable: P1-L4 (issue-time escrow) — required for Spec 2 COMPLETION, not one of the four start-prerequisites.
+2. **Catalog implementation & retirement** — implement the closed taxonomy rulings; convert straight/spread/O-U to bilateral; retire props/legacy `the_lineup`/Worst Beat; establish the surviving funded pool set. Defines the scope of everything after.
+3. **Account topology, availability, buy-in, config freezes** — four-bucket $0-wallet (P2-W1, P1-L5a/b), Available-to-Bet correction (P2-W3), season/config freezes (P2-W6), championship canonicalization (P1-L1), float-column migration (P1-L3A). Pools depend on correct topology.
+4. **Yahoo readers — surviving products only** — `season_final_week` (P5-Y3), postseason placement (P5-Y1), finalized `actual_points` + frozen-projection integrity for the Lineup Rank Pool (P5-Y2). Do NOT build ingestion for retired products.
+5. **Pool allocation & concurrency hardening** — dynamic denominator + remainder-to-championship (P4-B3, after funded set fixed); pool row-lock + event idempotency (P4-B5, on the section-1 primitive).
+6. **Migration/backfill review & launch verification** — existing-data disposition (incl. single-party historical rows); FR-8.8 final compliance audit; test-strategy requirements (section 6).
+
+### 5. Confirmed Sound Components to Preserve During Remediation
+
+Confirmed sound at HEAD — preserve, do not rebuild or regress. (Does NOT mean the Spec 1/2 foundation is safe — four foundation blockers remain, section 1. These are sound COMPONENTS remediation builds on.)
+
+- **Beef settlement economics & closure** — escrow-sourced, unequal-tolerant, closes to zero, ledger-backed, FR-5.9/5.10 holding.
+- **Finalized Yahoo matchup-score authority** — `status=="final"` + freshness + `_assert_slate_fresh` fail-closed; converted bilateral wagers land here.
+- **Ledger-backed pool funding & payouts, no-house** — pays only collected BAB; `championship:{league_id}` correctly scoped in `pool_engine`.
+- **Simulation for pricing only** — never settles (AP-327).
+- **P3-S3 settlement serialization** — `week_settlements` lock; retained control.
+- **Integer-cent zero-sum ledger** — postings use integer cents and enforce zero-sum batches (`LedgerImbalanceError`). Migrations must not weaken zero-sum enforcement.
+- **Funded-balance guard** — ledger non-negative funded-balance guard exists and conforms (exempts `world`/`receivable`). Preserve.
+- **C-1 reserve integrity (absence confirmed)** — NO weekly-minimum release leaks from Championship `reserve:{team}`; the feared C-1 misuse was ABSENT. `reserve:{team}` remains championship-only; weekly runway belongs in `min_reserve:{team}`. Do NOT reintroduce weekly release on `reserve:{team}`.
+
+### 6. Test-Strategy Requirements (mandatory for closure)
+
+- Concurrent settlement tests (two simultaneous attempts, beef and pool, produce exactly one payout batch — P4-B5, P1-L7).
+- Real finalized-Yahoo reader tests (exercise actual finalized reads on money paths, not synthetic — P5-Y1, P5-Y2; finalized-read wiring tested end-to-end).
+- Event-idempotency tests (duplicate event → original result, no double-post — P1-L6, P3-S2).
+- Default-path / fail-closed tests (exercise production default without explicit override — the I-5 masking shape; assert pending/fail-closed on absent finalized data, not 0.0 fallback).
+- Historical-row readability after retirement (retired bet types' rows remain readable).
+- Standing rule: NO money-path finding closed on synthetic-input-only proof.
+
+### 7. Correction-Thread Handoff
+
+Findings to remediate: foundation P1-L2/L3B/L6/L7; Spec 2 core P1-L4; single-party impl P3-S1; Spec 4 P4-B1–B5; Spec 5 P2-W1/W3/W6, P1-L3A, P1-L1, P1-L5a/b, P5-Y1, P5-Y3, Skunk; launch P5-Y2 (rescoped) + 0.0-fallback. Absorbed findings per section 3a.
+
+Proposed home: as grouped in section 3.
+
+Live recheck required for closure: line references are 2026-07-20 evidence, not immutable. The correction thread OPENS with read-only production existence counts + re-grep of each finding's live locations before any migration or code change. Recorded != still-live-at-build until re-verified.
+
+No remediation authorized by this consolidation. Separate explicit authorization required; the correction thread begins with recon, not edits.
+
+### Audit status
+
+Five-pass scoped audit (Sections 7–11) + two closed product rulings + this consolidation (Section 12) complete. Evidence and synthesis phase closed. Remediation not started; not authorized by this section.
