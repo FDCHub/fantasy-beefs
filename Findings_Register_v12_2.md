@@ -320,3 +320,80 @@ Pass 3 surfaced **NO new Spec 1/2 foundation blocker.** Foundation set unchanged
 ### Pass status
 
 Pass 3 (Escrow & Settlement) complete and recorded. Pass 4 not authorized. No remediation performed.
+
+---
+
+## Section 10 — Pass 4 (Pool Catalog & Settlement) findings (2026-07-20)
+
+Read-only audit against the approved Step 0 authority hierarchy (cleared spec text ▸ Register v12.2 ▸ approved register-incorporated source docs ▸ Merged Sections 1–8; live code/tests are evidence only, never governing). Append-only record of approved, amended Pass 4 output. No code, schema, tests, or migrations were changed. Line references are 2026-07-20 evidence, not immutable coordinates.
+
+### Headline
+
+Pool **settlement engine** is structurally sound on funding + ledger-backing but **PARTIAL on concurrency-safe once-only execution**; pool **catalog** is nonconformant in five ways (B1–B5). **No new Spec 1/2 foundation blocker.**
+
+### CONFORMS (separate properties)
+
+- **Pool payout ledger-backed:** `pool:{league_id} −amt / wallet:{team} +amt`, door `pool_payout` (`pool_engine.py:615-622`).
+- **Pool funding no-house:** payouts sourced from the collected `pool:{league_id}`, never above-collection — clean contrast to the P3-S1 single-party defect.
+- **pool_engine uses the correct league-scoped `championship:{league_id}`** for its Worst Beat rollover sweeps (`:709,732`) — the **CORRECT side of the P1-L1 split-brain** (narrows P1-L1 to `shortfall_sweep`'s bare `championship`).
+
+### PARTIAL
+
+- **Pool settlement conservation / once-only:** conserves and closes correctly in **ONE UNCONTESTED execution** (`bw+wb+st == total`; drains `pool:{league_id}` to 0 or tracked rollover); **overall status PARTIAL until once-only concurrent settlement is proven (P4-B5).**
+
+### Spec 4 / launch blockers (B1–B5)
+
+- **P4-B1 — Bench Burn pickable but unsettleable.** In `POOL_BET_TYPES` (`pool_engine.py:61`), accepted by `submit_pool_pick:918-919`, but no BB pot and no `_bench_burn` evaluator (FR-5.8 absent; FR-5.7 built). GMs pick a bet that cannot pay. No fund leak (`//3` split gives BB nothing). **CONFLICTS.** Recommendation: block unpaid picks (B1-b interim), then build FR-5.8 or de-scope. Spec 4.
+- **P4-B2 — Worst Beat live across all four paths** (protocol retired it, B2-a / AP-323 DROPPED). Pick (`POOL_BET_TYPES:59`, `submit_worst_beat_prediction:336`), funding (`wb_share=total//3`, `:653`), settlement (Pot 2 rollover/sweep/predictor-split `:674-751`), display (`:156,787`). A full 1/3 of every weekly pot flows through a retired mechanic. **CONFLICTS.** Removal is **INDEPENDENT of Skunk delivery** — remove from all four paths regardless of whether Skunk (Spec 5) is built; the rationale references Skunk (duplicative) but the removal does not wait on it. Coordinate denominator change with B3. Spec 4.
+- **P4-B3 — Hardcoded `//3` denominator** (`pool_engine.py:651`, fixed 3 not dynamic enabled-and-funded count) **+ top-level remainder to Special Teams** (`st_share = total−bw−wb`, `:654`) instead of `championship:{league_id}` (B3 forbids ST). Championship coupling (P1-L1): pool_engine's only championship postings are the WB sweeps (`:709,732`), correctly league-scoped — pool_engine on the **CORRECT side**; B3's remainder-to-championship is simply unimplemented, not mis-scoped. **CONFLICTS.** Depends on B1/B2/B4 final funded set. Spec 4.
+- **P4-B4 — The Lineup launch Rank Pool ABSENT** (no Lineup pot, no `the_lineup` in `POOL_BET_TYPES`). Legacy `the_lineup` is a single-party Bet (pays `amount*odds`, no opposing GM) — inside the **P3-S1 open single-party funding boundary**; recorded as taxonomy evidence, cross-referenced to P3-S1, no funding model asserted, no decision. Tie behavior across the 12-GM league is an **OPEN product ruling** (recorded, not decided). **MISSING (Rank Pool) + AUTHORITY AMBIGUOUS** (legacy `the_lineup` under P3-S1; tie open). Spec 4 (Rank Pool) + P3-S1 resolution (legacy single-party).
+- **P4-B5 — Pool settlement lacks serialized, event-idempotent execution.** No `FOR UPDATE` on `PoolPot` at settlement; idempotency is the `pot.settled` flag (`:543-544`) + balance-reconciliation guard (`:582-595`), balance-keyed not event-keyed. Two concurrent settle attempts can race read-vs-commit; the guard mitigates but does not prevent a double-payout. Pool-side echo of P1-L7 (no lock) and P1-L6/P3-S2 (no event key); the P3-S3 `week_settlements` `FOR UPDATE` relief does **NOT** extend to pools. **CONFLICTS/PARTIAL.** MEDIUM-HIGH (double-payout under concurrency/retry). Couples P1-L6/P1-L7 (does not reopen). Spec 4 / launch.
+
+### Cross-pass concurrency sequencing note (not a new finding)
+
+Concurrency protection is inconsistent system-wide — issue/accept: **UNPROTECTED** (P1-L7); beef settlement: **SERIALIZED** (`week_settlements` `FOR UPDATE`, P3-S3); pool settlement: **UNPROTECTED** (P4-B5). Same need (serialize competing money operations) implemented in one of three places. When P1-L6's shared event primitive + a lock discipline are built, they should cover all three uniformly.
+
+### Foundation-blocker status
+
+**NO new Spec 1/2 foundation blocker.** Set unchanged (**P1-L2, P1-L3B, P1-L6, P1-L7**).
+
+### Pass status
+
+Pass 4 (Pool Catalog & Settlement) complete and recorded. Pass 5 not authorized. No remediation performed.
+
+---
+
+## Section 11 — Pass 5 (Yahoo Authority & Data Readers) findings (2026-07-20)
+
+Read-only audit against the approved Step 0 authority hierarchy (cleared spec text ▸ Register v12.2 ▸ approved register-incorporated source docs ▸ Merged Sections 1–8; live code/tests are evidence only, never governing). Append-only record of approved Pass 5 output. No code, schema, tests, or migrations were changed. Line references are 2026-07-20 evidence, not immutable coordinates. **This is the final scoped audit pass; evidence-gathering is complete after this section.**
+
+### Headline
+
+Yahoo money-path authority **SPLITS** — matchup-score paths are finalized + fail-closed (**SOUND**); `actual_points` paths settle on simulated/placeholder stats with a silent 0.0 fallback (**BROKEN**). **No new Spec 1/2 foundation blocker.**
+
+### CONFORMS
+
+- **Matchup-score money paths** (beef, single-party straight/spread/over_under, pool Biggest Winner, pool Worst Beat) read `Matchup.home_score`/`away_score`, written by `tuesday_sync` from the Yahoo scoreboard gated on `status=="final"` + freshness guard, under the `_assert_slate_fresh` fail-closed gate (`tuesday_sync.py:796-818`). Finalized Yahoo, fail-closed. **CONFORMS on data authority.**
+- **Simulator/projection** (`season_sim`, `odds_engine`) prices odds at issue/Handshake only, never settles outcomes (AP-327: simulations price wagers but never determine outcomes). **CONFORMS by design.**
+
+### Launch / Spec 5 blockers
+
+- **P5-Y1 — No authoritative Yahoo postseason placement reader (I-5 CONFIRMED at HEAD).** No `_compute_playoff_placement_order`, no postseason-result reader exists. Every playoff/postseason path resolves to simulator/projection (`season_sim.py`, `decision_value.py`, `war_room_routes.py`), the mock provider (`provider.py:130`, `playoff_start_week=15` hardcoded), or the schedule connector — none reads final bracket results. Championship default `_compute_standings_order` (`stripe_connect.py:732,736`) computes regular-season order. **MISSING (reader) + CONFLICTS (default = regular-season).** Cross-ref I-5 (confirmed, not reopened). Spec 5 / launch.
+- **P5-Y3 — Regular-season week count hardcoded 14 on Yahoo-authority money paths:** championship standings basis (`stripe_connect.py:736` `Matchup.week<=14`), Skunk weeks (AP-145 weeks 1–14), pool rollover expiry (`pool_engine.py:705` `week==14`), economy reserve invariant (`economy_config.py:61` ×14), mock `playoff_start_week=15` (`provider.py:130`). No Yahoo-derived `season_final_week` drives any. **CONFLICTS.** Sharpens P2-W2 (not reopened). Spec 5 / launch (+ Spec 4 rollover, I-5 boundary).
+
+### Launch / Spec 4 + P3-S1 blocker
+
+- **P5-Y2 — `Projection.actual_points` has no finalized-Yahoo production writer;** three money paths settle from it: single-party prop (`settlement_engine._eval_prop:131-132`), The Lineup (`_starters_for_team:235`, `_lineup_winner:267`), pool Special Teams (`pool_engine._special_teams_score:498,514`). Only writers are non-final: random-simulated seed (`schema.py:1166-1181`), 0.0 placeholder (`seed_yahoo_projections.py:235`, "updated at settlement" — updater does not exist in tree), one-time migration (`fix_yahoo_projection_columns.py:109`). Every read applies a **SILENT 0.0 FALLBACK** (`actual_points if proj else 0.0`) instead of fail-closed/pending; the `_assert_slate_fresh` gate protects matchup scores but does **NOT** verify `actual_points`. **MISSING (finalized writer) + CONFLICTS (silent 0.0 fallback on a money path). HIGH. Launch blocker.**
+  - **COUPLING CAVEAT (carry to consolidation).** P5-Y2's remediation scope DEPENDS on the open product rulings — prop couples P3-S1, The Lineup couples P4-B4 + P3-S1, Special Teams couples Spec 4. Do NOT build a broad `actual_points` ingestion system for wager types that may be retired. Scope the finalized-`actual_points` writer to whatever survives the product rulings.
+
+### Cross-pass test-strategy requirement (carry to consolidation, not a new finding)
+
+System-wide, every settlement/pool money test hand-supplies `home_score`/`actual_points` (`test_beef_settlement_escrow_close_pg.py:141`, `test_settle_the_lineup.py:29`, `test_pool_engine_conversion.py:175-176`); **NO test exercises a real finalized-Yahoo read on any money path.** Even the CONFORMS matchup-score paths are proven only against synthetic inputs — the finalized-read wiring is untested end-to-end. Remediation must include tests that exercise a real finalized-Yahoo read, not just the settlement arithmetic.
+
+### Foundation-blocker status
+
+**NO new Spec 1/2 foundation blocker.** Set unchanged across ALL FIVE PASSES (**P1-L2, P1-L3B, P1-L6, P1-L7**).
+
+### Pass status
+
+Pass 5 (Yahoo Authority & Data Readers) complete and recorded — the final scoped audit pass. Evidence-gathering complete. No consolidation or remediation performed.
