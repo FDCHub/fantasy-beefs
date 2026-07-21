@@ -378,8 +378,8 @@ Yahoo money-path authority **SPLITS** — matchup-score paths are finalized + fa
 
 ### Launch / Spec 5 blockers
 
-- **P5-Y1 — No authoritative Yahoo postseason placement reader (I-5 CONFIRMED at HEAD).** No `_compute_playoff_placement_order`, no postseason-result reader exists. Every playoff/postseason path resolves to simulator/projection (`season_sim.py`, `decision_value.py`, `war_room_routes.py`), the mock provider (`provider.py:130`, `playoff_start_week=15` hardcoded), or the schedule connector — none reads final bracket results. Championship default `_compute_standings_order` (`stripe_connect.py:732,736`) computes regular-season order. **MISSING (reader) + CONFLICTS (default = regular-season).** Cross-ref I-5 (confirmed, not reopened). Spec 5 / launch.
-- **P5-Y3 — Regular-season week count hardcoded 14 on Yahoo-authority money paths:** championship standings basis (`stripe_connect.py:736` `Matchup.week<=14`), Skunk weeks (AP-145 weeks 1–14), pool rollover expiry (`pool_engine.py:705` `week==14`), economy reserve invariant (`economy_config.py:61` ×14), mock `playoff_start_week=15` (`provider.py:130`). No Yahoo-derived `season_final_week` drives any. **CONFLICTS.** Sharpens P2-W2 (not reopened). Spec 5 / launch (+ Spec 4 rollover, I-5 boundary).
+- **P5-Y1 — No authoritative Yahoo postseason placement reader (I-5 CONFIRMED at HEAD).** No `_compute_playoff_placement_order`, no postseason-result reader exists. Every playoff/postseason path resolves to simulator/projection (`season_sim.py`, `decision_value.py`, `war_room_routes.py`), the mock provider (`provider.py:130`, `playoff_start_week=15` hardcoded), or the schedule connector — none reads final bracket results. Championship default `_compute_standings_order` (`stripe_connect.py:732,736`) computes regular-season order. **MISSING (reader) + CONFLICTS (default = regular-season).** Cross-ref I-5 (confirmed, not reopened). Spec 5 / launch. 2026-07-21 recon expansion: additional live site `settlement_report.py:80`, which defaults through `_compute_standings_order`.
+- **P5-Y3 — Regular-season week count hardcoded 14 on Yahoo-authority money paths:** championship standings basis (`stripe_connect.py:736` `Matchup.week<=14`), Skunk weeks (AP-145 weeks 1–14), pool rollover expiry (`pool_engine.py:705` `week==14`), economy reserve invariant (`economy_config.py:61` ×14), mock `playoff_start_week=15` (`provider.py:130`). No Yahoo-derived `season_final_week` drives any. **CONFLICTS.** Sharpens P2-W2 (not reopened). Spec 5 / launch (+ Spec 4 rollover, I-5 boundary). 2026-07-21 recon expansion: additional live sites `admin/commissioner_rules.py:662` and `api/main.py:340`.
 
 ### Launch / Spec 4 + P3-S1 blocker
 
@@ -507,3 +507,168 @@ No remediation authorized by this consolidation. Separate explicit authorization
 ### Audit status
 
 Five-pass scoped audit (Sections 7–11) + two closed product rulings + this consolidation (Section 12) complete. Evidence and synthesis phase closed. Remediation not started; not authorized by this section.
+
+---
+
+## Section 13 — Correction Thread Step 1 Recon Close-Out (2026-07-21)
+
+### 13.1 — Deliverable completion status
+
+| Deliverable | Status | Basis |
+|---|---|---|
+| A — Production existence counts | COMPLETE | Live public URL reached; all counts obtained |
+| B — Finding re-grep at HEAD | COMPLETE | 21 primary + 6 absorbed/extended traced at HEAD |
+| C — Sound-component re-verify | COMPLETE | 8/8 CONFIRMED, no regressions |
+
+Deliverable A resolved on retry. The Step 1 UNRESOLVABLE gate — production unreachable — is cleared. All three deliverables now stand.
+
+### 13.2 — Connection fix: stale local endpoint → live proxy
+
+First recon attempt failed at SSL negotiation (`received invalid response to SSL negotiation: H`). Confirmed record:
+
+- the stored local `DATABASE_URL` endpoint was stale;
+- Railway's current variables exposed a different live endpoint;
+- the live endpoint connected successfully.
+
+| | Host | Port |
+|---|---|---|
+| Stale (stored local `DATABASE_URL`) | `reseau.proxy.rlwy.net` | `54032` |
+| Live (read from `railway variables --service Postgres`) | `hayabusa.proxy.rlwy.net` | `15707` |
+
+Comparison: **DIFFERENT.** Live target reached cleanly — DNS resolved (`66.33.22.223`), raw TCP open, Postgres connect OK.
+
+Stored `DATABASE_URL` was **not modified** — out of recon scope. Recorded as a non-blocking follow-up: any future local recon must read the live proxy via `railway variables` or `railway run`, never the stored value.
+
+### 13.3 — Production counts
+
+Production database: `railway`.
+
+Queries were read-only SELECTs against the live public Railway endpoint.
+
+| Object | Count |
+|---|---|
+| BeefChallenge (`beef_challenges`) | 0 |
+| BeefProposal (`beef_proposals`) | TABLE ABSENT — Spec 1 not built |
+| BeefStarter (`beef_starters`) | 0 |
+| Bet total (`bets`) | 0 |
+| prop / straight / spread / over_under / the_lineup | 0 / 0 / 0 / 0 / 0 |
+| single-party (`beef_challenge_id IS NULL`) | 0 |
+| live/unsettled single-party (`pending`) | 0 |
+| WeekSettlement total / settled=TRUE | 0 / 0 |
+| PoolPot / PoolPrediction / pool_bet_picks / pool_config | 0 / 0 / 0 / 0 |
+| ledger_entries rows / trial balance | 0 / 0 |
+| non-zero `escrow:*` accounts | 0 |
+| bare `championship` / non-zero `championship:*` | 0 / 0 |
+| non-zero `reserve:*` accounts / total cents | 0 / 0 |
+| non-zero `wallet:*` ledger / non-zero `pool:*` ledger | 0 / 0 |
+| transactions / buy_in_records | 0 / 0 |
+| reference scaffolding: wallets / faab_wallets / matchups / projections | 12 / 12 / 98 / 2407 |
+
+Production is a pre-launch database. League scaffolding exists; the wager, ledger, and money layers have never been written.
+
+This is consistent with the standing FR-5.13 invariant that no bets or settlements have been written to production, now reconfirmed directly against the live database rather than inferred from a label.
+
+### 13.4 — Migration-review classifications
+
+| Section 12 item | Flag | Basis |
+|---|---|---|
+| P1-L4 issue-time escrow plus proposal/challenge/starter recreate | CLEAN-RECREATE | 0 challenges, 0 starters, proposals table absent, 0 escrow |
+| P3-S1 single-party retirement and row disposition | CLEAN-RECREATE | 0 single-party bets, 0 pending |
+| P4-B1 Bench Burn / P4-B2 Worst Beat / P4-B4 legacy `the_lineup` | CLEAN-RECREATE | 0 picks, 0 predictions, 0 pots, 0 `the_lineup` bets |
+| P1-L1 championship split-brain | CLEAN-RECREATE | bare championship = 0; no non-zero `championship:*` |
+| P5-Y1 `standings_order` to `placement_order` | CLEAN-RECREATE | 0 settlements, no dependent data |
+| FR-8.7 `week_settlements.status` / `recovery_token` ALTER | CLEAN-RECREATE — ALTER | 0 rows; forward ALTER on empty table |
+| P1-L3A float-column migration | REVIEWED-BACKFILL | 12 wallet and 12 faab_wallet rows exist; float columns populated; ledger empty |
+| P2-W1 / P1-L5a/b four-bucket topology and Door-1 reshape | REVIEWED-BACKFILL | 12 wallet and 12 faab rows exist; 0 buy-ins and 0 reserve/wallet ledger balances |
+
+The two REVIEWED-BACKFILL classifications reflect existing rows, not existing economic history.
+
+The wallet and faab_wallet rows are empty containers from a money-path perspective: buy-ins are zero, reserve and wallet ledger balances are zero, and no ledger entries exist. The required work is a row-level structural reshape, not a historical-money backfill.
+
+### 13.5 — Historical and unsettled wager disposition
+
+The single-party disposition question that gated P3-S1 is resolved:
+
+- live or unsettled single-party rows: **NONE — 0**;
+- existing challenge/proposal/starter rows: **NONE — 0 / table absent / 0**;
+- non-zero challenge, bet, or pool escrow balances: **NONE**;
+- bare championship balance: **0**.
+
+No historical wager data exists to migrate, convert, reconcile, refund, or settle.
+
+Retirement of props and legacy `the_lineup`, and conversion of retained straight/spread/over-under products to bilateral challenges, operate on empty wager tables.
+
+### 13.6 — Expanded live locations discovered by Deliverable B
+
+All 21 primary and 6 absorbed or extended findings remained live at HEAD when re-grepped.
+
+Two findings had additional live locations beyond those previously recorded:
+
+**P5-Y1 — playoff-placement authority**
+
+Additional live site:
+
+- `settlement_report.py:80` — defaults through `_compute_standings_order`.
+
+**P5-Y3 — hardcoded week-14 season boundary**
+
+Additional live sites:
+
+- `admin/commissioner_rules.py:662`;
+- `api/main.py:340`.
+
+These are the same existing defects with a wider live-code footprint, not new findings.
+
+P5-Y1 and P5-Y3 remain assigned to their Spec 5 / launch homes and are outside Foundation Phase 1 scope.
+
+The complete Deliverable B table remains the supporting recon evidence. Deliverable C reconfirmed all eight preserved controls, with no regressions and no new candidate findings.
+
+### 13.7 — FR-8.7 schema-before-code deployment sequencing
+
+Production `week_settlements` remains on the pre-FR-8.7 schema:
+
+- `id`;
+- `league_id`;
+- `week`;
+- `settled`;
+- `settled_at`.
+
+It does not contain:
+
+- `status`;
+- `recovery_token`.
+
+The FR-8.7 claim-first migration present on the branch is unapplied to production, while the branch settlement code reads `status` and `recovery_token`.
+
+The `week_settlements` schema ALTER must therefore land before any FR-8.7-dependent code deployment. Otherwise the deployed read path would reference columns absent from production.
+
+The table contains 0 rows, so the ALTER is a clean forward migration.
+
+This is a deployment-sequencing fact for Section 12 §4 step 6, not a new audit finding and not one of the five Foundation correction findings.
+
+### 13.8 — Final Step 1 posture and authorization boundary
+
+With production existence counts complete, the correction thread is a clean-recreate scenario for essentially all data-bearing items.
+
+The only existing affected rows are:
+
+- 12 wallet rows;
+- 12 faab_wallet rows;
+- the empty pre-FR-8.7 `week_settlements` table.
+
+The wallet and faab_wallet rows require REVIEWED-BACKFILL treatment but contain no ledger-backed economic history.
+
+Step 1 status:
+
+- Deliverable A: COMPLETE;
+- Deliverable B: COMPLETE;
+- Deliverable C: COMPLETE;
+- production-existence gate: CLEARED;
+- regressions: NONE;
+- new candidate findings: NONE.
+
+No remediation was authorized or performed during Step 1.
+
+No code, schema, migration, test, or production data was changed. Database activity was limited to read-only connection discovery and SELECT queries.
+
+Step 2 remains separately authorized and begins with a read-only Foundation Correction Plan.
