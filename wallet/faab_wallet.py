@@ -323,16 +323,6 @@ def init_season_wallets(
                     note=f"Season opening waiver balance: ${cfg.opening_waiver:.2f}",
                     applied_at=_now())
 
-        # Credit opening bet balance via existing wallet_manager (appears in tx history)
-        if cfg.opening_bet > 0:
-            bet_wallet = db.query(Wallet).filter(Wallet.team_id == team.id).first()
-            if bet_wallet:
-                wm_deposit(bet_wallet.id, cfg.opening_bet, db)
-                _log_tx(db, league_id, team.id, "opening_credit", cfg.opening_bet,
-                        wallet_to="bet",
-                        note=f"Season opening bet balance: ${cfg.opening_bet:.2f}",
-                        applied_at=_now())
-
         db.flush()
         db.refresh(fw)
         states.append(_build_state(fw, db))
@@ -415,27 +405,29 @@ def create_bet_topup(
     team = fw.team
 
     if MOCK_MODE:
-        # Apply immediately
-        bet_wallet = _get_bet_wallet(team_id, db)
-        wm_deposit(bet_wallet.id, amount, db)
-        tx = _log_tx(db, fw.league_id, team_id, "topup_bet", amount,
-                     wallet_from="stripe", wallet_to="bet",
-                     note=f"Mock bet top-up: ${amount:.2f}",
-                     applied_at=_now())
+        tx = _log_tx(
+            db,
+            fw.league_id,
+            team_id,
+            "topup_bet",
+            amount,
+            wallet_from="stripe",
+            wallet_to="bet",
+            status="pending",
+            note=f"Mock bet top-up request: ${amount:.2f} — awaiting commissioner approval",
+        )
         db.flush()
-        # Auto-unfreeze if wallet is now funded
-        _unfreeze_if_funded(team_id, fw, bet_wallet, db)
         db.commit()
         db.refresh(tx)
         return TopupResult(
-            faab_tx_id  = tx.id,
-            team_id     = team_id,
-            wallet_type = "bet",
-            amount      = amount,
-            status      = "applied",
-            apply_on    = None,
-            payment_url = None,
-            mock_mode   = True,
+            faab_tx_id=tx.id,
+            team_id=team_id,
+            wallet_type="bet",
+            amount=amount,
+            status="pending",
+            apply_on=None,
+            payment_url=None,
+            mock_mode=True,
         )
 
     # Real mode: create Stripe link, return for GM to pay
@@ -626,81 +618,9 @@ def transfer(
     db:           Session,
     performer_id: Optional[int] = None,
 ) -> TransferResult:
-    """
-    Move funds between a GM's bet and waiver wallets.
-
-    from_wallet / to_wallet : "bet" | "waiver"
-    Subject to FaabConfig.allow_bet_to_waiver / allow_waiver_to_bet.
-    """
-    if from_wallet not in ("bet", "waiver") or to_wallet not in ("bet", "waiver"):
-        raise ValueError("wallet must be 'bet' or 'waiver'")
-    if from_wallet == to_wallet:
-        raise ValueError("from_wallet and to_wallet must differ")
-    if amount <= 0:
-        raise ValueError("Transfer amount must be positive")
-
-    fw  = _get_faab_wallet(team_id, db)
-    cfg = db.query(FaabConfig).filter(FaabConfig.league_id == fw.league_id).first()
-
-    # Check transfer direction allowed
-    if from_wallet == "bet" and to_wallet == "waiver":
-        if cfg and not cfg.allow_bet_to_waiver:
-            raise ValueError("Bet → Waiver transfers are disabled by the commissioner")
-        # Source: betting wallet (via wallet_manager.withdraw equivalent)
-        bet_wallet = _get_bet_wallet(team_id, db)
-        open_bets  = db.query(Bet).filter(
-            Bet.wallet_id == bet_wallet.id, Bet.status == "pending"
-        ).all()
-        pending_exp        = round(sum(b.amount for b in open_bets), 2)
-        ch_reserved = _challenge_reserved(team_id, db)
-        available   = round(bet_wallet.balance - pending_exp - ch_reserved, 2)
-        if amount > available:
-            raise ValueError(
-                f"Cannot transfer ${amount:.2f}: only ${available:.2f} is available "
-                f"(${bet_wallet.balance:.2f} balance, ${pending_exp:.2f} in pending bets, "
-                f"${ch_reserved:.2f} reserved for pending challenges)"
-            )
-        bet_wallet.balance      = round(bet_wallet.balance - amount, 2)
-        fw.waiver_balance       = round(fw.waiver_balance + amount, 2)
-        fw.updated_at           = _now()
-        tx_type = "transfer_bet_to_waiver"
-
-    else:  # waiver → bet
-        if cfg and not cfg.allow_waiver_to_bet:
-            raise ValueError("Waiver → Bet transfers are disabled by the commissioner")
-        if amount > fw.waiver_balance:
-            raise ValueError(
-                f"Insufficient waiver balance: ${fw.waiver_balance:.2f} available, "
-                f"${amount:.2f} requested"
-            )
-        bet_wallet              = _get_bet_wallet(team_id, db)
-        fw.waiver_balance       = round(fw.waiver_balance - amount, 2)
-        fw.updated_at           = _now()
-        bet_wallet.balance      = round(bet_wallet.balance + amount, 2)
-        tx_type = "transfer_waiver_to_bet"
-
-    _log_tx(db, fw.league_id, team_id, tx_type, amount,
-            wallet_from=from_wallet, wallet_to=to_wallet,
-            note=f"${amount:.2f} from {from_wallet} to {to_wallet}",
-            applied_at=_now())
-
-    # Check if bet wallet is now zero after a bet→waiver transfer
-    if tx_type == "transfer_bet_to_waiver":
-        _check_and_freeze(team_id, fw, bet_wallet, db)
-    else:
-        _unfreeze_if_funded(team_id, fw, bet_wallet, db)
-
-    db.commit()
-    db.refresh(fw)
-    db.refresh(bet_wallet)
-
-    return TransferResult(
-        team_id              = team_id,
-        from_wallet          = from_wallet,
-        to_wallet            = to_wallet,
-        amount               = amount,
-        bet_balance_after    = round(bet_wallet.balance, 2),
-        waiver_balance_after = round(fw.waiver_balance, 2),
+    raise ValueError(
+        "BAB-to-waiver transfers are retired under the four-bucket "
+        "economy and are no longer supported."
     )
 
 

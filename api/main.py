@@ -991,20 +991,15 @@ def _state_out(s) -> WalletStateOut:
         net_pnl=s.net_pnl,
     )
 
-
-@app.post("/wallet/deposit", response_model=WalletStateOut, status_code=200)
-def wallet_deposit(
-    req:          DepositRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
-):
-    assert_own_wallet(req.wallet_id, current_user, db)
-    try:
-        state = wm_deposit(req.wallet_id, req.amount, db)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _state_out(state)
-
+@app.post("/wallet/deposit", status_code=410, deprecated=True)
+def wallet_deposit():
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Direct wallet deposits are retired. BAB wallet credits "
+            "require a confirmed top-up event."
+        ),
+    )
 
 @app.get("/wallet/{team_id}/history", response_model=TransactionHistoryOut)
 def wallet_history(
@@ -1977,34 +1972,15 @@ def faab_apply_pending(
     return [_tx_out(t) for t in applied]
 
 
-@app.post("/faab/transfer", response_model=TransferOut, status_code=200)
-def faab_do_transfer(
-    req:          TransferRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
-):
-    """
-    Move funds between bet and waiver wallets.
-    Subject to commissioner-configured transfer direction rules.
-    Bet→waiver transfers respect pending bet exposure (can't move locked funds).
-    """
-    assert_own_team(req.team_id, current_user)
-    try:
-        result = faab_transfer(
-            req.team_id, req.from_wallet, req.to_wallet, req.amount, db,
-            performer_id=current_user.id,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return TransferOut(
-        team_id              = result.team_id,
-        from_wallet          = result.from_wallet,
-        to_wallet            = result.to_wallet,
-        amount               = result.amount,
-        bet_balance_after    = result.bet_balance_after,
-        waiver_balance_after = result.waiver_balance_after,
+@app.post("/faab/transfer", status_code=410, deprecated=True)
+def faab_do_transfer():
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "BAB-to-waiver transfers are retired under the four-bucket "
+            "economy and are no longer supported."
+        ),
     )
-
 
 @app.get("/faab/transactions/{team_id}", response_model=list[FaabTxOut])
 def faab_transactions(

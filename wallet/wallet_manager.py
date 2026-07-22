@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import Bet, BeefChallenge, Transaction, Wallet, Team
 from betting.exceptions import BetValidationError
+from ledger.ledger import _dollars_to_cents
 
 # ── Bet-sizing constants (imported by bet_engine) ─────────────────────────────
 MIN_BET     = 5.00
@@ -137,6 +138,7 @@ def deposit(wallet_id: int, amount: float, db: Session) -> WalletState:
     if amount > 1_000_000:
         raise ValueError("Deposit amount exceeds maximum of $1,000,000")
 
+    _dollars_to_cents(amount)
     w = _get_wallet(wallet_id, db)
     w.balance = round(w.balance + amount, 2)
     db.add(Transaction(
@@ -145,7 +147,7 @@ def deposit(wallet_id: int, amount: float, db: Session) -> WalletState:
         type       = "deposit",
         created_at = datetime.now(timezone.utc),
     ))
-    db.commit()
+    db.flush()
     db.refresh(w)
     return _wallet_state(w, db)
 
