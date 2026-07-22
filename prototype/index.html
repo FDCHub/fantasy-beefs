@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FantasyBeefs">
+<meta name="theme-color" content="#0c0a07">
+<title>FantasyBeefs</title>
+<style>
+  :root{
+    --bg:#0c0a07; --mast:#12100c; --card:#161309; --tile:#1b1811;
+    --line:#221d11; --line2:#2a2415; --edge:#3a3220;
+    --bone:#e8e2d2; --gold:#c9a24a; --goldbg:#2a2210;
+    --green:#97c459; --green2:#c0dd97; --greenbg:#1e2413;
+    --red:#f09595; --amber:#ef9f27;
+    --g1:#8a8573; --g2:#5a5546;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--bone);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden; -webkit-font-smoothing:antialiased;
+    padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);
+  }
+  .app{display:flex;flex-direction:column;height:100vh;height:100dvh;max-width:480px;margin:0 auto;position:relative}
+
+  /* masthead */
+  .mast{flex:0 0 auto;background:var(--mast);border-bottom:1px solid var(--line2);padding:12px 16px 10px}
+  .word{font-size:23px;font-weight:700;line-height:1}
+  .word .b{color:var(--gold)} .word .f{color:var(--bone)}
+  .rev{font-size:11px;color:var(--g1);margin-top:5px}
+
+  /* generic tab scaffold */
+  .tab{flex:1 1 auto;display:none;flex-direction:column;overflow:hidden}
+  .tab.on{display:flex}
+  .thead{flex:0 0 auto;padding:11px 12px 8px}
+  .ttitle{font-size:15px;font-weight:500}
+  .tsub{font-size:11px;color:var(--g1);margin-top:2px}
+  .eyebrow{font-size:9px;letter-spacing:.14em;color:var(--g1);margin:0 2px 5px}
+  .scroll{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 12px 10px;background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:4px 14px}
+  .scrollbare{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;margin:0 12px 10px;padding:0 2px}
+
+  /* 4-cell strip */
+  .strip{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:0 12px 10px}
+  .cell{background:var(--tile);border-radius:8px;padding:8px 7px}
+  .cell.gold{border:1px solid var(--edge)}
+  .cell .k{font-size:9px;color:var(--g1);margin-bottom:3px;line-height:1.2}
+  .cell.gold .k{color:var(--gold)}
+  .cell .v{font-size:16px;font-weight:500}
+  .cell.gold .v{color:var(--gold)} .pos{color:var(--green2)} .neg{color:var(--red)}
+
+  /* rows */
+  .row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .rl{font-size:12px} .rl small{display:block;font-size:10px;color:var(--g1);margin-top:1px}
+  .rv{font-size:12px;font-weight:500}
+  .chev{color:var(--g2);font-size:16px}
+
+  /* tiles (My Action) */
+  .sect{font-size:9px;letter-spacing:.12em;margin:12px 2px 6px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:4px}
+  .atile{background:var(--tile);border-radius:8px;border-left:3px solid var(--g2);padding:8px 8px 8px 9px;cursor:pointer}
+  .atile .op{font-size:11px;font-weight:500;line-height:1.2}
+  .atile .bt{font-size:9px;color:var(--g1);margin-top:3px}
+  .atile .ft{font-size:10px;margin-top:5px}
+
+  /* carousel */
+  .rail{display:flex;gap:9px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 12px 8px;scroll-snap-type:x mandatory}
+  .bcard{flex:0 0 auto;width:150px;background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:11px;scroll-snap-align:start}
+  .bcard .nm{font-size:12px;font-weight:500;margin-bottom:2px}
+  .bcard .rec{font-size:10px;color:var(--g1);margin-bottom:9px}
+  .cellsrow{display:flex;gap:5px}
+  .mkt{flex:1;text-align:center;border-radius:6px;padding:8px 0;font-size:10px;font-weight:500;cursor:pointer}
+  .mkt small{display:block;font-size:8px;font-weight:400;opacity:.85;margin-top:2px}
+  .fav{background:var(--greenbg);color:var(--green2)}
+  .dog{background:#2a1414;color:var(--red)}
+  .neu{background:var(--goldbg);color:var(--amber)}
+
+  /* segmented */
+  .seg{display:flex;background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:3px;gap:3px;margin:0 12px 12px}
+  .seg div{flex:1;text-align:center;padding:7px 0;font-size:12px;color:var(--g1);border-radius:7px;cursor:pointer}
+  .seg div.on{background:var(--goldbg);color:var(--gold);font-weight:500}
+  .zone{display:none} .zone.on{display:block}
+
+  .pill{font-size:9px;padding:2px 8px;border-radius:20px}
+  .pill.ok{color:var(--green2);background:var(--greenbg)}
+  .pill.warn{color:#412402;background:var(--amber)}
+
+  /* bar (wrap up pools) */
+  .bar{height:11px;border-radius:6px;margin:5px 0}
+
+  /* tab bar */
+  .tabbar{flex:0 0 auto;display:flex;border-top:1px solid var(--line2);background:var(--mast);padding:7px 2px calc(7px + env(safe-area-inset-bottom))}
+  .tb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;color:var(--g2)}
+  .tb.on{color:var(--gold)}
+  .tb .ic{font-size:19px;line-height:1}
+  .tb .lb{font-size:8px;text-align:center;line-height:1.1}
+  .tb.on .lb{font-weight:600}
+
+  /* pop-out */
+  .overlay{position:absolute;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;z-index:40}
+  .overlay.on{display:flex}
+  .sheet{width:100%;background:var(--card);border:1px solid var(--line2);border-radius:16px 16px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:80%;overflow-y:auto}
+  .sheet h3{font-size:15px;font-weight:500;margin-bottom:3px}
+  .sheet .sub{font-size:11px;color:var(--g1);margin-bottom:14px}
+  .close{position:absolute;top:12px;right:14px;color:var(--g1);font-size:22px;cursor:pointer;z-index:2}
+  .btn{width:100%;border-radius:10px;padding:12px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;border:none;margin-top:8px}
+  .btn.g{background:var(--goldbg);border:1px solid var(--gold);color:var(--gold)}
+  .btn.grn{background:var(--greenbg);border:1px solid #3b6d11;color:var(--green2)}
+  .btn.ghost{background:transparent;border:1px solid var(--edge);color:var(--g1)}
+  .btn.dead{background:var(--tile);border:1px solid var(--edge);color:var(--g2)}
+
+  /* front door */
+  #door{position:absolute;inset:0;background:var(--bg);z-index:60;display:flex;flex-direction:column}
+  .doorpad{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 32px}
+  .bigword{font-size:34px;font-weight:700;line-height:1;margin-bottom:10px}
+  .disc{width:62px;height:62px;border-radius:50%;background:var(--card);border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;margin:34px 0 22px;font-size:24px;color:var(--gold)}
+  .yh{width:100%;background:#5f01d2;border:none;color:#fff;border-radius:10px;padding:14px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;font-family:inherit}
+  .yh .y{font-size:18px;font-weight:800;font-style:italic}
+  .fine{font-size:10px;color:var(--g2);margin-top:15px;line-height:1.6}
+  .doorfoot{flex:0 0 auto;text-align:center;font-size:9px;letter-spacing:.14em;color:var(--g2);padding:0 0 calc(18px + env(safe-area-inset-bottom))}
+
+  .note{text-align:center;font-size:10px;color:var(--g2);margin:10px 4px 4px;line-height:1.5}
+  .mono{font-variant-numeric:tabular-nums}
+  a{color:inherit}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== FRONT DOOR ===== -->
+  <div id="door">
+    <div class="doorpad">
+      <div class="bigword"><span class="f">Fantasy</span><span class="b" style="color:var(--gold)">Beefs</span></div>
+      <div style="font-size:11px;letter-spacing:.22em;color:var(--g1)">OUR THING · YOUR LEAGUE</div>
+      <div class="disc">&#128274;</div>
+      <div style="font-size:15px;font-weight:500;margin-bottom:8px">Members only</div>
+      <div style="font-size:12px;color:var(--g1);line-height:1.6;margin-bottom:34px">Sign in with the Yahoo account that runs your team. We'll match you to your seat automatically — no password to set.</div>
+      <button class="yh" onclick="enterApp()"><span class="y">Y!</span> Sign in with Yahoo</button>
+      <div class="fine">Yahoo checks your login on their screen.<br>FantasyBeefs never sees your password.</div>
+      <div style="margin-top:26px;font-size:10px;color:var(--g2)">— prototype · tap to enter as commissioner —</div>
+    </div>
+    <div class="doorfoot">REV 1.0 · 2026 · FRASER D. COLEMAN</div>
+  </div>
+
+  <!-- ===== MASTHEAD ===== -->
+  <div class="mast">
+    <div class="word"><span class="f">Fantasy</span><span class="b">Beefs</span></div>
+    <div class="rev">Rev 1.0 · 2026 · Fraser D. Coleman</div>
+  </div>
+
+  <!-- ===== TAB: LEAGUE ===== -->
+  <div class="tab on" id="tab-league">
+    <div class="thead">
+      <div class="ttitle">My League</div>
+      <div class="tsub">The sportsbook</div>
+    </div>
+    <div class="strip">
+      <div class="cell"><div class="k">League rec</div><div class="v">5–2</div></div>
+      <div class="cell"><div class="k">Total wallet</div><div class="v mono">$220</div></div>
+      <div class="cell"><div class="k">Min left</div><div class="v mono">$10</div></div>
+      <div class="cell gold"><div class="k">Avail bet</div><div class="v mono">$150</div></div>
+    </div>
+    <div class="scrollbare">
+      <div class="eyebrow" style="margin-left:2px">BEEF BETS · YOUR SIDE · SWIPE →</div>
+      <div class="rail">
+        <div class="bcard"><div class="nm">Diego R.</div><div class="rec">official opponent · 6–1</div>
+          <div class="cellsrow">
+            <div class="mkt dog" onclick="openBet('Diego R.','Moneyline','dog')">ML<small>+140</small></div>
+            <div class="mkt neu" onclick="openBet('Diego R.','Spread','neu')">SPR<small>+3.5</small></div>
+            <div class="mkt fav" onclick="openBet('Diego R.','O/U','fav')">O/U<small>o 214</small></div>
+          </div></div>
+        <div class="bcard"><div class="nm">Kevin M.</div><div class="rec">3–4</div>
+          <div class="cellsrow">
+            <div class="mkt fav" onclick="openBet('Kevin M.','Moneyline','fav')">ML<small>−125</small></div>
+            <div class="mkt neu" onclick="openBet('Kevin M.','Spread','neu')">SPR<small>−1.5</small></div>
+            <div class="mkt dog" onclick="openBet('Kevin M.','O/U','dog')">O/U<small>u 208</small></div>
+          </div></div>
+        <div class="bcard"><div class="nm">Tara W.</div><div class="rec">2–5</div>
+          <div class="cellsrow">
+            <div class="mkt fav" onclick="openBet('Tara W.','Moneyline','fav')">ML<small>−160</small></div>
+            <div class="mkt fav" onclick="openBet('Tara W.','Spread','fav')">SPR<small>−4.5</small></div>
+            <div class="mkt neu" onclick="openBet('Tara W.','O/U','neu')">O/U<small>o 220</small></div>
+          </div></div>
+        <div class="bcard"><div class="nm">Sam O.</div><div class="rec">4–3</div>
+          <div class="cellsrow">
+            <div class="mkt neu" onclick="openBet('Sam O.','Moneyline','neu')">ML<small>+105</small></div>
+            <div class="mkt dog" onclick="openBet('Sam O.','Spread','dog')">SPR<small>+2.5</small></div>
+            <div class="mkt fav" onclick="openBet('Sam O.','O/U','fav')">O/U<small>o 211</small></div>
+          </div></div>
+      </div>
+
+      <div class="eyebrow" style="margin:8px 0 5px 2px">POOL BETS · TAP TO ENTER</div>
+      <div style="margin:0 2px 8px">
+        <div class="row" onclick="openPool('Biggest Winner')" style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:12px;margin-bottom:6px;border-bottom:1px solid var(--line2)">
+          <div class="rl">Biggest Winner<small>Most points this week · $3 to enter</small></div><div class="chev">&#8250;</div></div>
+        <div class="row" onclick="openPool('Worst Beat')" style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:12px;margin-bottom:6px;border-bottom:1px solid var(--line2)">
+          <div class="rl">Worst Beat<small>Pick the biggest blowout loss · $3</small></div><div class="chev">&#8250;</div></div>
+        <div class="row" onclick="openPool('The Lineup')" style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:12px;border-bottom:1px solid var(--line2)">
+          <div class="rl">The Lineup<small>Most starters beating projection · $3</small></div><div class="chev">&#8250;</div></div>
+      </div>
+
+      <div class="eyebrow" style="margin:8px 0 5px 2px">YAHOO MATCHUP · READ-ONLY</div>
+      <div style="margin:0 2px 10px;border:1px dashed var(--edge);border-radius:10px;padding:12px">
+        <div style="font-size:12px;margin-bottom:6px">You vs Diego R. — official</div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--g1)">
+          <span>Your proj</span><span class="mono">198.4</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--g1);margin-top:3px">
+          <span>Diego proj</span><span class="mono">205.1</span></div>
+        <div style="font-size:10px;color:var(--g2);margin-top:8px">Context only. All betting runs through the cards above.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: ACTION ===== -->
+  <div class="tab" id="tab-action">
+    <div class="thead"><div class="ttitle">My Action</div><div class="tsub">The tracker</div></div>
+    <div class="strip">
+      <div class="cell"><div class="k">Bet record</div><div class="v">14–7</div></div>
+      <div class="cell"><div class="k">In play</div><div class="v mono">$55</div></div>
+      <div class="cell gold"><div class="k">Settled wk</div><div class="v mono pos">+$33</div></div>
+      <div class="cell"><div class="k">Still in play</div><div class="v mono">+$96</div></div>
+    </div>
+    <div class="scrollbare">
+      <div class="sect" style="color:var(--amber)">ACTION REQUIRED</div>
+      <div class="grid">
+        <div class="atile" style="border-color:var(--amber)" onclick="openInc('Diego R.')"><div class="op">Diego R.</div><div class="bt">Moneyline</div><div class="ft" style="color:var(--amber)">incoming · 42m</div></div>
+        <div class="atile" style="border-color:var(--amber)" onclick="openInc('Kevin M.')"><div class="op">Kevin M.</div><div class="bt">Spread</div><div class="ft" style="color:var(--amber)">incoming · 51m</div></div>
+      </div>
+      <div class="sect" style="color:var(--gold)">SENT &amp; WAITING</div>
+      <div class="grid">
+        <div class="atile" style="border-color:var(--gold)" onclick="openSent('Tara W.')"><div class="op">Tara W.</div><div class="bt">O/U</div><div class="ft" style="color:var(--gold)">waiting</div></div>
+      </div>
+      <div class="sect" style="color:var(--green)">ACCEPTED &amp; LIVE</div>
+      <div class="grid">
+        <div class="atile" style="border-color:var(--green)" onclick="openLive('Sam O.')"><div class="op">Sam O.</div><div class="bt">Moneyline</div><div class="ft" style="color:var(--green2)">live · 3Q</div></div>
+        <div class="atile" style="border-color:var(--green)" onclick="openLive('Pool')"><div class="op">Biggest Winner</div><div class="bt">Pool</div><div class="ft" style="color:var(--green2)">2nd of 12</div></div>
+      </div>
+      <div class="sect" style="color:var(--g1)">COMPLETED · 14–7 SEASON</div>
+      <div class="grid">
+        <div class="atile" style="opacity:.6" onclick="openWon('Marcus L.')"><div class="op">Marcus L.</div><div class="bt">Spread</div><div class="ft pos">won +$40</div></div>
+        <div class="atile" style="opacity:.6" onclick="openWon('Nina P.')"><div class="op">Nina P.</div><div class="bt">O/U</div><div class="ft neg">lost −$20</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: LEDGER ===== -->
+  <div class="tab" id="tab-ledger">
+    <div class="thead"><div class="ttitle">My Ledger</div><div class="tsub">Where's my money?</div></div>
+    <div class="eyebrow" style="margin-left:14px">MY WEEK</div>
+    <div class="strip">
+      <div class="cell"><div class="k">Wallet</div><div class="v mono">$140</div></div>
+      <div class="cell"><div class="k">Net week</div><div class="v mono pos">+$33</div></div>
+      <div class="cell"><div class="k">Min left</div><div class="v mono">$10</div></div>
+      <div class="cell gold"><div class="k">Avail bet</div><div class="v mono">$150</div></div>
+    </div>
+    <div class="eyebrow" style="margin-left:14px">MY SEASON</div>
+    <div class="strip">
+      <div class="cell"><div class="k">Buy-in</div><div class="v mono">$220</div></div>
+      <div class="cell"><div class="k">Champ res</div><div class="v mono">$80</div></div>
+      <div class="cell"><div class="k">Min res</div><div class="v mono">$60</div></div>
+      <div class="cell gold"><div class="k">Proj settle</div><div class="v mono pos">+$128</div></div>
+    </div>
+    <div style="flex:0 0 auto;padding:0 14px 6px;display:flex;align-items:center;gap:6px">
+      <span style="font-size:11px;font-weight:500">The Season So Far</span>
+      <span style="font-size:9px;color:var(--g2);margin-left:auto">scroll ↓</span>
+    </div>
+    <div class="scroll">
+      <div class="row"><div class="rl">League buy-in</div><div class="rv mono">−$220</div></div>
+      <div style="padding:2px 0 8px 8px;font-size:11px;color:#a9a291;line-height:1.9">
+        <div style="display:flex;justify-content:space-between"><span>Championship reserve</span><span class="mono">$80</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Weekly-min reserve</span><span class="mono">$60</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Wallet at start</span><span class="mono">$0</span></div>
+      </div>
+      <div class="row"><div class="rl">Top-offs</div><div class="rv mono">+$40</div></div>
+      <div class="row"><div class="rl">Net bet winnings</div><div class="rv mono pos">+$112</div></div>
+      <div style="padding:2px 0 8px 8px;font-size:11px;color:#a9a291;line-height:1.9">
+        <div style="display:flex;justify-content:space-between"><span>Versus wins</span><span class="mono pos">+$186</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Versus losses</span><span class="mono neg">−$94</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Pool bets</span><span class="mono pos">+$20</span></div>
+      </div>
+      <div class="row"><div class="rl">Out of circulation</div><div class="rv mono" style="color:var(--g1)">−$20</div></div>
+      <div class="row"><div class="rl" style="color:var(--amber)">Skunk fees</div><div class="rv mono" style="color:var(--amber)">−$20</div></div>
+      <div style="margin:12px -14px 4px;padding:12px 14px 4px;background:var(--bg);border-top:1px solid var(--line2)">
+        <div style="font-size:10px;letter-spacing:.1em;color:var(--gold);margin-bottom:8px">SEASON-END WINNINGS</div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:#a9a291"><span>Champion pot share (60/30/10)</span><span class="mono pos">+$0</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:#a9a291"><span>Skunk pot (points champ)</span><span class="mono pos">+$0</span></div>
+        <div style="font-size:10px;color:var(--g2);margin-top:4px">Fills only if you place.</div>
+      </div>
+      <div class="row" style="border-top:1px solid var(--edge);padding-top:13px"><div class="rl" style="color:var(--gold);font-weight:500">Projected season-end settle</div><div class="rv mono" style="color:var(--gold);font-size:17px">+$128</div></div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: WRAP UP ===== -->
+  <div class="tab" id="tab-wrap">
+    <div class="thead"><div class="ttitle">Wrap Up</div><div class="tsub">The week that was · Week 7</div></div>
+    <div class="strip">
+      <div class="cell gold"><div class="k">Biggest winner</div><div class="v" style="font-size:12px">Sam O.</div></div>
+      <div class="cell"><div class="k">Skunk of week</div><div class="v" style="font-size:12px">Tara W.</div></div>
+      <div class="cell"><div class="k">Top vs win</div><div class="v mono pos" style="font-size:13px">+$88</div></div>
+      <div class="cell"><div class="k">Top pool</div><div class="v mono pos" style="font-size:13px">+$27</div></div>
+    </div>
+    <div class="scroll">
+      <div class="eyebrow" style="margin:6px 0 8px">THE MATCHUPS</div>
+      <div style="font-size:12px;line-height:1.6;color:#cfc9ba;margin-bottom:14px">
+        <b style="font-weight:600">Sam O. 141, Kevin M. 96 — BLOODBATH.</b> Sam's stack went nuclear while Kevin left
+        <span style="color:var(--red)">18 points rotting on the bench</span>. The kind of loss you don't post about.
+      </div>
+      <div style="font-size:12px;line-height:1.6;color:#cfc9ba;margin-bottom:14px">
+        <b style="font-weight:600">Fraser 118, Diego 114 — NAIL-BITER.</b> Came down to Monday night. Diego needed 9, got 5. Cruel.
+      </div>
+      <div class="eyebrow" style="margin:6px 0 8px">POOL BETS</div>
+      <div style="margin-bottom:6px"><div style="font-size:11px;margin-bottom:2px">Biggest Winner — Sam O. (141)</div>
+        <div class="bar" style="width:100%;background:var(--gold)"></div>
+        <div class="bar" style="width:78%;background:var(--g2)"></div>
+        <div class="bar" style="width:52%;background:var(--red)"></div>
+        <div style="font-size:10px;color:var(--g1)">Sam takes it · picked by 4 · pays +$27</div>
+      </div>
+      <div class="eyebrow" style="margin:12px 0 8px">THE BEEFS</div>
+      <div style="font-size:12px;line-height:1.6;color:#cfc9ba">
+        Sam cashed his ML dog at +140 against a Kevin squad that never showed — turned $20 into $88. Tara faded the
+        over and watched 47 unanswered points sail past. Rough night to be holding the under.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TAB: RULES & SETTINGS ===== -->
+  <div class="tab" id="tab-rules">
+    <div class="thead"><div class="ttitle">Rules &amp; Settings</div><div class="tsub">The house rules</div></div>
+    <div class="seg">
+      <div class="on" data-zone="z-rules" onclick="segTo(this)">Rules</div>
+      <div data-zone="z-settings" onclick="segTo(this)">Settings</div>
+      <div data-zone="z-commish" onclick="segTo(this)">Commish</div>
+    </div>
+
+    <div class="scrollbare">
+      <!-- RULES -->
+      <div class="zone on" id="z-rules">
+        <div style="background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:2px 14px">
+          <div class="row" onclick="rulePop('The Money')"><div class="rl">The Money<small>Economy · wallet · top-offs</small></div><div class="chev">&#8250;</div></div>
+          <div class="row" onclick="rulePop('Weekly Grind')"><div class="rl">Weekly Grind<small>Weekly minimum · skunk fee</small></div><div class="chev">&#8250;</div></div>
+          <div class="row" onclick="rulePop('Big Money')"><div class="rl">Big Money<small>Championship reserve &amp; pot</small></div><div class="chev">&#8250;</div></div>
+          <div class="row" onclick="rulePop('The Bets')"><div class="rl">The Bets<small>Types · versus · pools</small></div><div class="chev">&#8250;</div></div>
+          <div class="row" onclick="rulePop('The Fine Print')"><div class="rl">The Fine Print<small>How to play · settling up</small></div><div class="chev">&#8250;</div></div>
+        </div>
+        <div class="note">Draft copy — final rules regenerate from protocol.</div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div class="zone" id="z-settings">
+        <div style="margin:0 0 6px;display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;font-weight:500">League Settings</span>
+          <span class="pill ok" style="margin-left:auto">Editable until kickoff</span>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:2px 14px">
+          <div class="row"><div class="rl">Economy stop<small>$10/wk min · $220 buy-in</small></div><div class="chev">&#8250;</div></div>
+          <div class="row"><div class="rl">Skunk fee<small>Widest weekly loser pays</small></div><div class="rv mono" style="color:var(--amber)">$10</div></div>
+          <div class="row"><div class="rl">Pool entry fee<small>Range $1–$5</small></div><div class="rv mono">$3</div></div>
+          <div class="row"><div class="rl">Championship split<small>Playoff bracket</small></div><div class="rv mono">60/30/10</div></div>
+        </div>
+        <div class="note">Every setting locks at kickoff. GMs see these read-only.</div>
+      </div>
+
+      <!-- COMMISH -->
+      <div class="zone" id="z-commish">
+        <div style="background:var(--card);border:1px solid var(--edge);border-radius:12px;padding:13px 14px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px">
+            <span style="font-size:12px;font-weight:500">League Totals</span>
+            <span class="pill ok">&#10003; Balances</span>
+          </div>
+          <div style="font-size:11px;color:#a9a291;line-height:1.9">
+            <div style="display:flex;justify-content:space-between"><span>Buy-ins</span><span class="mono">$2,640</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Champ pot</span><span class="mono">$960</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Total wallets</span><span class="mono">$1,640</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Out of circulation</span><span class="mono">$180</span></div>
+            <div style="display:flex;justify-content:space-between"><span>In play</span><span class="mono">$240</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Less top-offs / skunk</span><span class="mono" style="color:var(--g1)">−$380</span></div>
+          </div>
+          <div style="margin-top:9px;padding-top:8px;border-top:1px solid var(--line2);font-size:10px;color:var(--g2)" class="mono">960 + 1,640 + 180 + 240 − 380 = 2,640 ✓</div>
+        </div>
+        <div class="sect" style="color:var(--g1);letter-spacing:.12em">PER-GM · TAP TO EXPAND</div>
+        <div style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:2px 12px">
+          <div class="row" onclick="gmPop('Fraser C.')"><div class="rl">Fraser C.</div><div style="display:flex;gap:14px"><span class="rv mono pos">+$112</span><span class="rv mono" style="color:var(--gold)">−$20</span><span class="rv mono">+$128</span></div></div>
+          <div class="row" onclick="gmPop('Diego R.')"><div class="rl">Diego R.</div><div style="display:flex;gap:14px"><span class="rv mono neg">−$64</span><span class="rv mono" style="color:var(--gold)">+$40</span><span class="rv mono">−$24</span></div></div>
+          <div class="row" onclick="gmPop('Tara W.')"><div class="rl">Tara W.</div><div style="display:flex;gap:14px"><span class="rv mono neg">−$86</span><span class="rv mono" style="color:var(--gold)">+$320</span><span class="rv mono pos">+$234</span></div></div>
+        </div>
+        <div class="note">No payment tracking. Gentlemen settle at season's end.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TAB BAR ===== -->
+  <div class="tabbar">
+    <div class="tb on" data-tab="tab-league" onclick="go(this)"><div class="ic">&#9876;</div><div class="lb">League</div></div>
+    <div class="tb" data-tab="tab-action" onclick="go(this)"><div class="ic">&#128203;</div><div class="lb">Action</div></div>
+    <div class="tb" data-tab="tab-ledger" onclick="go(this)"><div class="ic">&#128213;</div><div class="lb">Ledger</div></div>
+    <div class="tb" data-tab="tab-wrap" onclick="go(this)"><div class="ic">&#128240;</div><div class="lb">Wrap Up</div></div>
+    <div class="tb" data-tab="tab-rules" onclick="go(this)"><div class="ic">&#9878;</div><div class="lb">Rules &amp;<br>Settings</div></div>
+  </div>
+
+  <!-- ===== POP-OUT ===== -->
+  <div class="overlay" id="ov" onclick="if(event.target===this)closeOv()">
+    <div class="sheet" id="sheet"><div class="close" onclick="closeOv()">&times;</div><div id="sheetbody"></div></div>
+  </div>
+
+</div>
+
+<script>
+  function enterApp(){ document.getElementById('door').style.display='none'; }
+
+  function go(el){
+    document.querySelectorAll('.tb').forEach(t=>t.classList.remove('on'));
+    el.classList.add('on');
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+    document.getElementById(el.dataset.tab).classList.add('on');
+  }
+
+  function segTo(el){
+    el.parentElement.querySelectorAll('div').forEach(d=>d.classList.remove('on'));
+    el.classList.add('on');
+    document.querySelectorAll('#tab-rules .zone').forEach(z=>z.classList.remove('on'));
+    document.getElementById(el.dataset.zone).classList.add('on');
+  }
+
+  function showSheet(html){
+    document.getElementById('sheetbody').innerHTML=html;
+    document.getElementById('ov').classList.add('on');
+  }
+  function closeOv(){ document.getElementById('ov').classList.remove('on'); }
+
+  function openBet(gm,mkt,side){
+    const label = side==='fav'?'favorite · 58%':side==='dog'?'underdog · 42%':'coin flip · 50%';
+    showSheet(`<h3>Challenge ${gm}</h3><div class="sub">${mkt} · ${label}</div>
+      <div style="background:var(--tile);border-radius:10px;padding:12px;font-size:12px;line-height:1.9;margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between"><span>You put up</span><span class="mono">$20</span></div>
+        <div style="display:flex;justify-content:space-between"><span>${gm} puts up</span><span class="mono">$24</span></div>
+        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:6px;padding-top:6px"><span>Total pot</span><span class="mono">$44</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--green2)"><span>If you win</span><span class="mono">+$44</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--red)"><span>If you lose</span><span class="mono">−$20</span></div>
+      </div>
+      <button class="btn g" onclick="closeOv()">Send challenge</button>
+      <button class="btn ghost" onclick="closeOv()">Cancel</button>`);
+  }
+  function openPool(name){
+    showSheet(`<h3>${name}</h3><div class="sub">Whole league · $3 to enter</div>
+      <div style="font-size:12px;color:#cfc9ba;line-height:1.6;margin-bottom:10px">You're entered automatically — your team competes on this pool's metric. Pick or join, then you're in.</div>
+      <button class="btn grn" onclick="closeOv()">Join pool · $3</button>
+      <button class="btn ghost" onclick="closeOv()">Not this week</button>`);
+  }
+  function openInc(gm){
+    showSheet(`<h3>${gm} challenged you</h3><div class="sub">Moneyline · live for 42 more minutes</div>
+      <div style="background:var(--tile);border-radius:10px;padding:12px;font-size:12px;line-height:1.9;margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between"><span>${gm} puts up</span><span class="mono">$24</span></div>
+        <div style="display:flex;justify-content:space-between"><span>You put up</span><span class="mono">$20</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--green2);border-top:1px solid var(--line);margin-top:6px;padding-top:6px"><span>If you win</span><span class="mono">+$44</span></div>
+      </div>
+      <button class="btn grn" onclick="closeOv()">Take it</button>
+      <button class="btn ghost" onclick="closeOv()">Counter</button>
+      <button class="btn dead" onclick="closeOv()">Pass</button>`);
+  }
+  function openSent(gm){
+    showSheet(`<h3>Waiting on ${gm}</h3><div class="sub">O/U · sent 12 min ago</div>
+      <div style="font-size:12px;color:#cfc9ba;line-height:1.6;margin-bottom:10px">Your $20 is escrowed and held. If ${gm} passes or it expires, it returns to your wallet.</div>
+      <button class="btn ghost" onclick="closeOv()">Pull the offer</button>`);
+  }
+  function openLive(gm){
+    if(gm==='Pool'){ showSheet(`<h3>Biggest Winner</h3><div class="sub">Live · you're 2nd of 12</div>
+      <div style="font-size:12px;line-height:1.9;color:#cfc9ba">1. Sam O. — 141<br><b>2. You — 128</b><br>3. Marcus L. — 122<br><span style="color:var(--g1)">Pot $36 · pays top score</span></div>
+      <button class="btn ghost" onclick="closeOv()" style="margin-top:12px">Close</button>`); return; }
+    showSheet(`<h3>${gm} · live</h3><div class="sub">Moneyline · 3rd quarter</div>
+      <div style="background:var(--tile);border-radius:10px;padding:12px;font-size:12px;line-height:1.9">
+        <div style="display:flex;justify-content:space-between"><span>You</span><span class="mono">88.2</span></div>
+        <div style="display:flex;justify-content:space-between"><span>${gm}</span><span class="mono">74.6</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--green2);border-top:1px solid var(--line);margin-top:6px;padding-top:6px"><span>If it holds</span><span class="mono">+$44</span></div>
+      </div>
+      <button class="btn ghost" onclick="closeOv()" style="margin-top:12px">Close</button>`);
+  }
+  function openWon(gm){
+    showSheet(`<h3>${gm} · settled</h3><div class="sub">Final · paid to wallet</div>
+      <div style="background:var(--tile);border-radius:10px;padding:12px;font-size:12px;line-height:1.9">
+        <div style="display:flex;justify-content:space-between"><span>Final</span><span class="mono">You 121 · ${gm} 108</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--green2)"><span>Net</span><span class="mono">+$40</span></div>
+      </div><button class="btn ghost" onclick="closeOv()" style="margin-top:12px">Close</button>`);
+  }
+  function rulePop(name){
+    showSheet(`<h3>${name}</h3><div class="sub">Draft copy — placeholder</div>
+      <div style="font-size:12px;color:#cfc9ba;line-height:1.7">Final rule text for “${name}” regenerates from the amended protocol before launch. Structure is locked; wording is pending.</div>
+      <button class="btn ghost" onclick="closeOv()" style="margin-top:12px">Close</button>`);
+  }
+  function gmPop(gm){
+    showSheet(`<h3>${gm}</h3><div class="sub">Full breakdown</div>
+      <div style="font-size:12px;line-height:1.9;color:#cfc9ba">
+        <div style="display:flex;justify-content:space-between"><span>Buy-in</span><span class="mono">$220</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Top-offs</span><span class="mono">+$40</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Net bets</span><span class="mono pos">+$112</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Frozen min</span><span class="mono" style="color:var(--gold)">−$20</span></div>
+        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:6px;padding-top:6px"><span>Projected settle</span><span class="mono">+$128</span></div>
+      </div>
+      <button class="btn g" onclick="closeOv()" style="margin-top:12px">Open full ledger</button></div>`);
+  }
+</script>
+</body>
+</html>
