@@ -17,12 +17,13 @@ from sqlalchemy import (
     JSON,
     String,
     UniqueConstraint,
-    create_engine,
     func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
+
+from db.engine_factory import get_engine  # FR-VAL10-af: canonical engine control surface
 
 # ── Engine / session ──────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ else:
     DB_PATH = os.path.join(os.path.dirname(__file__), "fantasy.db")
     DB_URL  = f"sqlite:///{DB_PATH}"
 
-engine       = create_engine(DB_URL, echo=False)
+engine       = get_engine(DB_URL, echo=False)
 SessionLocal = sessionmaker(bind=engine)
 
 

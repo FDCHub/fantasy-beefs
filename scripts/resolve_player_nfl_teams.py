@@ -21,7 +21,7 @@ Passes:
 import os
 import re
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 DB_URL = os.environ.get(
     "DATABASE_URL",
@@ -157,7 +157,15 @@ def build_nfl_team_mapping(conn) -> dict[int, str | None]:
 # -- Main (report only) -------------------------------------------------------
 
 def main() -> None:
-    engine = create_engine(DB_URL, connect_args={"connect_timeout": 15})
+    # FR-VAL10-af: route through the canonical engine control surface. This
+    # script has no repo-root bootstrap at module scope (it is importable as
+    # scripts.resolve_player_nfl_teams, where the importer supplies the path),
+    # so bootstrap here for the direct-execution path before importing db.*.
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from db.engine_factory import get_engine
+
+    engine = get_engine(DB_URL, connect_args={"connect_timeout": 15})
 
     with engine.connect() as conn:
         players  = conn.execute(

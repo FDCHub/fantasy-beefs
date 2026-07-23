@@ -24,7 +24,7 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import sessionmaker
 
 CSV_URL = "https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_playerids.csv"
@@ -39,10 +39,11 @@ DB_URL = os.environ.get(
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from db.schema import Base, PlayerIdMap  # noqa: E402
+from db.engine_factory import get_engine  # noqa: E402  FR-VAL10-af: canonical engine control surface
 
 # ── Step 1: create table if missing ──────────────────────────────────────────
 
-engine = create_engine(DB_URL, connect_args={"connect_timeout": 15})
+engine = get_engine(DB_URL, connect_args={"connect_timeout": 15})
 insp   = inspect(engine)
 
 if "player_id_map" not in insp.get_table_names():

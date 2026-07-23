@@ -24,7 +24,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 sys.path.insert(0, os.path.join(_ROOT, "scripts"))
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+
+from db.engine_factory import get_engine  # FR-VAL10-af: canonical engine control surface
 
 DB_URL = os.environ.get(
     "DATABASE_URL",
@@ -217,7 +219,7 @@ def main() -> None:
         print(f"Usage: {sys.argv[0]} [--lookup | --run]")
         sys.exit(1)
 
-    engine = create_engine(DB_URL, connect_args={"connect_timeout": 15})
+    engine = get_engine(DB_URL, connect_args={"connect_timeout": 15})
 
     if mode == "--lookup":
         with engine.connect() as conn:

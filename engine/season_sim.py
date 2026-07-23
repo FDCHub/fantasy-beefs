@@ -117,7 +117,7 @@ class SeasonSimulator:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    from sqlalchemy import create_engine
+    from db.engine_factory import get_engine  # FR-VAL10-af: canonical engine control surface
     from sqlalchemy.orm import sessionmaker
 
     from data.provider import LeagueConfig, RosterState, ScheduleEntry
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     # Fresh in-memory SQLite — no filesystem dependency, always clean.
     # db is created here (test harness) and injected into the simulator.
     # The SeasonSimulator class itself never calls SessionLocal().
-    mem_engine = create_engine("sqlite:///:memory:")
+    mem_engine = get_engine("sqlite:///:memory:")
     Base.metadata.create_all(mem_engine)
     MemSession = sessionmaker(bind=mem_engine)
 

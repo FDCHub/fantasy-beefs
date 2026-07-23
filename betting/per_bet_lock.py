@@ -263,7 +263,7 @@ def is_bet_locked_for_gm(
 
 if __name__ == "__main__":
     import os
-    from sqlalchemy import create_engine
+    from db.engine_factory import get_engine  # FR-VAL10-af: canonical engine control surface
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 
@@ -434,7 +434,7 @@ if __name__ == "__main__":
               "running constructed cases 6-7 only.\n")
     else:
         try:
-            engine = create_engine(DB, connect_args={"connect_timeout": 10})
+            engine = get_engine(DB, connect_args={"connect_timeout": 10})
             with engine.connect() as conn:
                 live_cases_ran = _run_live_data_cases(conn)
         except Exception as e:
@@ -453,9 +453,9 @@ if __name__ == "__main__":
     print("Cases 6-7 — constructed local fixture (not live production data)")
     print("=" * 60)
 
-    from sqlalchemy import create_engine as _create_engine
+    from db.engine_factory import get_engine as _get_engine  # FR-VAL10-af: canonical engine control surface
 
-    _local_engine = _create_engine("sqlite:///:memory:")
+    _local_engine = _get_engine("sqlite:///:memory:")
     with _local_engine.connect() as lconn:
         lconn.execute(text(
             "CREATE TABLE nfl_schedule ("

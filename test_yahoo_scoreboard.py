@@ -169,8 +169,9 @@ def test_db_comparison(yahoo_week1: list[dict]) -> None:
         return
 
     try:
-        from sqlalchemy import create_engine, text as sa_text
-        engine = create_engine(db_url, connect_args={"connect_timeout": 10})
+        from sqlalchemy import text as sa_text
+        from db.engine_factory import get_engine  # FR-VAL10-af: canonical engine control surface
+        engine = get_engine(db_url, connect_args={"connect_timeout": 10})
         with engine.connect() as conn:
             # JOIN teams to recover the Yahoo team ID encoded in each email.
             rows = conn.execute(sa_text(
