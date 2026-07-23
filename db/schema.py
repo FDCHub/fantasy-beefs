@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     JSON,
@@ -289,6 +290,42 @@ class BeefChallenge(Base):
             "bet_type IN ('straight','spread','over_under')",
             name="ck_beef_bet_type",
         ),
+        # ── SPEC 1 (Proposal Lifecycle, Rev 3) — additive constraints ──
+        # These constrain the new container columns only; NULL passes each CHECK
+        # (legacy-created rows leave them NULL). Ruling 2: 'straight' is the
+        # persisted value for Moneyline; "Moneyline" is a display label only.
+        CheckConstraint(
+            "challenge_mode IN ('locked','dynamic')",
+            name="ck_beef_challenge_mode",
+        ),
+        CheckConstraint(
+            "wager_type IN ('straight','spread','over_under')",
+            name="ck_beef_wager_type",
+        ),
+        CheckConstraint(
+            "response_status IN "
+            "('offered','countered','accepted','declined','expired','cancelled')",
+            name="ck_beef_response_status",
+        ),
+        # §3.4 — the active/accepted proposal must belong to THIS challenge.
+        # Composite FK: (pointer, id) -> (beef_proposals.id, beef_proposals.
+        # challenge_id) binds the referenced proposal's challenge_id to this
+        # row's id. use_alter breaks the beef_challenges<->beef_proposals cycle;
+        # under SQLite the ALTER-added FK is dropped (behaviour proven only on
+        # Postgres), so this is declaration-authoritative there and metadata-only
+        # under SQLite (mirrors challenger_bet_id/challenged_bet_id).
+        ForeignKeyConstraint(
+            ["active_proposal_id", "id"],
+            ["beef_proposals.id", "beef_proposals.challenge_id"],
+            use_alter=True,
+            name="fk_beef_active_proposal_same_challenge",
+        ),
+        ForeignKeyConstraint(
+            ["accepted_proposal_id", "id"],
+            ["beef_proposals.id", "beef_proposals.challenge_id"],
+            use_alter=True,
+            name="fk_beef_accepted_proposal_same_challenge",
+        ),
     )
 
     id                   = Column(Integer, primary_key=True, autoincrement=True)
@@ -320,6 +357,23 @@ class BeefChallenge(Base):
     countered_amount     = Column(Float,    nullable=True)
     countered_at         = Column(DateTime, nullable=True)
 
+    # ── SPEC 1 (Proposal Lifecycle, Rev 3) — additive container fields ──
+    # The legacy columns above stay in place for the unreleased legacy flow
+    # (beef_engine.py is untouched); the new lifecycle is unreachable until
+    # Spec 2 supplies escrow. Every new column is nullable so legacy-created
+    # rows and flows continue unchanged (Ruling 1). The new-model integrity
+    # constraints (CHECKs, composite same-challenge FKs, version UNIQUE) remain
+    # fully enforced for rows that populate them.
+    league_id                  = Column(Integer,  ForeignKey("leagues.id", name="fk_beef_challenge_league"), nullable=True)
+    challenge_mode             = Column(String,   nullable=True)  # CHECK ('locked','dynamic'), immutable
+    wager_type                 = Column(String,   nullable=True)  # CHECK ('straight','spread','over_under')
+    response_status            = Column(String,   nullable=True)  # negotiation state only (§4)
+    active_proposal_id         = Column(Integer,  nullable=True)  # composite same-challenge FK (§3.4)
+    accepted_proposal_id       = Column(Integer,  nullable=True)  # composite same-challenge FK (§3.4)
+    active_response_expires_at = Column(DateTime, nullable=True)  # cached copy of active proposal deadline
+    revived_from_challenge_id  = Column(Integer,  ForeignKey("beef_challenges.id", name="fk_beef_challenge_revived_from"), nullable=True)  # audit lineage (§8)
+    updated_at                 = Column(DateTime, nullable=True)
+
     challenger_team  = relationship("Team", foreign_keys=[challenger_team_id])
     challenged_team  = relationship("Team", foreign_keys=[challenged_team_id])
     player           = relationship("Player", foreign_keys=[player_id])
@@ -345,6 +399,108 @@ class BeefStarter(Base):
     beef_challenge = relationship("BeefChallenge", foreign_keys=[beef_challenge_id])
     team           = relationship("Team",          foreign_keys=[team_id])
     player         = relationship("Player",        foreign_keys=[player_id])
+
+
+class BeefProposal(Base):
+    """SPEC 1 (Proposal Lifecycle, Rev 3) §3.2 — immutable versioned proposal.
+
+    Insert-only; never updated after creation, even once inactive. Owns the
+    frozen resolved quote, this proposal's own timing, the both-team covered
+    snapshot (BeefProposalStarter, §3.3/§6), and full pricing provenance so each
+    version is independently reproducible. The challenge owns the immutable wager
+    class (BeefChallenge.wager_type); this proposal does NOT duplicate it (§5).
+
+    Spec 1 owns structure and immutability; Spec 2 funds the stake fields, so the
+    stake/pricing/timing columns are nullable here. All money is INTEGER CENTS.
+    """
+    __tablename__ = "beef_proposals"
+    __table_args__ = (
+        # §3.4/§9 — prevents two callers minting the same version under the lock.
+        UniqueConstraint("challenge_id", "version_number",
+                         name="uq_beef_proposal_version"),
+        # Target for the challenge's composite same-challenge FK (§3.4). id is
+        # already unique alone; this names the exact (id, challenge_id) pair the
+        # FK references (Postgres requires a matching unique constraint).
+        UniqueConstraint("id", "challenge_id",
+                         name="uq_beef_proposal_id_challenge"),
+        CheckConstraint(
+            "version_kind IN ('initial','counter')",
+            name="ck_beef_proposal_version_kind",
+        ),
+    )
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    challenge_id      = Column(Integer, ForeignKey("beef_challenges.id"), nullable=False)
+    version_number    = Column(Integer, nullable=False)   # monotonic within challenge
+    version_kind      = Column(String,  nullable=False)   # CHECK ('initial','counter')
+    proposing_team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    created_at        = Column(DateTime, nullable=False,
+                               default=lambda: datetime.now(timezone.utc))
+
+    # ── Timing — the proposal is authoritative for its own deadline (§3.2) ──
+    # Effective deadline = min(created_at + 60 minutes, proposal_lock_at).
+    response_expires_at = Column(DateTime, nullable=True)
+    proposal_lock_at    = Column(DateTime, nullable=True)  # earliest covered kickoff for THIS proposal
+    schedule_source_ref = Column(String,   nullable=True)  # schedule source/version used for the lock
+
+    # ── Frozen resolved market terms (proposal owns these; challenge owns class) ──
+    line      = Column(Float,   nullable=True)
+    side      = Column(String,  nullable=True)
+    player_id = Column(Integer, ForeignKey("players.id"), nullable=True)
+
+    # ── Money — INTEGER CENTS (Spec 2 funds these) ──
+    anchor_stake_cents          = Column(Integer, nullable=True)  # proposed fixed Anchor
+    quoted_derived_stake_cents  = Column(Integer, nullable=True)  # displayed Derived Stake
+    quoted_funded_pot_cents     = Column(Integer, nullable=True)  # displayed funded pot
+    quoted_anchor_payout_cents  = Column(Integer, nullable=True)  # optional displayed payout
+    quoted_derived_payout_cents = Column(Integer, nullable=True)  # optional displayed payout
+    anchor_team_id  = Column(Integer, ForeignKey("teams.id"), nullable=True)  # always the issuer (A4)
+    derived_team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+
+    # ── Pricing provenance (reproducible quote) ──
+    pricing_model_id          = Column(String,   nullable=True)
+    pricing_calc_version      = Column(String,   nullable=True)
+    projection_source_id      = Column(String,   nullable=True)
+    projection_retrieved_at   = Column(DateTime, nullable=True)
+    projection_input_snapshot = Column(JSON,     nullable=True)   # exact inputs, or a reference
+    anchor_win_probability    = Column(Float,    nullable=True)
+    derived_win_probability   = Column(Float,    nullable=True)
+    anchor_odds               = Column(Float,    nullable=True)
+    derived_odds              = Column(Float,    nullable=True)
+    anchor_moneyline          = Column(Integer,  nullable=True)
+    derived_moneyline         = Column(Integer,  nullable=True)
+    pricing_input_hash        = Column(String,   nullable=True)   # integrity hash of pricing inputs
+
+    # ── Display — explicitly NON-authoritative (§3.2); structured fields govern ──
+    display_terms = Column(String, nullable=True)
+
+    proposing_team = relationship("Team",   foreign_keys=[proposing_team_id])
+    anchor_team    = relationship("Team",   foreign_keys=[anchor_team_id])
+    derived_team   = relationship("Team",   foreign_keys=[derived_team_id])
+    player         = relationship("Player", foreign_keys=[player_id])
+
+
+class BeefProposalStarter(Base):
+    """SPEC 1 §3.3 — proposal-scoped both-team starter snapshot. Replaces the
+    challenge-scoped BeefStarter for the new model: every proposal (initial and
+    each counter) captures its OWN frozen snapshot of BOTH teams (§6), so a
+    counter is independently reproducible with no cross-proposal join. team_id
+    stores the raw team id; role is derived by matching challenge participants."""
+    __tablename__ = "beef_proposal_starters"
+    __table_args__ = (
+        UniqueConstraint("proposal_id", "team_id", "player_id",
+                         name="uq_beef_proposal_starter"),
+    )
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    proposal_id = Column(Integer, ForeignKey("beef_proposals.id"), nullable=False)
+    team_id     = Column(Integer, ForeignKey("teams.id"),          nullable=False)
+    player_id   = Column(Integer, ForeignKey("players.id"),        nullable=False)
+    nfl_team    = Column(String(4), nullable=True)
+
+    proposal = relationship("BeefProposal", foreign_keys=[proposal_id])
+    team     = relationship("Team",         foreign_keys=[team_id])
+    player   = relationship("Player",       foreign_keys=[player_id])
 
 
 class FeedEvent(Base):
