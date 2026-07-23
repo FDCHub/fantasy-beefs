@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fantasy Beefs — Backend Architecture (v12, 2026-07-18)</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; color: #1a1a1a; padding: 32px; max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .caveat { font-size: 12px; color: #666; font-style: italic; margin-bottom: 24px; }
+  .layer { margin-bottom: 20px; }
+  .layer-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-bottom: 8px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .block { position: relative; border: 1.5px solid #ccc; border-radius: 6px; padding: 10px 12px; min-width: 200px; flex: 1 1 220px; background: #fafafa; }
+  .block-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .block-note { font-size: 11px; color: #555; line-height: 1.4; }
+  .badge { position: absolute; top: 8px; right: 8px; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; color: #fff; }
+  .green { background: #2e7d32; }
+  .amber { background: #b8860b; }
+  .red { background: #b03030; }
+  .moved { font-weight: 700; color: #1a1a1a; }
+  .newlayer { border-left: 3px solid #b03030; padding-left: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Fantasy Beefs — Backend Architecture, v12</h1>
+<p class="caveat">Percentages are Claude's best-estimate read from session context — not a formal audit. Updated 2026-07-18. <b>This session merged the eight-section Official Game Specification into a canonical hybrid, and made one decision that reshapes the denominator: Dynamic Challenges are now LIVE at launch.</b> That reverses the "no drift" finding from last session. No code shipped this session — the movement below is denominator movement, not build movement. <b>The dominant effect: the odds work grew.</b> Last session resized <code>odds_engine.py</code> from "3–5 sessions" down to a three-line port, because drift didn't exist. Bringing Dynamic back re-expands it into the full Simulation Engine + The Adjustment stack — repricing trigger, model freeze, Final-Lock reprice-and-refund. Several odds-stack and FR-5.6b badges move DOWN as a result: work that was moot is load-bearing again. Per the standing rule: never hold a percentage steady against a changed denominator.</p>
+
+<div class="layer">
+  <div class="layer-title">Ledger Primitive (L1/L2/L3)</div>
+  <div class="row">
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">L1 — Ledger Law (spec)</div>
+      <div class="block-note">Seven-account chart, paired postings, mandatory sum-to-zero. Unchanged.</div>
+    </div>
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">L2 — Ledger Build</div>
+      <div class="block-note">post(), balance_of(), trial_balance(). Unchanged. <span class="moved">Verified this session:</span> imports only stdlib, SQLAlchemy, and db.schema — nothing from api/, betting/, beefs/, wallet/, admin/. Ten production modules import it; it imports none of them. Confirmed viable as the money-path's shared home.</div>
+    </div>
+    <div class="block"><span class="badge amber">75%</span>
+      <div class="block-title">L3 — Migration to Ledger (write side) — DOWNGRADED (FR-7.56 / FR-7.57)</div>
+      <div class="block-note"><span class="moved">was 100% → now 75%. The badge was wrong, not the code.</span> Two discoveries: (1) <code>deposit()</code> was <b>never converted</b> — <code>wallet_manager.py:133-150</code> mutates <code>w.balance</code> directly and the file imports nothing from <code>ledger.ledger</code>. The L1–L3 record says all three direct-mutation sites were converted; FR-7.12 Rev 5 separately says <code>wm_deposit()</code> "still writes it until FR-7.28 lands." Two records, contradicting. (2) <b>"Converted" meant dual-write, not migration</b> — <code>beef_engine.py:596-600</code>, verbatim: <i>"both are written in parallel until that route is migrated too."</i> Converted sites post to the ledger AND keep mutating the float column. Three money paths (deposit, FAAB, commissioner rules) bypass the ledger entirely.</div>
+    </div>
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">L3.5 — Ledger Read Integrity (FR-7.12)</div>
+      <div class="block-note">Unchanged, and <span class="moved">vindicated this session:</span> git history (<code>efe0090</code>) confirms its consolidation ruling shipped faithfully, including its deliberate exception. The three straggler <code>_to_cents()</code> copies all predate it (FR-7.54, downgraded) — not a failed ruling, just uncovered ground.</div>
+    </div>
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">Whole-cent entry validation (FR-7.50) — SHIPPED THIS SESSION</div>
+      <div class="block-note"><span class="moved">NEW BLOCK. Commit <code>6da6dca</code>, pushed.</span> <code>_dollars_to_cents()</code> promoted from <code>api/pool_routes.py</code> to <code>ledger/ledger.py</code>; <code>issue_challenge()</code>, <code>counter_challenge()</code>, and <code>_place_bet()</code> route through it before their MIN_BET checks. Closed a <b>live defect on four open routes</b>: a GM typing $20.005 was silently charged $20.00, and $20.015 silently charged $20.02 — banker's rounding, direction set by the parity of a cent nobody sees. Proved by characterization test (11/11 on the bug), inverted by the fix, re-proved by validation suite (17/17). Opus design pass: <b>no structural gap found.</b> Also restored FR-5.6b's induction base case. <b>Not deployed</b> — <code>railway up</code> is Fraser's call, not yet given.</div>
+    </div>
+  </div>
+</div>
+
+<div class="layer">
+  <div class="layer-title">BAB Economy</div>
+  <div class="row">
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">B1 — Discrete-Stop Buy-In</div>
+      <div class="block-note">Unchanged. Five stops, ledger-backed, deployed.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">B2 — Weekly Minimum Funding Model</div>
+      <div class="block-note">Unchanged this session — ruled 2026-07-16, still unspec'd and unbuilt. <code>min:&#123;team&#125;:&#123;week&#125;</code> account, min-then-wallet sequencing, <code>frozen:&#123;team_id&#125;</code> account, full <code>shortfall_sweep.py</code> rewrite. Opus-gated, money-path.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">Escrow-at-Issue (FR-7.45) — CONFIRMED UNBUILT, AND IT'S A PARENT</div>
+      <div class="block-note"><span class="moved">Verified this session:</span> <code>issue_challenge()</code> posts <b>nothing</b> to the ledger. No call exists. <code>_challenge_reserved()</code> is display-only, exactly as FR-7.45 described. Escrow happens only at accept, sized to <code>effective_amount</code>. <b>Reasoning now stated (Fraser, this session):</b> a GM should never bet money he doesn't have — no shopping the same $50 to three opponents. Multiple outstanding challenges allowed, bounded by exposure (the pending bucket), not count.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">Release / Re-escrow Primitive (FR-7.46) — HELD, WRONG SLOT</div>
+      <div class="block-note"><span class="moved">Shape ruled this session, then held.</span> Fraser ruled: one shared <code>release_escrow()</code> called by Accept, Decline, and Expiry; separate <code>reescrow()</code> called only by Accept. Spec reached Rev 3 — then verification found <b>there's nothing to release.</b> FR-7.45 is the <b>parent</b>, not a prerequisite sibling. The spec is correct in design and waits on its parent. First of six documents found aimed at a system that isn't there.</div>
+    </div>
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">Pool Config Integer-Cent Migration</div>
+      <div class="block-note">Unchanged. Its <code>_dollars_to_cents()</code> turned out to be the fix FR-7.50 needed — already written, already correct, called from exactly one place. FR-7.50 promoted it rather than building a second one.</div>
+    </div>
+  </div>
+</div>
+
+<div class="layer">
+  <div class="layer-title">Versus Bet Architecture</div>
+  <div class="row">
+    <div class="block"><span class="badge green">95%</span>
+      <div class="block-title">Beef — the reusable skeleton</div>
+      <div class="block-note">Unchanged. Still: nothing calls this skeleton from any frontend.</div>
+    </div>
+    <div class="block"><span class="badge green">90%</span>
+      <div class="block-title">[A] — Generalized matched-bet skeleton — UPGRADED</div>
+      <div class="block-note"><span class="moved">was 85% → now 90%. Verification found it more correct than documented.</span> <code>_place_beef_side()</code> takes a <b>scalar amount per call</b> and does nothing to compare the two sides — no assertion, no shared invariant. Equal stakes is purely an artifact of one variable passed twice. <b>The seam already accepts asymmetric stakes.</b> The odds engine slots in between <code>beef_engine.py:877</code> and <code>:925</code> without restructuring anything.</div>
+    </div>
+    <div class="block"><span class="badge green">90%</span>
+      <div class="block-title">Moneyline / Spread / O-U evaluators</div>
+      <div class="block-note">Unchanged. Versus bets are exactly these 3 types (corrected 2026-07-16). <span class="moved">Verified this session:</span> accept-path escrow is atomic — one transaction, one commit after both sides, <code>InsufficientFundsError</code> raises before any row is written. Half-posted state unreachable. <i>Caveat: no explicit try/except db.rollback(); atomicity relies on the exception propagating and the session owner disposing.</i></div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">Uneven stakes by odds — NOW SPEC'D AS LAW (Row 2 + Row 3)</div>
+      <div class="block-note"><span class="moved">was "ruled, backlog" → now written into the merged spec's pricing law (GE-603, SIM-805, AP-213).</span> <b>The favorite risks more:</b> issuer anchors, opponent's stake derives (<code>fairPot × p_opponent</code>), both floored, residue uncollected. Still 0% built — every versus bet charges both GMs the same today, so the central mechanic is still missing. Opus Math Review gates it; Opus is invited to break floor-both on an adversarial line. Countered card still the wrong one; reconcile mockups after the port.</div>
+    </div>
+    <div class="block"><span class="badge amber">50%</span>
+      <div class="block-title">Odds lock today — CODE STATE VERIFIED, BUT SPEC NOW OVERRIDES IT</div>
+      <div class="block-note"><span class="moved">was "100%, no drift exists" → the code finding still holds, but the product decision reversed it.</span> The verification is still true: today, three odds write sites all fire at or before accept, and no drift/refresh/rescale concept exists in the code. <b>But that describes the code, not the target.</b> The merged spec makes Dynamic Challenges live — odds are a Handshake ceiling, projections refresh, and The Adjustment reprices at Final Lock. So this block is now "current state, to be superseded" rather than a settled endpoint. <b>Consequence flip: FR-5.6b's Rulings 3, 5, 6 are load-bearing again</b> — they solve drift, and drift is coming back.</div>
+    </div>
+  </div>
+</div>
+
+<div class="layer">
+  <div class="layer-title newlayer">Beef Settlement Semantics — NEW LAYER, FR-7.58</div>
+  <div class="row">
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">Lineup snapshot at acceptance — RULED, UNBUILT, NEW SCORING ENGINE</div>
+      <div class="block-note"><span class="moved">NEW BLOCK, and it's bigger than it sounds.</span> <b>What the app does today:</b> <code>_eval_beef()</code> → <code>_team_score_for_week()</code> reads <code>Matchup.home_score</code> — Yahoo's number, whatever lineup produced it. Settlement <b>never reads BeefStarter, never reads Roster.</b> A post-acceptance swap, slot shuffle, or bench promotion is neither locked out nor detected. <b>Fraser's ruling:</b> snapshot both teams' starters at acceptance; a player moved into the starting lineup afterward shouldn't count toward that GM's beef total; slot-to-slot moves don't count as roster moves. <b>This is a new scoring engine, not a filter</b> — no beef-specific scoring path exists. Three questions open before a spec: which nine players, does a never-swapped ruled-out player count as a change, and does the GM see why the app's number differs from Yahoo's.</div>
+    </div>
+    <div class="block"><span class="badge amber">50%</span>
+      <div class="block-title">BeefStarter — exists, but isn't what it looked like</div>
+      <div class="block-note"><span class="moved">Verified this session.</span> Stores <code>player_id</code> and <code>nfl_team</code> only — <b>no slot, no projection, no week.</b> Written once at <code>issue_challenge()</code>, <b>never at accept.</b> Its own docstring: exists to drive the per-bet kickoff lock, not to lock a lineup. <b>And <code>_capture_beef_starters()</code> takes the first nine Roster rows by <code>Roster.id</code></b> — insertion order, not lineup. So the kickoff lock is gated on an arbitrary nine players, not actual starters. Flagged, unruled. Projections snapshot separately to <code>BeefChallenge.projection_snapshot</code> at issue, feeding only a staleness display flag.</div>
+    </div>
+  </div>
+</div>
+
+<div class="layer">
+  <div class="layer-title">Settlement</div>
+  <div class="row">
+    <div class="block"><span class="badge amber">60%</span>
+      <div class="block-title">settle_pool() — 4 of 5 bet types</div>
+      <div class="block-note">Unchanged this session. Bench Burn blocked on RosterSlot (FR-5.7); The Lineup needs a placement/settlement path from scratch; FR-6.14's hardcoded <code>// 3</code> split must become dynamic n-way. Opus-gated.</div>
+    </div>
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">settle_week() — escrow-close (FR-5.9 / FR-5.10)</div>
+      <div class="block-note">Unchanged. <span class="moved">Re-verified this session:</span> beef payout sums two escrow balances (<code>winner_escrow_cents + loser_escrow_cents</code>) — no odds arithmetic, no recomputation. This is why "output" needs no rounding rule: the pot is defined as the sum, so it can't disagree with itself.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">FR-7.52 — retire the dead single-party settlement branch</div>
+      <div class="block-note"><span class="moved">NEW, ruled this session.</span> The non-beef branch does <code>round(bet.amount * bet.odds, 2)</code> — rounds to <i>nearest</i>, against no ruling anyone made. It's the only place in the money path that rounds a payout. <b>FR-5.13's "unreachable" turned out to be enforced by nothing</b> — four live <code>@app.post</code> routes behind the same auth gate as beef. Ruled: delete, same treatment as <code>prop</code>.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">RosterSlot weekly-capture job (FR-5.7)</div>
+      <div class="block-note">Unchanged — no live writer. <span class="moved">Now upstream of more than Bench Burn:</span> FR-7.58's lineup snapshot needs real starting slots from Yahoo, which is this same <code>display_position</code> / RosterSlot territory.</div>
+    </div>
+  </div>
+</div>
+
+<div class="layer">
+  <div class="layer-title">Odds Stack</div>
+  <div class="row">
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">Monte Carlo odds engine</div>
+      <div class="block-note">Unchanged.</div>
+    </div>
+    <div class="block"><span class="badge green">100%</span>
+      <div class="block-title">Odds Calculator (Rev 1.9) — JS reference</div>
+      <div class="block-note">Unchanged. Do not rebuild/re-audit. The stake/pot math is <b>nine lines</b> — three in step 1 (<code>fairPot = origStake / yourProb</code>, <code>theirStake = fairPot * theirProb</code>), six in step 2 (ceiling/refund). Plus ~20 of odds↔prob conversion. <span class="moved">Note this session:</span> step 2 (the ceiling/refund math) is back in scope — it's the reference for The Adjustment now that Dynamic is live. <code>o2p()</code>/<code>p2o()</code> are pure and port as-is; the rest is braided into <code>getElementById</code>/<code>alert()</code>/<code>innerHTML</code> and needs extraction first.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">Simulation Engine + The Adjustment (was odds_engine.py) — RE-EXPANDED, DYNAMIC IS LIVE</div>
+      <div class="block-note"><span class="moved">was "three-line port, step 1 only" → now the full stack again. The merged spec put Dynamic Challenges back on the launch path, so step 2 has work to do after all.</span> The build is now five parts: (1) re-grep the seam; (2) port <code>o2p()</code>/<code>p2o()</code> + stake/pot math from the certified JS; (3) asymmetric derivation + floor-both (Opus-gated); (4) The Adjustment — Final-Lock reprice, cap at Handshake ceiling, refund excess (Opus-gated); (5) the genuinely new machinery — repricing trigger, model freeze, informational refresh. Renamed to <code>simulation_engine.py</code> per the spec's nomenclature. <b>Still gated on the handshake-is-a-handshake ruling</b> — a starter ruled out Sunday settles against the locked line; that answer shapes the Adjustment.</div>
+    </div>
+  </div>
+</div>
+
+<div class="layer">
+  <div class="layer-title">Known Debt / Findings</div>
+  <div class="row">
+    <div class="block"><span class="badge amber">70%</span>
+      <div class="block-title">FR-5.6b — REACTIVATED, PREMISE RESTORED BY DYNAMIC-LIVE</div>
+      <div class="block-note"><span class="moved">was 40% "half its rulings solve a problem that doesn't exist" → back to 70%. The Dynamic-live decision restored the premise.</span> <b>Rulings 1 and 4 remain live</b> — derive the acceptor's stake from the shared line, round up once, never re-derive (now floor-both per this session's rounding ruling). <b>Rulings 3, 5, 6 are load-bearing again</b> — they govern drift, and The Adjustment is drift. Last session called them moot; the spec un-mooted them. Its q9 base case is fixed (FR-7.50); q10 (offers don't escrow) still confirmed but note escrow-at-issue changes that too. Not a closed finding — an active input to the Simulation Engine spec.</div>
+    </div>
+    <div class="block"><span class="badge amber">70%</span>
+      <div class="block-title">FR-5.5 — championship/skunk scoping</div>
+      <div class="block-note">Unchanged.</div>
+    </div>
+    <div class="block"><span class="badge red">10%</span>
+      <div class="block-title">Railway Postgres password rotation</div>
+      <div class="block-note">Unchanged.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">FR-7.53 / 7.54 / 7.55 — small, ruled, no blockers</div>
+      <div class="block-note"><span class="moved">NEW this session.</span> <b>7.53:</b> <code>CounterRequest.countered_amount</code> is the only amount field without <code>gt=0</code> — a negative counter fails via MIN_BET, right outcome wrong door. <b>7.54:</b> three straggler <code>_to_cents()</code> copies, all predating FR-7.12 — downgraded after git history exonerated the ruling. <b>7.55:</b> <code>MIN_BET = 5.00</code> is a float in dollars; exactly representable so no live bug, but by luck of the value chosen. Folds into the integer-cents column migration.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">Integer-cents column migration — named, not spec'd</div>
+      <div class="block-note"><span class="moved">NEW this session, carved out of FR-7.50 deliberately.</span> <code>amount</code>, <code>countered_amount</code>, and every <code>Column(Float)</code> on the money path → integer cents; float never enters. FR-7.50 makes the base case true; <b>this makes it structurally impossible to violate.</b> Touches every read and write of multiple columns across every consumer.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">Tie-split rounding remainder</div>
+      <div class="block-note">Unchanged. Skunk Fee n-way tie split needs an integer-cent remainder rule. <span class="moved">Related ruling this session:</span> no championship sweep on <i>versus</i> bets — a versus fraction isn't orphaned money, it's the gap between theory and cents, and sweeping it would require rounding the sweep. Pool splits are different: that money is genuinely orphaned.</div>
+    </div>
+    <div class="block"><span class="badge red">0%</span>
+      <div class="block-title">E — Team.yahoo_team_id migration</div>
+      <div class="block-note">Unchanged. Still blocks <code>/admin/gm-email</code>.</div>
+    </div>
+  </div>
+</div>
+
+<div class="layer">
+  <div class="layer-title">Frontend / UI-UX</div>
+  <div class="row">
+    <div class="block"><span class="badge red">20%</span>
+      <div class="block-title">Tab structure / My Ledger build (actual code)</div>
+      <div class="block-note">Unchanged as CODE. <code>tools/app.html</code> still calls neither <code>/beef/challenge</code> nor <code>/beef/respond</code>. Largest gap by volume. This badge tracks BUILT code only.</div>
+    </div>
+    <div class="block"><span class="badge amber">design spec only</span>
+      <div class="block-title">My League tab + 5 response cards</div>
+      <div class="block-note">Unchanged as design. <span class="moved">But the reconciliation list inverted this session:</span> the uneven-stakes ruling means the <b>Countered card is now the wrong one</b> (it shows equal stakes, matching today's backend), while Accepted and incoming-offer were right all along. Reconcile after the odds engine ships, not before — otherwise it's two re-renders.</div>
+    </div>
+  </div>
+</div>
+
+<p style="font-size:11px; color:#888; margin-top: 24px;">Overall estimate: <b>~55% (was ~59%)</b>. Backend: <b>~57% (was ~61%)</b>. <b>The drop is denominator, not regression — nothing broke, the target got bigger.</b> Bringing Dynamic Challenges onto the launch path re-expanded the Simulation Engine from a three-line port into a five-part stack (repricing trigger, model freeze, The Adjustment, refresh), and reactivated FR-5.6b's drift rulings that last session had written off. So the same amount of built code is now a smaller fraction of a larger whole. <b>Moved down:</b> the odds stack (three-line port → full stack), the "no drift" block (100% settled → 50% current-state-to-be-superseded), FR-5.6b (40% half-moot → 70% reactivated but larger). <b>Held:</b> the matched-bet skeleton still accepts asymmetric stakes (90%), settlement escrow-close still verified (100%), the ledger primitive unchanged. <b>The honest summary:</b> this session locked the spec and, in doing so, revealed the odds work is bigger than the last diagram implied. That's the merge doing its job — surfacing scope before it surprises the build. Estimates remain best-effort reads, not an audit.</p>
+
+</body>
+</html>
