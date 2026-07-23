@@ -1,4 +1,4 @@
-﻿"""
+"""
 Creates the ledger_entries table in production. Wraps L2's
 create_ledger_table() -- additive only, per its own docstring: "safe to
 call repeatedly -- does not touch or inspect any other table."
