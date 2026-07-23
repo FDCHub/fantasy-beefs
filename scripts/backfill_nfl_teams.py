@@ -28,10 +28,11 @@ from sqlalchemy import text
 
 from db.engine_factory import get_engine  # FR-VAL10-af: canonical engine control surface
 
-DB_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres:EpxiNiHsfDEMRRCJbhXqewappXXfVeOW@reseau.proxy.rlwy.net:54032/railway",
-)
+DB_URL = os.environ.get("DATABASE_URL")
+if not DB_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Set it in the environment before running this script."
+    )
 
 # ---------------------------------------------------------------------------
 # Manual overrides — keyed by internal player id (integer).

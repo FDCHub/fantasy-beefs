@@ -23,10 +23,11 @@ import re
 
 from sqlalchemy import text
 
-DB_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres:EpxiNiHsfDEMRRCJbhXqewappXXfVeOW@reseau.proxy.rlwy.net:54032/railway",
-)
+DB_URL = os.environ.get("DATABASE_URL")
+if not DB_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Set it in the environment before running this script."
+    )
 
 # -- Bucket 1: DEF player name -> NFL team abbreviation -----------------------
 DEF_MAP: dict[str, str] = {

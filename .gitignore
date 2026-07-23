@@ -40,3 +40,6 @@ green_*.txt
 red_*.txt
 red2_*.txt
 step6b_run.txt
+.env
+.env.*
+!.env.example

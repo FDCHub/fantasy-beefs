@@ -29,10 +29,11 @@ from sqlalchemy.orm import sessionmaker
 
 CSV_URL = "https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_playerids.csv"
 
-DB_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://postgres:EpxiNiHsfDEMRRCJbhXqewappXXfVeOW@reseau.proxy.rlwy.net:54032/railway",
-)
+DB_URL = os.environ.get("DATABASE_URL")
+if not DB_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Set it in the environment before running this script."
+    )
 
 # ── Pull schema into scope ────────────────────────────────────────────────────
 # Import after DB_URL is determined so we don't accidentally hit SQLite default
