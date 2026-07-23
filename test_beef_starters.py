@@ -383,7 +383,7 @@ with SessionLocal() as db:
 
 # ── TEST 4: short roster → fewer beef_starters, accept still succeeds ─────────
 
-print("\nTest 4: short roster (t3=3 players) → 3+9=12 beef_starters, accept succeeds")
+print("\nTest 4: short roster (t3=3 players) -> 3+9=12 beef_starters, accept succeeds")
 with SessionLocal() as db:
     out = issue_challenge(t3_id, t4_id, week=2, bet_type="straight", amount=10.0, db=db)
     cid4 = out.challenge_id

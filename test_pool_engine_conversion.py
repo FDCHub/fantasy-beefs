@@ -71,7 +71,7 @@ from datetime import datetime, timezone
 
 from db.schema import (
     Base, engine, SessionLocal,
-    League, Team, Wallet, Matchup, Player, Roster, Projection,
+    League, Team, Wallet, Transaction, Matchup, Player, Roster, Projection,
     PoolConfig, PoolPot, PoolPrediction,
 )
 from config import CURRENT_SEASON as SEASON
@@ -751,7 +751,12 @@ with SessionLocal() as db:
 # now remove it, simulating the wallet disappearing between collection
 # and settlement.
 with SessionLocal() as db:
-    db.query(Wallet).filter(Wallet.team_id == II10).delete()
+    w = db.query(Wallet).filter(Wallet.team_id == II10).first()
+    # FK teardown ordering: the pool collection above wrote a child Transaction
+    # row (wallet_id FK, pool_engine.py:300). Under FK enforcement it must be
+    # removed before the Wallet it references, or the DELETE is rejected.
+    db.query(Transaction).filter(Transaction.wallet_id == w.id).delete()
+    db.query(Wallet).filter(Wallet.id == w.id).delete()
     db.commit()
 
 pool_before_s10    = balance_of(f"pool:{L10}")
