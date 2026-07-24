@@ -506,9 +506,10 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
         .all()
     )
 
-    if not pending:
-        return SettlementReport(week=week, total_bets=0, bets_won=0, bets_lost=0,
-                                total_staked=0.0, total_payout=0.0)
+    # FR-8.7-BUG-1: empty weeks must not return early. The empty setup and
+    # zero-iteration payout loop intentionally fall through to the shared,
+    # claimant-specific guarded completion below. Reintroducing an early return
+    # would leave the committed Phase-1 claim stranded as CLAIMED.
 
     # Snapshot wallet balances before settlement
     wallet_ids    = {b.wallet_id for b in pending}
