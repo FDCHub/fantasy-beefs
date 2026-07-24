@@ -1,10 +1,12 @@
-# Fantasy Beefs — Findings Register v14
+# Fantasy Beefs — Findings Register v15
 
-**Supersedes:** v13
-**Date:** 2026-07-23 (Session 2)
-**v14 change:** adds Section 14 — the 2026-07-23 security-remediation session. Records the scope ruling that supersedes Master Plan v8 on the odds-port question; the first verified production restore point in the project's history; FR-SEC-DB-2 opened and partially classified; FR-SEC-DB-3 opened and remediated; FR-SEC-DB-1 rotation paused mid-sequence with steps 1–7 complete. All prior content carried unchanged from v13.
+**Supersedes:** v14 (which superseded v13)
+**Date:** 2026-07-23 (Session 2, close)
+**v15 change:** adds Section 16 — the independent code audit, six status corrections, the revised build order with two inserted prerequisites, and the three-document transition process. **Section 15's gate table is superseded by Section 17.**
 
-**Authority note.** Sections 1–13 are carried verbatim from v13. Section 14 is additive. Where Section 14 contradicts an earlier section, Section 14 governs — this applies to exactly one item, the 12.9 unreconciled flag, now resolved.
+**Authority note.** Sections 1–14 are carried verbatim. Sections 16 and 17 are additive. Where they contradict an earlier section, the later section governs. Two such contradictions exist and both are marked: the 12.9 unreconciled flag (resolved in 14.1) and Section 15's gate table (superseded by Section 17).
+
+**Working-tree convention.** v15 is tracked; v14 is removed from the working tree in the same commit. Git history preserves it. Only the latest register enters future transition packages.
 
 ---
 
@@ -231,3 +233,174 @@ Untracked and expected: `Findings_Register_v13.md`, `fantasy_beefs_architecture_
 | FR-8.7 | PARTIAL |
 
 **Build order LOCKED:** 1 → 2 → 3 → 5 → 4.
+
+---
+
+## Section 16 — Independent code audit and status corrections (2026-07-23 S2 close)
+
+### 16.1 — The audit
+
+An independent review was run against the tracked repository archive at HEAD `9ff096b` — 269 entries, no Git metadata. The reviewer inspected source and specs directly and could not verify commit hash, branch, push status, or remote parity; those remained reported facts on its side.
+
+**Evidence record:** `INDEPENDENT_CODE_SPEC_AUDIT_9ff096b.md`. Reviewer-authored. Not reproduced or independently verified by Claude.
+
+**Method.** Public top-level functions and public class methods in runtime modules. Excludes leading-underscore names, model classes with no methods, tests, migration entry scripts, one-off seed scripts, and Pydantic request/response classes. **243 public runtime callables** across 17 subsystem groups.
+
+**Counting discipline adopted.** Exact counts where a spec defines a closed denominator. `≥` where only a lower bound exists. "Unavailable" where specs define behavior without separable operations. **`~25` missing high-authority operations is a summary estimate, not an audited total.** These do not convert to completion percentages.
+
+### 16.2 — What the audit established
+
+**Spec 1's schema exists but is disconnected from the live flow.** `beefs/beef_engine.py` references none of `BeefProposal`, `BeefProposalStarter`, `active_proposal_id`, `accepted_proposal_id`, `challenge_mode`, `response_status`, or the new `wager_type`. Old and new challenge models run in parallel with no feature-gate boundary. This is consistent with the additive S1-R1 ruling and was not previously stated as a code fact.
+
+**Spec 2 has zero implementation.** No `escrow:challenge:{id}` at issue, no ordered funding legs, no reversal linkage, no protocol-event identity, no min-first funding, no atomic acceptance against the new schema. The legacy flow uses reservation arithmetic and places both sides into bet escrow at acceptance.
+
+**No `simulation_engine.py` exists.** Monte Carlo team and player simulation and probability-to-American conversion are present. The specified surface — `o2p`, `p2o`, `derive_stakes`, `adjust_escrow`, Handshake, informational refresh, Final-Lock claim, Final-Lock execution, Final-Lock recovery — is absent.
+
+**The frontend makes zero core challenge calls.** `tools/app.html` calls neither `/beef/challenge` nor `/beef/respond`. Backend routes exist.
+
+**Direct float mutation persists in three modules** — `wallet/wallet_manager.py` deposit, `admin/commissioner_rules.py` several sites, `betting/settlement_engine.py` payout mirrors. Confirms the ledger is not the exclusive write authority.
+
+### 16.3 — FR-COMM-1 — OPENED
+
+| Field | Content |
+|---|---|
+| **Name** | Direct money-balance mutation in `admin/commissioner_rules.py` |
+| **Issue Summary** | Direct money-balance mutations exist in `admin/commissioner_rules.py`. Their classification as approved compatibility mirrors or unauthorized ledger bypasses is **unresolved**. **Verified:** the mutations exist. **Not verified:** which are authoritative writes; which are deliberate mirrors; whether paired ledger entries occur elsewhere in the same transaction; whether any path can create ledger/float divergence. The module has no spec denominator. |
+| **Options** | **A.** Transaction-level caller and posting audit now. **B.** Defer to Spec 5, which owns economy account identity. **C.** Convert all sites to `ledger_post()` without auditing first. |
+| **Recommendation & Reasoning** | **A, scheduled — not immediately.** This is an open audit finding, not a confirmed defect, and treating it as one would be the same error as the rejected "credential is dead" inference. But it is a money path outside the ledger in a module with no denominator, and production has zero money rows today — the cheapest possible time to audit. C is wrong: converting before classifying could remove a deliberate mirror that something reads. Fold the audit into the FR-8.7 settled-reader grep, which already walks money-path readers. |
+
+### 16.4 — Status corrections ADOPTED
+
+Six corrections. Each because a document contradicted its own evidence.
+
+| Item | Was | Now |
+|---|---|---|
+| **FR-8.7** | "PARTIAL — implemented, validated to 6b, not shipped" | **Implementation present; verification, migration, and deployment outstanding.** |
+| **Spec 1** | "SHIPPED `dd6d363`" | **Implemented, tested, and committed; migration and deployment pending.** |
+| **Backend** | "Built, tested, deployed-pending" | **Legacy engines and infrastructure present; target proposal, escrow, pricing, Dynamic, and frontend path incomplete.** |
+| **Auth** | "No UI, token hardcoded `'dev-stub-token'`" | **Backend authentication and authorization present** (12 callables: hashing, JWT, current-user/GM dependencies, commissioner and ownership checks, registration, authentication). **Frontend login absent or development-stubbed.** Two separate facts, previously conflated. |
+| **Endpoints** | "two distinct endpoints" | **Two distinct network addresses; database and service identity unresolved.** |
+| **FR-5.7** | Listed as an open gap | **`roster_slots` exists in production and carries rows.** Migration is live. |
+
+**On FR-8.7.** The principal service surface is in tracked source: `settle_week(..., recovery_token=None)`, `recover_week(...)`, `CLAIMED`/`COMPLETED` lifecycle handling, row-locking queries, recovery-token validation, atomic completion updates, recovery audit behavior. Schema and migrations carry `WeekSettlement.status`, `WeekSettlement.recovery_token`, and settlement recovery audit fields. **Outstanding:** tests 6c and 6d; settled-reader grep; review package; final review; migration execution; deployment and production confirmation.
+
+**On Spec 1.** "Shipped" implies reaching an operating environment. The migration is unexecuted and nothing is deployed.
+
+**On backend.** Individual legacy engines are built. The target betting backend is not — it lacks Spec 1 service integration, all Spec 2 behavior, the Simulation Engine, asymmetric stakes, Dynamic Handshake and Final Lock, frontend integration, several pool behaviors, and ledger-exclusive money writes.
+
+### 16.5 — Build order REVISED (RULING)
+
+```
+Security remediation
+  → FR-8.7 closure
+  → controlled foundation deployment
+  → FR-AC-ISO-1 gate
+  → Spec 2
+  → Spec 3A
+  → Spec 3B
+  → Spec 5
+  → Spec 4
+```
+
+**The five-spec internal order is unchanged: 1 → 2 → 3 → 5 → 4.** This ruling refines prerequisites and internal implementation boundaries. It does not change the authoritative spec order.
+
+**Two prerequisites inserted before Spec 2:**
+
+**FR-8.7 closure.** The remaining scope is bounded, it governs settlement safety, and Spec 2 adds settlement-relevant escrow complexity. Unresolved claim-first behavior becomes harder to reason about once more money paths sit on top of it.
+
+**FR-AC-ISO-1 gate — not a build stage.** Spec 2's atomic acceptance depends on deterministic wallet-row locking. The warning at `beef_engine.py:877` reports an isolation level ignored because the connection was already established. Configuration intent is not evidence.
+
+**Four gate criteria, all required:**
+
+1. The actual PostgreSQL transaction isolation level used by the relevant application transaction.
+2. `SELECT ... FOR UPDATE` serializes conflicting acceptance paths as intended.
+3. Two concurrent attempts yield exactly one valid economic result — no duplicate posting, no partial posting.
+4. The proof uses the same engine, session, and transaction-construction pattern Spec 2 will use.
+
+**A configuration setting or intended isolation level does not satisfy this gate. Observed concurrent outcomes do.** This may not require completing every remaining FR-VAL10-ac item; the isolation and concurrency proof comes first.
+
+**Spec 3 decomposed — implementation boundary only:**
+
+**3A — pricing kernel.** `o2p`, `p2o`, `derive_stakes`, immutable pricing result types, adversarial math tests, pricing provenance contract. Sufficient for correctly priced Locked proposals; lets the frontend contract stabilize.
+
+**3B — Dynamic Handshake and Final Lock.** Handshake funding and ceilings, model freeze, informational refresh, `adjust_escrow`, Final-Lock claim-first execution, refunds, recovery, final-term freeze.
+
+**Boundary reasoning.** Spec Rev 7 separates mode-agnostic pricing from lifecycle orchestration and states the caller decides whether `adjust_escrow` runs — Locked never calls it, Dynamic calls it exactly once. `adjust_escrow` is part of the certified Flexible Stake and Return mechanism, but specifically its Dynamic Final-Lock half. It is not needed to price or accept a Locked Challenge.
+
+**Full Spec 3 remains required before betting activation.** The decomposition is not permission to activate betting before 3B completes.
+
+**Frontend may begin in parallel** after Spec 2's proposal/escrow API shape and Spec 3A's pricing payload both freeze. Build against explicit fixtures. Dynamic-specific cards and Adjustment states do not freeze until 3B settles. **Caution:** the locked response card designs were written to work under either symmetric or asymmetric stakes because pricing was unsettled when designed. Freezing the frontend contract before pricing freezes reintroduces that ambiguity.
+
+### 16.6 — Transition process ESTABLISHED
+
+Three documents replace five. Two change every cycle.
+
+| File | Role | Changes |
+|---|---|---|
+| `FantasyBeefs_Package.md` | Current state, next actions, reviewer carry-forward | Every cycle |
+| `Findings_Register_vN.md` | Permanent additive record. Tracked. | Every cycle |
+| `FantasyBeefs_Plan.md` | The arc and its gates | By ruling only |
+| `INDEPENDENT_CODE_SPEC_AUDIT_*.md` | Evidence record. Reviewer-authored. | When re-audited |
+
+**`FantasyBeefs_MasterPlan_v8_LaunchPath.md` is superseded for all planning purposes** by `FantasyBeefs_Plan.md`. Retained as history.
+
+**Architecture diagram retired** in favor of the Part B module inventory table, which is code-derived rather than estimated.
+
+**The Package is read-order gated.** Parts A, B, D, E are open. Part C — build order and next actions — is quarantined from the reviewer until it states its own sequencing view. Reading our order first produces agreement, which is worth nothing.
+
+**Reviewer appends, does not author.** At its session close it produces a Reviewer's Carry-Forward — what it challenged and how it resolved, what remains open, what it could not verify, what was in progress. Folded into the next Package as Part F. One file, both perspectives.
+
+**Carry-forward records open questions and unverified items, not settled conclusions.** Reading its own prior conclusions would anchor it on itself — the same independence failure, self-inflicted. Standing instruction: re-derive, do not recall.
+
+### 16.7 — The reviewer's independence failure, recorded
+
+The reviewer correctly quarantined the build order last cycle. It then accepted our **problem framing** in four places without independent evidence:
+
+1. **FR-SEC-DB-2** — recorded `reseau` as unclassified pending investigation, using our framing, our finding, our proposed next step. Never asked whether a TCP check is the right first move.
+2. **The scope ruling** — ratified Option B and carried the reasoning forward as settled. Never tested whether Week 1 is achievable given what it later found: ~25 missing operations and a frontend making zero core calls. It had the evidence to challenge a schedule claim and did not.
+3. **The five-spec decomposition** — reviewed sequencing *within* the structure, never asked whether five specs is the right decomposition.
+4. **"Two distinct endpoints"** — caught the wording but framed it as phrasing rather than asking whether anyone has determined what `reseau` is.
+
+**Quarantining a build order protects one decision. The pattern is broader: accepting our framing and reviewing inside it.**
+
+**Countermeasure adopted:** `FantasyBeefs_Plan.md` Section 5 lists twelve load-bearing assumptions as explicit challenge targets. Each pass must also name what it could not verify. Stating "I examined assumption N and found no basis to challenge it" is a required output form, not a non-answer.
+
+### 16.8 — Repository state at close
+
+| Commit | Content |
+|---|---|
+| `c353d2b` | security: remove hardcoded DB connection strings from three scripts |
+| `9ff096b` | docs: track Findings Register v14 |
+
+Both pushed. `git status -sb` no ahead/behind marker; `git log origin/..HEAD` empty. **In sync at `9ff096b`.**
+
+**Repository archive** for review: `fantasy-beefs_9ff096b.zip`, 269 entries, built via `git archive`. Filter for `secrets/`, `.env`, `.db`, `.dump`, `.gpg` returned nothing.
+
+**Nothing deployed. No migration run. No credential rotated.**
+
+---
+
+## Section 17 — Current gate status (supersedes Section 15)
+
+| Gate | Status |
+|---|---|
+| **Scope authority** | **RULED.** Five-spec program authoritative. |
+| **Build order** | **REVISED.** Security → FR-8.7 → deployment → FR-AC-ISO-1 → Spec 2 → 3A → 3B → 5 → 4 |
+| FR-SEC-DB-1 | **PAUSED** at step 8 of 11. Steps 1–7 complete, non-repeating. |
+| FR-SEC-DB-2 | **OPEN.** Source fixed and pushed; history unremediated; host unclassified. |
+| FR-SEC-DB-3 | **REMEDIATED**, qualified. |
+| **FR-COMM-1** | **OPEN — new.** Commissioner-rules float mutation unclassified. |
+| FR-VAL10-af | SATISFIED — not deployed |
+| Spec 1 | **Implemented, tested, committed; migration and deployment pending** |
+| **FR-8.7** | **Implementation present; verification, migration, deployment outstanding.** Six items. |
+| FR-AC-ISO-1 | **OPEN — promoted to Spec 2 entry gate.** Four criteria. |
+| Spec 2 | Opus-ready, not reviewed. Two prerequisites now precede it. |
+| Spec 3A / 3B | Not started. Both required before betting activation. |
+| Spec 5 / Spec 4 | Not started |
+| FR-VAL10-ac | Unblocked. `pg-fantasy-test` running. FR-AC-ISO-1 is the gating subset. |
+| FR-DEPLOY-1 | Open — four commits running nowhere |
+| FR-INFRA-3 / FR-INFRA-4 | Open |
+
+**Five-spec internal order unchanged: 1 → 2 → 3 → 5 → 4.**
+
+**Milestones:** August 1, 2026 = platform launch, draft window. NFL Week 1 = betting activation. **No symmetric-stake fallback authorized.**
