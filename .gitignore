@@ -43,3 +43,6 @@ step6b_run.txt
 .env
 .env.*
 !.env.example
+
+# Repo archives are not source: snapshot zips of the working tree, never tracked files.
+*.zip
