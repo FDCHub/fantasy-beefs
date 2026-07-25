@@ -8,7 +8,7 @@
 
 ## Repository state — verify before citing
 
-Branch `remediation/foundation-phase-1`, HEAD **`47a4012a659cceb69f7a24a97e9fae4050524365`** at session close. Nothing deployed.
+Branch `remediation/foundation-phase-1`. Session-3 substantive commit: **`47a4012a659cceb69f7a24a97e9fae4050524365`**. Documentation-only commits follow it, including corrections to this file, so **`git rev-parse HEAD` will legitimately differ** — that is not a stale SHA. What must hold: HEAD is a descendant of `47a4012`, and `git diff --name-only 47a4012..HEAD` returns markdown only. Nothing deployed.
 
 Runtime source unchanged from `59be320`, proven at `fd08e84` and extended to `47a4012` by a documentation-only commit: **zero `.py`**, nothing under `app/`, `db/`, `tests/`.
 
