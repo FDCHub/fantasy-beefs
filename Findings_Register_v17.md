@@ -981,3 +981,277 @@ Claude states what it is about to build and why before building — one sentence
 | Build authorization | "No builds" | **RULING-BUILD-1** |
 | Railway CLI upgrade | — | Deliberately deferred |
 | FR-8.7 closure | Six items | Six items, unchanged |
+
+---
+
+## Section 21 — 2026-07-25 session 3 measurement session
+
+**Session shape:** measurement session. Zero production mutations. Zero commits. Nine artifacts drafted, none authorized.
+
+---
+
+### 21.1 — FR-SEC-DB-6 — NEW, VERIFIED. No vendor password recovery at any tier; Hobby has no guaranteed support response
+
+**Issue Summary**
+
+Railway's support documentation places Trial, Free, and Hobby on community support through Central Station, with employee participation possible and **responses not guaranteed**. Pro gets direct help, usually within 72 hours, plus private threads. Ordinary support is not an email channel.
+
+At **every** tier, Railway has stated publicly that they do not offer password recovery services, and that a password set through SQL is stored in a form their support team cannot retrieve. A Hobby user posting the exact desync-lockout scenario was not given a reset.
+
+**Consequence**
+
+"Stop and escalate to Railway support" is not a recovery step. It is a place to wait. Escalation is informational, never a dependency.
+
+Pro is worth buying for whatever backup and PITR capability is **verified on this workspace** — see 21.9 — and for private threads. Not for a password reset. No tier provides one.
+
+---
+
+### 21.2 — FR-SEC-DB-7 — NEW, VERIFIED. Railway SSH is database-administrative independent of the PostgreSQL password
+
+**Statement**
+
+> Railway SSH authorization is database-superuser-equivalent on this service. A registered SSH key reaches OS root; the container receives the live PostgreSQL credential through `PGPASSWORD`; and Unix-socket HBA trust independently permits passwordless access as `postgres`. Rotating the PostgreSQL password revokes neither path.
+
+**Evidence, measured 2026-07-25**
+
+- `railway ssh --service Postgres --environment production whoami` → `root`
+- `env -u PGPASSWORD psql -h /run/postgresql -U postgres -w -Atl` → database list. Credential removed, prompting disabled, access survived. **Socket trust proven by removal, not inferred from the file.**
+- The same command **without** `-h /run/postgresql` → `fe_sendauth: no password supplied`, establishing that ambient TCP access depends on `PGPASSWORD` and that no `.pgpass` fallback exists.
+
+**Provenance correction.** This is a **rediscovery**, not a discovery. The 2026-07-08 session already used `pg_dump -U postgres -h /run/postgresql railway` over the socket, documenting it as bypassing the broken external-auth path. Seventeen days of planning then designed a `pg_hba` trust-mode edit to obtain access the record showed already working.
+
+**Consequence.** Railway account and SSH-key control must be treated as at least as privileged as the PostgreSQL password.
+
+---
+
+### 21.3 — FR-SEC-DB-9 — NEW, VERIFIED. Governing Railway rotation path is wrong
+
+> **FR-SEC-DB-9 — Governing Railway rotation path is wrong.**
+>
+> Live production observation on 2026-07-25 established the actual control as **Postgres → Database → Config → Connection → Regenerate**. Current governing artifacts that specify **Database → Credentials → Regenerate** are incorrect. The bad path originated as a v15 "correction" to the v14 Config path; live observation shows v14 was right on that point. Rev 8 of the rehearsal and Rev 4 of the desync procedure must use the measured path.
+
+**Affected artifacts:** `FantasyBeefs_Architecture_v15_ChangeSpec_2026-07-25.md` §5 · desync procedure Rev 3 · rehearsal Rev 7 Mutation 1.
+
+**Root cause.** The v15 correction was derived from Railway's documentation, which describes a Credentials tab. The deployed dashboard presents `Data · Stats · Config` under Database. **A documentation page is not a UI observation.**
+
+**Also measured on that panel:**
+
+| Fact | Value |
+|---|---|
+| Credential shown at rest | Yes — Username `postgres`, Password masked, with reveal and copy controls |
+| Representation | **Password only.** No DSN anywhere on the panel |
+| Control label | `Regenerate`, under a `Regenerate Password` heading |
+| Warning text | *Breaks existing connections until they use the new password.* |
+| Adjacent mutation controls | `Convert to HA`, `Add PgBouncer` — **prohibited during credential work** |
+| Extensions installed | `plpgsql v1.0` only — restore-comparison baseline |
+
+**On the warning text — do not overread it.** PostgreSQL does not re-authenticate established sessions against the role password. Whether Railway's Regenerate additionally terminates backends is **unmeasured**. The defensible statement:
+
+> Regenerate is expected to disrupt dependent database connectivity because `fantasy-beefs` continues to hold stale value 4. New or recycled connections using that literal cannot authenticate after the role moves. Whether already-established sessions are terminated immediately by Regenerate remains to be measured.
+
+The rehearsal's new M10 probe settles it.
+
+---
+
+### 21.4 — FR-DOC-V15-1 — NEW. v15's UI-derived claims lose their presumption of correctness
+
+Scoped by **evidence type**, not blanket.
+
+**Reclassified UNVERIFIED:** any v15 claim about dashboard navigation, tab names, or control labels. FR-SEC-DB-9 is one instance; others are unaudited.
+
+**Standing:** v15 claims derived from CLI or API measurement — the deploy mechanism, the FR-DEPLOY-1 widening — since those were re-measured directly this session.
+
+**Load-bearing item in the reclassified bucket:** the claim that Backups and PITR are Pro-gated, verified on both Backups tabs on 07-25. That is UI-derived and it underpins the entire restore-point argument. **Re-reading the live Backups tab is the first evidence item in the next session's queue.**
+
+---
+
+### 21.5 — FR-PROC-ALTER-1 — NEW. The "manual SQL failed previously" prohibition is unsourced
+
+**Issue Summary**
+
+Exhaustive literal grep across the project panel. Every document mentioning `ALTER USER` or `ALTER ROLE` is July 7–8 era — Master Plan v4, v5, v6, handoff v37, opener v37, the MVP roadmap — and **all of them describe the operation as queued and deliberately not executed**.
+
+No document anywhere records an executed attempt.
+
+The claim *"manual SQL — that path failed previously"* first appears in `fantasy_beefs_architecture_print_v14.html`, dated 7/23, two weeks after the deferral. It then propagates into the 07-25 opener, register v16, the 07-24 handoff, and the v15 change spec. Register v16 attributes it to the opener; the opener asserts it flatly. **Circular, and no carrier names the operation it prohibits.**
+
+The only July 9 artifact contains zero occurrences of *rotation*, *password*, *credential*, or *D2*.
+
+**Disposition**
+
+> Prior project artifacts claim a manual SQL password-change failure, but no underlying executed attempt has been located. Earlier artifacts instead show the operation queued and deliberately deferred. The claimed historical failure is therefore **UNVERIFIED**, and the operation is presently **UNTESTED**.
+
+**Caveat.** Absence in the panel is not absence in reality. Sessions between July 9 and July 23 may have artifacts outside the panel.
+
+**Corroborating measurement.** `grep -rn POSTGRES_PASSWORD /usr/local/bin` inside the production container returns hits only in `initdb --pwfile`, `file_env`, validation warnings, and an init-block `PGPASSWORD` export. `grep -rn ALTER` returns only `ALTER SYSTEM` and `ALTER DATABASE ... REFRESH COLLATION VERSION`. **No boot-time password reapplication exists in the image.** So `ALTER ROLE` should hold durably, and the historical failure has no in-container mechanism.
+
+**Residual, not testable from inside.** Railway's control plane performs Regenerate from outside the container. If it ever re-asserts a password it believes correct, a socket-set value could silently revert. Unresolved; the rehearsal's T4a/T4b transitions probe it.
+
+---
+
+### 21.6 — 18.4 arrival is now bounded to a deployment
+
+`Postgres` deployment `e1f535d9` created **2026-07-09T00:26:44Z**. Postmaster start **2026-07-09T00:27:47Z** — 63 seconds later.
+
+> Production runs PostgreSQL 18.4, delivered by a deployment on 2026-07-09, not by a spontaneous image pull. Artifacts written after that date describing "upgrade production to 18.4" as a future action were stale. The actor that initiated the deployment remains unclassified.
+
+Uptime at measurement: 16 days, no restart.
+
+---
+
+### 21.7 — FR-INFRA-CRLF-1 — NEW, VERIFIED. PowerShell stdin carries CRLF
+
+`@'line1'@ | docker exec -i guardtest od -c` → `l i n e 1 \r \n`.
+
+**Consequence.** Any construct requiring exact line-terminator matching is unsafe on this path. A nested shell heredoc fails: `sh` compares `SQL\r` against `SQL`, never terminates, and feeds the terminator line to psql as a statement — observed as `ERROR: syntax error at or near "SQL"`.
+
+**Scope.** psql tolerates CRLF; every backslash command in the same run worked. **Plain `sh`-over-stdin remains valid and is not implicated.** Only exact-terminator constructs are affected.
+
+**Retired:** nested shell heredocs over this transport.
+
+---
+
+### 21.8 — FR-INFRA-SSH-ARG-1 — NEW, VERIFIED. `railway ssh` joins argv and does not preserve grouping
+
+`railway ssh ... sh -c 'echo A;echo B'` → `B` only. `railway ssh ... psql -Atc "SHOW log_statement"` → `database "log_statement" does not exist`.
+
+`railway ssh` joins its positional arguments with spaces and hands the string to a remote shell, which reparses it. `echo a b c` returning `a b c` was consistent with joining and never tested grouping.
+
+**Prohibition.** A credential must never pass through `railway ssh` argv — a `;`, `$`, or backtick in a generated password would execute remotely as root.
+
+**Proven transports:** PowerShell here-string → stdin → `psql`, and PowerShell here-string → stdin → `sh` (no arguments, script wholly on stdin, quoting parsed by the container shell where it behaves normally).
+
+---
+
+### 21.9 — Measured infrastructure facts
+
+**Both database services**
+
+| Property | Value |
+|---|---|
+| Image | `ghcr.io/railwayapp-templates/postgres-ssl:18` — **not stock `postgres:18`** |
+| Server | `PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1)` |
+| psql client | `18.4 (Debian 18.4-1.pgdg13+1)` — `\getenv` available |
+| HBA file | `/var/lib/postgresql/data/pgdata/pg_hba.conf` — the published path, verified |
+| HBA rules | 7 rows, lines 117–128, `error` null throughout, **identical across services** |
+| Active rules | `local all all trust` (117) · `host all all 127.0.0.1 trust` (119) · `host all all ::1 trust` (121) · replication equivalents (124–126) · `host all all all scram-sha-256` (128) |
+| Include directives | **None active.** `include`/`include_if_exists`/`include_dir` appear only in comments |
+| Logging | `log_statement=none` · `log_min_error_statement=error` · `log_min_duration_statement=-1` · `log_min_duration_sample=-1` · `log_transaction_sample_rate=0` · `log_destination=stderr` · `logging_collector=off` |
+| initdb.d | `99-pgbackrest-init.sh`, `init-ssl.sh` |
+
+**Line 128 is stock.** The unaligned appended rule comes from the stock entrypoint's `pg_setup_hba_conf`, called only inside the initialization branch. An earlier inference that its formatting proved a non-stock image was **wrong**; the image is customized elsewhere — `wrapper.sh`, pgBackRest, `init-ssl.sh`.
+
+**`logging_collector=off` with `log_destination=stderr`** means PostgreSQL writes to stderr, the container captures it, and Railway ingests it into the dashboard log store. There is no local logfile to rotate. A failed plaintext statement's text would land in Railway's retained logs — which is why mechanism A's PANIC guard exists.
+
+**Service and volume identities**
+
+| Resource | Service ID | Volume | Volume ID |
+|---|---|---|---|
+| `postgres-test` | `f03178f3-ecce-4a12-9d58-39125e41a161` | `postgres-volume-F_kl` | `9f491b83-81f5-4609-bcfd-7b223db06794` |
+| `Postgres` | `cd0ba357-63dc-4c9e-800f-362b004246e7` | `postgres-volume` | `16983665-ead5-4225-9abf-7bfd29a08b96` |
+| `fantasy-beefs` | `9400fc77-6050-4f34-b6a2-d5a2f963716a` | none | — |
+
+`fantasy-beefs` has `source: null` — no connected source, reinforcing the `--from-source` prohibition. Latest deployment `7cc12e15`, created 2026-07-18T02:47:02Z. That yields no commit SHA — FR-DEPLOY-1 stands — but bounds the running tree to a July 18 upload.
+
+`postgres-test` deployed 2026-07-23T07:26:36Z, during the security work and newer than `Postgres`.
+
+**CLI surface, read from the installed binary (5.6.2)**
+
+- `railway redeploy` — *"Redeploy the latest deployment of a service."* `--from-source` is the opt-in to pull new source; **the default touches no source**
+- `railway restart` — *"Restart the latest deployment of a service (without rebuilding)"*; says nothing about variables
+- `railway service delete --service <ID> --environment production` — exists; `--2fa-code` required non-interactively when 2FA is enabled
+- `railway volume delete --volume <ID>` — exists
+- **`railway delete` / `rm` / `remove` deletes the PROJECT.** One word from `railway service delete`
+
+**Variable application resolution.** Use `railway redeploy --service fantasy-beefs --environment production`. Never `--from-source`, never `-y` during an incident, never `railway up` — `railway up` uploads a working-tree snapshot and would change running code as a side effect of fixing a password.
+
+**FR-DEPLOY-1's Restart note reclassified.** It recorded that Restart picks up variable changes without a rebuild. That is a prior observation possibly involving an already-applied variable or older platform behavior. **Needs re-derivation.** The rehearsal's T4a/T4b settle it empirically.
+
+**`postgres-test` size reconciliation**
+
+> The 134.9 MB Railway volume metric does not represent 134.9 MB of live PostgreSQL database contents. Current `PGDATA` usage is 47 MB and both ordinary databases are 7,678 kB each. The source of the remaining accounting difference is unclassified.
+
+The unexplained portion **inside** the 47 MB likewise stays unclassified. Production shows the same inflation: 221.6 MB reported against a 243,863-byte dump. **Do not read the Railway volume figure as evidence of stored data.** Table count remains the authoritative empty-service gate; size is a sanity check.
+
+---
+
+### 21.10 — Mechanism A — VERIFIED end to end on the bench
+
+Local disposable `postgres:18`, psql `18.4 (Debian 18.4-1.pgdg13+1)` — client build identical to both Railway services.
+
+| Property | Evidence |
+|---|---|
+| Blocks when the guard is unsatisfied | `ABORT-GUARD-NOT-ESTABLISHED`; verifier `ptQJH` **unchanged** |
+| Blocks when `PGPASSWORD` is absent | `ABORT-PGPASSWORD-ABSENT`; verifier unchanged; `\q` exits cleanly |
+| Permits when satisfied | `REPAIR-APPLIED`; verifier `ptQJH` → `2bXfm` |
+| **Installs the intended value unmangled** | `guard1` authenticates over `172.17.0.3`, a path where `definitelywrong` is rejected |
+| psql primitives | `\getenv` · `:{?newpw}` · `\gset` · `\if` · `:'newpw'` all exercised |
+| Transport | Direct PowerShell here-string → psql stdin, no shell wrapper |
+
+**The fourth row took four attempts and is the one that matters.** A changed verifier proves a statement ran, not that the intended credential landed — SCRAM re-salts on every set, so a mangled or truncated value moves it too. Only the authenticated round trip with its negative control distinguishes them.
+
+**Shipping form** — no shell layer, so CRLF is irrelevant and no terminator exists to mismatch:
+
+```
+\getenv newpw PGPASSWORD
+\if :{?newpw}
+\else
+\echo ABORT-PGPASSWORD-ABSENT
+\q
+\endif
+SET log_min_error_statement = 'PANIC';
+SELECT lower(current_setting('log_min_error_statement')) = 'panic' AS guard_ok \gset
+\if :guard_ok
+ALTER ROLE postgres PASSWORD :'newpw';
+\echo REPAIR-APPLIED
+\else
+\echo ABORT-GUARD-NOT-ESTABLISHED
+\endif
+```
+
+Emptiness is gated upstream by a byte-count measurement, since `\getenv` leaves the variable set when the environment variable exists but is empty.
+
+---
+
+### 21.11 — New standing process rules
+
+**Negative controls.**
+
+> When a probe's success would look identical under a permissive path, it is not evidence until the same path has been shown to reject a known-invalid input.
+
+Earned by measurement. A bench `SELECT 1` over `-h 127.0.0.1` returned `1` and proved nothing, because line 119 is `host all all 127.0.0.1 trust`. The identical output over `-h 172.17.0.3` became evidence only after a wrong password was shown to fail on that same path. Applies to authentication, authorization, and signature or hash verification. Not to configuration reads.
+
+**Non-mutating production inspection is GREEN.** Closes the RULING-BUILD-1 classification gap.
+
+> Non-mutating production inspection is GREEN when the exact command and target are named beforehand, it alters no filesystem, process, configuration, database, network, deployment, or credential state, and its purpose is diagnostic verification of a precondition.
+
+Green: `railway ssh ... echo` · `railway ssh ... cat <verified-path>` · `railway variables list` · reading logs · an authenticating `SELECT`. Not green, and not made green by arriving over SSH: `sed -i` · `ALTER USER` · package installation · file mutation · redeploy, restart, or `railway up` · network changes · an interactive shell with unspecified actions.
+
+**No second credential mutation.**
+
+> No second credential mutation while the result of the first credential mutation is unresolved. Preserve every candidate credential. Diagnose the resulting state first.
+
+**Credential transport.** Never pass a production credential in a local CLI argument or a `-e NAME=value` flag when it can remain inside the remote or container environment. Bench values reached PSReadLine history via `docker exec -e`; the production design keeps `$PGPASSWORD` inside the container for exactly this reason.
+
+**A failed diagnostic proves nothing until the diagnostic is calibrated.**
+
+**Counts in documents are a drift generator.** Name instruments — "M1–M8" — never "all seven." A count goes stale the moment an instrument is added; a name does not.
+
+**Read the live UI, not the documentation.** FR-SEC-DB-9 originated in a doc page describing a surface the deployed dashboard does not present.
+
+---
+
+### 21.12 — Composition-drift tally
+
+Eight instances this session, all one shape: a careful local section written correctly, then a downstream section written from memory of the pre-edit state rather than derived from it.
+
+1. Desync Rev 1 — options table contradicted itself two rows apart
+2. Desync Rev 1 — classification table could not use its own discriminator
+3. Desync Rev 2 — axis 2 too coarse to prove what it claimed
+4. Desync Rev 2 — §10 branching contradicted §1.2
+5. Rehearsal Rev 2 — prose described a program different from the code beneath it
+6. Rehearsal Rev 3 — §3.3 contradicted its own matrix
+7. Rehearsal Rev 5 — "all seven" left stale after M8 was added
+8. Rehearsal Rev 6 — M1's changed semantics ignored by the password-only branch
+
+**Structural mitigations adopted:** derivation tables instead of prose summaries · instruments named, never counted · one-row-per-state branch tables mirroring the state definition exactly.

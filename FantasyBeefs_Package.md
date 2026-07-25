@@ -1,6 +1,6 @@
 # Fantasy Beefs — Transition Package
 
-**Cycle:** 2026-07-23 → next
+**Cycle:** 2026-07-25 S3 → next
 **Read by:** Claude (architect) and ChatGPT (independent reviewer). One file, both threads.
 
 ---
@@ -23,32 +23,44 @@ Everything here is labeled. **Verified** means observed this cycle by direct com
 
 ## A.1 — Repository
 
-| Fact | Status |
-|---|---|
-| Branch `remediation/foundation-phase-1` | **Verified** |
-| HEAD `9ff096b`, local and remote in sync | **Verified** — `git status -sb` no ahead/behind marker; `git log origin/..HEAD` empty |
-| `c353d2b` — security fix, pushed | **Verified** |
-| `9ff096b` — register v14 tracked, pushed | **Verified** |
-| Nothing deployed this cycle or the two prior | **Verified** — no `railway up` issued |
-| No migration executed | **Verified** |
-| No credential rotated | **Verified** |
+**HEAD:** `fd08e84267ea3ffdc5d1da055f0b20c05d270e39`, branch `remediation/foundation-phase-1`. Local and remote identical at 2026-07-25 session 3 close.
+
+**Runtime unchanged from `59be320`, proven at `fd08e84`:** nine paths across the range — `.gitignore` plus eight markdown. **Zero `.py`.** Nothing under `app/`, `db/`, `tests/`.
+
+**Three openers running have shipped stale SHAs.** Verify before citing.
+
+`Findings_Register_v17.md` is **tracked at HEAD** and absent only from the project panel. `.gitignore:25` `/FantasyBeefs_*_Update_*.md` deliberately excludes update deltas from tracking; openers are excluded by exact name so each is a deliberate decision.
+
+**`fantasy_beefs_architecture_print_v14.html` is untracked**, and three unapplied change specs target it.
 
 ## A.2 — Production infrastructure
 
-| Fact | Status |
+| Property | Both database services |
 |---|---|
-| Production Postgres is **18.x** | **Verified** — Settings tab offers upgrade to 18.4 |
-| Public endpoint `hayabusa.proxy.rlwy.net:15707` → 5432 | **Verified** |
-| **Public networking is ENABLED** | **Verified** |
-| Private endpoint `postgres.railway.internal` live, IPv4 and IPv6 | **Verified** |
-| **Railway backups and PITR are Pro-plan only — unavailable** | **Verified** — Backups tab |
-| Second service `postgres-test` Online, own volume, **purpose unaudited** | **Verified** it exists; purpose unknown |
-| `pg-fantasy-test` container running, `postgres:16`, port 5433 | **Verified** — reserved for FR-VAL10-ac |
-| Deployed image predates `0f4a04d` | **Reported** |
+| Image | `ghcr.io/railwayapp-templates/postgres-ssl:18` — not stock |
+| Server / client | PostgreSQL 18.4 / psql 18.4, `Debian 18.4-1.pgdg13+1` |
+| HBA file | `/var/lib/postgresql/data/pgdata/pg_hba.conf` |
+| HBA rules | 7 rows, lines 117–128, identical, no active includes |
+| Logging | `none` / `error` / `-1` / `-1` / `0` / `stderr` / `off` |
+| SSH | reachable, OS `root`, ed25519 key registered |
+| Public endpoint | `hayabusa.proxy.rlwy.net:15707` → 5432, **public networking ENABLED** |
+| Private endpoint | `postgres.railway.internal`, IPv4 and IPv6 |
+| Backups / PITR | Recorded as Pro-plan only, **PENDING RE-VERIFICATION** — FR-DOC-V15-1 |
+| Local test container | `pg-fantasy-test`, `postgres:16`, port 5433, reserved for FR-VAL10-ac |
 
-**Do not click "Upgrade to 18.4."** A version bump on a production database mid-remediation is the wrong order.
+**Rotation control, verified from the live dashboard:** `Postgres` → **Database → Config → Connection → Regenerate**. There is no Credentials tab.
 
-**Do not stop or remove `pg-fantasy-test`.**
+**Identities — use IDs, never names:**
+
+| Resource | Service ID | Volume ID |
+|---|---|---|
+| `postgres-test` | `f03178f3-…` | `9f491b83-…` |
+| `Postgres` | `cd0ba357-…` | `16983665-…` |
+| `fantasy-beefs` | `9400fc77-…` | none |
+
+`fantasy-beefs` has `source: null`; latest deployment `7cc12e15`, created 2026-07-18T02:47:02Z. `Postgres` deployment `e1f535d9` created 2026-07-09T00:26:44Z, postmaster start 63 seconds later — **18.4 arrived by deployment, not an image pull.**
+
+**Railway volume figures are not database contents.** `postgres-test` reports 134.92 MB against 7,678 kB per database and 47 MB of `PGDATA`. Unclassified difference.
 
 ## A.3 — Backup — first verified restore point in project history
 
@@ -109,6 +121,18 @@ Classification, from three credential-free checks:
 A GnuPG verification used `--output NUL`. On Windows that is a filename, not the null device — a 243,863-byte plaintext copy of the production database landed at the repo root inside OneDrive. Untracked, never committed. `Remove-Item` reported no error and left it in place; `cmd /c del` with the `\\?\` prefix removed it, absence verified. OneDrive live files and primary recycle bin both clean; no second-stage bin in this account view.
 
 **Recorded as "no synced copy found," not as proof it never uploaded.**
+
+**FR-SEC-DB-6 — VERIFIED.** No vendor password recovery at any tier. Hobby has community support with no guaranteed response. Escalation is informational, never a recovery dependency.
+
+**FR-SEC-DB-7 — VERIFIED.** Railway SSH is database-superuser-equivalent: registered key → OS root → `local all all trust` → role `postgres`, proven by removing `PGPASSWORD`. Rotation revokes neither path. **Rediscovery** — the 07-08 session already used this socket.
+
+**FR-SEC-DB-9 — VERIFIED.** Governing rotation path names a nonexistent UI surface. v14 was right; the v15 correction was documentation-derived.
+
+**FR-DOC-V15-1.** v15's UI-derived claims lose presumption of correctness; CLI/API-derived claims stand. **The Pro-gated Backups/PITR claim is in that bucket and is load-bearing.**
+
+**FR-PROC-ALTER-1.** The "manual SQL failed previously" prohibition is unsourced — every panel mention describes the operation as deliberately not executed. UNVERIFIED, UNTESTED.
+
+**FR-INFRA-CRLF-1 / FR-INFRA-SSH-ARG-1 — VERIFIED.** PowerShell stdin carries CRLF; nested shell heredocs retired. `railway ssh` joins argv; credentials must never pass through it.
 
 ## A.5 — Status corrections adopted this cycle
 
@@ -202,21 +226,21 @@ Full stage definitions, gates, and reasoning: `FantasyBeefs_Plan.md`.
 
 ## C.2 — Next action
 
-**One credential-free TCP reachability check on `reseau.proxy.rlwy.net:54032`.**
-
-Decisive in one direction: a closed port ends the FR-SEC-DB-2 investigation. If open, an authenticated read-only identity probe requires a **separate ruling** — reachability does not establish identity.
-
-Everything else waits on it. FR-SEC-DB-1's steps 8–11 are gated on this classification.
+**Live `Postgres → Backups` reading.** Observation only. Six fields: existing backups · manual creation · scheduling · PITR · exact restriction text · exact labels on disabled controls. This **replaces** the Pro-gated claim rather than annotating it.
 
 ## C.3 — Then, in order
 
 | # | Action | Gate |
 |---|---|---|
-| 1 | FR-SEC-DB-1 steps 8–11 — disable public networking, rotate, verify role auth **and** variable propagation | Credentials rotated, no known live exposure, rollback exists |
-| 2 | FR-8.7 closure — tests 6c/6d, settled-reader grep, review package, final review, migration, deployment | Production-confirmed |
-| 3 | Controlled foundation deployment — af-1, af-2, Spec 1 schema, FR-INFRA-3 fix, FR-INFRA-4 diagnosis | Green "Success" in Deployments tab, not "Online" |
-| 4 | FR-AC-ISO-1 gate — four criteria, all required | Observed concurrent outcomes, not configuration claims |
-| 5 | Spec 2 — Opus review first | Each finding approved individually |
+| 1 | Second durable passphrase copy | Physical, separate failure domain, no photograph. Then independent transcription and a `--no-symkey-cache` decrypt. |
+| 2 | Full Package regeneration, 07-23 → 07-25 | Folds S1, S2, S3. See FR-DOC-ZONE-1. |
+| 3 | Rehearsal Rev 8, from the sixteen-item intake | Seventh review first |
+| 4 | Desync procedure Rev 4 | Six surfaces, measured rotation path, the S2-has-no-authorized-exit problem |
+| 5 | M10 transport bench | Bounded psql session holding one backend across an operator pause |
+| 6 | Rehearsal execution → `postgres-test` teardown | Abort conditions honored |
+| 7 | FR-SEC-DB-1 rotation | All preconditions cleared |
+
+**Rotation blocks on three:** the rehearsal, the desync Rev 4, and the passphrase copy.
 
 ## C.4 — Milestones
 
@@ -248,6 +272,8 @@ Everything else waits on it. FR-SEC-DB-1's steps 8–11 are gated on this classi
 | `postgres-test` service | Unaudited | Running and billing |
 | Spec 2 | Opus-ready, unreviewed | Money-path gate |
 
+`FR-SEC-DB-6` verified · `FR-SEC-DB-7` verified · `FR-SEC-DB-9` verified · `FR-DOC-V15-1` open · `FR-PROC-ALTER-1` open · `FR-INFRA-CRLF-1` verified · `FR-INFRA-SSH-ARG-1` verified · `FR-DOC-ZONE-1` open, see FR-DOC-ZONE-1.
+
 ## D.2 — Do not do these
 
 - **Do not click "Upgrade to 18.4."**
@@ -257,6 +283,13 @@ Everything else waits on it. FR-SEC-DB-1's steps 8–11 are gated on this classi
 - **Do not run `git filter-repo`.**
 - **Do not use the embedded `reseau` credential** without a separate ruling.
 - **Do not treat the `reseau` credential as dead.**
+- **`railway delete` / `rm` / `remove` deletes the PROJECT.** One word from `railway service delete`.
+- **`railway up` for credential correction** — uploads a working-tree snapshot.
+- **`railway redeploy --from-source`** — same defect via a flag.
+- **`-y` on destructive commands during an incident.**
+- **`railway ssh --session`** — installs tmux.
+- **`Convert to HA` and `Add PgBouncer`** — same panel as Regenerate.
+- **Trust-mode `pg_hba` editing** — retired; the socket already grants access.
 
 ## D.3 — Process constraints
 
@@ -276,6 +309,22 @@ Everything else waits on it. FR-SEC-DB-1's steps 8–11 are gated on this classi
 
 **Commits:** no `Co-Authored-By` or any other trailer unless requested.
 
+**Negative controls.** *When a probe's success would look identical under a permissive path, it is not evidence until the same path has been shown to reject a known-invalid input.*
+
+**A failed diagnostic proves nothing until the diagnostic is calibrated.**
+
+**Non-mutating production inspection is GREEN** when the exact command and target are named beforehand.
+
+**No second credential mutation** while the first is unresolved.
+
+**Never pass a credential in a CLI argument or `-e NAME=value` flag** when it can stay inside the container.
+
+**Read the live thing, not the documentation.**
+
+**Counts in documents are a drift generator.** Name instruments, never count them.
+
+**Verify the target document's structure before writing an update against it.** FR-DOC-ZONE-1.
+
 ## D.4 — Files
 
 | File | Role | Changes |
@@ -286,6 +335,8 @@ Everything else waits on it. FR-SEC-DB-1's steps 8–11 are gated on this classi
 | `INDEPENDENT_CODE_SPEC_AUDIT_9ff096b.md` | Evidence record. ChatGPT-authored. | When re-audited |
 
 Register versioning: v15 supersedes v14, tracked, with v14 removed from the working tree in the same commit. Git history preserves it. Only the latest register enters future packages.
+
+Nine S3 artifacts, none authorized. Current: desync procedure Rev 3 · precondition clearance delta · rehearsal Rev 7 · the five transition-package documents · this correction. Superseded: procedure Rev 1–2, rehearsal Rev 1–6 — **do not place in the panel.**
 
 ---
 
