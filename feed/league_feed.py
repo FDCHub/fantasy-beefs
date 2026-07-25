@@ -234,18 +234,22 @@ def log_challenge_countered(
 
 
 def log_settlement_events(
-    settled_bets: list,
-    db:           Session,
+    settled_challenge_ids: list[int],
+    db:                    Session,
 ) -> None:
     """
     Log one feed event per settled beef challenge.
-    Called between db.commit() and db.expire_all() in settle_week,
-    so attributes are reloadable via lazy loading.
+
+    Takes SCALAR challenge IDs, never ORM objects. No settlement-owned ORM
+    instance may cross this boundary: this function is invoked on its own
+    throwaway feed session (opened by the caller), so any object still bound to
+    the settlement session would re-couple the two and re-expose the settlement
+    session to a feed-write failure. Every row here is re-read fresh from `db`
+    by id.
     """
     seen: set[int] = set()
 
-    for bet in settled_bets:
-        cid = bet.beef_challenge_id
+    for cid in settled_challenge_ids:
         if cid is None or cid in seen:
             continue
         seen.add(cid)

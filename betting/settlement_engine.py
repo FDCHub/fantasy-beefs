@@ -31,13 +31,15 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from db.schema import Bet, BeefChallenge, Matchup, Projection, SettlementRecoveryAudit, Transaction, Wallet
+from db.schema import Bet, BeefChallenge, Matchup, Projection, SessionLocal, SettlementRecoveryAudit, Transaction, Wallet
 from db.roster_read import _roster_for_week
 from feed.league_feed import log_settlement_events
 from ledger.ledger import post as ledger_post, balance_of, _balance_of_in_session
 
 from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
+
+_log = logging.getLogger(__name__)
 
 # The Lineup uses a separate season/source — Yahoo actual scores vs pre-week projection
 _LINEUP_SEASON = 2025
@@ -778,8 +780,31 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
             f"refusing to commit payouts (fail-closed)."
         )
 
+    # FR-8.7-LOG-1: collect the settled beef challenge ids BEFORE committing.
+    # This pre-commit ordering is a BINDING INVARIANT: `pending` holds ORM
+    # objects owned by `db`, and expire_on_commit defaults True, so any attribute
+    # read AFTER db.commit() would refresh through the settlement session —
+    # re-coupling the feed read to it. Collecting scalar ids here keeps only ints
+    # crossing into the (separate-session) feed logger.
+    settled_challenge_ids = sorted(
+        {b.beef_challenge_id for b in pending if b.beef_challenge_id is not None}
+    )
+
     db.commit()
-    log_settlement_events(pending, db)
+
+    # Feed logging runs on its OWN throwaway session (FR-8.7-LOG-1 / LOG-2), so a
+    # feed-write failure cannot poison the settlement/report session and can never
+    # convert a committed settlement into a reported failure.
+    if settled_challenge_ids:
+        try:
+            with SessionLocal() as feed_db:
+                log_settlement_events(settled_challenge_ids, feed_db)
+        except Exception:
+            db.rollback()
+            _log.exception(
+                "Settlement for week=%s league_id=%s committed, but feed logging failed",
+                week, league_id,
+            )
 
     # Build wallet movement rows
     db.expire_all()
