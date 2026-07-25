@@ -8,9 +8,9 @@
 
 ## Repository state — verify before citing
 
-Branch `remediation/foundation-phase-1`, HEAD **`fd08e84267ea3ffdc5d1da055f0b20c05d270e39`** at session close. Nothing deployed.
+Branch `remediation/foundation-phase-1`, HEAD **`47a4012a659cceb69f7a24a97e9fae4050524365`** at session close. Nothing deployed.
 
-Runtime source unchanged from `59be320`, proven at `fd08e84`: nine paths, `.gitignore` plus eight markdown, **zero `.py`**, nothing under `app/`, `db/`, `tests/`.
+Runtime source unchanged from `59be320`, proven at `fd08e84` and extended to `47a4012` by a documentation-only commit: **zero `.py`**, nothing under `app/`, `db/`, `tests/`.
 
 **Three openers running have now shipped stale SHAs.** The 07-25 S2 opener said `233d89d`; HEAD was already `fd08e84`. Verify:
 
