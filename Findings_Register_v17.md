@@ -713,3 +713,271 @@ A DSN or DSN-bearing command line reached the transcript three times during this
 **Milestones unchanged:** August 1, 2026 = platform launch and draft window. NFL Week 1 = betting activation. **No symmetric-stake fallback authorized.**
 
 **Nothing deployed. No migration run. No credential rotated. Nothing committed.**
+
+---
+
+## Section 20 — Phase B completion and document-integrity session
+
+### 20.1 — Repository state
+
+No commit this session. Phase B touched no tracked file.
+
+HEAD `233d89db373664e08b64636e933f56a2d926fa21`. Local, tracking ref, and remote confirmed identical. `git log origin/remediation/foundation-phase-1..HEAD` empty. No tracked working-tree changes. Untracked list unchanged from session open.
+
+Runtime baseline re-derived at `233d89d`: four paths across `59be320..HEAD`, all documentation, `.gitignore`, or a register rename. Zero `.py`. **`59be320` still describes the deployable runtime.** Established by commit range plus path diff, not ancestry alone.
+
+`.gitignore` assessed and excluded as runtime-relevant: it governs Git tracking; `railway up` reads `.railwayignore`, untouched since 07-23.
+
+Nothing deployed. No migration run. No credential rotated.
+
+---
+
+### 20.2 — Phase B — COMPLETE
+
+Executed end to end in a single interactive PowerShell session on the ThinkPad X13.
+
+| Step | Result |
+|---|---|
+| Cleanup | No-op. Neither artifact existed. Confirms vol. II §19.16 — the 07-25 failures changed no state, including no partial dump. |
+| DSN | Railway CLI JSON capture. Clipboard removed from the path. Shape checks `True`/`False`/`True`, length 87. |
+| B2 | `pg_dump -Fc -O -x` via disposable `postgres:18`. 243,863 bytes. |
+| B3 | `pg_restore --list` → 410 TOC entries, **40 tables**. Exact match to 07-23 baseline. |
+| B4 | GnuPG 2.4.5 symmetric AES-256. 116,922 bytes. |
+| B5 | `--no-symkey-cache` decrypt. **Genuine passphrase prompt.** 243,863 exact. |
+| B6 | Five deletions via `cmd /c del` + `\\?\`. Both `Test-Path` `False`. |
+| B7 | OneDrive copy, both artifacts, lengths verified. Physical copy **outstanding**. |
+
+Plaintext window: 08:54–09:00 local, six minutes, in `C:\FantasyBeefs_Backups\` which is outside OneDrive.
+
+**The public proxy was preserved throughout.** Phase B touched no networking setting.
+
+---
+
+### 20.3 — Backup artifact of record — supersedes vol. II §14.9
+
+| Property | Value |
+|---|---|
+| Path | `C:\FantasyBeefs_Backups\` |
+| Filename | `fantasy_beefs_prod_2026-07-25_UTC.dump.gpg` |
+| Ciphertext | 116,922 bytes |
+| Plaintext | 243,863 bytes |
+| Created | 2026-07-25 15:54 UTC |
+| Source | `railway` database, production, PostgreSQL 18.x, via `hayabusa.proxy.rlwy.net:15707` |
+| Format | `pg_dump` custom, gzip, `--no-owner --no-privileges` equivalents (`-O -x`) |
+| Encryption | GnuPG 2.4.5 symmetric, AES256.CFB, one passphrase |
+| Recovery proof | Cache-bypassed decrypt, real prompt, exact length |
+| Schema baseline | **Pre-Spec-1.** No `beef_proposals` / `beef_proposal_starters`. |
+| Passphrase | Held by Fraser. Same as the 07-23 artifact. Stored separately. |
+| Offsite | `C:\Users\frase\OneDrive\FantasyBeefs_Restore\` |
+
+The 07-23 artifact (116,928 bytes) is retained and also copied offsite.
+
+**Byte-count observation.** Both plaintexts are 243,863 bytes exactly. Nothing deployed since 07-23, no migration run, Spec 1 committed and unshipped — so schema and the 12 wallet rows are unchanged. The 6-byte ciphertext delta (116,928 → 116,922) traces to `pg_dump`'s embedded creation timestamp shifting ZLIB output before encryption. Benign, and it is why B5 is load-bearing rather than ceremonial.
+
+---
+
+### 20.4 — Verification-method correction: cached passphrase is not recovery proof
+
+**Recorded as a method finding, not a defect.**
+
+GnuPG 2.x caches symmetric passphrases in `gpg-agent`. A decrypt that succeeds from cache proves the ciphertext is well-formed and proves nothing about whether the passphrase is held.
+
+For a sole restore point, that distinction is the whole point. An artifact encrypted under a forgotten passphrase is worse than no artifact, because it presents as coverage.
+
+**Rule.** Any decrypt-verify of a restore artifact must use `--no-symkey-cache`, and the operator must confirm a prompt appeared and was answered from memory. Absent that confirmation, the step is incomplete.
+
+Same family as vol. II §14.7, where a TOC listing was mistaken for proof of restorability. Different claims require different tests.
+
+---
+
+### 20.5 — FR-DOC-REG-1 — NEW. Findings Register is two disjoint volumes with a Section 14 collision
+
+**Issue Summary**
+
+A heading-level `Compare-Object` between `Findings_Register_v12_2.md` and `Findings_Register_v17.md` returned **every heading from both files**. `Compare-Object` emits only differences. Zero shared headings.
+
+Sections 1–13 exist only in v12_2: the fifteen money-model rulings, the five-spec split, the locked build order 1 → 2 → 3 → 5 → 4, Spec 2's Opus Math Review dispositions, Passes 1–5, the consolidated audit package. None of it is in v17.
+
+The tracked lineage v14 → v15 → v16 → v17, entering Git at `9ff096b`, is a **continuation volume** that begins at Section 14. So the half of the register governing the money path has no verified Git provenance, and the half with provenance does not govern the money path.
+
+Both files contain a Section 14 with different content. v12_2's is the Foundation Correction Plan Opus dispositions. v17's is the 07-23 security-remediation session. Both binding.
+
+v17 carries dangling cross-references as corroboration: §15 supersedes Section 13, §17 supersedes Section 15. Section 13 is not in v17.
+
+**Options**
+
+| | Approach | Cost |
+|---|---|---|
+| A | Two-volume register. Citation convention now, renumber v17 to start at Section 20 at a later close. | Minutes now, mechanical later |
+| B | Merge into a single v18. | ~130KB of register surgery, one session |
+| C | Leave it, cite by filename. | Free, collision recurs |
+
+**Recommendation & Reasoning — RULED: Option A**
+
+B is correct and could not happen today without displacing the authorized Phase B work, and a merge that large invites the cross-section drift the composition-review rule exists to catch. C leaves a live trap: any future bare "Section 14" citation is ambiguous, and ambiguity in a binding document is the mechanism by which a retired mechanic like Worst Beat stays funded.
+
+**In force immediately:** cite as **vol. I §N** (v12_2, Sections 1–14) or **vol. II §N** (v17, Sections 14–19). Never a bare section number. This Section 20 append is the first step of the renumbering.
+
+**Open sub-questions, non-blocking:**
+- Is `Findings_Register_v12_2.md` tracked, untracked, or `.gitignore`-swallowed? It did not appear in `git status` untracked output and is not the tracked path. `git log --all -- <path>` and `git check-ignore -v` pending.
+- Does v17 hold anything below Section 14? Expected no; grep pending.
+
+**Related observation.** Register filenames do not track content or succession. v10 is 14KB, v13 is 12KB, v12_2 is 70KB, v17 is 60KB. Some are full registers, some are session deltas, and they share a naming scheme implying succession. A reader taking the highest number gets the right file by accident. Tracked history starts at v14; v13 and below have no Git provenance.
+
+---
+
+### 20.6 — FR-PROC-CLIP-1 — NEW, CLOSED by design change. `Get-Clipboard` without `-Raw` silently corrupts multi-line values
+
+**Issue Summary**
+
+The DSN transfer step in the 07-25 handoff §6 reads `$env:DATABASE_URL = (Get-Clipboard).Trim()`.
+
+Without `-Raw`, `Get-Clipboard` returns a **string array** — one element per line. `.Trim()` then applies via member enumeration, per element, returning an array. Assigning an array to an environment variable stringifies it, **joined with spaces**.
+
+Newlines become spaces. The result is a single-line string of plausible length that passes casual inspection and fails anchored validation. Measured: 128 characters, whitespace present, no `postgresql://` prefix, `hayabusa` present, `=` present, line count 1.
+
+This defect shipped in the handoff block and is a candidate cause for one or more of the three 07-25 Phase B failures.
+
+**Recommendation & Reasoning — CLOSED, superseded**
+
+`-Raw` is the minimal fix. The adopted fix is stronger: **remove the clipboard from the credential path entirely** via `railway variables list --service Postgres --environment production --json`, captured into a variable and never printed. See opener for the block.
+
+The clipboard was also the vector that put a DSN in the transcript three times on 07-25 and the shared channel for transcript-sharing during the same session. Eliminating it is structural, not disciplinary.
+
+**Corroborating evidence for the gate design.** The malformed string passed `-match 'hayabusa'`. Only the anchored shape check — prefix, no whitespace, anchored host/port/database — rejected it. Substring validation would have admitted it to `pg_dump`, which is what happened on 07-25. **The anchored gate is sound and stays.**
+
+---
+
+### 20.7 — FR-INFRA-DOCK-1 — NEW, OPEN. Undocumented container shares the protected 5433 bind
+
+**Issue Summary**
+
+Docker Desktop shows two containers on `postgres:16`, both mapped `5433:5432`:
+
+- `pg-fantasy-test`, `f34c34e847ff`, **running**, 2 days. Database `fantasy_test`. Protected for FR-VAL10-ac's serialization proof.
+- `fb-test-pg`, `58e009fb95bf`, **stopped**, 6 days. **Appears in no artifact held.**
+
+Two containers cannot bind 5433 simultaneously, so nothing is currently broken. The exposure is that starting `fb-test-pg` either fails on the bind or — worse — a test harness pointed at `localhost:5433` reaches a database nobody documented.
+
+**Risk class.** Identical in shape to the Guard 5 defect (vol. II §19.4): a safety mechanism aimed at the wrong target. Guard 5 compared the harness destination against a dead foreign address. A harness trusting `5433` trusts a port with two possible occupants.
+
+**Recommendation & Reasoning**
+
+Classify before acting. Inspect `fb-test-pg`'s database contents and creation provenance, then remove it or document it. **Do not start it** — that is the one action that could produce a wrong-target connection.
+
+Deferred. Does not gate the desync procedure or rotation. Should be closed before FR-VAL10-ac's serialization proof runs, since that work depends on 5433 resolving unambiguously.
+
+---
+
+### 20.8 — FR-SEC-DB-5 — NEW, OPEN, UNVERIFIED. Unencrypted repository archive may carry pre-rotation credentials
+
+**Issue Summary**
+
+`C:\FantasyBeefs_Backups\fantasy-beefs_9ff096b.zip`, 25,991,636 bytes, dated 2026-07-24. Unencrypted. Sitting beside the encrypted database artifacts.
+
+`c353d2b` removed hardcoded production connection strings from the working tree but **not from Git history** — that is the standing FR-SEC-DB-1 position. So if the archive contains `.git`, it carries those credentials regardless of which commit it was cut from. 26MB is consistent with `.git` inclusion.
+
+If confirmed, this is a plaintext production credential in an unencrypted file — the same class as FR-SEC-DB-3.
+
+**Not asserted.** Two commands settle it:
+
+```
+git merge-base --is-ancestor 9ff096b c353d2b
+$LASTEXITCODE
+cmd /c "cd /d C:\FantasyBeefs_Backups && tar -tf fantasy-beefs_9ff096b.zip" | Select-String -Pattern "^[^/]+/\.git/" | Measure-Object -Line
+```
+
+Nonzero from the counter means `.git` is present.
+
+**Recommendation & Reasoning**
+
+Verify before ruling. If `.git` is present, the archive is credential-bearing and must be encrypted or deleted — and rotation makes the embedded credential worthless, which is a further argument for completing FR-SEC-DB-1 rather than a reason to defer this.
+
+Note the archive is **outside OneDrive**, so it is not syncing. That bounds the exposure to this machine.
+
+---
+
+### 20.9 — Verified tool and platform facts
+
+**GnuPG.** `C:\Program Files\Git\usr\bin\gpg.exe`, version 2.4.5, libgcrypt 1.9.4, MSYS2-built, home `C:\Users\frase\.gnupg`. **The only `gpg.exe` on the machine** — established by recursive scan of both Program Files trees. By elimination, it produced the 07-23 artifact. Not on PATH; invoke via a session variable and the `&` call operator. AES256 present in supported ciphers. `gpgconf.exe` co-located.
+
+**MSYS path caution.** Windows absolute paths pass through untouched. POSIX-style paths get rewritten — that is what turned `/backup/...` into `C:/Program Files/Git/backup/...` twice on 07-23. Use `C:\...` form exclusively with this binary.
+
+**No permanent PATH edit was made.** A session variable was used. A PATH change is a system configuration change requiring separate authorization.
+
+**Railway CLI.** 5.6.2 installed, 5.28.0 available. **Upgrade deliberately deferred** — a version change mid-security-sequence is an unmeasured variable.
+
+`railway variables --help` flag surface read from the installed binary, not documentation: `--service`, `--environment`, `--project`, `--kv`, `--json`, `--set`, `--set-from-stdin`, `--skip-deploys`. The CLI's own automation note warns that JSON and KV output include raw values and that output from secret-bearing commands should not be shared.
+
+**Linked service is `fantasy-beefs`, not `Postgres`.** `--service Postgres` is mandatory, not optional. Environment `production`, ID `6583038e-fe0a-4c31-a059-4885c4dec6b3`. Project `e8904b9e-a49c-47e8-a1c5-bb6d74118051`. Service `fantasy-beefs` ID `9400fc77-6050-4f34-b6a2-d5a2f963716a`, region `sfo`, status Online.
+
+**`Postgres` service variables — 28 keys, names only.** `DATABASE_PUBLIC_URL` present and **not sealed**, length 87. `DATABASE_URL` resolves `postgres.railway.internal` and is unreachable from the ThinkPad.
+
+**New instrument for post-rotation verification:** `RAILWAY_TCP_PROXY_DOMAIN` and `RAILWAY_TCP_PROXY_PORT` are the proxy's own record of itself. Better truth source than any document for confirming proxy survival. Values are not secrets.
+
+`PGPASSWORD` and `POSTGRES_PASSWORD` both exist on the service. A JSON capture holds the production password twice; scrub the capture variables after the dependent step completes.
+
+**Docker.** Desktop engine 29.6.1. `postgres:18` image cached locally — no pull needed. `--rm` containers cannot collide with the protected `pg-fantasy-test`.
+
+**Railway UI behavior confirmed by search this session.** Sealed variables display as bullets, are write-only, cannot be un-sealed, and are excluded from CLI output, PR environments, service duplication, and sync diffs. Variable values may span multiple lines via Control+Enter or the Raw Editor. Neither applied here, but both are live failure modes for clipboard-based transfer.
+
+---
+
+### 20.10 — Process rules ESTABLISHED or EXTENDED
+
+**Endpoints are not history.** A rename arrow in a range diff (`A.md => B.md`) is an endpoint pair produced by rename detection, not a chain. Claude read `v15.md => v17.md` as history and concluded v16 was never tracked. `git log --follow -- <path>` showed the real chain: v14 → v15 → v16 → v17. Same family as the ancestry rule from 07-25 — endpoints do not prove a path.
+
+**Recon before premise applies to the date.** Claude asserted the current date was 07-26, inferring it from the 07-25 opener's filename, which was named for the session it opens. The HEAD commit timestamp, the dump's `LastWriteTime`, and the system clock all read 07-25. Claude used the wrong date to rename a backup artifact **in the same message where it explained why a wrong date on a backup is a trap**. Corrected before encryption. Cheapest available fact, unchecked.
+
+**Opener naming convention CHANGED.** Openers are named for the date they were **authored**, not the session they open. The old convention supplied the wrong date to a downstream reader.
+
+**Destructive cleanup goes in its own turn**, issued after the prerequisite is confirmed consumed. Claude shipped `Remove-Variable raw, obj` in the same block as the assignment that depended on `$obj`. The scrub ran, the assignment did not, and `$obj` was gone. One round trip lost, no harm.
+
+**A reviewer's characterisation of a document is a claim to verify, not accept.** An independent review this session asserted the "B2 through B7" block was not present in retrievable materials and offered a five-step reconstruction. The block was §6 of the 07-25 handoff, retrieved at session open, and it has six steps. The five-step summary **dropped B7, the offsite copy** — the single step addressing the sole-restore-point condition the register had already flagged in vol. II §19.7. Accepting the review would have reproduced the exact condition it was meant to guard against.
+
+The same review correctly caught that "six outputs" was a Claude invention with no provenance in any artifact. Both halves are recorded: the reviewer found a real fabrication and asserted a false absence in the same message.
+
+**Pre-registered interpretation earned its keep, four times.** Claude formed four wrong hypotheses about the malformed DSN — clipboard collision with transcript text, keyword/value conninfo, a `psql` command line, and a sealed variable. Each was killed in a single probe round by a table written before the probe ran. The guesses were wrong and cost little because the tests were pre-committed.
+
+**Minimize shell switching.** Claude proposed delegating B3 to Claude Code on the grounds that it needs no credential, then withdrew it. B3 is three lines; the upside of delegation is near zero and the downside is the MSYS path-rewriting failure that cost two cycles on 07-23. Claude Code earns its keep on multi-file document work with no secrets and no shell-state dependency.
+
+**Diligence can eat the work.** Four consecutive turns of document-integrity recon ran before Phase B began, while production had no fresh restore point. Each check was individually cheap and individually justified. The aggregate displaced the authorized task. Recon that does not gate the authorized work should be deferred to the point where it does not compete with it.
+
+---
+
+### 20.11 — RULING-BUILD-1 — build authorization model replaced
+
+Requested by Fraser this session. The former "no builds without explicit authorization" rule bundled four distinct risks under one gate.
+
+**Gate is reversibility, not productivity.** Mechanical, not a judgment call — Claude does not assess whether a build is "productive," which would be Claude grading its own homework.
+
+**Green, no authorization:** working-tree code, tests, local Docker, scratch scripts, spikes, refactors. Anything `git checkout --` undoes.
+
+**Gated, explicit authorization each time:** `git commit`, `git push`, migrations, `railway up --service fantasy-beefs`, money-path code shipping.
+
+**Unchanged:** Opus Math Review is a hard gate on all money-path code. Never `git add .` on a money-path commit. Separate commits for distinct defects. Production changes commit first, regression tests as a separate commit.
+
+Claude states what it is about to build and why before building — one sentence, not a gate, and the mechanism for catching a wrong problem before 400 lines are spent on it.
+
+**Practical effect today: none.** Every build item sits behind the security stage. Spec 2 waits on FR-AC-ISO-1, which waits on foundation deployment, which waits on FR-8.7 closure, which waits behind rotation.
+
+---
+
+### 20.12 — Gate status changes from this session
+
+| Item | Before | After |
+|---|---|---|
+| Phase B | Authorized, attempted, incomplete | **COMPLETE** |
+| Verified restore point | 07-23 only, cache-verified | **07-25, cache-bypass verified, offsite** |
+| FR-SEC-DB-1 dump precondition | Unsatisfied | **Satisfied** |
+| FR-SEC-DB-1 steps 8–11 | Blocked on dump | Blocked on desync procedure only |
+| Phase C | Gated | Gated, unchanged |
+| Desync procedure | Not drafted | Not drafted |
+| Physical offsite copy | Not done | **Still not done** |
+| FR-DOC-REG-1 | — | Ruled, cleanup deferred |
+| FR-PROC-CLIP-1 | — | Closed by design change |
+| FR-INFRA-DOCK-1 | — | Open, unverified |
+| FR-SEC-DB-5 | — | Open, unverified |
+| Build authorization | "No builds" | **RULING-BUILD-1** |
+| Railway CLI upgrade | — | Deliberately deferred |
+| FR-8.7 closure | Six items | Six items, unchanged |
