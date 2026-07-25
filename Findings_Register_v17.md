@@ -1,12 +1,12 @@
-# Fantasy Beefs — Findings Register v15
+# Fantasy Beefs — Findings Register v17
 
-**Supersedes:** v14 (which superseded v13)
+**Supersedes:** v16 (which superseded v15, v14, v13)
 **Date:** 2026-07-23 (Session 2, close)
-**v15 change:** adds Section 16 — the independent code audit, six status corrections, the revised build order with two inserted prerequisites, and the three-document transition process. **Section 15's gate table is superseded by Section 17.**
+**v17 change:** adds Section 19 — the 2026-07-25 verification and security-inventory session. v16 added Section 18. **Section 15's gate table is superseded by Section 17.**
 
-**Authority note.** Sections 1–14 are carried verbatim. Sections 16 and 17 are additive. Where they contradict an earlier section, the later section governs. Two such contradictions exist and both are marked: the 12.9 unreconciled flag (resolved in 14.1) and Section 15's gate table (superseded by Section 17).
+**Authority note.** Sections 1–14 are carried verbatim. Sections 16, 17, 18 and 19 are additive. Section 18 carries the four FR-8.7-LOG-2 amendments, which govern over the Rev1 rulings retained in place as history. Where they contradict an earlier section, the later section governs. Two such contradictions exist and both are marked: the 12.9 unreconciled flag (resolved in 14.1) and Section 15's gate table (superseded by Section 17).
 
-**Working-tree convention.** v15 is tracked; v14 is removed from the working tree in the same commit. Git history preserves it. Only the latest register enters future transition packages.
+**Working-tree convention.** v17 is tracked; v16 and v15 are removed from the working tree in the same commit. Git history preserves it. Only the latest register enters future transition packages.
 
 ---
 
@@ -404,3 +404,312 @@ Both pushed. `git status -sb` no ahead/behind marker; `git log origin/..HEAD` em
 **Five-spec internal order unchanged: 1 → 2 → 3 → 5 → 4.**
 
 **Milestones:** August 1, 2026 = platform launch, draft window. NFL Week 1 = betting activation. **No symmetric-stake fallback authorized.**
+
+
+## Section 18 — FR-8.7-LOG-2 independent review and FR-8.7-LOG-1 ship
+
+### 18.1 — FR-8.7-LOG-1 — CLOSED, SHIPPED
+
+Feed logging ran on `settle_week`'s economic session and committed there. A feed failure after the commit at line 781 poisoned that session, the report block at 785–800 then threw, and `settle_week` raised after money was durable. Both live callers misreported it as a settlement failure.
+
+Fixed by a pre-commit scalar boundary: challenge IDs collected before the commit, `log_settlement_events` retyped to `list[int]`, feed work run on its own throwaway `SessionLocal()`, failures caught with a defensive `db.rollback()` and a rendered `%`-style error log.
+
+Shipped `59be320`. Baseline `21ec171`. Not deployed. Full detail in `FR_8_7_LOG_1_FEED_ISOLATION_MODULE_SPEC_FINAL.md`.
+
+### 18.2 — FR-8.7-LOG-2 — AMENDED, not closed
+
+Two independent reviews converged, with no cross-contamination, on a defect the finding never examined.
+
+**Amendment 1 — Option 1 was insufficient.** Call-site session isolation does not isolate. `pending` holds ORM `Bet` objects owned by the settlement session; `expire_on_commit` defaults `True` (the string appears nowhere in the repo); so reading `bet.beef_challenge_id` at `league_feed.py:248` refreshes through `object_session(bet)` — the settlement session — whatever session the function was handed. Measured on PostgreSQL 16.
+
+**Amendment 2 — Q4 OVERRULED.** "No settlement-session rollback" is false for the shape as ruled, and too broad even for the corrected shape. Its stated reasoning failed on both halves: the report block runs *after* the except clause, so no report state exists at the catch, and that block performs only reads. There was nothing uncommitted to discard. `db.rollback()` after 781 is a verified no-op on a healthy idle session and is retained defensively.
+
+The defensible claim is narrow: *a failure originating in the isolated feed transaction cannot poison the settlement session.* Post-commit failures arising in the report block itself remain possible — FR-8.7-LOG-4.
+
+**Amendment 3 — recon classification.** LOG-2 never examined settlement-owned ORM objects crossing the proposed boundary. The finding does not mention `beef_challenge_id`, ORM object ownership, or session expiry anywhere. **This was an existence-check/recon miss, not a rejected argument.** The corrective attaches to the recon step, not to the reasoning.
+
+**Amendment 4 — the locked snippet is RETRACTED. Four verified defects:**
+
+| # | Defect | Consequence |
+|---|---|---|
+| 1 | False session isolation | Amendment 1 |
+| 2 | `SessionLocal` not imported at module scope — only at `settlement_engine.py:1046` inside `__main__` | `NameError` |
+| 3 | `logger` undefined in that module | `NameError` **inside the except block** — converts a swallowed feed failure into a raised one after commit. LOG-1's bug delivered by LOG-1's fix |
+| 4 | `extra={...}` renders nothing under this repo's plain stdlib logging | The Q6 signal fires without naming league or week — the one thing Q6 exists to guarantee |
+
+**Sustained and upgraded from asserted to verified:** Q3 sole caller (repo-wide grep, all 139 `.py` files, three hits); Q5 atomicity (forced mid-batch failure persisted 0 rows); Q6 no idempotency (`feed_events` carries only a non-unique `Index("ix_feed_league_created", league_id, created_at)`); LOG-3 count accurate as written (commits at 135, 161, 185, 233, 297 — five total, four siblings; the 428 commit sits in a `__main__` demo).
+
+### 18.3 — FR-8.7-LOG-4 — NEW. Post-commit settlement-report exposure
+
+**Issue summary.** After the economic commit at 781, `settle_week` builds its report with further settlement-session work: `db.expire_all()` at 785, `db.query(Wallet)` at 788, lazy `w.team` at 792. A failure there raises after money is durable — the same misreport class LOG-1 removed, arriving through a door no change at 782 can close.
+
+**Options.** (a) Wrap the post-781 region so a report-building failure returns a degraded-but-truthful success. (b) Build the report from values already in memory — `settlements` and `balance_before` are plain floats; only `Wallet.balance` and `w.team.team_name` require queries. (c) Accept the exposure and document it.
+
+**Recommendation & reasoning.** (b). It removes the failure surface rather than catching it, and the data is nearly all in hand already. (a) leaves a partially-populated report shape to define. Not launch-blocking: it requires a transient DB failure inside a narrow window. `recover_week` reaches the same block via `settle_week:1037` and inherits the exposure; its guards fail closed, so the cost there is noise, not loss.
+
+### 18.4 — FR-8.7-LOG-5 — NEW. Feed payout headline diverges from the ledger
+
+**Issue summary.** `feed/league_feed.py:266` and `:272` compute `round(bet.amount * bet.odds, 2)` and pass it into `_hl_settled` as the payout. That is the formula FR-5.10 retired. Authoritative settlement derives payout from actual escrow cents at `settlement_engine.py:569` and `:620`, and the comment at 528 says so explicitly. For asymmetric odds the feed headline states a payout the ledger never made.
+
+**Options.** (a) Pass the actual payout through from settlement. (b) Have the feed re-read escrow. (c) Drop the figure from the headline.
+
+**Recommendation & reasoning.** (a). The settlement path already holds the true number and the feed already receives a caller-supplied payload. No money moves either way — but a GM reads a figure that disagrees with his own ledger, which is a trust defect on a betting product. Lines were deliberately neither edited nor commented during LOG-1.
+
+### 18.5 — FR-8.7-LOG-6 — NEW. Feed-path test coverage
+
+**Issue summary.** Before this session, zero tests touched the feed path. `test_fr87_log1_feed_isolation_pg.py` is the first, and it covers the settlement-isolation boundary only.
+
+Two named gaps:
+
+1. **Scenario 4 never added.** The forced failure injects a Python-level `RuntimeError` from `before_flush`. That exercises the handler but cannot poison a session, because no database error occurs. The error class that actually aborts a PostgreSQL transaction — a real server-side statement error producing `InFailedSqlTransaction` — is not exercised. The zero-SQL binding assertion subsumes it structurally, but "impossible by construction" is the claim under review and should be proven against the real class. Authorized as a deliberate skip, recorded so it does not read as done.
+2. **The other five committing feed functions are untested.** `log_challenge_issued`, `_accepted`, `_declined`, `_countered` all commit a passed-in session; `log_challenge_expired` does not. No test covers any of them.
+
+**Recommendation & reasoning.** Add Scenario 4 when the feed module is next opened — cheapest at that moment, and it touches no production code. Broader coverage sequences with FR-8.7-LOG-3.
+
+### 18.6 — FR-AC-ISO-1 — reproduced from an unrelated path
+
+The SAWarning at `beef_engine.py:877` — REPEATABLE READ ignored because the connection was already established — surfaced again during the LOG-1 test run, emitted by the beef-acceptance fixture. That is a second, independent path with no isolation concern of its own.
+
+**Consequence.** The isolation level requested there is not taking effect, confirmed twice. FR-VAL10-ac's concurrency proof depends on isolation being real. Resolve ISO-1 before ac's assertions are frozen, or ac proves something about a weaker isolation level than it claims.
+
+### 18.7 — FR-SEC-DB-1 — SHARPENED. Exposure is wider than logged
+
+**New evidence.** Commit `c353d2b` (2026-07-23 16:26) is titled *"security: remove hardcoded DB conn strings."* It removed them from the working tree. It did not remove them from history. Every commit before `c353d2b` still contains them.
+
+**And the branch is publicly readable.** During this session the full branch tarball was retrieved from `codeload.github.com` with no GitHub credentials present in the retrieving environment. `raw.githubusercontent.com` served individual files the same way. `secrets/private.json` is correctly absent and a targeted grep of HEAD found no hardcoded production DSN — but the pre-`c353d2b` history is reachable by anyone who knows the repository name.
+
+The exposed value was deliberately **not** retrieved or reproduced. The commit title plus public readability is sufficient evidence of exposure; pulling the credential into a transcript would enlarge the problem.
+
+**Consequence.** Removing a secret from HEAD while history stays public is not remediation. Rotation is mandatory and first. Separately decide whether history needs rewriting or the branch needs to go private. Rotation path per the opener: Postgres service → Database → Config → Regenerate. Not manual SQL — that path failed previously.
+
+**This is the only item on the board with a deadline.**
+
+### 18.8 — Architecture diagram — assessed, no update required
+
+`fantasy_beefs_architecture_print_v14.html` contains zero references to `log_settlement_events`, `feed_events`, or `league_feed`. It depicts `settle_week() — escrow-close (FR-5.9 / FR-5.10)` and no feed subsystem at all.
+
+LOG-1 therefore changed nothing the diagram shows, and no v15 was generated — regenerating an identical file would be churn.
+
+**But the omission is itself a gap worth recording.** An undepicted subsystem containing five functions that commit their callers' sessions (FR-8.7-LOG-3) is exactly the kind of coupling a diagram exists to surface. Add the feed subsystem when the diagram is next revised for a reason that genuinely changes it.
+
+---
+
+## Section 19 — 2026-07-25 verification and security-inventory session
+
+### 19.1 — Repository state
+
+HEAD `07a8c0b910002e9a65f006ff68b8036c5153c4aa`. Local, local tracking ref, and remote server identical. `git log origin/remediation/foundation-phase-1..HEAD` empty. Tracked working tree clean; all status entries untracked.
+
+**Runtime source unchanged from `59be320`.** One intervening commit, `07a8c0b`, touching four paths: `.gitignore` modified, plus `FR_8_7_LOG_1_FEED_ISOLATION_MODULE_SPEC_Rev1.md`, `FR_8_7_LOG_2_HIDDEN_FEED_TRANSACTION_FINDING.md`, and `Findings_Register_v16.md` added. 725 insertions, zero deletions.
+
+**Method note.** `git merge-base --is-ancestor` alone does **not** establish an unchanged baseline — it proves only that a commit is somewhere in history. The commit range plus the path diff are what establish it. A conclusion was stated ahead of that evidence earlier in the session and corrected.
+
+### 19.2 — FR-SEC-DB-2 — CLASSIFIED
+
+**`reseau.proxy.rlwy.net:54032` answers HTTP, not PostgreSQL.**
+
+`pg_dump` against it returned:
+
+```
+connection to server at "reseau.proxy.rlwy.net" (66.33.22.224), port 54032 failed:
+received invalid response to SSL negotiation: H
+```
+
+`H` is the first byte of `HTTP/`. The Railway TCP proxy port has been recycled to a non-PostgreSQL service that is not ours. This is the "port recycled to another customer" branch, now evidenced rather than hypothesised.
+
+**No credential was transmitted.** `pg_dump` sends an 8-byte `SSLRequest` first, carrying no username or password. The server replied with HTTP bytes and the connection aborted before the startup packet. Recorded as a near-miss: had negotiation succeeded, the production role password would have been sent to a foreign host.
+
+**Consequences.**
+
+- Rotation scope is `Postgres` and `postgres-test`. No third credential path exists.
+- The dashboard inventory finding (no service in the sole `production` environment owns `54032`) is corroborated by protocol evidence.
+- The former-production-proxy theory is no longer needed to explain the address, and remains **inference**, not finding, where it appears.
+- **Do not use the embedded `reseau` credential.** Do not probe the address further; it belongs to a third party.
+
+### 19.3 — The ambient `DATABASE_URL` was pointing at `reseau:54032`
+
+The standing opener claim — *"The ambient `DATABASE_URL` in the Claude Code CLI shell is production PostgreSQL"* — was **false**. It held a stale DSN for the dead recycled address, and that claim had propagated across multiple openers as a safety premise.
+
+**Do not restore that variable to any shell profile.** While it holds a malformed or dead value, code reading it fails closed rather than connecting somewhere wrong.
+
+### 19.4 — Guard 5 credit WITHDRAWN
+
+`test_support_postgres.py` Guard 5 refuses to run when the harness destination resolves to the same host, port, and database as the ambient `DATABASE_URL`. It was credited earlier in the session as a real production-write guard.
+
+**Withdrawn.** It has been comparing against a dead foreign address. It would **not** have blocked a harness aimed at real production on `hayabusa:15707`. The mechanism is sound; the reference value it compares against is wrong. Requires re-derivation before it is relied on.
+
+### 19.5 — FR-SEC-DB-4 — NEW
+
+`postgres-test` is a second, orphaned, publicly reachable PostgreSQL service in the `production` environment.
+
+| Field | Value |
+|---|---|
+| Public | `sakura.proxy.rlwy.net:12561` → `:5432` |
+| Private | `postgres-ym7q.railway.internal` |
+| Volume | `postgres-volume-F_kl` |
+| Status | Online |
+| Inbound references | **None.** No service points at it on the project canvas |
+| Contents | Two default databases (`postgres`, `railway`), **zero user tables**, `railway` at 7,678 kB — baseline |
+| Backups | None; none possible on this plan |
+| Credential | Never rotated, never audited |
+
+Previously logged only as "unaudited, running and billing." That undersold it: it is a second public attack surface with its own role password.
+
+**Classification:** same security stage as FR-SEC-DB-1. **Not independently launch-blocking.**
+
+**Disposition undecided.** Deletion of a volume-backed service is irreversible and there is no restore path on this plan. Two inspection gaps remain: the `postgres` database itself was not inspected, and the volume below the database layer is unexamined. "Nothing references it" is strong evidence of orphaning, not proof that deletion has no operational consequence.
+
+### 19.6 — No restore point beyond the local dump — both services verified
+
+Both Backups tabs, 2026-07-25:
+
+> *"Backups and point-in-time recovery (PITR) are only available for customers on the Pro plan."*
+
+No Create control. No schedule options. No backups on either volume.
+
+**A volume-restore credential recovery path is therefore unavailable.** This matters because restoring a volume would otherwise recover the old role password — the password lives in the PostgreSQL data directory.
+
+**Self-correction recorded.** Mid-session, the §14.2 step-1 observation was challenged on the grounds that Railway's volume-backups documentation states no plan gate. That argued from documentation silence against a direct dashboard measurement, and it was wrong. The register's original observation stands. **A measurement outranks documentation silence.**
+
+### 19.7 — Sole restore point, single copy
+
+`C:\FantasyBeefs_Backups\`
+
+| File | Size | Written |
+|---|---|---|
+| `fantasy_beefs_prod_2026-07-23_UTC.dump.gpg` | 116,928 bytes | 7/23 3:45:24 PM local (22:29 UTC; PDT −7) |
+| `fantasy-beefs_9ff096b.zip` | 25,991,636 bytes | 7/24 9:08 AM |
+
+Outside OneDrive, correct per FR-SEC-DB-3. **One copy, one disk, one machine — the daily driver.**
+
+**Recommended before rotation:** a second copy of the `.gpg` on independent storage. Already AES-256, 114 KB. Passphrase stays separate and is not recoverable if lost. This is not a database backup mechanism; it removes the single-disk failure mode around the only verified restore artifact.
+
+**Open reconciliation.** The register records the accidental plaintext decryption at 243,863 bytes; the encrypted artifact is 116,928. GnuPG compression is the plausible explanation but is unverified. Compare at Phase B's `pg_restore --list` step.
+
+### 19.8 — Option B RULED — rotation order
+
+**Governing order:** fresh verified restore point → rotate with the TCP proxy intact → externally verify role authentication **and** variable propagation → correct the app variable → restart `fantasy-beefs` → **then** decide on public networking.
+
+**The original "disable public networking first" step 8 is SUPERSEDED for this operation.**
+
+Reasoning of record:
+
+- There is no disable toggle. For a database, public networking **is** the TCP proxy entry; removal means deleting it, and a recreated proxy receives a **new domain and port**.
+- Removing it first destroys the local `pg_dump` path — the fresh restore point must be taken while the proxy exists.
+- Removing it first destroys the external authentication test, which is the strongest detector for the desync failure mode, precisely when it is needed. Railway's internal query box authenticates through Railway, not through the role credential over the wire.
+- Rotation is the remediation; proxy removal is defense in depth. Once rotated, the exposed credential is dead and what remains is the generic risk of a reachable Postgres — a different finding.
+
+**Public-networking window is bounded to that sequence.** P3 establishes that a migration needs the public proxy *when it runs*, not that the proxy must remain continuously exposed until then. Removal is reversible; the app uses the private hostname and is unaffected either way. Future administrative work re-creates the proxy, accepts the new address, and removes it again.
+
+### 19.9 — App `DATABASE_URL` is a literal
+
+`fantasy-beefs` → Variables holds a hand-typed literal on `postgres.railway.internal:5432/railway`, not a `${{Postgres.DATABASE_URL}}` reference.
+
+**Consequences.** Regeneration will **not** propagate — the Credentials tab keeps the Postgres service's own variables in sync and cannot rewrite a literal in another service. Also: the app does not depend on the public proxy, so proxy removal is safe for production.
+
+| | Approach |
+|---|---|
+| **A** | Rotate, then hand-edit `fantasy-beefs`'s `DATABASE_URL`, then restart |
+| **B** | Convert the literal to `${{Postgres.DATABASE_URL}}` first, verify it resolves, then rotate |
+
+**B is preferred** — it fixes the root cause and every future rotation inherits the fix. It became available once P7 cleared the accidental-deployment risk. **It is a production configuration change and is not authorized.**
+
+### 19.10 — FR-DEPLOY-1 SHARPENED
+
+Deployments are `railway up` from the CLI. **No GitHub connection, no connected branch, no "deploy latest commit" path.** The deployment row menu offers View logs / Restart / Redeploy / Remove. `Restart` is the correct instrument for a variable change; `Redeploy` re-runs the existing snapshot; `Remove` sits directly below it and is destructive.
+
+**No commit SHA is recoverable from any deployment.** `railway up` uploads a working-tree snapshot, so nothing links the running image to a commit. "The production image predates `0f4a04d`" is **inference from timing**, not verified fact.
+
+**The finding is therefore wider than logged.** It is not only that four commits run nowhere; it is that **what is running in production cannot be established.**
+
+Related: `railway up` uploads the working tree, which currently carries ~24 untracked documents, an `archive/` directory, and a 26 MB repo zip. `.railwayignore` **already exists** (620 bytes, 7/23) — its contents still need review before the controlled deployment.
+
+### 19.11 — Migration execution path
+
+**No Alembic.** `alembic.ini` absent. Twelve hand-rolled migration scripts in `db\migrations\`, plus a separate set of root-level `migrate_*.py` and a third top-level `migrations\` directory.
+
+All twelve follow one shape: read `DATABASE_URL` from the environment, Postgres-only, refuse to run without it, print a "Re-run with `DATABASE_URL`" hint. This includes `migrate_spec1_proposal_lifecycle.py` — 21,626 bytes, 7/23 9:12 AM.
+
+**Migrations therefore execute from the ThinkPad over the public TCP proxy.** Removing public networking permanently would block the Spec 1 migration. Decisive evidence for Option B's ordering.
+
+### 19.12 — Findings Register v16 identity defect — verified in the tracked blob
+
+Confirmed via `git show HEAD:Findings_Register_v16.md`, not only the project-panel copy. Five items, listed in this document's front-matter amendment above.
+
+**This is the root cause of the recurring version confusion.** The 2026-07-24 opener said v13; the 07-24 Master Plan Zone 1 said "active version is v15." Neither was careless — the artifact tells the reader it is v15 on line 1. The convention on line 9 also explains why v15 remains tracked: the sentence naming which file to remove was never updated.
+
+**Related:** `FR_8_7_LOG_1_..._Rev1.md` is 21 minutes **newer** and larger than `..._FINAL.md` (6:29 PM vs 6:08 PM; 8,957 vs 8,923 bytes). Tracking Rev1 at `07a8c0b` was therefore likely deliberate. An earlier inference that Git held the superseded copy was wrong. The integrity item stands, reframed: two near-identical files where the naming no longer indicates which governs. Resolve by content history, not filename.
+
+### 19.13 — Stale Railway rotation path — three artifacts
+
+v16 §18.7, the 2026-07-25 opener, and `fantasy_beefs_architecture_print_v14.html` all specify *Postgres service → Database → Config → Regenerate*. `Config` is a real tab in the Database view — it is not the control. Wrong-but-plausible, which is why it survived three artifacts by copy.
+
+**Canonical replacement, to be propagated:**
+
+> **Rotation path:** Postgres service → **Database view → Credentials tab → Regenerate**. This regenerates the password while keeping the database and its environment variables synchronized, avoiding the authentication mismatch that manual variable edits cause. Dependent services must then be **manually redeployed**. Do **not** edit `POSTGRES_PASSWORD` by hand. Do **not** use manual SQL — that path failed previously. If the role password and the propagated variables disagree afterward, **stop and assess**; do not restart dependents into a desync.
+
+Multiple 2026 Railway Central Station threads document the desync class, including a Hobby-plan lockout with no backups. Keep the warning attached to the path wherever it propagates.
+
+### 19.14 — TCP classification method DISCARDED
+
+Three credential-free `Test-NetConnection` probes:
+
+| Target | Result |
+|---|---|
+| `reseau.proxy.rlwy.net:54032` — target | `True` |
+| `reseau.proxy.rlwy.net:54871` — arbitrary same-host control | `True` |
+| `hayabusa.proxy.rlwy.net:15707` — known positive | `True` |
+
+The control port answered although nothing should be listening on it. **The method cannot distinguish an exposed database from Railway's proxy edge accepting a connection.**
+
+**This records the method's failure, not reachability.** It is specifically **not** evidence that `reseau:54032` is live — §19.2 later established that it is not even a PostgreSQL server. The control port is the only reason the false positive was caught, and it was pre-registered before the result was known.
+
+### 19.15 — Preflight gate P1–P7 — COMPLETE
+
+| Gate | Result |
+|---|---|
+| **P1** | Current `Postgres` credential captured offline. Preserves the first desync recovery lever |
+| **P2** | App `DATABASE_URL` is a **literal** on the private hostname (§19.9) |
+| **P3** | Migrations run from the ThinkPad over the public proxy (§19.11) |
+| **P4** | 07-23 encrypted dump verified present outside OneDrive, 116,928 bytes; passphrase retrievable (§19.7) |
+| **P5** | `postgres-test`: two default databases, zero user tables, baseline size (§19.5) |
+| **P6** | No backups, no PITR, none creatable — both services (§19.6) |
+| **P7** | CLI-only deployments; no GitHub build path; Restart / Redeploy / Remove (§19.10) |
+
+### 19.16 — Phase B — authorized, attempted, incomplete
+
+Bounded authorization granted: fresh `pg_dump` through the existing proxy, credential via environment variable only, custom-format with reviewed flags, `pg_restore --list` verification, encrypt before retention, decrypt-verify to a temp path outside OneDrive, never `--output NUL`, extended-path delete with absence verified, offsite copy, stop after Phase B.
+
+**Three attempts, three failures, none in PostgreSQL:**
+
+1. Connected to `reseau:54032` — produced §19.2, the session's most consequential finding.
+2. `invalid option -- 'm'` — PowerShell mangled the quoted `sh -c` string; `--format=custom` was chewed. Twice, in two command shapes.
+3. `invalid connection option "$env:DATABASE_URL"` — the variable's *value* contained the literal text `$env:DATABASE_URL` plus whitespace. A whole command line had been pasted into it rather than a bare DSN.
+
+**No state changed.** No credential rotated. Two artifacts to clean up: a zero-byte `.dump` and `dump.sh` in `C:\FantasyBeefs_Backups\`.
+
+**Gate correction adopted.** Substring checks on a DSN are insufficient — a command line containing the DSN passes them. Validate by **shape**: `StartsWith('postgresql://')`, no whitespace, anchored host/port/database match.
+
+### 19.17 — Process note — DSN handling
+
+A DSN or DSN-bearing command line reached the transcript three times during this session. Passwords were redacted each time, so **no credential leaked**.
+
+**Standing rule reaffirmed:** connection strings transfer by clipboard into `(Get-Clipboard).Trim()`. They are never typed into chat, never echoed to a terminal, and never placed on a command line — container invocations pass the variable **by name** (`-e DATABASE_URL`), not by value, so no shell expands it.
+
+### 19.18 — Gate status changes from this session
+
+| Gate | Status |
+|---|---|
+| **FR-SEC-DB-2** | **CLASSIFIED.** `reseau:54032` is not a PostgreSQL service and is not ours |
+| **FR-SEC-DB-1** | Steps 8–11 **unblocked** by DB-2 classification, but reordered per Option B. Phase B incomplete |
+| **FR-SEC-DB-4** | **OPEN — new.** Orphaned public `postgres-test`. Disposition undecided |
+| **FR-DEPLOY-1** | **WIDENED.** Running image provenance unrecoverable |
+| **Guard 5** | **Credit withdrawn.** Needs re-derivation |
+| Git history remediation | Still deferred. `git filter-repo` not authorized |
+| Everything else | Unchanged from Section 17 |
+
+**Five-spec internal order unchanged: 1 → 2 → 3 → 5 → 4.**
+
+**Milestones unchanged:** August 1, 2026 = platform launch and draft window. NFL Week 1 = betting activation. **No symmetric-stake fallback authorized.**
+
+**Nothing deployed. No migration run. No credential rotated. Nothing committed.**
