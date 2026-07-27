@@ -1,0 +1,3 @@
+tools/prototype/index.html text eol=lf
+spec/*.html               text eol=lf
+spec/*.md                 text eol=lf
