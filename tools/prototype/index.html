@@ -70,21 +70,56 @@
   .rv{font-size:12px;font-weight:500}
   .chev{color:var(--g2);font-size:16px}
 
-  /* tiles (My Action) */
-  .sect{font-size:9px;letter-spacing:.12em;margin:12px 2px 6px}
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:4px}
-  .atile{background:var(--tile);border-radius:8px;border-left:3px solid var(--g2);padding:8px 8px 8px 9px;cursor:pointer}
-  .atile .op{font-size:11px;font-weight:500;line-height:1.2}
-  .atile .bt{font-size:9px;color:var(--g1);margin-top:3px}
-  .atile .ft{font-size:10px;margin-top:5px}
+  /* tiles (My Action) — lifecycle card grammar */
+  .sect{font-size:9px;letter-spacing:.14em;font-weight:700;margin:14px 2px 7px;text-transform:uppercase}
+  .sect .ct{color:var(--g2);font-weight:400;letter-spacing:.08em;margin-left:5px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:4px}
+  /* compact card — ACTION REQUIRED / WAITING / COMPLETED */
+  .atile{background:var(--tile);border-radius:9px;border-left:3px solid var(--g2);padding:9px 10px;cursor:pointer}
+  .atile .op{font-size:11.5px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .atile .bt{font-size:9.5px;color:var(--g1);margin-top:3px}
+  .atile .ft{font-size:10px;margin-top:5px;font-weight:500}
+  /* DECIDED-but-unsettled in COMPLETED: outcome known, BAB not yet moved */
+  .atile.settling{opacity:1;border-left:3px solid var(--gold)}
+  .atile.settling .set{display:inline-block;font-size:8px;font-weight:700;letter-spacing:.08em;
+    background:var(--goldbg);color:var(--gold);padding:2px 6px;border-radius:4px;margin-top:5px}
+  .atile.settling .pend{font-size:9px;color:var(--g2);margin-top:4px}
+  /* rich LIVE card — full width, shows the GM's position */
+  .ltile{background:var(--tile);border-radius:9px;border-left:3px solid var(--green);
+    padding:8px 10px;cursor:pointer}
+  .ltile.out{border-left-color:var(--g2);opacity:.72}
+  .ltile.decided{border-left-color:var(--gold)}
+  .ltile .lop{font-size:11.5px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ltile .lwag{font-size:9px;color:var(--g1);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ltile .lwag .md{color:var(--gold);font-weight:600}
+  .ltile .lwag .md.dyn{color:var(--green2)}
+  .ltile .lfoot{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:5px}
+  .ltile .lstat{font-size:9px;font-weight:700;letter-spacing:.06em;padding:2px 6px;border-radius:4px;white-space:nowrap}
+  .lstat.ahead,.lstat.covering,.lstat.overpace,.lstat.alive,.lstat.won{background:var(--greenbg);color:var(--green2)}
+  .lstat.behind,.lstat.notcov,.lstat.underpace,.lstat.lost{background:#2a1414;color:var(--red)}
+  .lstat.even,.lstat.push,.lstat.onnum{background:var(--goldbg);color:var(--gold)}
+  .lstat.out{background:var(--tile);color:var(--g2);border:1px solid var(--line2)}
+  .lstat.decided{background:var(--goldbg);color:var(--gold)}
+  .ltile .lsc{font-size:9.5px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* pool live card — slow reveal, compact 2-up */
+  .ptile{background:var(--tile);border-radius:9px;border-left:3px solid var(--green);
+    padding:8px 10px;cursor:pointer}
+  .ptile.out{border-left-color:var(--g2);opacity:.72}
+  .ptile.decided{border-left-color:var(--gold)}
+  .ptile .pnm{font-size:11.5px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ptile .ppk{font-size:9px;color:var(--g1);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ptile .pfoot{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:5px}
+  .ptile .pbadge{font-size:9px;font-weight:700;letter-spacing:.06em;padding:2px 6px;border-radius:4px;white-space:nowrap}
+  .ptile .palvpot{font-size:9px;color:var(--g2);white-space:nowrap;font-variant-numeric:tabular-nums}
 
   /* carousel */
-  .rail{display:flex;gap:9px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 12px 8px;scroll-snap-type:x mandatory}
-  .bcard{flex:0 0 auto;width:150px;background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:11px;scroll-snap-align:start}
+  .rail{display:flex;gap:9px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;padding:2px 2px 4px;scroll-snap-type:x mandatory}
+  .bcard{flex:0 0 auto;width:158px;background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:10px 11px;scroll-snap-align:start;cursor:pointer}
   .bcard .nm{font-size:12px;font-weight:500;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .bcard .rec{font-size:10px;color:var(--g1);margin-bottom:9px}
   .cellsrow{display:flex;gap:5px}
-  .mkt{flex:1;text-align:center;border-radius:6px;padding:8px 0;font-size:10px;font-weight:500;cursor:pointer}
+  .mkt{flex:1;text-align:center;border-radius:6px;padding:8px 0;font-size:10px;font-weight:500}
+  .bcard .mkt,.ycard .mkt{pointer-events:none}
   .mode{font-size:8px;letter-spacing:.14em;padding:2px 5px;border-radius:3px;font-weight:600}
   .mode.locked{background:var(--goldbg);color:var(--gold)}
   .mode.dyn{background:var(--greenbg);color:var(--green2)}
@@ -98,6 +133,53 @@
   .shint{font-size:9px;color:var(--g2);margin-top:4px}
   .terms{background:var(--tile);border-radius:10px;padding:12px;font-size:12px;line-height:1.9;margin-bottom:6px}
   .terms .tr{display:flex;justify-content:space-between}
+  /* prediction selector */
+  .poolsel{width:100%;background:var(--tile);color:var(--bone);border:1px solid var(--edge);
+    border-radius:10px;padding:12px;font-size:14px;font-family:inherit;margin-bottom:8px;-webkit-appearance:none;appearance:none}
+  .pickconf{font-size:13px;color:var(--green2);background:var(--greenbg);border-radius:8px;
+    padding:9px 12px;margin-bottom:6px;line-height:1.4}
+  /* yahoo read sections */
+  .yread{background:var(--tile);border-radius:10px;padding:11px 12px;margin-top:8px;font-size:12px;line-height:1.55;color:#cfc9ba}
+  /* shared lineup/projection spine — Big Board sub-sheet + Yahoo card */
+  .splhead{display:grid;grid-template-columns:1fr auto 10px auto 1fr;gap:6px;align-items:center;
+    font-size:8px;letter-spacing:.1em;color:var(--g2);margin:6px 2px 5px;text-transform:uppercase}
+  .splhead span:nth-child(1){text-align:left}
+  .splhead span:nth-child(5){text-align:right}
+  .splhead span:nth-child(2),.splhead span:nth-child(4){text-align:center}
+  .splrow{display:grid;grid-template-columns:1fr auto 10px auto 1fr;gap:6px;align-items:center;
+    padding:5px 2px;border-bottom:1px solid var(--line)}
+  .splc{display:flex;flex-direction:column;min-width:0}
+  .splc.r{align-items:flex-end}
+  .splpos{font-size:8px;letter-spacing:.08em;color:var(--g2)}
+  .splnm{font-size:11px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .splp{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--bone);text-align:center}
+  .splp.r{text-align:center}
+  .splvs{font-size:9px;color:var(--g2);text-align:center}
+  .spltot{display:flex;justify-content:space-between;font-size:11px;padding:6px 2px 0;color:var(--g1)}
+  .spltot .mono{color:var(--bone);font-weight:600}
+  /* totals aligned under the PROJ columns */
+  .spltotrow{display:grid;grid-template-columns:1fr auto 10px auto 1fr;gap:6px;align-items:center;
+    margin-top:6px;padding-top:7px;border-top:1px solid var(--line)}
+  .spltotrow .tlab{font-size:8px;letter-spacing:.1em;color:var(--g2);text-transform:uppercase;grid-column:1}
+  .spltotrow .tl{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--bone);text-align:center;grid-column:2}
+  .spltotrow .tr2{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--bone);text-align:center;grid-column:4}
+  .yread .yh{font-size:9px;letter-spacing:.14em;color:var(--g1);margin-bottom:5px}
+  /* left-justified analysis header (replaces purple banner) */
+  .yhd{font-size:10px;letter-spacing:.16em;font-weight:700;color:var(--gold);
+    text-align:left;margin:0 0 6px;text-transform:uppercase}
+  .yblock{margin-top:12px}
+  .yblock .body{font-size:12px;line-height:1.6;color:#cfc9ba}
+  .yblock .body p{margin:0 0 7px}
+  .yblock .body p:last-child{margin-bottom:0}
+  /* collapsible lineups */
+  .ycoll{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+  .ycolltog{display:flex;align-items:center;justify-content:space-between;cursor:pointer;
+    font-size:10px;letter-spacing:.14em;font-weight:700;color:var(--gold);text-transform:uppercase}
+  .ycolltog .arw{font-size:12px;color:var(--g1);transition:transform .15s}
+  .ycoll.open .ycolltog .arw{transform:rotate(90deg)}
+  .ycollbody{display:none;margin-top:8px}
+  .ycoll.open .ycollbody{display:block}
+  .svrow{display:flex;justify-content:space-between;font-size:12px;padding:2px 0;color:var(--bone)}
   .terms .tt{border-top:1px solid var(--line);margin-top:6px;padding-top:6px}
   .hold{font-size:10px;color:var(--g1);line-height:1.5;margin:0 0 8px}
   .lineups{display:flex;gap:6px;margin-bottom:8px}
@@ -132,6 +214,35 @@
     border-bottom:1px solid var(--line);z-index:2}
   .labx{color:var(--g1);cursor:pointer;letter-spacing:.16em}
   .labnote{font-size:10px;color:var(--g1);line-height:1.6;margin:10px 2px 4px}
+  /* === My League fixed three-zone frame — no vertical scroll === */
+  .leaguebody{flex:1 1 auto;display:flex;flex-direction:column;overflow:hidden;min-height:0;margin:0 12px 6px}
+  .leaguebody .zone{flex:1 1 0;display:flex;flex-direction:column;min-height:0}
+  .leaguebody .zone .eyebrow{flex:0 0 auto;margin:5px 2px 3px}
+  .leaguebody .rail,.leaguebody .yrail,.leaguebody .prail{flex:1 1 auto;min-height:0;align-items:stretch}
+  .leaguebody .bcard,.leaguebody .ycard,.leaguebody .pcard{justify-content:center}
+
+  /* pool cards — prediction model, compact horizontal carousel */
+  .poolhelp{font-size:10px;color:var(--g1);margin:0 2px 8px;line-height:1.5}
+  .prail{display:flex;gap:9px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;padding:2px 2px 4px;scroll-snap-type:x mandatory}
+  .pcard{flex:0 0 auto;width:158px;background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:10px 11px;scroll-snap-align:start;cursor:pointer}
+  .pcard.roll{border-color:var(--gold);background:var(--goldbg)}
+  .ptag{display:inline-block;font-size:8px;letter-spacing:.12em;font-weight:600;padding:2px 5px;border-radius:4px;margin-bottom:5px;width:fit-content}
+  .ptag.team{background:var(--greenbg);color:var(--green)}
+  .ptag.match{background:#141b24;color:#7db4e0}
+  .ptag.rollv{background:var(--gold);color:#12100c}
+  .pcn{font-size:12px;font-weight:600;line-height:1.2;margin-bottom:3px}
+  .pcq{font-size:9px;color:var(--g1);line-height:1.35;white-space:normal;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .pcf{display:flex;justify-content:space-between;align-items:center;margin-top:7px}
+  .pcf .pfee{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--bone)}
+  .pcf .pfee.gold{color:var(--gold)}
+  .pcf .chev{font-size:15px}
+  /* yahoo matchups — parallel sportsbook board (horizontal rail) */
+  .yrail{display:flex;gap:9px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;padding:2px 2px 4px;scroll-snap-type:x mandatory}
+  .ycard{flex:0 0 auto;width:158px;background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:10px 11px;scroll-snap-align:start;cursor:pointer}
+  .ymatch{display:flex;flex-direction:column;font-size:11.5px;font-weight:600;gap:1px;margin-bottom:3px}
+  .ymatch .yv{font-size:8px;color:var(--g2);font-weight:400;letter-spacing:.08em}
+  .yrec{display:flex;justify-content:space-between;font-size:10px;color:var(--g1);margin:0 0 8px;font-variant-numeric:tabular-nums}
   .labsect{font-size:9px;letter-spacing:.2em;color:var(--g2);margin:16px 2px 7px}
   .labgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
   .lc{background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:9px}
@@ -210,7 +321,7 @@
       <div class="lock">OUR THING · YOUR LEAGUE</div>
     </div>
     <div class="mastR">
-      <div class="rev">UI/UX Rev 2.0 · 2026<br>Fraser D. Coleman</div>
+      <div class="rev">UI/UX Rev 2.1 · 2026<br>Fraser D. Coleman</div>
       <div class="labbtn" onclick="openLab()">STATE LAB</div>
     </div>
   </div>
@@ -233,127 +344,188 @@
       <div class="cell"><div class="k">Weekly min left</div><div class="v mono">$10</div></div>
       <div class="cell anchor"><div class="k">Available to bet</div><div class="v mono">$162</div></div>
     </div>
-    <div class="scrollbare">
+    <div class="leaguebody">
+      <div class="zone">
       <div class="eyebrow" style="margin-left:2px">BIG BOARD · 11 OPPONENTS · SWIPE →</div>
       <div class="rail">
-        <div class="bcard"><div class="nm">vs. CULV Destroyers</div><div class="rec">7–0 · 1st · this week</div>
+        <div class="bcard" onclick="openCard('CULV Destroyers','7–0 · 1st · this week')"><div class="nm">vs. CULV Destroyers</div><div class="rec">7–0 · 1st · this week</div>
           <div class="cellsrow">
-            <div class="mkt dog" onclick="openBet('CULV Destroyers','Moneyline','dog')">ML<small>+165</small></div>
-            <div class="mkt neu" onclick="openBet('CULV Destroyers','Spread','neu')">SPR<small>+4.5</small></div>
-            <div class="mkt dog" onclick="openBet('CULV Destroyers','O/U','dog')">O/U<small>u 206</small></div>
+            <div class="mkt dog">ML<small>+165</small></div>
+            <div class="mkt neu">SPR<small>+4.5</small></div>
+            <div class="mkt dog">O/U<small>u 206</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Gridiron Goodfellas</div><div class="rec">6–1 · 2nd</div>
+        <div class="bcard" onclick="openCard('Gridiron Goodfellas','6–1 · 2nd')"><div class="nm">vs. Gridiron Goodfellas</div><div class="rec">6–1 · 2nd</div>
           <div class="cellsrow">
-            <div class="mkt dog" onclick="openBet('Gridiron Goodfellas','Moneyline','dog')">ML<small>+130</small></div>
-            <div class="mkt dog" onclick="openBet('Gridiron Goodfellas','Spread','dog')">SPR<small>+3.5</small></div>
-            <div class="mkt neu" onclick="openBet('Gridiron Goodfellas','O/U','neu')">O/U<small>o 214</small></div>
+            <div class="mkt dog">ML<small>+130</small></div>
+            <div class="mkt dog">SPR<small>+3.5</small></div>
+            <div class="mkt neu">O/U<small>o 214</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Third And Long Island Iced Tea</div><div class="rec">5–2 · 4th</div>
+        <div class="bcard" onclick="openCard('Third And Long Island Iced Tea','5–2 · 4th')"><div class="nm">vs. Third And Long Island Iced Tea</div><div class="rec">5–2 · 4th</div>
           <div class="cellsrow">
-            <div class="mkt neu" onclick="openBet('Third And Long Island Iced Tea','Moneyline','neu')">ML<small>+105</small></div>
-            <div class="mkt neu" onclick="openBet('Third And Long Island Iced Tea','Spread','neu')">SPR<small>+1.5</small></div>
-            <div class="mkt fav" onclick="openBet('Third And Long Island Iced Tea','O/U','fav')">O/U<small>o 211</small></div>
+            <div class="mkt neu">ML<small>+105</small></div>
+            <div class="mkt neu">SPR<small>+1.5</small></div>
+            <div class="mkt fav">O/U<small>o 211</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Skipolini's Enforcers</div><div class="rec">4–3 · 5th</div>
+        <div class="bcard" onclick="openCard('Skipolini\'s Enforcers','4–3 · 5th')"><div class="nm">vs. Skipolini's Enforcers</div><div class="rec">4–3 · 5th</div>
           <div class="cellsrow">
-            <div class="mkt fav" onclick="openBet('Skipolini\'s Enforcers','Moneyline','fav')">ML<small>−115</small></div>
-            <div class="mkt neu" onclick="openBet('Skipolini\'s Enforcers','Spread','neu')">SPR<small>−1.5</small></div>
-            <div class="mkt neu" onclick="openBet('Skipolini\'s Enforcers','O/U','neu')">O/U<small>u 209</small></div>
+            <div class="mkt fav">ML<small>−115</small></div>
+            <div class="mkt neu">SPR<small>−1.5</small></div>
+            <div class="mkt neu">O/U<small>u 209</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Numbers Racket</div><div class="rec">4–3 · 6th</div>
+        <div class="bcard" onclick="openCard('Numbers Racket','4–3 · 6th')"><div class="nm">vs. Numbers Racket</div><div class="rec">4–3 · 6th</div>
           <div class="cellsrow">
-            <div class="mkt fav" onclick="openBet('Numbers Racket','Moneyline','fav')">ML<small>−125</small></div>
-            <div class="mkt fav" onclick="openBet('Numbers Racket','Spread','fav')">SPR<small>−2.5</small></div>
-            <div class="mkt dog" onclick="openBet('Numbers Racket','O/U','dog')">O/U<small>u 208</small></div>
+            <div class="mkt fav">ML<small>−125</small></div>
+            <div class="mkt fav">SPR<small>−2.5</small></div>
+            <div class="mkt dog">O/U<small>u 208</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. The Brain Trust</div><div class="rec">3–4 · 7th</div>
+        <div class="bcard" onclick="openCard('The Brain Trust','3–4 · 7th')"><div class="nm">vs. The Brain Trust</div><div class="rec">3–4 · 7th</div>
           <div class="cellsrow">
-            <div class="mkt fav" onclick="openBet('The Brain Trust','Moneyline','fav')">ML<small>−135</small></div>
-            <div class="mkt fav" onclick="openBet('The Brain Trust','Spread','fav')">SPR<small>−3.5</small></div>
-            <div class="mkt neu" onclick="openBet('The Brain Trust','O/U','neu')">O/U<small>o 212</small></div>
+            <div class="mkt fav">ML<small>−135</small></div>
+            <div class="mkt fav">SPR<small>−3.5</small></div>
+            <div class="mkt neu">O/U<small>o 212</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Provenza Provolone</div><div class="rec">3–4 · 8th</div>
+        <div class="bcard" onclick="openCard('Provenza Provolone','3–4 · 8th')"><div class="nm">vs. Provenza Provolone</div><div class="rec">3–4 · 8th</div>
           <div class="cellsrow">
-            <div class="mkt fav" onclick="openBet('Provenza Provolone','Moneyline','fav')">ML<small>−145</small></div>
-            <div class="mkt fav" onclick="openBet('Provenza Provolone','Spread','fav')">SPR<small>−4.5</small></div>
-            <div class="mkt fav" onclick="openBet('Provenza Provolone','O/U','fav')">O/U<small>o 217</small></div>
+            <div class="mkt fav">ML<small>−145</small></div>
+            <div class="mkt fav">SPR<small>−4.5</small></div>
+            <div class="mkt fav">O/U<small>o 217</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Racconti Raiders</div><div class="rec">3–4 · 9th</div>
+        <div class="bcard" onclick="openCard('Racconti Raiders','3–4 · 9th')"><div class="nm">vs. Racconti Raiders</div><div class="rec">3–4 · 9th</div>
           <div class="cellsrow">
-            <div class="mkt fav" onclick="openBet('Racconti Raiders','Moneyline','fav')">ML<small>−150</small></div>
-            <div class="mkt neu" onclick="openBet('Racconti Raiders','Spread','neu')">SPR<small>−4.5</small></div>
-            <div class="mkt neu" onclick="openBet('Racconti Raiders','O/U','neu')">O/U<small>o 213</small></div>
+            <div class="mkt fav">ML<small>−150</small></div>
+            <div class="mkt neu">SPR<small>−4.5</small></div>
+            <div class="mkt neu">O/U<small>o 213</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Contabile Cartel</div><div class="rec">2–5 · 10th</div>
+        <div class="bcard" onclick="openCard('Contabile Cartel','2–5 · 10th')"><div class="nm">vs. Contabile Cartel</div><div class="rec">2–5 · 10th</div>
           <div class="cellsrow">
-            <div class="mkt fav" onclick="openBet('Contabile Cartel','Moneyline','fav')">ML<small>−170</small></div>
-            <div class="mkt fav" onclick="openBet('Contabile Cartel','Spread','fav')">SPR<small>−5.5</small></div>
-            <div class="mkt fav" onclick="openBet('Contabile Cartel','O/U','fav')">O/U<small>o 220</small></div>
+            <div class="mkt fav">ML<small>−170</small></div>
+            <div class="mkt fav">SPR<small>−5.5</small></div>
+            <div class="mkt fav">O/U<small>o 220</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Bada Bing Bombers</div><div class="rec">2–5 · 11th</div>
+        <div class="bcard" onclick="openCard('Bada Bing Bombers','2–5 · 11th')"><div class="nm">vs. Bada Bing Bombers</div><div class="rec">2–5 · 11th</div>
           <div class="cellsrow">
-            <div class="mkt fav" onclick="openBet('Bada Bing Bombers','Moneyline','fav')">ML<small>−185</small></div>
-            <div class="mkt fav" onclick="openBet('Bada Bing Bombers','Spread','fav')">SPR<small>−6.5</small></div>
-            <div class="mkt neu" onclick="openBet('Bada Bing Bombers','O/U','neu')">O/U<small>o 216</small></div>
+            <div class="mkt fav">ML<small>−185</small></div>
+            <div class="mkt fav">SPR<small>−6.5</small></div>
+            <div class="mkt neu">O/U<small>o 216</small></div>
           </div></div>
-        <div class="bcard"><div class="nm">vs. Sunday Gravy</div><div class="rec">1–6 · 12th</div>
+        <div class="bcard" onclick="openCard('Sunday Gravy','1–6 · 12th')"><div class="nm">vs. Sunday Gravy</div><div class="rec">1–6 · 12th</div>
           <div class="cellsrow">
-            <div class="mkt fav" onclick="openBet('Sunday Gravy','Moneyline','fav')">ML<small>−210</small></div>
-            <div class="mkt fav" onclick="openBet('Sunday Gravy','Spread','fav')">SPR<small>−7.5</small></div>
-            <div class="mkt fav" onclick="openBet('Sunday Gravy','O/U','fav')">O/U<small>o 222</small></div>
+            <div class="mkt fav">ML<small>−210</small></div>
+            <div class="mkt fav">SPR<small>−7.5</small></div>
+            <div class="mkt fav">O/U<small>o 222</small></div>
           </div></div>
       </div>
-
-      <div class="eyebrow" style="margin:8px 0 5px 2px">POOL BETS · TAP TO ENTER</div>
-      <div style="margin:0 2px 8px">
-        <div class="row" onclick="openPool('Biggest Winner')" style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:12px;margin-bottom:6px;border-bottom:1px solid var(--line2)">
-          <div class="rl">Biggest Winner<small>Most points this week · $1 to enter</small></div><div class="chev">&#8250;</div></div>
-        <div class="row" onclick="openPool('Worst Beat')" style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:12px;margin-bottom:6px;border-bottom:1px solid var(--line2)">
-          <div class="rl">Worst Beat<small>Pick the biggest blowout loss · $1</small></div><div class="chev">&#8250;</div></div>
-        <div class="row" onclick="openPool('The Lineup')" style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:12px;border-bottom:1px solid var(--line2)">
-          <div class="rl">The Lineup<small>Most starters beating projection · $1</small></div><div class="chev">&#8250;</div></div>
       </div>
 
-      <div class="eyebrow" style="margin:8px 0 5px 2px">YAHOO MATCHUP · READ-ONLY</div>
-      <div style="margin:0 2px 10px;border:1px dashed var(--edge);border-radius:10px;padding:12px">
-        <div style="font-size:12px;margin-bottom:6px">You vs Diego R. — official</div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--g1)">
-          <span>Your proj</span><span class="mono">198.4</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--g1);margin-top:3px">
-          <span>Diego proj</span><span class="mono">205.1</span></div>
-        <div style="font-size:10px;color:var(--g2);margin-top:8px">Context only. All betting runs through the cards above.</div>
+      <div class="zone">
+      <div class="eyebrow" style="margin:0 0 3px 2px">POOL BETS · 4 THIS WEEK · SWIPE →</div>
+      <div class="prail">
+        <div class="pcard" onclick="openPool('Most Passing Yards','team')">
+          <span class="ptag team">TEAM</span>
+          <div class="pcn">Most Passing Yards</div>
+          <div class="pcq">Which team finishes with the most passing yards?</div>
+          <div class="pcf"><span class="pfee">$1</span><span class="chev">&#8250;</span></div></div>
+        <div class="pcard" onclick="openPool('Shootout of the Week','matchup')">
+          <span class="ptag match">MATCHUP</span>
+          <div class="pcn">Shootout of the Week</div>
+          <div class="pcq">Which matchup finishes with the highest combined points?</div>
+          <div class="pcf"><span class="pfee">$1</span><span class="chev">&#8250;</span></div></div>
+        <div class="pcard" onclick="openPool('Most Total Touchdowns','team')">
+          <span class="ptag team">TEAM</span>
+          <div class="pcn">Most Total Touchdowns</div>
+          <div class="pcq">Which team scores the most total touchdowns?</div>
+          <div class="pcf"><span class="pfee">$1</span><span class="chev">&#8250;</span></div></div>
+        <div class="pcard roll" onclick="openPool('Matchups with 10+ Combined TDs','matchup')">
+          <span class="ptag rollv">ROLLOVER</span>
+          <div class="pcn">Matchups with 10+ Combined TDs</div>
+          <div class="pcq">rolled from Wk 7 · pot $12 carried</div>
+          <div class="pcf"><span class="pfee gold">$12</span><span class="chev">&#8250;</span></div></div>
+      </div>
+      </div>
+
+      <div class="zone">
+      <div class="eyebrow" style="margin:0 0 3px 2px">YAHOO MATCHUPS · THE WEEK'S SLATE · SWIPE →</div>
+      <div class="yrail">
+        <div class="ycard" onclick="openYahoo('Sunday Gravy','Bada Bing Bombers')">
+          <div class="ymatch"><span>Sunday Gravy</span><span class="yv">vs</span><span>Bada Bing Bombers</span></div>
+          <div class="yrec"><span>1–6</span><span>2–5</span></div>
+          <div class="cellsrow">
+            <div class="mkt fav">ML<small>−140</small></div>
+            <div class="mkt neu">SPR<small>−3.0</small></div>
+            <div class="mkt fav">O/U<small>o 224</small></div>
+          </div></div>
+        <div class="ycard" onclick="openYahoo('CULV Destroyers','Gridiron Goodfellas')">
+          <div class="ymatch"><span>CULV Destroyers</span><span class="yv">vs</span><span>Gridiron Goodfellas</span></div>
+          <div class="yrec"><span>7–0</span><span>6–1</span></div>
+          <div class="cellsrow">
+            <div class="mkt fav">ML<small>−165</small></div>
+            <div class="mkt neu">SPR<small>−3.5</small></div>
+            <div class="mkt neu">O/U<small>o 218</small></div>
+          </div></div>
+        <div class="ycard" onclick="openYahoo('The Brain Trust','Numbers Racket')">
+          <div class="ymatch"><span>The Brain Trust</span><span class="yv">vs</span><span>Numbers Racket</span></div>
+          <div class="yrec"><span>3–4</span><span>4–3</span></div>
+          <div class="cellsrow">
+            <div class="mkt neu">ML<small>+110</small></div>
+            <div class="mkt neu">SPR<small>+1.5</small></div>
+            <div class="mkt fav">O/U<small>u 208</small></div>
+          </div></div>
+      </div>
       </div>
     </div>
   </div>
 
   <!-- ===== TAB: ACTION ===== -->
   <div class="tab" id="tab-action">
-    <div class="thead"><div class="ttitle">My Action</div><div class="tsub">The tracker</div></div>
+    <div class="thead"><div class="ttitle">My Action</div><div class="tsub">Week 8 · Regular Season</div></div>
     <div class="strip">
-      <div class="cell"><div class="k">Bet record</div><div class="v">14–7</div></div>
-      <div class="cell"><div class="k">In play</div><div class="v mono">$55</div></div>
-      <div class="cell gold"><div class="k">Settled wk</div><div class="v mono pos">+$33</div></div>
-      <div class="cell"><div class="k">Still in play</div><div class="v mono">+$96</div></div>
+      <div class="cell"><div class="k">Season Bet Record</div><div class="v">14–7</div></div>
+      <div class="cell"><div class="k">Bet this week</div><div class="v mono">$129</div></div>
+      <div class="cell"><div class="k">Upside left</div><div class="v mono pos">+$129.33</div></div>
+      <div class="cell gold"><div class="k">Settled</div><div class="v mono pos">+$20</div></div>
     </div>
     <div class="scrollbare">
-      <div class="sect" style="color:var(--amber)">ACTION REQUIRED</div>
+      <div class="sect" style="color:var(--amber)">ACTION REQUIRED<span class="ct">2</span></div>
       <div class="grid">
-        <div class="atile" style="border-color:var(--amber)" onclick="openInc('CULV Destroyers','LOCKED')"><div class="op">CULV Destroyers</div><div class="bt">Moneyline · LOCKED</div><div class="ft" style="color:var(--amber)">incoming · 42m</div></div>
-        <div class="atile" style="border-color:var(--amber)" onclick="openInc('Gridiron Goodfellas','DYNAMIC')"><div class="op">Gridiron Goodfellas</div><div class="bt">Spread · DYNAMIC</div><div class="ft" style="color:var(--amber)">incoming · 51m</div></div>
+        <div class="atile" style="border-color:var(--amber)" onclick="openInc('CULV Destroyers','LOCKED')"><div class="op">CULV Destroyers</div><div class="bt">Moneyline +165 · LOCKED</div><div class="ft" style="color:var(--amber)">incoming · 42m left</div></div>
+        <div class="atile" style="border-color:var(--amber)" onclick="openInc('Gridiron Goodfellas','DYNAMIC')"><div class="op">Gridiron Goodfellas</div><div class="bt">Over 214 · DYNAMIC</div><div class="ft" style="color:var(--amber)">counter · 51m left</div></div>
       </div>
-      <div class="sect" style="color:var(--gold)">SENT &amp; WAITING</div>
+
+      <div class="sect" style="color:var(--gold)">WAITING<span class="ct">2</span></div>
       <div class="grid">
-        <div class="atile" style="border-color:var(--gold)" onclick="openSent('Tara W.')"><div class="op">Tara W.</div><div class="bt">O/U</div><div class="ft" style="color:var(--gold)">waiting</div></div>
+        <div class="atile" style="border-color:var(--gold)" onclick="openSent('Tara W.')"><div class="op">Tara W.</div><div class="bt">Over 214 · $25 held</div><div class="ft" style="color:var(--gold)">waiting · 38m</div></div>
+        <div class="atile" style="border-color:var(--gold)" onclick="openPoolWait('Shootout of the Week')"><div class="op">Shootout of the Week</div><div class="bt">Pick · CULV vs Gridiron</div><div class="ft" style="color:var(--gold)">locks Sun 10a</div></div>
       </div>
-      <div class="sect" style="color:var(--green)">ACCEPTED &amp; LIVE</div>
+
+      <div class="sect" style="color:var(--green2)">LIVE<span class="ct">4</span></div>
       <div class="grid">
-        <div class="atile" style="border-color:var(--green)" onclick="openLive('Sam O.')"><div class="op">Sam O.</div><div class="bt">Moneyline</div><div class="ft" style="color:var(--green2)">live · 3Q</div></div>
-        <div class="atile" style="border-color:var(--green)" onclick="openLive('Pool')"><div class="op">Biggest Winner</div><div class="bt">Pool</div><div class="ft" style="color:var(--green2)">2nd of 12</div></div>
+        <div class="ltile" onclick="openLiveV('Sam O.')">
+          <div class="lop">Sam O.</div>
+          <div class="lwag">Moneyline +165 · <span class="md">LOCKED</span> · You $20</div>
+          <div class="lfoot"><span class="lstat ahead">AHEAD</span><span class="lsc">88.2–74.6 · 3Q</span></div>
+        </div>
+        <div class="ltile" onclick="openLiveV('Gridiron Goodfellas')">
+          <div class="lop">Gridiron Goodfellas</div>
+          <div class="lwag">Spread +3.5 · <span class="md dyn">DYNAMIC</span> · You $20</div>
+          <div class="lfoot"><span class="lstat covering">COVERING</span><span class="lsc">96.2–98.4 · +3.5</span></div>
+        </div>
+        <div class="ptile" onclick="openLiveP('Most Passing Yards','ALIVE')">
+          <div class="pnm">Most Passing Yards</div>
+          <div class="ppk">Pick · Sunday Gravy</div>
+          <div class="pfoot"><span class="pbadge lstat alive">ALIVE</span><span class="palvpot">5 alive · $12</span></div>
+        </div>
+        <div class="ptile out" onclick="openLiveP('Most Total Touchdowns','OUT')">
+          <div class="pnm">Most Total Touchdowns</div>
+          <div class="ppk">Pick · Bada Bing Bombers</div>
+          <div class="pfoot"><span class="pbadge lstat out">OUT</span><span class="palvpot">3 alive · $8</span></div>
+        </div>
       </div>
-      <div class="sect" style="color:var(--g1)">COMPLETED · 14–7 SEASON</div>
+      <div class="sect" style="color:var(--g1)">COMPLETED<span class="ct">· 14–7 season</span></div>
       <div class="grid">
-        <div class="atile" style="opacity:.6" onclick="openWon('Marcus L.')"><div class="op">Marcus L.</div><div class="bt">Spread</div><div class="ft pos">won +$40</div></div>
-        <div class="atile" style="opacity:.6" onclick="openWon('Nina P.')"><div class="op">Nina P.</div><div class="bt">O/U</div><div class="ft neg">lost −$20</div></div>
+        <div class="atile settling" onclick="openDecidedP('Shootout of the Week')"><div class="op">Shootout of the Week</div><div class="bt">Winner · 231 pts · you won</div><div class="set">SETTLING</div><div class="pend">pending +$3.33 · not yet paid</div></div>
+        <div class="atile" style="opacity:.62" onclick="openWon('Marcus L.','won')"><div class="op">Marcus L.</div><div class="bt">Spread −3.5 · LOCKED</div><div class="ft pos">won +$40</div></div>
+        <div class="atile" style="opacity:.62" onclick="openWon('Nina P.','lost')"><div class="op">Nina P.</div><div class="bt">Under 208 · LOCKED</div><div class="ft neg">lost −$20</div></div>
+        <div class="atile" style="opacity:.62" onclick="openPoolDone('Most Passing Yards')"><div class="op">Most Passing Yards</div><div class="bt">Pool · your pick lost</div><div class="ft" style="color:var(--g1)">no claim · rolled fwd</div></div>
       </div>
     </div>
   </div>
@@ -513,7 +685,7 @@
 
   <div class="laboverlay" id="lab">
     <div class="labsheet">
-      <div class="labhead"><span>LIFECYCLE STATE LAB · UI/UX Rev 2.0</span><span class="labx" onclick="closeLab()">CLOSE</span></div>
+      <div class="labhead"><span>LIFECYCLE STATE LAB · UI/UX Rev 2.1</span><span class="labx" onclick="closeLab()">CLOSE</span></div>
       <div class="labnote">Representative states for visual review. Where a mechanic is not yet ruled, the surface is marked PENDING rather than inventing behavior.</div>
       <div class="labsect">VERSUS · 13 STATES</div>
       <div class="labgrid">
@@ -553,8 +725,8 @@
         <div class="lct"><span>Counter sent · waiting</span><span class="lbg amber">LOCKED</span></div>
         <div class="lcn">vs. The Brain Trust</div>
         <div class="lcd">Refresh &amp; relock · Spread −3.5</div>
-        <div class="lcd">You $25 held · them $21</div>
-        <div class="lcf amber">waiting on them</div>
+        <div class="lcd">You $25 · them $21</div>
+        <div class="lcf amber">final counter · they accept or decline</div>
         <div class="lcs">SUPPORTED AFTER SPEC 2</div>
       </div>
       <div class="lc">
@@ -569,7 +741,8 @@
         <div class="lct"><span>Accepted · Dynamic</span><span class="lbg green">DYNAMIC</span></div>
         <div class="lcn">vs. Gridiron Goodfellas</div>
         <div class="lcd">Moneyline · you +130 · live</div>
-        <div class="lcd">Your stake $20 fixed · their ceiling $26</div>
+        <div class="lcd">Your stake $20 fixed</div>
+        <div class="lcd">Their stake $23 now · max $26</div>
         <div class="lcf green">odds live until Final Lock</div>
         <div class="lcs">SUPPORTED AFTER SPEC 3</div>
       </div>
@@ -577,8 +750,9 @@
         <div class="lct"><span>Dynamic refreshed</span><span class="lbg green">DYNAMIC</span></div>
         <div class="lcn">vs. Gridiron Goodfellas</div>
         <div class="lcd">Odds moved · you +118 · informational</div>
-        <div class="lcd">Your stake $20 · theirs now $24 (was $26)</div>
-        <div class="lcf green">no money moved · ceiling never grows</div>
+        <div class="lcd">Your stake $20 fixed</div>
+        <div class="lcd">Their stake $23 now · was $24 · max $26</div>
+        <div class="lcf green">no money moved · max never grows</div>
         <div class="lcs">SUPPORTED AFTER SPEC 3</div>
       </div>
       <div class="lc">
@@ -603,7 +777,7 @@
         <div class="lcd">Spread −6.5 · withdrawn by you</div>
         <div class="lcd">Hold released in full</div>
         <div class="lcf dead">pulled before acceptance</div>
-        <div class="lcs">PENDING — pull window unruled</div>
+        <div class="lcs">SUPPORTED AFTER SPEC 2</div>
       </div>
       <div class="lc">
         <div class="lct"><span>Settled · win</span><span class="lbg green">LOCKED</span></div>
@@ -622,87 +796,95 @@
         <div class="lcs">SUPPORTED AFTER SPEC 3</div>
       </div>
       </div>
-      <div class="labsect">POOLS · 10 STATES</div>
+      <div class="labsect">POOLS · 11 STATES · PREDICTION MODEL</div>
       <div class="labgrid">
       <div class="lc">
         <div class="lct"><span>Available pool</span><span class="lbg amber">OPEN</span></div>
-        <div class="lcn">Biggest Winner</div>
-        <div class="lcd">Most points this week</div>
-        <div class="lcd">$1 to enter · 12 seats</div>
+        <div class="lcn">Most Passing Yards · TEAM</div>
+        <div class="lcd">Which team leads passing yards?</div>
+        <div class="lcd">$1 to enter · pick a team</div>
         <div class="lcf amber">not entered</div>
         <div class="lcs">SUPPORTED AFTER SPEC 5</div>
       </div>
       <div class="lc">
-        <div class="lct"><span>Rank pool entry</span><span class="lbg amber">RANK</span></div>
-        <div class="lcn">Weekly Rank Pool</div>
-        <div class="lcd">Order all 12 teams by finish</div>
-        <div class="lcd">$1 to enter · drag to rank</div>
-        <div class="lcf amber">entry open</div>
-        <div class="lcs">PENDING — rank scoring unruled</div>
+        <div class="lct"><span>Team Prediction · pick</span><span class="lbg amber">PICK</span></div>
+        <div class="lcn">Most Passing Yards</div>
+        <div class="lcd">Pick a team ▾ · all 12 eligible</div>
+        <div class="lcd">Your pick · Sunday Gravy</div>
+        <div class="lcf amber">Enter · $1 to commit</div>
+        <div class="lcs">SUPPORTED AFTER SPEC 5</div>
       </div>
       <div class="lc">
-        <div class="lct"><span>Prediction pool · pick flow</span><span class="lbg amber">PICK</span></div>
-        <div class="lcn">Survivor Pick</div>
-        <div class="lcd">Pick one GM to outscore their opponent</div>
-        <div class="lcd">one pick · no repeats</div>
-        <div class="lcf amber">choose your pick</div>
-        <div class="lcs">PENDING — prediction mechanics unruled</div>
+        <div class="lct"><span>Matchup Prediction · pick</span><span class="lbg amber">PICK</span></div>
+        <div class="lcn">Shootout of the Week</div>
+        <div class="lcd">Pick a matchup ▾ · full names</div>
+        <div class="lcd">Your pick · Gravy vs Bombers</div>
+        <div class="lcf amber">Enter · $1 to commit</div>
+        <div class="lcs">SUPPORTED AFTER SPEC 5</div>
       </div>
       <div class="lc">
         <div class="lct"><span>Entry confirmation</span><span class="lbg green">OPEN</span></div>
-        <div class="lcn">Biggest Winner</div>
-        <div class="lcd">Entry confirmed</div>
-        <div class="lcd">$1 debited · min-first</div>
-        <div class="lcf green">you are in</div>
+        <div class="lcn">Most Passing Yards</div>
+        <div class="lcd">Your pick · Sunday Gravy</div>
+        <div class="lcd">$1 entered</div>
+        <div class="lcf green">Entry confirmed · you're in</div>
         <div class="lcs">SUPPORTED AFTER SPEC 5</div>
       </div>
       <div class="lc">
         <div class="lct"><span>Entered · awaiting lock</span><span class="lbg green">OPEN</span></div>
-        <div class="lcn">Biggest Winner</div>
-        <div class="lcd">12 of 12 entered</div>
-        <div class="lcd">Pot $12</div>
-        <div class="lcf green">locks at first kickoff</div>
+        <div class="lcn">Most Passing Yards</div>
+        <div class="lcd">Your pick · Sunday Gravy</div>
+        <div class="lcd">12 entered · Pot $12</div>
+        <div class="lcf green">Change pick · locks at first kickoff</div>
         <div class="lcs">SUPPORTED AFTER SPEC 5</div>
       </div>
       <div class="lc">
         <div class="lct"><span>Locked</span><span class="lbg gold">LOCKED</span></div>
-        <div class="lcn">Biggest Winner</div>
-        <div class="lcd">Entries closed</div>
-        <div class="lcd">Pot $12 · escrowed</div>
-        <div class="lcf gold">locked · no changes</div>
+        <div class="lcn">Most Passing Yards</div>
+        <div class="lcd">Your pick · Sunday Gravy</div>
+        <div class="lcd">Entries closed · Pot $12</div>
+        <div class="lcf gold">locked at first kickoff</div>
         <div class="lcs">SUPPORTED AFTER SPEC 5</div>
       </div>
       <div class="lc">
-        <div class="lct"><span>Live standings</span><span class="lbg green">LIVE</span></div>
-        <div class="lcn">Biggest Winner</div>
-        <div class="lcd">1 Sunday Gravy 118.2 · 2 you 111.6</div>
-        <div class="lcd">Pot $12</div>
-        <div class="lcf green">live · updating</div>
+        <div class="lct"><span>Live · alive</span><span class="lbg green">LIVE</span></div>
+        <div class="lcn">Most Passing Yards</div>
+        <div class="lcd">Your pick · Sunday Gravy · ALIVE</div>
+        <div class="lcd">5 picks still alive · Pot $12</div>
+        <div class="lcf green">slow reveal · updating</div>
+        <div class="lcs">SUPPORTED AFTER SPEC 5</div>
+      </div>
+      <div class="lc">
+        <div class="lct"><span>Live · out</span><span class="lbg dead">LIVE</span></div>
+        <div class="lcn">Most Passing Yards</div>
+        <div class="lcd">Your pick · Sunday Gravy · OUT</div>
+        <div class="lcd">3 picks still alive · Pot $12</div>
+        <div class="lcf dead">eliminated · still updating</div>
+        <div class="lcs">SUPPORTED AFTER SPEC 5</div>
+      </div>
+      <div class="lc">
+        <div class="lct"><span>Decided · winner reveal</span><span class="lbg gold">DECIDED</span></div>
+        <div class="lcn">Most Passing Yards</div>
+        <div class="lcd">Winner · Sunday Gravy · 286 yds</div>
+        <div class="lcd">Winners · Tony · Fraser · Mike</div>
+        <div class="lcf gold">Pot $12 · 3 winners · $4 each</div>
+        <div class="lcs">SUPPORTED AFTER SPEC 5</div>
+      </div>
+      <div class="lc">
+        <div class="lct"><span>Settled · tie</span><span class="lbg gold">SETTLED</span></div>
+        <div class="lcn">Most Passing Yards</div>
+        <div class="lcd">3 winning claims · Pot $12</div>
+        <div class="lcd">$4 each · remainder to Championship</div>
+        <div class="lcf gold">You won · +$3 net</div>
         <div class="lcs">SUPPORTED AFTER SPEC 5</div>
       </div>
       <div class="lc">
         <div class="lct"><span>Rollover</span><span class="lbg amber">ROLL</span></div>
-        <div class="lcn">Worst Beat</div>
-        <div class="lcd">No qualifying beat this week</div>
-        <div class="lcd">Pot $12 rolls to Week 9</div>
-        <div class="lcf amber">rolled forward</div>
-        <div class="lcs">PENDING — rollover conditions unruled</div>
-      </div>
-      <div class="lc">
-        <div class="lct"><span>Settled · tie</span><span class="lbg gold">SETTLED</span></div>
-        <div class="lcn">Biggest Winner</div>
-        <div class="lcd">Two GMs tied at 121.4</div>
-        <div class="lcd">Pot $12 split</div>
-        <div class="lcf gold">settled · tie</div>
-        <div class="lcs">PENDING — tie rule unruled</div>
-      </div>
-      <div class="lc">
-        <div class="lct"><span>Negative pool · self-pick blocked</span><span class="lbg red">BLOCKED</span></div>
-        <div class="lcn">Worst Beat</div>
-        <div class="lcd">You cannot pick your own team</div>
-        <div class="lcd">Entry not permitted</div>
-        <div class="lcf red">blocked</div>
-        <div class="lcs">PENDING — negative-pool rule unruled</div>
+        <div class="lcn">Matchups with 10+ Combined TDs</div>
+        <div class="lcd">No matchup hit the mark this week</div>
+        <div class="lcd">Pot $12 rolls to Week 9 · Rolled from Wk 8</div>
+        <div class="lcf amber">rolled forward · lineage carried</div>
+        <div class="lcs">SUPPORTED AFTER SPEC 5</div>
       </div>
       </div>
     </div>
@@ -738,6 +920,64 @@
   }
   function closeOv(){ document.getElementById('ov').classList.remove('on'); }
 
+  // odds preview per opponent — mirrors the compact Big Board cards
+  const BB_ODDS = {
+    'CULV Destroyers':{ml:['+165','dog'],spr:['+4.5','neu'],ou:['u 206','dog']},
+    'Gridiron Goodfellas':{ml:['+130','dog'],spr:['+3.5','dog'],ou:['o 214','neu']},
+    'Third And Long Island Iced Tea':{ml:['+105','neu'],spr:['+1.5','neu'],ou:['o 211','fav']},
+    "Skipolini's Enforcers":{ml:['−115','fav'],spr:['−1.5','neu'],ou:['u 209','neu']},
+    'Numbers Racket':{ml:['−125','fav'],spr:['−2.5','fav'],ou:['u 208','dog']},
+    'The Brain Trust':{ml:['−135','fav'],spr:['−3.5','fav'],ou:['o 212','neu']},
+    'Provenza Provolone':{ml:['−145','fav'],spr:['−4.5','fav'],ou:['o 217','fav']},
+    'Racconti Raiders':{ml:['−150','fav'],spr:['−4.5','neu'],ou:['o 213','neu']},
+    'Contabile Cartel':{ml:['−170','fav'],spr:['−5.5','fav'],ou:['o 220','fav']},
+    'Bada Bing Bombers':{ml:['−185','fav'],spr:['−6.5','fav'],ou:['o 216','neu']},
+    'Sunday Gravy':{ml:['−210','fav'],spr:['−7.5','fav'],ou:['o 222','fav']}
+  };
+  // whole-card tap → full-size Versus card → select market → composer
+  function openCard(gm,rec){
+    const o = BB_ODDS[gm] || {ml:['—','neu'],spr:['—','neu'],ou:['—','neu']};
+    const esc = gm.replace(/'/g,"\\'");
+    showSheet(`<h3>vs. ${gm}</h3>
+      <div class="sub">${rec} · pick your market</div>
+      <div class="note">Tap a market to build your challenge. Lineups and odds freeze the moment you send.</div>
+      <div class="cellsrow" style="margin-bottom:10px">
+        <div class="mkt ${o.ml[1]}" style="cursor:pointer;padding:12px 0" onclick="openBet('${esc}','Moneyline','${o.ml[1]}')">ML<small>${o.ml[0]}</small></div>
+        <div class="mkt ${o.spr[1]}" style="cursor:pointer;padding:12px 0" onclick="openBet('${esc}','Spread','${o.spr[1]}')">SPR<small>${o.spr[0]}</small></div>
+        <div class="mkt ${o.ou[1]}" style="cursor:pointer;padding:12px 0" onclick="openBet('${esc}','O/U','${o.ou[1]}')">O/U<small>${o.ou[0]}</small></div>
+      </div>
+      <button class="btn ghost" onclick="openSpine('${esc}','${rec.replace(/'/g,"\\'")}')" style="font-size:12px">View lineups &amp; projections</button>
+      <button class="btn ghost" onclick="closeOv()">Cancel</button>`);
+  }
+  // Ruled side-by-side lineup/projection spine (V-ACC-L layout).
+  // Projection source is a PENDING backend contract — values here are STATIC / PROTOTYPE.
+  function openSpine(gm,rec){
+    const esc=gm.replace(/'/g,"\\'");
+    const mine=[['QB','J. Hurts','21.4'],['RB','B. Robinson','16.8'],['RB','K. Walker','13.2'],
+      ['WR','A. St. Brown','15.1'],['WR','D. London','12.6'],['TE','T. McBride','11.9'],
+      ['FLEX','J. Jefferson','17.3'],['K','H. Butker','8.5'],['DEF','Ravens','9.0']];
+    const theirs=[['QB','J. Allen','23.1'],['RB','S. Barkley','18.9'],['RB','J. Cook','11.4'],
+      ['WR','C. Lamb','16.7'],['WR','N. Collins','13.8'],['TE','G. Kittle','12.2'],
+      ['FLEX','J. Chase','19.0'],['K','J. Bass','7.8'],['DEF','Steelers','8.6']];
+    const rowsHtml = mine.map((r,i)=>{
+      const t=theirs[i];
+      return `<div class="splrow">
+        <div class="splc l"><span class="splpos">${r[0]}</span><span class="splnm">${r[1]}</span></div>
+        <div class="splp">${r[2]}</div>
+        <div class="splvs">·</div>
+        <div class="splp r">${t[2]}</div>
+        <div class="splc r"><span class="splnm">${t[1]}</span><span class="splpos">${t[0]}</span></div>
+      </div>`;}).join('');
+    const myTot = mine.reduce((s,r)=>s+parseFloat(r[2]),0).toFixed(1);
+    const thTot = theirs.reduce((s,r)=>s+parseFloat(r[2]),0).toFixed(1);
+    showSheet(`<h3>Lineups &amp; projections</h3>
+      <div class="sub">You vs ${gm} · ${rec}</div>
+      <div class="splhead"><span>YOUR LINEUP</span><span>PROJ</span><span></span><span>PROJ</span><span>${gm.length>14?gm.slice(0,13)+'…':gm.toUpperCase()}</span></div>
+      ${rowsHtml}
+      <div class="spltotrow"><span class="tlab">Total</span><span class="tl">${myTot}</span><span></span><span class="tr2">${thTot}</span><span></span></div>
+      <div style="font-size:10px;color:var(--g2);margin:8px 2px 0;line-height:1.5">Projections shown are the frozen proposal projection. Live Yahoo scoring replaces these once games begin.</div>
+      <button class="btn ghost" onclick="openCard('${esc}','${rec.replace(/'/g,"\\'")}')">‹ Back to challenge</button>`);
+  }
   function openBet(gm,mkt,side){
     const label = side==='fav'?'you are favored':side==='dog'?'you are the underdog':'near even';
     showSheet(`<h3>Challenge ${gm}</h3>
@@ -784,11 +1024,103 @@
 
   function openLab(){document.getElementById('lab').classList.add('on');}
   function closeLab(){document.getElementById('lab').classList.remove('on');}
-  function openPool(name){
-    showSheet(`<h3>${name}</h3><div class="sub">Whole league · $1 to enter</div>
-      <div style="font-size:12px;color:#cfc9ba;line-height:1.6;margin-bottom:10px">You're entered automatically — your team competes on this pool's metric. Pick or join, then you're in.</div>
-      <button class="btn grn" onclick="closeOv()">Join pool · $1</button>
-      <button class="btn ghost" onclick="closeOv()">Not this week</button>`);
+  // Prediction pool entry — one shared component, team or matchup binding
+  const TEAMS = ['Sunday Gravy','CULV Destroyers','Gridiron Goodfellas','Third And Long Island Iced Tea','Skipolini\'s Enforcers','Numbers Racket','The Brain Trust','Provenza Provolone','Racconti Raiders','Contabile Cartel','Bada Bing Bombers'];
+  const MATCHUPS = ['Sunday Gravy vs Bada Bing Bombers','CULV Destroyers vs Gridiron Goodfellas','The Brain Trust vs Numbers Racket','Racconti Raiders vs Provenza Provolone','Contabile Cartel vs Third And Long Island Iced Tea','Skipolini\'s Enforcers vs your team'];
+  const POOLQ = {
+    'Most Passing Yards':'Which team finishes the week with the most passing yards?',
+    'Most Total Touchdowns':'Which team scores the most total touchdowns this week?',
+    'Shootout of the Week':'Which matchup finishes with the highest combined fantasy points?',
+    'Matchups with 10+ Combined TDs':'Which matchup will hit 10 or more combined touchdowns?'
+  };
+  let poolPick = {};
+  function openPool(name,kind){
+    const opts = kind==='matchup' ? MATCHUPS : TEAMS;
+    const label = kind==='matchup' ? 'Pick a matchup' : 'Pick a team';
+    const cur = poolPick[name] || opts[0];
+    const rows = opts.map(o=>`<option ${o===cur?'selected':''}>${o}</option>`).join('');
+    const q = POOLQ[name] || 'Which will produce the winning outcome?';
+    const roll = name.indexOf('10+')>-1;
+    showSheet(`<h3 style="text-transform:uppercase;letter-spacing:.02em">${name}</h3>
+      <div class="sub">${q}</div>
+      <div style="font-size:11px;color:var(--g1);margin:2px 0 12px">${roll?'$1 entry · pot $12 (rolled) · 6 entered':'$1 entry · pot $8 · 8 entered'}</div>
+      <div style="font-size:10px;letter-spacing:.1em;color:var(--g2);margin-bottom:4px">${label.toUpperCase()}</div>
+      <select id="poolsel" class="poolsel" onchange="poolPickChange('${name.replace(/'/g,"\\'")}')">${rows}</select>
+      <div class="pickconf">Your pick · <span id="pickname">${cur}</span></div>
+      <button class="btn grn" onclick="closeOv()">Enter · $1</button>
+      <button class="btn ghost" onclick="closeOv()">Cancel</button>`);
+  }
+  function poolPickChange(name){
+    const v = document.getElementById('poolsel').value;
+    poolPick[name] = v;
+    document.getElementById('pickname').textContent = v;
+  }
+  // Yahoo Matchup — parallel sportsbook analysis card (no wager CTA)
+  function openYahoo(a,b){
+    // Parallel to the opened Big Board card: same shell, same odds hierarchy,
+    // same lineup/projection architecture. Terminal purpose differs — analysis, no wager.
+    const la=[['QB','J. Hurts','21.4'],['RB','B. Robinson','16.8'],['WR','A. St. Brown','15.1'],
+      ['WR','D. London','12.6'],['TE','T. McBride','11.9'],['FLEX','J. Jefferson','17.3'],['DEF','Ravens','9.0']];
+    const lb=[['QB','J. Allen','23.1'],['RB','S. Barkley','18.9'],['WR','C. Lamb','16.7'],
+      ['WR','N. Collins','13.8'],['TE','G. Kittle','12.2'],['FLEX','J. Chase','19.0'],['DEF','Steelers','8.6']];
+    const rows=la.map((r,i)=>{const t=lb[i];return `<div class="splrow">
+        <div class="splc l"><span class="splpos">${r[0]}</span><span class="splnm">${r[1]}</span></div>
+        <div class="splp">${r[2]}</div><div class="splvs">·</div><div class="splp r">${t[2]}</div>
+        <div class="splc r"><span class="splnm">${t[1]}</span><span class="splpos">${t[0]}</span></div>
+      </div>`;}).join('');
+    const ta=la.reduce((s,r)=>s+parseFloat(r[2]),0).toFixed(1);
+    const tb=lb.reduce((s,r)=>s+parseFloat(r[2]),0).toFixed(1);
+    showSheet(`<h3 style="font-size:15px">${a} <span style="color:var(--g2);font-size:12px">vs</span> ${b}</h3>
+      <div class="sub">Yahoo matchup · sportsbook read</div>
+
+      <div class="yblock" style="margin-top:10px">
+        <div class="yhd">Sportsbook View</div>
+        <div class="terms">
+          <div class="tr"><span>Favorite</span><span class="mono">${a}</span></div>
+          <div class="tr"><span>Spread</span><span class="mono">${a} −3.0</span></div>
+          <div class="tr"><span>Total</span><span class="mono">o 224.5</span></div>
+          <div class="tr"><span>Outlook</span><span class="mono">Competitive · shootout risk</span></div>
+        </div>
+      </div>
+
+      <div class="terms" style="margin-top:12px">
+        <div class="tr"><span>Moneyline</span><span class="mono">${a} −140 · ${b} +120</span></div>
+        <div class="tr"><span>Spread</span><span class="mono">${a} −3.0</span></div>
+        <div class="tr"><span>Total (O/U)</span><span class="mono">224.5</span></div>
+        <div class="tr"><span>Projected score</span><span class="mono">116.2 – 108.4</span></div>
+        <div class="tr" style="color:var(--green2)"><span>Current score · pregame</span><span class="mono">0.0 – 0.0</span></div>
+      </div>
+
+      <div class="yblock">
+        <div class="yhd">The Read</div>
+        <div class="body">
+          <p>${a} opened as a modest favorite on the strength of a deeper starting core. Expect a high-scoring week — both lineups project above league average, and the total sits near the top of the slate.</p>
+          <p>The edge is real but thin. ${a} carries the higher floor at three positions, yet ${b} owns the single highest ceiling on the board. If the top end hits, this flips.</p>
+          <p>Weather and injury news are clean on both sides as of the last Yahoo sync. No inactives expected to move the projection.</p>
+        </div>
+      </div>
+
+      <div class="yblock">
+        <div class="yhd">Why The Line Looks This Way</div>
+        <div class="body">
+          <p>The −3 reflects a projection edge of roughly one score, not a mismatch. ${b}'s ceiling keeps this closer than the records suggest.</p>
+          <p>Most of the gap sits at running back, where ${a} projects a two-back committee against a single feature back. That's a steadier distribution — worth about a point and a half of the spread on its own.</p>
+          <p>The total sits high because both defenses rank in the bottom third of the league by points allowed. The over is the sharper read than either side.</p>
+        </div>
+      </div>
+
+      <div class="ycoll" id="ycoll" onclick="document.getElementById('ycoll').classList.toggle('open')">
+        <div class="ycolltog"><span>Starting Lineups &amp; Projections</span><span class="arw">&#8250;</span></div>
+        <div class="ycollbody">
+          <div class="splhead" style="margin-top:8px"><span>${a.length>13?a.slice(0,12)+'…':a.toUpperCase()}</span><span>PROJ</span><span></span><span>PROJ</span><span>${b.length>13?b.slice(0,12)+'…':b.toUpperCase()}</span></div>
+          ${rows}
+          <div class="spltotrow"><span class="tlab">Total</span><span class="tl">${ta}</span><span></span><span class="tr2">${tb}</span><span></span></div>
+          <div style="font-size:10px;color:var(--g2);margin:6px 2px 2px;line-height:1.5">Projections shown pregame. Live Yahoo scoring takes over once games begin — actuals become prominent.</div>
+        </div>
+      </div>
+
+      <div style="font-size:10px;color:var(--g2);margin-top:12px;line-height:1.5">Analysis only — no wager runs through this card. To bet, use Versus on the Big Board.</div>
+      <button class="btn ghost" onclick="closeOv()">Close</button>`);
   }
   function openInc(team,mode){
     const dyn = mode==='DYNAMIC';
@@ -826,23 +1158,94 @@
       <div style="font-size:12px;color:#cfc9ba;line-height:1.6;margin-bottom:10px">Your $20 is escrowed and held. If ${gm} passes or it expires, it returns to your wallet.</div>
       <button class="btn ghost" onclick="closeOv()">Pull the offer</button>`);
   }
-  function openLive(gm){
-    if(gm==='Pool'){ showSheet(`<h3>Biggest Winner</h3><div class="sub">Live · you're 2nd of 12</div>
-      <div style="font-size:12px;line-height:1.9;color:#cfc9ba">1. Sam O. — 141<br><b>2. You — 128</b><br>3. Marcus L. — 122<br><span style="color:var(--g1)">Pot $36 · pays top score</span></div>
-      <button class="btn ghost" onclick="closeOv()" style="margin-top:12px">Close</button>`); return; }
-    showSheet(`<h3>${gm} · live</h3><div class="sub">Moneyline · 3rd quarter</div>
-      <div style="background:var(--tile);border-radius:10px;padding:12px;font-size:12px;line-height:1.9">
-        <div style="display:flex;justify-content:space-between"><span>You</span><span class="mono">88.2</span></div>
-        <div style="display:flex;justify-content:space-between"><span>${gm}</span><span class="mono">74.6</span></div>
-        <div style="display:flex;justify-content:space-between;color:var(--green2);border-top:1px solid var(--line);margin-top:6px;padding-top:6px"><span>If it holds</span><span class="mono">+$44</span></div>
+  function openLiveV(gm){
+    // Rich live Versus ticket — wager-adjusted status, both stakes, spine, net.
+    showSheet(`<h3>${gm} · live</h3>
+      <div class="sub">Moneyline +165 · <span class="mode locked">LOCKED</span> · 3rd quarter</div>
+      <div class="lstat ahead" style="display:inline-block;margin:8px 0 4px">AHEAD · covering the moneyline</div>
+      <div class="terms">
+        <div class="tr"><span>You</span><span class="mono">88.2</span></div>
+        <div class="tr"><span>${gm}</span><span class="mono">74.6</span></div>
+        <div class="tr tt"><span>Your stake</span><span class="mono">$20</span></div>
+        <div class="tr"><span>${gm} stake</span><span class="mono">$33</span></div>
+        <div class="tr"><span>Total pot</span><span class="mono">$53</span></div>
+        <div class="tr" style="color:var(--green2)"><span>If it holds (net)</span><span class="mono">+$33</span></div>
+        <div class="tr" style="color:var(--red)"><span>If it flips (net)</span><span class="mono">−$20</span></div>
       </div>
-      <button class="btn ghost" onclick="closeOv()" style="margin-top:12px">Close</button>`);
+      ${MINI_SPINE(gm)}
+      <div style="font-size:10px;color:var(--g2);margin-top:8px;line-height:1.5">Status reflects your wager, not raw score. Settles from final Yahoo results.</div>
+      <button class="btn ghost" onclick="closeOv()">Close</button>`);
   }
-  function openWon(gm){
+  function MINI_SPINE(gm){
+    const mine=[['QB','J. Hurts','21.4'],['RB','B. Robinson','16.8'],['WR','A. St. Brown','15.1'],['FLEX','J. Jefferson','17.3'],['DEF','Ravens','9.0']];
+    const th=[['QB','J. Allen','19.1'],['RB','S. Barkley','14.9'],['WR','C. Lamb','12.7'],['FLEX','J. Chase','15.0'],['DEF','Steelers','7.6']];
+    const rows=mine.map((r,i)=>{const t=th[i];return `<div class="splrow">
+      <div class="splc l"><span class="splpos">${r[0]}</span><span class="splnm">${r[1]}</span></div>
+      <div class="splp">${r[2]}</div><div class="splvs">·</div><div class="splp r">${t[2]}</div>
+      <div class="splc r"><span class="splnm">${t[1]}</span><span class="splpos">${t[0]}</span></div></div>`;}).join('');
+    return `<div class="splhead" style="margin-top:12px"><span>YOU</span><span>LIVE</span><span></span><span>LIVE</span><span>${gm.length>12?gm.slice(0,11)+'…':gm.toUpperCase()}</span></div>${rows}`;
+  }
+  function openLiveP(name,state){
+    // Slow reveal — frozen pick + ALIVE/OUT + anonymous count + pot. No rank, no identities.
+    const out = state==='OUT';
+    const q = POOLQ[name] || 'Which will produce the winning outcome?';
+    showSheet(`<h3 style="text-transform:uppercase;letter-spacing:.02em">${name}</h3>
+      <div class="sub">${q}</div>
+      <div class="lstat ${out?'out':'alive'}" style="display:inline-block;margin:10px 0 6px">${out?'OUT':'ALIVE'}</div>
+      <div class="terms">
+        <div class="tr"><span>Your pick</span><span class="mono">${out?'Bada Bing Bombers':'Sunday Gravy'}</span></div>
+        <div class="tr"><span>Your pick's current metric</span><span class="mono">${out?'214 pass yds':'286 pass yds'}</span></div>
+        <div class="tr"><span>Picks still alive</span><span class="mono">${out?'3':'5'}</span></div>
+        <div class="tr tt"><span>Pot</span><span class="mono">${out?'$8':'$12'}</span></div>
+      </div>
+      <div style="font-size:10px;color:var(--g2);margin-top:8px;line-height:1.5">${out?'Your pick can no longer win, but the pool is still live and keeps updating.':'Your pick can still win. Other picks stay hidden until the pool decides.'}</div>
+      <button class="btn ghost" onclick="closeOv()">Close</button>`);
+  }
+  function openDecidedP(name){
+    // DECIDED — now in COMPLETED as SETTLING. Outcome known; no BAB moved until settlement commits.
+    // Pending net stays in Upside left; excluded from Settled + Season record until settled.
+    showSheet(`<h3 style="text-transform:uppercase;letter-spacing:.02em">${name} · settling</h3>
+      <div class="sub">Outcome decided · settlement pending · no BAB moved yet</div>
+      <div class="lstat won" style="display:inline-block;margin:10px 0 6px">YOU WON</div>
+      <div class="terms">
+        <div class="tr"><span>Winning option</span><span class="mono">CULV vs Gridiron</span></div>
+        <div class="tr"><span>Deciding metric</span><span class="mono">231 combined pts</span></div>
+        <div class="tr"><span>Winning claims</span><span class="mono">3</span></div>
+        <div class="tr tt"><span>Pot</span><span class="mono">$10</span></div>
+        <div class="tr" style="color:var(--green2)"><span>Your pending payout</span><span class="mono">+$3.33</span></div>
+      </div>
+      <div style="font-size:10px;color:var(--g2);margin-top:8px;line-height:1.5">Decided, not yet settled. Your $3.33 stays in Upside left and no BAB moves until settlement commits — then it becomes a settled result.</div>
+      <button class="btn ghost" onclick="closeOv()">Close</button>`);
+  }
+  function openPoolWait(name){
+    showSheet(`<h3 style="text-transform:uppercase;letter-spacing:.02em">${name}</h3>
+      <div class="sub">Entered · awaiting lock</div>
+      <div class="terms">
+        <div class="tr"><span>Your pick</span><span class="mono">CULV vs Gridiron</span></div>
+        <div class="tr"><span>Locks</span><span class="mono">Sun 10:00a</span></div>
+        <div class="tr tt"><span>Entry</span><span class="mono">$1 committed</span></div>
+      </div>
+      <div style="font-size:11px;color:#cfc9ba;line-height:1.6;margin-top:8px">You can change your pick until lock. Your $1 entry is already committed — changing costs nothing.</div>
+      <button class="btn ghost" onclick="closeOv()">Change pick</button>
+      <button class="btn ghost" onclick="closeOv()">Close</button>`);
+  }
+  function openPoolDone(name){
+    showSheet(`<h3 style="text-transform:uppercase;letter-spacing:.02em">${name} · settled</h3>
+      <div class="sub">Your entry · terminal</div>
+      <div class="terms">
+        <div class="tr"><span>Your pick</span><span class="mono">Sunday Gravy</span></div>
+        <div class="tr"><span>Result</span><span class="mono">No winning claim</span></div>
+        <div class="tr" style="color:var(--g1)"><span>Pool</span><span class="mono">Rolled to Wk 9</span></div>
+      </div>
+      <div style="font-size:10px;color:var(--g2);margin-top:8px;line-height:1.5">Your entry reached its terminal weekly outcome. The pool carries its pot forward and reappears on My League next week.</div>
+      <button class="btn ghost" onclick="closeOv()">Close</button>`);
+  }
+  function openWon(gm,result){
+    const won = result!=='lost';
     showSheet(`<h3>${gm} · settled</h3><div class="sub">Final · paid to wallet</div>
       <div style="background:var(--tile);border-radius:10px;padding:12px;font-size:12px;line-height:1.9">
         <div style="display:flex;justify-content:space-between"><span>Final</span><span class="mono">You 121 · ${gm} 108</span></div>
-        <div style="display:flex;justify-content:space-between;color:var(--green2)"><span>Net</span><span class="mono">+$40</span></div>
+        <div style="display:flex;justify-content:space-between;color:var(--${won?'green2':'red'})"><span>Net</span><span class="mono">${won?'+$40':'−$20'}</span></div>
       </div><button class="btn ghost" onclick="closeOv()" style="margin-top:12px">Close</button>`);
   }
   /* Rules sheets. Status is declared per sheet, and per section where a sheet is mixed.
@@ -874,9 +1277,9 @@
         </div>
         <div style="${RULE_H}">Pool Bets${ruleTag('authoritative')}</div>
         <div style="${RULE_BODY}">
-          Pool Bets are league-wide side games. Some ask you to pick — one team, or one matchup. Others rank everybody automatically and you’re just in. Each pool tells you the entry, the options, how you win, the tie rule, and the lock time before you join.<br><br>
-          You get one entry per pool. In a positive pool you can back your own team; in a negative pool you can’t pick yourself or a matchup you’re in — the app blocks it. All pools for the week lock at the week’s first kickoff.<br><br>
-          When the games are final, the pot pays out on its own. Ties split by the stated rule. Some pools roll over to the next week if nobody wins — those say so up front. The commissioner never picks the winner or touches the payout.
+          Pool Bets are league-wide side games. Four run every week. Each one asks you to pick — one team, or one matchup — then pays out to whoever called it right. Each pool tells you the entry, the options, how you win, the tie rule, and the lock time before you join.<br><br>
+          Fresh pools rotate in every week. The four are drawn from the league's pool catalog, and a pool won't repeat while there are still unused ones to run. You can back your own team or a matchup you're in — nothing is blocked. You get one entry per pool, and you can change your pick as many times as you like until the week's first kickoff. Your entry fee is committed the moment you enter; changing your pick after that costs nothing and moves no BAB.<br><br>
+          When the games are final, the pot pays out on its own. Ties split evenly by winning claim. If a pool is eligible to roll over and nobody wins it, the pot carries into next week and that pool leads the following slate — those say so up front. The commissioner never picks the winner or touches the payout.
         </div>`
     },
     'The Fine Print': {
@@ -916,7 +1319,7 @@
         <div style="display:flex;justify-content:space-between"><span>Frozen min</span><span class="mono" style="color:var(--gold)">−$20</span></div>
         <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:6px;padding-top:6px"><span>Projected settle</span><span class="mono">+$128</span></div>
       </div>
-      <button class="btn g" onclick="closeOv()" style="margin-top:12px">Open full ledger</button>`);
+      <button class="btn g" onclick="closeOv()" style="margin-top:12px">Open full ledger</button></div>`);
   }
 </script>
 </body>
