@@ -129,7 +129,7 @@
   .atile .op{font-size:11.5px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .atile .bt{font-size:9.5px;color:var(--g1);margin-top:3px}
   .atile .ft{font-size:10px;margin-top:5px;font-weight:500}
-  /* DECIDED-but-unsettled in COMPLETED: outcome known, BAB not yet moved */
+  /* DECIDED-but-unsettled in COMPLETED: outcome known, Credits not yet moved */
   .atile.settling{opacity:1;border-left:3px solid var(--gold)}
   .atile.settling .set{display:inline-block;font-size:8px;font-weight:700;letter-spacing:.08em;
     background:var(--goldbg);color:var(--gold);padding:2px 6px;border-radius:4px;margin-top:5px}
@@ -172,6 +172,9 @@
   .bcard .mkt,.ycard .mkt{pointer-events:none}
   .mode{font-size:8px;letter-spacing:.14em;padding:2px 5px;border-radius:3px;font-weight:600}
   .mode.locked{background:var(--goldbg);color:var(--gold)}
+  .modesel{display:flex;gap:6px;margin:4px 0 8px}
+  .modeopt{flex:1;text-align:center;font-size:11px;letter-spacing:.1em;padding:8px 0;border:1px solid var(--line2);border-radius:7px;color:var(--g1);cursor:pointer;font-weight:600}
+  .modeopt.sel{background:var(--goldbg);color:var(--gold);border-color:var(--gold)}
   .mode.dyn{background:var(--greenbg);color:var(--green2)}
   .note{font-size:11px;color:var(--g1);line-height:1.55;margin:8px 0 10px}
   .stakebox{background:var(--tile);border-radius:10px;padding:10px 12px;margin-bottom:8px}
@@ -255,9 +258,9 @@
   .bar{height:11px;border-radius:6px;margin:5px 0}
 
   /* tab bar */
-  .laboverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:60;display:none;
-    overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .laboverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:60;display:none;    overflow-y:auto;-webkit-overflow-scrolling:touch}
   .laboverlay.on{display:block}
+  .reviewdoc{display:block;background:var(--bg);border-top:3px solid var(--amber);margin-top:24px;padding-top:8px}
   .labsheet{max-width:480px;margin:0 auto;background:var(--bg);min-height:100%;padding:0 12px 40px}
   .labhead{position:sticky;top:0;background:var(--bg);display:flex;justify-content:space-between;
     align-items:center;padding:14px 2px 10px;font-size:10px;letter-spacing:.16em;color:var(--gold);
@@ -345,6 +348,63 @@
   .note{text-align:center;font-size:10px;color:var(--g2);margin:10px 4px 4px;line-height:1.5}
   .mono{font-variant-numeric:tabular-nums}
   a{color:inherit}
+
+  /* ---- The Week ---- */
+  .twnav{display:flex;align-items:center;gap:4px;margin:0 12px 7px}
+  .twnav .arw{flex:0 0 auto;width:26px;text-align:center;font-size:15px;color:var(--g1);padding:5px 0}
+  .twnav .arw.off{color:#2a2415}
+  .twnav .wk{flex:1;text-align:center;font-size:11px;font-weight:500;color:var(--g1);background:var(--tile);border:1px solid transparent;border-radius:7px;padding:6px 2px}
+  .twnav .wk.on{color:var(--gold);background:var(--goldbg);border-color:var(--edge);font-weight:600}
+  .twstates{display:flex;gap:5px;margin:0 12px 9px}
+  .twseg{flex:1;text-align:center;font-size:10px;font-weight:500;color:var(--g1);background:var(--tile);border:1px solid transparent;border-radius:7px;padding:8px 2px;line-height:1.2}
+  .twseg.on{color:var(--gold);border-color:var(--edge);background:var(--goldbg);font-weight:600}
+  .twseg.off{color:#3a3527}
+  .twfresh{display:flex;align-items:center;gap:6px;font-size:9.5px;color:var(--g1);background:var(--tile);border-radius:7px;padding:7px 9px;margin-bottom:11px}
+  .twfresh b{color:var(--bone);font-weight:600}
+  .twfresh.frozen{background:transparent;border:1px solid var(--line2)}
+  .twdot{width:5px;height:5px;border-radius:50%;background:var(--green);flex:0 0 auto}
+  .twdot.live{background:var(--red);animation:twp 1.6s infinite}
+  .twdot.frozen{background:var(--g2)}
+  @keyframes twp{0%,100%{opacity:1}50%{opacity:.35}}
+  .twre{margin-left:auto;color:var(--gold);font-weight:600;font-size:9.5px}
+  .twm{background:var(--card);border:1px solid var(--line2);border-radius:11px;padding:11px 12px;margin-bottom:9px}
+  .twmh{display:flex;align-items:baseline;gap:7px;font-size:12.5px;font-weight:600;color:var(--bone)}
+  .twmh .twt{flex:1;line-height:1.25}
+  .twmh .twt.r{text-align:right}
+  .twmh .twv{font-size:9.5px;color:var(--g2);flex:0 0 auto}
+  .twmr{display:flex;justify-content:space-between;font-size:9.5px;color:var(--g1);margin:2px 0 8px}
+  .twm .cellsrow{margin-bottom:8px}
+  .twproj{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--g1);border-top:1px solid var(--line);padding-top:7px}
+  .twproj .mono{color:var(--bone);margin-left:auto}
+  .twteaser{font-size:10.5px;line-height:1.6;color:#a9a291;margin-top:7px}
+  .twpool{display:flex;justify-content:space-between;align-items:center;background:var(--tile);border-radius:8px;padding:9px 11px;margin-bottom:6px;font-size:11.5px;color:var(--bone)}
+  .twpool .mono{font-size:10.5px;color:var(--g1)}
+  .twpool.roll{border:1px solid var(--edge)}
+  .twpool.roll .mono{color:var(--gold)}
+  .twnote{font-size:9.5px;color:var(--g2);line-height:1.6;margin:11px 2px 0}
+  .twlive{background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  .twlh{display:flex;justify-content:space-between;font-size:12px;color:var(--bone);padding:2px 0}
+  .twlh .gold{color:var(--gold);font-weight:600}
+  .twls{font-size:9.5px;color:var(--g1);border-top:1px solid var(--line);margin-top:6px;padding-top:6px}
+  .twdev{font-size:11px;line-height:1.6;color:#cfc9ba;background:var(--tile);border-radius:8px;padding:9px 11px;margin-bottom:7px}
+  .twdev b{color:var(--bone)}
+  .twlock{background:var(--card);border:1px dashed var(--edge);border-radius:11px;padding:20px 16px;text-align:center;margin-top:6px}
+  .twlock .h{font-size:12.5px;font-weight:600;color:var(--bone);margin-bottom:6px}
+  .twlock .p{font-size:11px;line-height:1.6;color:var(--g1)}
+  /* ---- League Pools · 2 × 2 grid, peer zone to Head-to-Head ---- */
+  .pgrid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:7px;padding:2px 2px 4px}
+  .leaguebody .pgrid{flex:1 1 auto;min-height:0}
+  .leaguebody .pgrid .pcard{width:auto;flex:0 1 auto;display:flex;flex-direction:column;justify-content:center;min-width:0}
+  .pgrid .pcn{font-size:12px;line-height:1.22;margin-bottom:0}
+  .pgrid .ptag{margin-bottom:6px}
+  .pgrid .pcf{margin-top:8px;gap:6px}
+  .pce{font-size:9.5px;color:var(--g1);margin-right:auto}
+  .pgrid .pfee{font-size:13px}
+
+  /* ---- response card · independent odds refresh ---- */
+  .rofresh{display:flex;flex-direction:column;gap:2px;background:var(--tile);border:1px solid var(--edge);border-radius:9px;padding:10px 12px;margin:12px 0 4px;cursor:pointer}
+  .rolab{font-size:12px;font-weight:600;color:var(--gold)}
+  .rosub{font-size:9.5px;color:var(--g1);line-height:1.45}
 </style>
 </head>
 <body>
@@ -361,7 +421,7 @@
       <div class="fine">Yahoo checks your login on their screen.<br>FantasyStakes never sees your password.</div>
       <div style="margin-top:26px;font-size:10px;color:var(--g2)">— prototype · tap to enter as commissioner —</div>
     </div>
-    <div class="doorfoot">REV 1.0 · 2026 · FRASER D. COLEMAN</div>
+    <div class="doorfoot">UI/UX REV 4.0 · 2026 · FRASER D. COLEMAN</div>
   </div>
 
   <!-- ===== MASTHEAD ===== -->
@@ -371,8 +431,7 @@
       <div class="lock">OUR THING · YOUR LEAGUE</div>
     </div>
     <div class="mastR">
-      <div class="rev">UI/UX Rev 2.1 · 2026<br>Fraser D. Coleman</div>
-      <div class="labbtn" onclick="openLab()">STATE LAB</div>
+      <div class="rev">UI/UX Rev 4.0 · 2026<br>Fraser D. Coleman</div>
     </div>
   </div>
 
@@ -380,8 +439,8 @@
   <div class="tab on" id="tab-league">
     <div class="thead">
       <div class="theadL">
-        <div class="ttitle">CULV Appreciation Society</div>
-        <div class="tsub">Fantasy Sportsbook · Week 8 · Regular Season</div>
+        <div class="ttitle" style="line-height:1.25">CULV Appreciation Society <span style="white-space:nowrap">&middot; Fantasy Sportsbook</span></div>
+        <div class="tsub">Week 5 &middot; Regular Season</div>
       </div>
       <div class="theadR">
         <div class="ko" id="koClock">2d 04:11:38</div>
@@ -389,14 +448,18 @@
       </div>
     </div>
     <div class="strip">
-      <div class="cell"><div class="k">League rec</div><div class="v">5–2 <span class="rk">3rd</span></div></div>
-      <div class="cell"><div class="k">Wallet</div><div class="v mono">$152</div></div>
-      <div class="cell"><div class="k">Weekly min left</div><div class="v mono">$10</div></div>
-      <div class="cell anchor"><div class="k">Available to bet</div><div class="v mono">$162</div></div>
+      <div class="cell"><div class="k">Net Winnings</div><div class="v mono pos" style="font-size:14px">+$126 <span style="color:var(--g1);font-weight:400">&middot;</span> 1st</div></div>
+      <div class="cell"><div class="k">Wallet</div><div class="v mono">$55</div></div>
+      <div class="cell"><div class="k">Weekly Min Left</div><div class="v mono">$10</div></div>
+      <div class="cell anchor"><div class="k">Available</div><div class="v mono">$65</div></div>
     </div>
     <div class="leaguebody">
       <div class="zone">
-      <div class="eyebrow" style="margin-left:2px">BIG BOARD · 11 OPPONENTS · SWIPE →</div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin:2px 2px 9px">
+        <div style="font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--gold)">YOUR FANTASY BIG BOARD</div>
+        <div style="font-size:9px;color:var(--g2)">this week&#8217;s action</div>
+      </div>
+      <div class="eyebrow" style="margin-left:2px">HEAD-TO-HEAD &middot; 11 OPPONENTS &middot; SWIPE &rarr;</div>
       <div class="rail">
         <div class="bcard" onclick="openCard('CULV Destroyers','7–0 · 1st · this week')"><div class="nm">vs. CULV Destroyers</div><div class="rec">7–0 · 1st · this week</div>
           <div class="cellsrow">
@@ -468,58 +531,24 @@
       </div>
 
       <div class="zone">
-      <div class="eyebrow" style="margin:0 0 3px 2px">POOL BETS · 4 THIS WEEK · SWIPE →</div>
-      <div class="prail">
+      <div class="eyebrow" style="margin:0 0 3px 2px">LEAGUE POOLS &middot; 4 THIS WEEK</div>
+      <div class="pgrid">
         <div class="pcard" onclick="openPool('Most Passing Yards','team')">
           <span class="ptag team">TEAM</span>
           <div class="pcn">Most Passing Yards</div>
-          <div class="pcq">Which team finishes with the most passing yards?</div>
-          <div class="pcf"><span class="pfee">$1</span><span class="chev">&#8250;</span></div></div>
+          <div class="pcf"><span class="pfee">$1</span><span class="pce">12 in</span><span class="chev">&#8250;</span></div></div>
         <div class="pcard" onclick="openPool('Shootout of the Week','matchup')">
           <span class="ptag match">MATCHUP</span>
           <div class="pcn">Shootout of the Week</div>
-          <div class="pcq">Which matchup finishes with the highest combined points?</div>
-          <div class="pcf"><span class="pfee">$1</span><span class="chev">&#8250;</span></div></div>
+          <div class="pcf"><span class="pfee">$1</span><span class="pce">10 in</span><span class="chev">&#8250;</span></div></div>
         <div class="pcard" onclick="openPool('Most Total Touchdowns','team')">
           <span class="ptag team">TEAM</span>
           <div class="pcn">Most Total Touchdowns</div>
-          <div class="pcq">Which team scores the most total touchdowns?</div>
-          <div class="pcf"><span class="pfee">$1</span><span class="chev">&#8250;</span></div></div>
+          <div class="pcf"><span class="pfee">$1</span><span class="pce">9 in</span><span class="chev">&#8250;</span></div></div>
         <div class="pcard roll" onclick="openPool('Matchups with 10+ Combined TDs','matchup')">
           <span class="ptag rollv">ROLLOVER</span>
-          <div class="pcn">Matchups with 10+ Combined TDs</div>
-          <div class="pcq">rolled from Wk 7 · pot $12 carried</div>
-          <div class="pcf"><span class="pfee gold">$12</span><span class="chev">&#8250;</span></div></div>
-      </div>
-      </div>
-
-      <div class="zone">
-      <div class="eyebrow" style="margin:0 0 3px 2px">YAHOO MATCHUPS · THE WEEK'S SLATE · SWIPE →</div>
-      <div class="yrail">
-        <div class="ycard" onclick="openYahoo('Sunday Gravy','Bada Bing Bombers')">
-          <div class="ymatch"><span>Sunday Gravy</span><span class="yv">vs</span><span>Bada Bing Bombers</span></div>
-          <div class="yrec"><span>1–6</span><span>2–5</span></div>
-          <div class="cellsrow">
-            <div class="mkt fav">ML<small>−140</small></div>
-            <div class="mkt neu">SPR<small>−3.0</small></div>
-            <div class="mkt fav">O/U<small>o 224</small></div>
-          </div></div>
-        <div class="ycard" onclick="openYahoo('CULV Destroyers','Gridiron Goodfellas')">
-          <div class="ymatch"><span>CULV Destroyers</span><span class="yv">vs</span><span>Gridiron Goodfellas</span></div>
-          <div class="yrec"><span>7–0</span><span>6–1</span></div>
-          <div class="cellsrow">
-            <div class="mkt fav">ML<small>−165</small></div>
-            <div class="mkt neu">SPR<small>−3.5</small></div>
-            <div class="mkt neu">O/U<small>o 218</small></div>
-          </div></div>
-        <div class="ycard" onclick="openYahoo('The Brain Trust','Numbers Racket')">
-          <div class="ymatch"><span>The Brain Trust</span><span class="yv">vs</span><span>Numbers Racket</span></div>
-          <div class="yrec"><span>3–4</span><span>4–3</span></div>
-          <div class="cellsrow">
-            <div class="mkt neu">ML<small>+110</small></div>
-            <div class="mkt neu">SPR<small>+1.5</small></div>
-            <div class="mkt fav">O/U<small>u 208</small></div>
-          </div></div>
+          <div class="pcn">10+ Combined TDs</div>
+          <div class="pcf"><span class="pfee gold">$12</span><span class="pce">pot carried</span><span class="chev">&#8250;</span></div></div>
       </div>
       </div>
     </div>
@@ -527,7 +556,7 @@
 
   <!-- ===== TAB: ACTION ===== -->
   <div class="tab" id="tab-action">
-    <div class="thead"><div class="ttitle">My Action</div><div class="tsub">Week 8 · Regular Season</div></div>
+    <div class="thead"><div class="ttitle">My Action</div><div class="tsub">Week 5 · Regular Season</div></div>
     <div class="strip">
       <div class="cell"><div class="k">Season Bet Record</div><div class="v">14–7</div></div>
       <div class="cell"><div class="k">Bet this week</div><div class="v mono">$129</div></div>
@@ -549,14 +578,14 @@
 
       <div class="sect" style="color:var(--green2)">LIVE<span class="ct">4</span></div>
       <div class="grid">
-        <div class="ltile" onclick="openLiveV('Sam O.')">
-          <div class="lop">Sam O.</div>
-          <div class="lwag">Moneyline +165 · <span class="md">LOCKED</span> · You $20</div>
+        <div class="ltile" onclick="openLiveV('Lena F.')">
+          <div class="lop">Lena F.</div>
+          <div class="lwag">Moneyline +165 · <span class="md">LOCKED</span> · You $16</div>
           <div class="lfoot"><span class="lstat ahead">AHEAD</span><span class="lsc">88.2–74.6 · 3Q</span></div>
         </div>
         <div class="ltile" onclick="openLiveV('Gridiron Goodfellas')">
           <div class="lop">Gridiron Goodfellas</div>
-          <div class="lwag">Spread +3.5 · <span class="md dyn">DYNAMIC</span> · You $20</div>
+          <div class="lwag">Spread +3.5 · <span class="md dyn">DYNAMIC</span> · You $12</div>
           <div class="lfoot"><span class="lstat covering">COVERING</span><span class="lsc">96.2–98.4 · +3.5</span></div>
         </div>
         <div class="ptile" onclick="openLiveP('Most Passing Yards','ALIVE')">
@@ -572,7 +601,7 @@
       </div>
       <div class="sect" style="color:var(--g1)">COMPLETED<span class="ct">· 14–7 season</span></div>
       <div class="grid">
-        <div class="atile settling" onclick="openDecidedP('Shootout of the Week')"><div class="op">Shootout of the Week</div><div class="bt">Winner · 231 pts · you won</div><div class="set">SETTLING</div><div class="pend">pending +$3.33 · not yet paid</div></div>
+        <div class="atile settling" onclick="openDecidedP('Shootout of the Week')"><div class="op">Shootout of the Week</div><div class="bt">Winner · 231 pts · you won</div><div class="set">SETTLING</div><div class="pend">decided · pending +$3.33 · not yet settled</div></div>
         <div class="atile" style="opacity:.62" onclick="openWon('Marcus L.','won')"><div class="op">Marcus L.</div><div class="bt">Spread −3.5 · LOCKED</div><div class="ft pos">won +$40</div></div>
         <div class="atile" style="opacity:.62" onclick="openWon('Nina P.','lost')"><div class="op">Nina P.</div><div class="bt">Under 208 · LOCKED</div><div class="ft neg">lost −$20</div></div>
         <div class="atile" style="opacity:.62" onclick="openPoolDone('Most Passing Yards')"><div class="op">Most Passing Yards</div><div class="bt">Pool · your pick lost</div><div class="ft" style="color:var(--g1)">no claim · rolled fwd</div></div>
@@ -583,27 +612,21 @@
   <!-- ===== TAB: LEDGER ===== -->
   <div class="tab" id="tab-ledger">
     <div class="thead" style="display:flex;align-items:center;justify-content:space-between"><div class="ttitle">My Ledger</div><button class="to-btn" style="flex:0 0 auto" onclick="openTopOff()">Request Top-Off</button></div>
-    <div class="eyebrow" style="margin-left:14px">THIS WEEK</div>
+    <div class="eyebrow" style="margin-left:14px">YOUR POSITION</div>
     <div class="strip">
-      <div class="cell"><div class="k">Wallet</div><div class="v mono">$152</div></div>
-      <div class="cell"><div class="k">Weekly min left</div><div class="v mono">$10</div></div>
-      <div class="cell"><div class="k">In Play</div><div class="v mono">$89</div></div>
-      <div class="cell anchor"><div class="k">Available to bet</div><div class="v mono">$162</div></div>
+      <div class="cell"><div class="k">Wallet</div><div class="v mono">$55</div></div>
+      <div class="cell anchor"><div class="k">Available</div><div class="v mono">$65</div></div>
+      <div class="cell"><div class="k">In Play</div><div class="v mono">$28</div></div>
+      <div class="cell gold" onclick="openSheet()"><div class="k">Current Settle</div><div class="v mono neg">−$45</div></div>
     </div>
-    <div class="eyebrow" style="margin-left:14px">THIS SEASON</div>
-    <div class="strip">
-      <div class="cell"><div class="k">Net winnings</div><div class="v mono">+$112</div></div>
-      <div class="cell"><div class="k">Skunks</div><div class="v mono">2</div></div>
-      <div class="cell"><div class="k">Top-Off Remaining</div><div class="v mono" style="font-size:14px">pending</div></div>
-      <div class="cell gold" onclick="scrollSettle()"><div class="k">Current Settle</div><div class="v mono pos">+$111</div></div>
-    </div>
+    <div style="margin:2px 14px 10px;font-size:9px;color:var(--g2);line-height:1.5">Current Settle is reconciled on the <b style="color:var(--gold)">Sheet</b> &#8212; tap it to open the authoritative reconciliation. This Ledger records transaction history and your account breakdown.</div>
     <div style="flex:0 0 auto;padding:0 14px 6px;display:flex;align-items:center;gap:6px">
-      <span style="font-size:11px;font-weight:500">The Ledger</span>
+      <span style="font-size:11px;font-weight:500">Account Breakdown &amp; History</span>
       <span style="font-size:9px;color:var(--g2);margin-left:auto">tap a line to expand · scroll ↓</span>
     </div>
     <div class="scroll">
-      <div class="lggrp">How we got here — Wallet<span class="gq">Why is my Wallet $152?</span></div>
-      <div class="lgflat" style="border-bottom-color:var(--line2)"><div class="ll" style="font-weight:600">Wallet</div><div class="lr neu">$152</div></div>
+      <div class="lggrp">How we got here — Wallet<span class="gq">Why is my Wallet $55?</span></div>
+      <div class="lgflat" style="border-bottom-color:var(--line2)"><div class="ll" style="font-weight:600">Wallet</div><div class="lr neu">$55</div></div>
       <div class="lgsec" id="lg-wopen"><div class="lghead" onclick="lgTog('lg-wopen')"><div class="ll"><span class="arw" style="visibility:hidden">&#8250;</span>Opening Wallet</div><div class="lr neu">$0</div></div></div>
       <div class="lgsec" id="lg-topoff">
         <div class="lghead" onclick="lgTog('lg-topoff')"><div class="ll"><span class="arw">&#8250;</span>Top-Offs received</div><div class="lr pos">+$40</div></div>
@@ -612,39 +635,37 @@
         </div>
       </div>
       <div class="lgsec" id="lg-vw">
-        <div class="lghead" onclick="lgTog('lg-vw')"><div class="ll"><span class="arw">&#8250;</span>Versus wins</div><div class="lr pos">+$186</div></div>
-        <div class="lgbody"><div class="sub tap" onclick="event.stopPropagation();openLgDetail('vwins')"><span>5 settled winning wagers</span><span><span class="mono pos">+$186</span><span class="chev">&#8250;</span></span></div></div>
+        <div class="lghead" onclick="lgTog('lg-vw')"><div class="ll"><span class="arw">&#8250;</span>Versus wins</div><div class="lr pos">+$96</div></div>
+        <div class="lgbody"><div class="sub tap" onclick="event.stopPropagation();openLgDetail('vwins')"><span>4 settled winning wagers</span><span><span class="mono pos">+$96</span><span class="chev">&#8250;</span></span></div></div>
       </div>
       <div class="lgsec" id="lg-vl">
         <div class="lghead" onclick="lgTog('lg-vl')"><div class="ll"><span class="arw">&#8250;</span>Versus losses</div><div class="lr neg">−$94</div></div>
         <div class="lgbody"><div class="sub tap" onclick="event.stopPropagation();openLgDetail('vloss')"><span>3 settled losing wagers</span><span><span class="mono neg">−$94</span><span class="chev">&#8250;</span></span></div></div>
       </div>
       <div class="lgsec" id="lg-pl">
-        <div class="lghead" onclick="lgTog('lg-pl')"><div class="ll"><span class="arw">&#8250;</span>Pool net</div><div class="lr pos">+$20</div></div>
-        <div class="lgbody"><div class="sub tap" onclick="event.stopPropagation();openLgDetail('pool')"><span>4 settled pool results</span><span><span class="mono pos">+$20</span><span class="chev">&#8250;</span></span></div></div>
+        <div class="lghead" onclick="lgTog('lg-pl')"><div class="ll"><span class="arw">&#8250;</span>Pool net</div><div class="lr pos">+$13</div></div>
+        <div class="lgbody"><div class="sub tap" onclick="event.stopPropagation();openLgDetail('pool')"><span>settled pool results</span><span><span class="mono pos">+$13</span><span class="chev">&#8250;</span></span></div></div>
       </div>
-      <div class="lgflat" style="border-top:1px solid var(--edge)"><div class="ll" style="font-weight:600">Current Wallet</div><div class="lr neu">$152</div></div>
+      <div class="lgflat" style="border-top:1px solid var(--edge)"><div class="ll" style="font-weight:600">Current Wallet</div><div class="lr neu">$55</div></div>
 
-      <div class="lggrp">What is still committed — In Play<span class="gq">Where is my committed BAB right now?</span></div>
-      <div class="lgflat" style="border-bottom-color:var(--line2)"><div class="ll" style="font-weight:600">In Play</div><div class="lr neu">$89</div></div>
+      <div class="lggrp">What is still committed — In Play<span class="gq">Your own stake in accepted, unresolved wagers</span></div>
+      <div class="lgflat" style="border-bottom-color:var(--line2)"><div class="ll" style="font-weight:600">In Play</div><div class="lr neu">$28</div></div>
       <div class="lgsec" id="lg-ipv">
-        <div class="lghead" onclick="lgTog('lg-ipv')"><div class="ll"><span class="arw">&#8250;</span>Versus wagers</div><div class="lr neu">$64</div></div>
+        <div class="lghead" onclick="lgTog('lg-ipv')"><div class="ll"><span class="arw">&#8250;</span>Versus wagers</div><div class="lr neu">$28</div></div>
         <div class="lgbody">
-          <div class="sub"><span>Sam O. · Moneyline +165</span><span class="mono">$20</span></div>
-          <div class="sub"><span>Gridiron · Spread +3.5 · Dynamic</span><span class="mono">$20</span></div>
+          <div class="sub" style="color:var(--g2);font-size:10px"><span>Accepted &amp; unresolved · your own stake only</span><span></span></div>
+          <div class="sub"><span>Lena F. · Moneyline +165 · Locked</span><span class="mono">$16</span></div>
+          <div class="sub"><span>Gridiron · Spread +3.5 · Dynamic</span><span class="mono">$12</span></div>
+        </div>
+      </div>
+      <div class="lgflat" style="border-top:1px solid var(--edge)"><div class="ll" style="font-weight:600">Total In Play</div><div class="lr neu">$28</div></div>
+      <div class="lgsec" id="lg-hold">
+        <div class="lghead" onclick="lgTog('lg-hold')"><div class="ll"><span class="arw">&#8250;</span>Pending offer holds</div><div class="lr neu">$25</div></div>
+        <div class="lgbody">
+          <div class="sub" style="color:var(--g2);font-size:10px"><span>Sent, not yet accepted · reserved, NOT In Play</span><span></span></div>
           <div class="sub"><span>Tara W. · Over 214 · sent</span><span class="mono">$25</span></div>
         </div>
       </div>
-      <div class="lgsec" id="lg-ipp">
-        <div class="lghead" onclick="lgTog('lg-ipp')"><div class="ll"><span class="arw">&#8250;</span>Pool entries</div><div class="lr neu">$25</div></div>
-        <div class="lgbody">
-          <div class="sub" style="color:var(--g2);font-size:10px"><span>Committed, unresolved · not losses</span><span></span></div>
-          <div class="sub"><span>Most Passing Yards · alive</span><span class="mono">$1</span></div>
-          <div class="sub"><span>Shootout of the Week · entered</span><span class="mono">$1</span></div>
-          <div class="sub"><span>+ 23 open pool entries</span><span class="mono">$23</span></div>
-        </div>
-      </div>
-      <div class="lgflat" style="border-top:1px solid var(--edge)"><div class="ll" style="font-weight:600">Total In Play</div><div class="lr neu">$89</div></div>
 
       <div class="lggrp">Weekly Min<span class="gq">This week's minimum · funds wagers before Wallet</span></div>
       <div class="lgsec" id="lg-wm">
@@ -659,104 +680,73 @@
 
       <div class="lggrp">What will settle later — Season settlement<span class="gq">Not in Wallet today · affects your season-end position</span></div>
       <div class="lgsec" id="lg-ooc">
-        <div class="lghead" onclick="lgTog('lg-ooc')"><div class="ll"><span class="arw">&#8250;</span>Out of circulation (returned)</div><div class="lr pos">+$20</div></div>
+        <div class="lghead" onclick="lgTog('lg-ooc')"><div class="ll"><span class="arw">&#8250;</span>Out of circulation (returned)</div><div class="lr pos">+$8</div></div>
         <div class="lgbody">
-          <div class="sub" style="color:var(--g2);font-size:10px"><span>Unused Weekly Min swept at Week Close · owed back</span><span></span></div>
-          <div class="sub"><span>Week 1 · unused Weekly Min</span><span class="mono pos">+$6</span></div>
+          <div class="sub" style="color:var(--g2);font-size:10px"><span>Unused Weekly Min swept at Fantasy Week Close · owed back</span><span></span></div>
           <div class="sub"><span>Week 2 · unused Weekly Min</span><span class="mono pos">+$4</span></div>
-          <div class="sub"><span>Week 3 · unused Weekly Min</span><span class="mono pos">+$10</span></div>
-          <div class="sub" style="color:var(--green2);border-top:1px solid var(--line);margin-top:4px;padding-top:6px"><span>Total returned at settlement</span><span class="mono pos">+$20</span></div>
+          <div class="sub"><span>Week 3 · unused Weekly Min</span><span class="mono pos">+$4</span></div>
+          <div class="sub" style="color:var(--green2);border-top:1px solid var(--line);margin-top:4px;padding-top:6px"><span>Total returned at settlement</span><span class="mono pos">+$8</span></div>
         </div>
       </div>
       <div class="lgsec" id="lg-skunk">
-        <div class="lghead" onclick="lgTog('lg-skunk')"><div class="ll"><span class="arw">&#8250;</span>Skunk fines</div><div class="lr neg">−$20</div></div>
+        <div class="lghead" onclick="lgTog('lg-skunk')"><div class="ll"><span class="arw">&#8250;</span>Skunk Fees</div><div class="lr" style="color:var(--g1)">$0</div></div>
         <div class="lgbody">
           <div class="sub" style="color:var(--g2);font-size:10px"><span>Off-Wallet · does not reduce Wallet or Available</span><span></span></div>
-          <div class="sub"><span>Week 3 · Skunk</span><span class="mono neg">−$10</span></div>
-          <div class="sub"><span>Week 6 · Skunk</span><span class="mono neg">−$10</span></div>
-          <div class="sub" style="border-top:1px solid var(--line);margin-top:4px;padding-top:6px"><span>Total Skunk fines</span><span class="mono neg">−$20</span></div>
+          <div class="sub"><span>No Skunk Fees this season</span><span class="mono">$0</span></div>
         </div>
       </div>
       <div class="lgsec" id="lg-awards">
-        <div class="lghead" onclick="lgTog('lg-awards')"><div class="ll"><span class="arw">&#8250;</span>Season awards</div><div class="lr" style="color:var(--g1)">+$0</div></div>
+        <div class="lghead" onclick="lgTog('lg-awards')"><div class="ll"><span class="arw">&#8250;</span>Earned Season Awards</div><div class="lr pos">+$24</div></div>
         <div class="lgbody">
-          <div class="sub"><span>Championship payout (60/30/10)</span><span class="mono">+$0</span></div>
-          <div class="sub" style="color:var(--g2);font-size:10px"><span>Your $80 reserve funds this pot · does not return</span><span></span></div>
-          <div class="sub"><span>Skunk Pot payout (points champ)</span><span class="mono">+$0</span></div>
-          <div class="sub" style="color:var(--g2);font-size:10px"><span>Earned only when final results are set</span><span></span></div>
+          <div class="sub" style="color:var(--g2);font-size:10px"><span>Final award entitlements · not yet posted to Wallet</span><span></span></div>
+          <div class="sub"><span>Championship award (60/30/10)</span><span class="mono pos">+$24</span></div>
+          <div class="sub" style="color:var(--g2);font-size:10px"><span>Your $80 Championship contribution funds the pot · does not return</span><span></span></div>
+          <div class="sub" style="color:var(--g2);font-size:10px"><span>Underlying Credits stay in the Championship Pot until posted; on posting, Current Settle does not change.</span><span></span></div>
         </div>
       </div>
 
       <div class="lggrp">What you owe back — Obligations<span class="gq">Advances and fines that reduce your settlement</span></div>
       <div class="lgsec" id="lg-adv">
-        <div class="lghead" onclick="lgTog('lg-adv')"><div class="ll"><span class="arw">&#8250;</span>BAB advance</div><div class="lr neg">−$260</div></div>
+        <div class="lghead" onclick="lgTog('lg-adv')"><div class="ll"><span class="arw">&#8250;</span>Advance obligations</div><div class="lr neg">−$260</div></div>
         <div class="lgbody">
-          <div class="sub" style="color:var(--g2);font-size:10px"><span>BAB credit advanced to you · owed back at settlement</span><span></span></div>
-          <div class="sub"><span>Season opening advance</span><span class="mono neg">−$220</span></div>
+          <div class="sub" style="color:var(--g2);font-size:10px"><span>Credits advanced to you · owed back at settlement</span><span></span></div>
+          <div class="sub"><span>Season-opening advance</span><span class="mono neg">−$220</span></div>
           <div class="sub"><span>Top-Off advances (Wk 4)</span><span class="mono neg">−$40</span></div>
           <div class="sub" style="border-top:1px solid var(--line);margin-top:4px;padding-top:6px"><span>Total advance owed</span><span class="mono neg">−$260</span></div>
-          <div class="sub" style="color:var(--g2);font-size:10px;line-height:1.5"><span>Your winnings and credits pay this down. Of the $220: $140 funded Weekly Min Reserve, $80 the Championship contribution, $0 to Wallet.</span><span></span></div>
+          <div class="sub" style="color:var(--g2);font-size:10px;line-height:1.5"><span>Your winnings and returns pay this down. Of the $220 opening: $140 funded Weekly Min Reserve, $80 the Championship contribution, $0 to Wallet.</span><span></span></div>
         </div>
       </div>
-      <div class="lgflat" style="border-top:1px solid var(--edge)"><div class="ll" style="font-weight:600">Skunk fines</div><div class="lr neg">−$20</div></div>
+      <div class="lgflat" style="border-top:1px solid var(--edge)"><div class="ll" style="font-weight:600">Skunk Fees</div><div class="lr" style="color:var(--g1)">$0</div></div>
 
-      <div class="settle recv" id="settle-banner">
+      <div class="settle" id="settle-banner" onclick="openSheet()" style="cursor:pointer">
         <div class="st-lab">Current Settle</div>
-        <div class="st-val">+$111</div>
-        <div class="st-dir">Due to you at season end</div>
-        <div style="font-size:9px;color:var(--g2);margin:2px 0 8px;text-align:right">Based on your ledger as of now.</div>
-        <div class="settlerec">
-          <div class="sr" style="color:var(--g2);font-size:9px;letter-spacing:.08em"><span>SETTLEMENT-RELEVANT ASSETS</span><span></span></div>
-          <div class="sr"><span>Wallet</span><span class="mono pos">+$152</span></div>
-          <div class="sr"><span>Weekly min left</span><span class="mono pos">+$10</span></div>
-          <div class="sr"><span>Weekly Min Reserve</span><span class="mono pos">+$120</span></div>
-          <div class="sr"><span>In Play (your own stake)</span><span class="mono pos">+$89</span></div>
-          <div class="sr"><span>Out of circulation (returned)</span><span class="mono pos">+$20</span></div>
-          <div class="sr"><span>Earned season awards</span><span class="mono">+$0</span></div>
-          <div class="sr" style="color:var(--g2);font-size:9px;letter-spacing:.08em;padding-top:6px"><span>GM OBLIGATIONS</span><span></span></div>
-          <div class="sr"><span>BAB advance (opening + top-off)</span><span class="mono neg">−$260</span></div>
-          <div class="sr"><span>Skunk fines</span><span class="mono neg">−$20</span></div>
-          <div class="sr tot"><span>Current Settle</span><span class="mono pos">+$111</span></div>
-        </div>
-        <div style="font-size:9px;color:var(--g2);margin-top:8px;line-height:1.5">Settlement-relevant assets minus GM obligations, from posted accounting state. The $220 opening allocation and top-offs are advances you owe back; Championship Reserve is excluded once contributed.</div>
+        <div class="st-val">−$45</div>
+        <div class="st-dir">You owe at season end</div>
+        <div style="font-size:9px;color:var(--g2);margin:6px 0 0;line-height:1.5">Carried here for reference. The Ledger does not prove this number &#8212; the <b style="color:var(--gold)">Sheet</b> reconciles it.</div>
+        <div style="margin-top:9px;text-align:right"><span style="display:inline-block;font-size:10px;font-weight:600;color:var(--bg);background:var(--gold);padding:6px 12px;border-radius:7px">Open the Sheet &#8250;</span></div>
       </div>
     </div>
   </div>
 
   <!-- ===== TAB: WRAP UP ===== -->
   <div class="tab" id="tab-wrap">
-    <div class="thead"><div class="ttitle">Wrap Up</div><div class="tsub">The week that was · Week 7</div></div>
-    <div class="strip">
-      <div class="cell gold"><div class="k">Biggest winner</div><div class="v" style="font-size:12px">Sam O.</div></div>
-      <div class="cell"><div class="k">Skunk of week</div><div class="v" style="font-size:12px">Tara W.</div></div>
-      <div class="cell"><div class="k">Top vs win</div><div class="v mono pos" style="font-size:13px">+$88</div></div>
-      <div class="cell"><div class="k">Top pool</div><div class="v mono pos" style="font-size:13px">+$27</div></div>
-    </div>
-    <div class="scroll">
-      <div class="eyebrow" style="margin:6px 0 8px">THE MATCHUPS</div>
-      <div style="font-size:12px;line-height:1.6;color:#cfc9ba;margin-bottom:14px">
-        <b style="font-weight:600">Sam O. 141, Kevin M. 96 — BLOODBATH.</b> Sam's stack went nuclear while Kevin left
-        <span style="color:var(--red)">18 points rotting on the bench</span>. The kind of loss you don't post about.
+    <div class="thead">
+      <div class="theadL">
+        <div class="ttitle" id="twTitle">Week 5</div>
+        <div class="tsub" id="twSub">CULV Appreciation Society &middot; Fantasy Sportsbook</div>
       </div>
-      <div style="font-size:12px;line-height:1.6;color:#cfc9ba;margin-bottom:14px">
-        <b style="font-weight:600">Fraser 118, Diego 114 — NAIL-BITER.</b> Came down to Monday night. Diego needed 9, got 5. Cruel.
-      </div>
-      <div class="eyebrow" style="margin:6px 0 8px">POOL BETS</div>
-      <div style="margin-bottom:6px"><div style="font-size:11px;margin-bottom:2px">Biggest Winner — Sam O. (141)</div>
-        <div class="bar" style="width:100%;background:var(--gold)"></div>
-        <div class="bar" style="width:78%;background:var(--g2)"></div>
-        <div class="bar" style="width:52%;background:var(--red)"></div>
-        <div style="font-size:10px;color:var(--g1)">Sam takes it · picked by 4 · pays +$27</div>
-      </div>
-      <div class="eyebrow" style="margin:12px 0 8px">THE BEEFS</div>
-      <div style="font-size:12px;line-height:1.6;color:#cfc9ba">
-        Sam cashed his ML dog at +140 against a Kevin squad that never showed — turned $20 into $88. Tara faded the
-        over and watched 47 unanswered points sail past. Rough night to be holding the under.
+      <div class="theadR">
+        <div class="ko" id="koClock2">2d 04:11:38</div>
+        <div class="kol" id="koLabel2">FIRST KICKOFF IN</div>
       </div>
     </div>
+
+    <div class="twnav" id="twNav"></div>
+    <div class="twstates" id="twStates"></div>
+
+    <div class="scroll" id="twBody"></div>
   </div>
 
-  <!-- ===== TAB: RULES & SETTINGS ===== -->
   <div class="tab" id="tab-rules">
     <div class="thead"><div class="ttitle">Rules &amp; Settings</div><div class="tsub">The house rules</div></div>
     <div class="seg">
@@ -770,7 +760,7 @@
       <div class="zone on" id="z-rules">
         <div style="background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:2px 14px">
           <div class="row" onclick="rulePop('The Money')"><div class="rl">The Money<small>Economy · wallet · top-offs</small></div><div class="chev">&#8250;</div></div>
-          <div class="row" onclick="rulePop('Weekly Grind')"><div class="rl">Weekly Grind<small>Weekly minimum · skunk fee</small></div><div class="chev">&#8250;</div></div>
+          <div class="row" onclick="rulePop('Weekly Grind')"><div class="rl">Weekly Grind<small>Weekly minimum · skunk fine</small></div><div class="chev">&#8250;</div></div>
           <div class="row" onclick="rulePop('Big Money')"><div class="rl">Big Money<small>Championship reserve &amp; pot</small></div><div class="chev">&#8250;</div></div>
           <div class="row" onclick="rulePop('The Bets')"><div class="rl">The Bets<small>Types · versus · pools</small></div><div class="chev">&#8250;</div></div>
           <div class="row" onclick="rulePop('The Fine Print')"><div class="rl">The Fine Print<small>How to play · settling up</small></div><div class="chev">&#8250;</div></div>
@@ -781,41 +771,76 @@
       <div class="zone" id="z-settings">
         <div style="margin:0 0 6px;display:flex;align-items:center;gap:6px">
           <span style="font-size:11px;font-weight:500">League Settings</span>
-          <span class="pill ok" style="margin-left:auto">Editable until kickoff</span>
         </div>
         <div style="background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:2px 14px">
-          <div class="row"><div class="rl">Economy stop<small>$10/wk min · $220 buy-in</small></div><div class="chev">&#8250;</div></div>
-          <div class="row"><div class="rl">Skunk fee<small>Widest weekly loser pays</small></div><div style="display:flex;align-items:center;gap:8px"><div class="rv mono" style="color:var(--amber)">$10</div><div class="chev">&#8250;</div></div></div>
-          <div class="row"><div class="rl">Standard Pool Bet<small>Range $1–$5</small></div><div style="display:flex;align-items:center;gap:8px"><div class="rv mono">$1</div><div class="chev">&#8250;</div></div></div>
-          <div class="row"><div class="rl">Championship split<small>Playoff bracket</small></div><div class="rv mono">60/30/10</div></div>
+          <div class="row"><div class="rl">Economy Stop<small>Weekly Min · season-opening Credits · editable until kickoff</small></div><div style="display:flex;align-items:center;gap:8px"><div class="rv mono">$10/wk · $220 opening</div><div class="chev">&#8250;</div></div></div>
+          <div class="row"><div class="rl">Standard Pool Bet<small>Range $1–$5 · editable until kickoff</small></div><div style="display:flex;align-items:center;gap:8px"><div class="rv mono">$1</div><div class="chev">&#8250;</div></div></div>
+          <div class="row"><div class="rl">Skunk Fee<small>Widest-margin Yahoo loser \u00b7 off-Wallet obligation \u00b7 set before season, locks at kickoff</small></div><div class="rv mono" style="color:var(--amber)">$10</div></div>
+          <div class="row"><div class="rl">Championship split<small>Champion / runner-up / third · fixed</small></div><div class="rv mono">60/30/10</div></div>
         </div>
-        <div class="note">Every setting locks at kickoff. GMs see these read-only.</div>
+        <div class="note">Economy Stop, Standard Pool Bet and the Skunk Fee are commissioner-set before the season and lock at kickoff. The Skunk Fee is separate from the Weekly Minimum. Championship split is a fixed league rule. GMs see all settings read-only.</div>
       </div>
 
       <!-- COMMISH -->
       <div class="zone" id="z-commish">
-        <div style="background:var(--card);border:1px solid var(--edge);border-radius:12px;padding:13px 14px;margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px">
-            <span style="font-size:12px;font-weight:500">League Totals</span>
+        <div style="font-size:9px;letter-spacing:.5px;color:var(--g2);margin-bottom:5px">A &middot; TOP-OFF REQUESTS &middot; 1 PENDING</div>
+        <div style="background:var(--card);border:1px solid var(--gold);border-radius:12px;padding:12px 13px;margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <div><div style="font-size:12.5px;font-weight:600">Diego R.</div><div style="font-size:9.5px;color:var(--g2)">Numbers Racket</div></div>
+            <div style="text-align:right"><div class="mono" style="font-size:17px;font-weight:700;color:var(--gold)">$40</div><div style="font-size:9px;color:var(--g2)">requested</div></div>
+          </div>
+          <div style="margin-top:9px;font-size:10.5px;color:#a9a291;line-height:1.85">
+            <div style="display:flex;justify-content:space-between"><span>Remaining Top-Off Capacity</span><span class="mono" style="color:var(--amber)">cap pending</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Requested</span><span class="mono">Wk 5 &middot; Tue 9:14a</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Status</span><span class="mono" style="color:var(--amber)">REQUESTED</span></div>
+          </div>
+          <div style="margin-top:9px;padding-top:8px;border-top:1px solid var(--line2)">
+            <div style="font-size:8px;letter-spacing:.5px;color:var(--g2);margin-bottom:4px">RESULTING LEDGER TRANSACTION</div>
+            <div style="font-size:10.5px;color:#a9a291;line-height:1.8">
+              <div style="display:flex;justify-content:space-between"><span>Top-Off advance (obligation)</span><span class="mono neg">&minus;$40</span></div>
+              <div style="display:flex;justify-content:space-between"><span>Posted to Wallet</span><span class="mono pos">+$40</span></div>
+              <div style="display:flex;justify-content:space-between;color:var(--g2);font-style:italic"><span>Net effect on Current Settle</span><span class="mono">$0</span></div>
+            </div>
+            <div style="font-size:8.5px;color:var(--g2);margin-top:5px;line-height:1.5">Posted by the system on approval. The commissioner never edits balances.</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:11px">
+            <div onclick="showSheet('&lt;h3&gt;Approve Top-Off&lt;/h3&gt;&lt;div class=&quot;sub&quot;&gt;Prototype &middot; workflow REQUESTED &rarr; APPROVED &rarr; POSTING &rarr; POSTED is system-owned.&lt;/div&gt;')" style="flex:1;text-align:center;font-size:11px;font-weight:600;color:var(--bg);background:var(--gold);padding:9px;border-radius:8px">Approve</div>
+            <div onclick="showSheet('&lt;h3&gt;Decline Top-Off&lt;/h3&gt;&lt;div class=&quot;sub&quot;&gt;Prototype &middot; declined requests bounce back in full.&lt;/div&gt;')" style="flex:1;text-align:center;font-size:11px;font-weight:600;color:var(--bone);border:1px solid var(--edge);padding:9px;border-radius:8px">Decline</div>
+          </div>
+        </div>
+
+        <div style="font-size:9px;letter-spacing:.5px;color:var(--g2);margin-bottom:5px">B &middot; LEAGUE RECONCILIATION</div>
+        <div style="background:var(--card);border:1px solid var(--edge);border-radius:12px;padding:13px 14px;margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:8px;font-weight:600;color:var(--amber);background:var(--goldbg);padding:2px 6px;border-radius:4px">ILLUSTRATIVE DATA</span>
             <span class="pill ok">&#10003; Balances</span>
           </div>
-          <div style="font-size:11px;color:#a9a291;line-height:1.9">
-            <div style="display:flex;justify-content:space-between"><span>Buy-ins</span><span class="mono">$2,640</span></div>
-            <div style="display:flex;justify-content:space-between"><span>Champ pot</span><span class="mono">$960</span></div>
-            <div style="display:flex;justify-content:space-between"><span>Total wallets</span><span class="mono">$1,640</span></div>
-            <div style="display:flex;justify-content:space-between"><span>Out of circulation</span><span class="mono">$180</span></div>
-            <div style="display:flex;justify-content:space-between"><span>In play</span><span class="mono">$240</span></div>
-            <div style="display:flex;justify-content:space-between"><span>Less top-offs / skunk</span><span class="mono" style="color:var(--g1)">−$380</span></div>
+          <div style="font-size:9px;color:var(--g2);margin-bottom:9px">Static prototype values · 12-GM sample league · $10/wk Economy Stop</div>
+          <div style="font-size:10px;color:var(--g2);font-style:italic;margin-bottom:8px">Where are all Credits advanced by the league right now — and does it balance?</div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--gold)"><span>Advances Outstanding</span><span class="mono">$2,760</span></div>
+          <div style="font-size:8px;color:var(--g2);margin-bottom:7px">opening $220×12 = $2,640 + top-offs $120</div>
+          <div style="font-size:8px;letter-spacing:.5px;color:var(--g2);margin-bottom:3px">GM-ATTRIBUTABLE (sums from GM cards)</div>
+          <div style="font-size:10.5px;color:#a9a291;line-height:1.85">
+            <div style="display:flex;justify-content:space-between"><span>Wallets</span><span class="mono">$318</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Weekly Min Reserve</span><span class="mono">$1,080</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Weekly Min Left</span><span class="mono">$74</span></div>
+            <div style="display:flex;justify-content:space-between"><span>GM stakes in play</span><span class="mono">$268</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Out of circulation</span><span class="mono">$52</span></div>
+            <div style="display:flex;justify-content:space-between;color:var(--g2);font-style:italic"><span>subtotal</span><span class="mono">$1,792</span></div>
           </div>
-          <div style="margin-top:9px;padding-top:8px;border-top:1px solid var(--line2);font-size:10px;color:var(--g2)" class="mono">960 + 1,640 + 180 + 240 − 380 = 2,640 ✓</div>
+          <div style="font-size:8px;letter-spacing:.5px;color:var(--g2);margin:6px 0 3px">LEAGUE-LEVEL HOLDING ACCOUNTS</div>
+          <div style="font-size:10.5px;color:#a9a291;line-height:1.85">
+            <div style="display:flex;justify-content:space-between"><span>Championship Pot</span><span class="mono">$960</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Pool Rollover Escrow</span><span class="mono">$8</span></div>
+          </div>
+          <div style="margin-top:8px;padding-top:7px;border-top:1px solid var(--line2);display:flex;justify-content:space-between;font-size:11px;font-weight:600"><span>Accounted-for total</span><span class="mono" style="color:var(--green2)">$2,760</span></div>
+          <div style="font-size:9px;color:var(--green2);margin-top:2px">Variance $0 · identity closes</div>
+          <div style="font-size:9px;color:var(--g2);margin-top:8px;line-height:1.5">Skunk Fees are settlement obligations, not an in-season Credit-holding location — excluded from this identity. Top-Off advances are included above. Failure state: &#9888; DOES NOT BALANCE · Variance $X.</div>
         </div>
-        <div class="sect" style="color:var(--g1);letter-spacing:.12em">PER-GM · TAP TO EXPAND</div>
-        <div style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:2px 12px">
-          <div class="row" onclick="gmPop('Fraser C.')"><div class="rl">Fraser C.</div><div style="display:flex;gap:14px"><span class="rv mono pos">+$112</span><span class="rv mono" style="color:var(--gold)">−$20</span><span class="rv mono">+$128</span></div></div>
-          <div class="row" onclick="gmPop('Diego R.')"><div class="rl">Diego R.</div><div style="display:flex;gap:14px"><span class="rv mono neg">−$64</span><span class="rv mono" style="color:var(--gold)">+$40</span><span class="rv mono">−$24</span></div></div>
-          <div class="row" onclick="gmPop('Tara W.')"><div class="rl">Tara W.</div><div style="display:flex;gap:14px"><span class="rv mono neg">−$86</span><span class="rv mono" style="color:var(--gold)">+$320</span><span class="rv mono pos">+$234</span></div></div>
-        </div>
-        <div class="note">No payment tracking. Gentlemen settle at season's end.</div>
+
+        <div style="font-size:9px;letter-spacing:.5px;color:var(--g2);margin-bottom:5px">C &middot; GM LEDGER CARDS &middot; 12 &middot; TAP TO EXPAND</div>
+        <div id="commishGMs"></div>
+        <div class="note">FantasyStakes tracks Credits only. Real-world league settlement happens outside FantasyStakes.</div>
       </div>
     </div>
   </div>
@@ -825,13 +850,22 @@
     <div class="tb on" data-tab="tab-league" onclick="go(this)"><div class="ic"><svg class="tbi" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2 3 4v5.5c0 3.7 2.5 6.3 6 7.5 3.5-1.2 6-3.8 6-7.5V4L9 2z"/></svg></div><div class="lb">League</div></div>
     <div class="tb" data-tab="tab-action" onclick="go(this)"><div class="ic"><svg class="tbi" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="10" height="13" rx="1.5"/><path d="M7 2.5h4v2H7z"/><path d="M6.5 8h5M6.5 11h3.5"/></svg></div><div class="lb">Action</div></div>
     <div class="tb" data-tab="tab-ledger" onclick="go(this)"><div class="ic"><svg class="tbi" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3H8v12H4.5A1.5 1.5 0 0 1 3 13.5v-9z"/><path d="M15 4.5A1.5 1.5 0 0 0 13.5 3H10v12h3.5A1.5 1.5 0 0 0 15 13.5v-9z"/></svg></div><div class="lb">Ledger</div></div>
-    <div class="tb" data-tab="tab-wrap" onclick="go(this)"><div class="ic"><svg class="tbi" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="13" height="10.5" rx="1.5"/><path d="M5 7h5M5 9.5h5M5 12h3"/><path d="M12 7h1.5v3H12z"/></svg></div><div class="lb">Wrap Up</div></div>
+    <div class="tb" data-tab="tab-wrap" onclick="go(this)"><div class="ic"><svg class="tbi" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="13" height="10.5" rx="1.5"/><path d="M5 7h5M5 9.5h5M5 12h3"/><path d="M12 7h1.5v3H12z"/></svg></div><div class="lb">The Week</div></div>
     <div class="tb" data-tab="tab-rules" onclick="go(this)"><div class="ic"><svg class="tbi" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v12"/><path d="M4 6h10"/><path d="M4 6 2 10.5h4L4 6z"/><path d="M14 6l-2 4.5h4L14 6z"/><path d="M6 15h6"/></svg></div><div class="lb">Rules &amp;<br>Settings</div></div>
   </div>
 
-  <div class="laboverlay" id="lab">
+
+  <!-- ===== POP-OUT ===== -->
+  <div class="overlay" id="ov" onclick="if(event.target===this)closeOv()">
+    <div class="sheet" id="sheet"><div class="close" onclick="closeOv()">&times;</div><div id="sheetbody"></div></div>
+  </div>
+
+</div>
+
+  <div class="reviewdoc" id="lab">
     <div class="labsheet">
-      <div class="labhead"><span>LIFECYCLE STATE LAB · UI/UX Rev 2.1</span><span class="labx" onclick="closeLab()">CLOSE</span></div>
+      <div class="labhead"><span>REVIEW DOCUMENTATION · LIFECYCLE STATES · UI/UX Rev 3.1</span></div>
+      <div class="labnote" style="color:var(--amber);font-weight:600">This is review documentation about FantasyStakes, not part of the app. It is not reachable from the product navigation.</div>
       <div class="labnote">Representative states for visual review. Where a mechanic is not yet ruled, the surface is marked PENDING rather than inventing behavior.</div>
       <div class="labsect">VERSUS · 13 STATES</div>
       <div class="labgrid">
@@ -1036,13 +1070,6 @@
     </div>
   </div>
 
-  <!-- ===== POP-OUT ===== -->
-  <div class="overlay" id="ov" onclick="if(event.target===this)closeOv()">
-    <div class="sheet" id="sheet"><div class="close" onclick="closeOv()">&times;</div><div id="sheetbody"></div></div>
-  </div>
-
-</div>
-
 <script>
   function enterApp(){ document.getElementById('door').style.display='none'; }
 
@@ -1086,7 +1113,7 @@
     const esc = gm.replace(/'/g,"\\'");
     showSheet(`<h3>vs. ${gm}</h3>
       <div class="sub">${rec} · pick your market</div>
-      <div class="note">Tap a market to build your challenge. Lineups and odds freeze the moment you send.</div>
+      <div class="note">Tap a market to build your challenge. You'll choose Locked or Dynamic terms before you send.</div>
       <div class="cellsrow" style="margin-bottom:10px">
         <div class="mkt ${o.ml[1]}" style="cursor:pointer;padding:12px 0" onclick="openBet('${esc}','Moneyline','${o.ml[1]}')">ML<small>${o.ml[0]}</small></div>
         <div class="mkt ${o.spr[1]}" style="cursor:pointer;padding:12px 0" onclick="openBet('${esc}','Spread','${o.spr[1]}')">SPR<small>${o.spr[0]}</small></div>
@@ -1127,14 +1154,17 @@
   function openBet(gm,mkt,side){
     const label = side==='fav'?'you are favored':side==='dog'?'you are the underdog':'near even';
     showSheet(`<h3>Challenge ${gm}</h3>
-      <div class="sub">${mkt} · ${label} · <span class="mode locked">LOCKED</span></div>
-      <div class="note">Lineups and odds freeze the moment you send this. Later Yahoo lineup
-        changes — yours or theirs — do not touch these terms.</div>
+      <div class="sub">${mkt} · ${label}</div>
+      <div class="modesel">
+        <div class="modeopt sel" id="modeLocked" onclick="setMode('LOCKED')">LOCKED</div>
+        <div class="modeopt" id="modeDynamic" onclick="setMode('DYNAMIC')">DYNAMIC</div>
+      </div>
+      <div class="note" id="modeNote">Terms freeze when you send the challenge.</div>
       <div class="stakebox">
         <div class="sl">Your stake</div>
         <div class="sin"><span class="cur">$</span><input id="stk" class="stakein" value="20"
           inputmode="numeric" oninput="reprice()"></div>
-        <div class="shint">Available to bet $162 · floor $1</div>
+        <div class="shint">Available $65 · floor $1</div>
       </div>
       <div class="terms">
         <div class="tr"><span>You put up</span><span class="mono" id="tA">$20</span></div>
@@ -1144,8 +1174,25 @@
         <div class="tr" style="color:var(--red)"><span>If you lose (net)</span><span class="mono" id="tL">−$20</span></div>
       </div>
       <div class="hold">Your stake is held when you send. It is released if they pass or the offer expires.</div>
-      <button class="btn g" onclick="closeOv()">Send challenge · hold $<span id="tH">20</span></button>
+      <button class="btn g" onclick="sendChallenge('${gm.replace(/'/g,"\\'")}','${mkt}')">Send <span id="sendMode">LOCKED</span> challenge · hold $<span id="tH">20</span></button>
       <button class="btn ghost" onclick="closeOv()">Cancel</button>`);
+    VS_MODE='LOCKED';
+  }
+  let VS_MODE='LOCKED';
+  function setMode(m){
+    VS_MODE=m;
+    const L=document.getElementById('modeLocked'), D=document.getElementById('modeDynamic');
+    const note=document.getElementById('modeNote'), sm=document.getElementById('sendMode');
+    if(!L||!D) return;
+    if(m==='LOCKED'){ L.classList.add('sel'); D.classList.remove('sel');
+      note.textContent='Terms freeze when you send the challenge.'; }
+    else { D.classList.add('sel'); L.classList.remove('sel');
+      note.textContent='Permitted matchup inputs can continue updating through Final Lock. Your maximum committed Credits cannot increase after acceptance.'; }
+    if(sm) sm.textContent=m;
+  }
+  function sendChallenge(gm,mkt){
+    // selected VS_MODE (LOCKED or DYNAMIC) is carried into the resulting outgoing offer state
+    closeOv();
   }
   function reprice(){
     const el=document.getElementById('stk'); if(!el) return;
@@ -1168,8 +1215,7 @@
   }
   tickKO(); setInterval(tickKO,1000);
 
-  function openLab(){document.getElementById('lab').classList.add('on');}
-  function closeLab(){document.getElementById('lab').classList.remove('on');}
+  // Lifecycle states are review documentation, rendered outside the app frame — no production toggle.
   // Prediction pool entry — one shared component, team or matchup binding
   const TEAMS = ['Sunday Gravy','CULV Destroyers','Gridiron Goodfellas','Third And Long Island Iced Tea','Skipolini\'s Enforcers','Numbers Racket','The Brain Trust','Provenza Provolone','Racconti Raiders','Contabile Cartel','Bada Bing Bombers'];
   const MATCHUPS = ['Sunday Gravy vs Bada Bing Bombers','CULV Destroyers vs Gridiron Goodfellas','The Brain Trust vs Numbers Racket','Racconti Raiders vs Provenza Provolone','Contabile Cartel vs Third And Long Island Iced Tea','Skipolini\'s Enforcers vs your team'];
@@ -1203,101 +1249,117 @@
   }
   // Yahoo Matchup — parallel sportsbook analysis card (no wager CTA)
   function openYahoo(a,b){
-    // Parallel to the opened Big Board card: same shell, same odds hierarchy,
-    // same lineup/projection architecture. Terminal purpose differs — analysis, no wager.
     const la=[['QB','J. Hurts','21.4'],['RB','B. Robinson','16.8'],['WR','A. St. Brown','15.1'],
       ['WR','D. London','12.6'],['TE','T. McBride','11.9'],['FLEX','J. Jefferson','17.3'],['DEF','Ravens','9.0']];
     const lb=[['QB','J. Allen','23.1'],['RB','S. Barkley','18.9'],['WR','C. Lamb','16.7'],
       ['WR','N. Collins','13.8'],['TE','G. Kittle','12.2'],['FLEX','J. Chase','19.0'],['DEF','Steelers','8.6']];
     const rows=la.map((r,i)=>{const t=lb[i];return `<div class="splrow">
         <div class="splc l"><span class="splpos">${r[0]}</span><span class="splnm">${r[1]}</span></div>
-        <div class="splp">${r[2]}</div><div class="splvs">·</div><div class="splp r">${t[2]}</div>
+        <div class="splp">${r[2]}</div><div class="splvs">\u00b7</div><div class="splp r">${t[2]}</div>
         <div class="splc r"><span class="splnm">${t[1]}</span><span class="splpos">${t[0]}</span></div>
       </div>`;}).join('');
     const ta=la.reduce((s,r)=>s+parseFloat(r[2]),0).toFixed(1);
     const tb=lb.reduce((s,r)=>s+parseFloat(r[2]),0).toFixed(1);
     showSheet(`<h3 style="font-size:15px">${a} <span style="color:var(--g2);font-size:12px">vs</span> ${b}</h3>
-      <div class="sub">Yahoo matchup · sportsbook read</div>
+      <div class="sub">Week 5 \u00b7 Yahoo matchup</div>
 
       <div class="yblock" style="margin-top:10px">
         <div class="yhd">Sportsbook View</div>
         <div class="terms">
           <div class="tr"><span>Favorite</span><span class="mono">${a}</span></div>
-          <div class="tr"><span>Spread</span><span class="mono">${a} −3.0</span></div>
-          <div class="tr"><span>Total</span><span class="mono">o 224.5</span></div>
-          <div class="tr"><span>Outlook</span><span class="mono">Competitive · shootout risk</span></div>
+          <div class="tr"><span>Moneyline</span><span class="mono">${a} \u2212140 \u00b7 ${b} +120</span></div>
+          <div class="tr"><span>Spread</span><span class="mono">${a} \u22123.0</span></div>
+          <div class="tr"><span>Total (O/U)</span><span class="mono">224.5</span></div>
+          <div class="tr"><span>Projected score</span><span class="mono">116.2 \u2013 108.4</span></div>
+          <div class="tr" style="color:var(--green2)"><span>Status</span><span class="mono">Pregame \u00b7 0.0 \u2013 0.0</span></div>
+          <div class="tr"><span>Outlook</span><span class="mono">Competitive \u00b7 shootout risk</span></div>
         </div>
       </div>
 
-      <div class="terms" style="margin-top:12px">
-        <div class="tr"><span>Moneyline</span><span class="mono">${a} −140 · ${b} +120</span></div>
-        <div class="tr"><span>Spread</span><span class="mono">${a} −3.0</span></div>
-        <div class="tr"><span>Total (O/U)</span><span class="mono">224.5</span></div>
-        <div class="tr"><span>Projected score</span><span class="mono">116.2 – 108.4</span></div>
-        <div class="tr" style="color:var(--green2)"><span>Current score · pregame</span><span class="mono">0.0 – 0.0</span></div>
-      </div>
-
-      <div class="yblock">
-        <div class="yhd">The Read</div>
-        <div class="body">
-          <p>${a} opened as a modest favorite on the strength of a deeper starting core. Expect a high-scoring week — both lineups project above league average, and the total sits near the top of the slate.</p>
-          <p>The edge is real but thin. ${a} carries the higher floor at three positions, yet ${b} owns the single highest ceiling on the board. If the top end hits, this flips.</p>
-          <p>Weather and injury news are clean on both sides as of the last Yahoo sync. No inactives expected to move the projection.</p>
-        </div>
-      </div>
-
-      <div class="yblock">
-        <div class="yhd">Why The Line Looks This Way</div>
-        <div class="body">
-          <p>The −3 reflects a projection edge of roughly one score, not a mismatch. ${b}'s ceiling keeps this closer than the records suggest.</p>
-          <p>Most of the gap sits at running back, where ${a} projects a two-back committee against a single feature back. That's a steadier distribution — worth about a point and a half of the spread on its own.</p>
-          <p>The total sits high because both defenses rank in the bottom third of the league by points allowed. The over is the sharper read than either side.</p>
-        </div>
-      </div>
-
-      <div class="ycoll" id="ycoll" onclick="document.getElementById('ycoll').classList.toggle('open')">
+      <div class="ycoll" id="yc1" onclick="document.getElementById('yc1').classList.toggle('open')">
         <div class="ycolltog"><span>Starting Lineups &amp; Projections</span><span class="arw">&#8250;</span></div>
         <div class="ycollbody">
-          <div class="splhead" style="margin-top:8px"><span>${a.length>13?a.slice(0,12)+'…':a.toUpperCase()}</span><span>PROJ</span><span></span><span>PROJ</span><span>${b.length>13?b.slice(0,12)+'…':b.toUpperCase()}</span></div>
+          <div class="splhead" style="margin-top:8px"><span>${a.length>13?a.slice(0,12)+'\u2026':a.toUpperCase()}</span><span>PROJ</span><span></span><span>PROJ</span><span>${b.length>13?b.slice(0,12)+'\u2026':b.toUpperCase()}</span></div>
           ${rows}
           <div class="spltotrow"><span class="tlab">Total</span><span class="tl">${ta}</span><span></span><span class="tr2">${tb}</span><span></span></div>
-          <div style="font-size:10px;color:var(--g2);margin:6px 2px 2px;line-height:1.5">Projections shown pregame. Live Yahoo scoring takes over once games begin — actuals become prominent.</div>
+          <div style="font-size:10px;color:var(--g2);margin:6px 2px 2px;line-height:1.5">Projections shown pregame and refreshed until first kickoff. Live Yahoo scoring takes over once games begin.</div>
         </div>
       </div>
 
-      <div style="font-size:10px;color:var(--g2);margin-top:12px;line-height:1.5">Analysis only — no wager runs through this card. To bet, use Versus on the Big Board.</div>
+      <div class="ycoll" id="yc2" onclick="document.getElementById('yc2').classList.toggle('open')">
+        <div class="ycolltog"><span>Why The Line Looks This Way</span><span class="arw">&#8250;</span></div>
+        <div class="ycollbody">
+          <div class="yread" style="margin-top:0">
+            <p style="margin:0 0 9px">The \u22123 is a projection edge of roughly one score, not a mismatch. Records say blowout; the numbers say field goal.</p>
+            <p style="margin:0 0 9px">Most of the gap sits at running back, where ${a} projects a two-back committee against a single feature back. The steadier distribution is worth about a point and a half of spread on its own.</p>
+            <p style="margin:0 0 9px">The total sits high because both defenses rank bottom third by points allowed. The over has been the sharper side of this card since it posted.</p>
+            <p style="margin:0"><b style="color:var(--bone)">Line movement.</b> Opened ${a} \u22122.5 / 221.5 on Tuesday. Spread out half a point on a Thursday inactive, total up three on clean injury news. No further move expected before kickoff.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="ycoll" id="yc3" onclick="document.getElementById('yc3').classList.toggle('open')">
+        <div class="ycolltog"><span>The Read</span><span class="arw">&#8250;</span></div>
+        <div class="ycollbody">
+          <div class="yread" style="margin-top:0">
+            <p style="margin:0 0 9px">${a} carry the deeper starting core and the higher floor at three positions. That depth is the whole case \u2014 there is no single player here who wins it alone.</p>
+            <p style="margin:0 0 9px"><b style="color:var(--bone)">The matchup that decides it.</b> ${b}\u2019s flex owns the highest ceiling on the board and draws the softest coverage draw of the week. If that hits its 90th percentile, this flips regardless of the rest.</p>
+            <p style="margin:0 0 9px"><b style="color:var(--bone)">Form.</b> ${a} have cleared their projection in four straight. ${b} have missed theirs in three of the last four, all on bench decisions rather than bad luck.</p>
+            <p style="margin:0 0 9px"><b style="color:var(--bone)">History.</b> These two have split the last four meetings, and three went to the Monday player.</p>
+            <p style="margin:0">Weather and injury news are clean on both sides as of the last Yahoo sync. No inactives expected to move the projection.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:10px;color:var(--g2);margin-top:12px;line-height:1.5">Analysis only \u2014 no wager runs through this card. To bet, use Head-to-Head on the Big Board.</div>
       <button class="btn ghost" onclick="closeOv()">Close</button>`);
   }
   function openInc(team,mode){
     const dyn = mode==='DYNAMIC';
     const explain = dyn
       ? `Lineups and odds stay live and lock at the first kickoff covering either lineup.
-         Your stake stays put — if the odds shift, their stake can come down, never up,
+         Your stake stays put \u2014 if the odds shift, their stake can come down, never up,
          never past the ceiling set now. That ceiling never grows.`
       : `Lineups and odds are already frozen. Accepting takes these exact terms.
          Later Yahoo lineup changes do not touch them.`;
+    const oddsBlock = dyn
+      ? `<div class="tr"><span>Live odds</span><span class="mono">+165 \u00b7 moves until lock</span></div>`
+      : `<div class="tr"><span>Offer terms</span><span class="mono">+165 \u00b7 frozen when sent</span></div>
+         <div class="tr" id="curOdds" style="color:var(--g1)"><span>Current odds</span><span class="mono">\u2014 <span style="font-size:9.5px">not checked</span></span></div>`;
     showSheet(`<h3>${team} challenged you</h3>
-      <div class="sub">Moneyline · live for 42 more minutes ·
+      <div class="sub">Moneyline \u00b7 live for 42 more minutes \u00b7
         <span class="mode ${dyn?'dyn':'locked'}">${mode}</span></div>
       <div class="note">${explain}</div>
       <div class="lineups">
         <div class="lu"><div class="luh">Their starters</div>
-          <div class="lur">QB J. Hurts · RB B. Robinson · WR A. St. Brown</div>
-          <div class="lur">WR G. Wilson · TE T. McBride · FLEX J. Gibbs</div></div>
+          <div class="lur">QB J. Hurts \u00b7 RB B. Robinson \u00b7 WR A. St. Brown</div>
+          <div class="lur">WR G. Wilson \u00b7 TE T. McBride \u00b7 FLEX J. Gibbs</div></div>
         <div class="lu"><div class="luh">Your starters</div>
-          <div class="lur">QB L. Jackson · RB S. Barkley · WR C. Lamb</div>
-          <div class="lur">WR N. Collins · TE M. Andrews · FLEX D. Achane</div></div>
+          <div class="lur">QB L. Jackson \u00b7 RB S. Barkley \u00b7 WR C. Lamb</div>
+          <div class="lur">WR N. Collins \u00b7 TE M. Andrews \u00b7 FLEX D. Achane</div></div>
       </div>
       <div class="terms">
+        ${oddsBlock}
         <div class="tr"><span>${team} puts up</span><span class="mono">$24</span></div>
         <div class="tr"><span>You put up</span><span class="mono">$20</span></div>
         <div class="tr tt"><span>Total pot</span><span class="mono">$44</span></div>
         <div class="tr" style="color:var(--green2)"><span>If you win (net)</span><span class="mono">+$24</span></div>
-        <div class="tr" style="color:var(--red)"><span>If you lose (net)</span><span class="mono">−$20</span></div>
+        <div class="tr" style="color:var(--red)"><span>If you lose (net)</span><span class="mono">\u2212$20</span></div>
       </div>
-      <button class="btn grn" onclick="closeOv()">Take it · hold $20</button>
-      <button class="btn ghost" onclick="closeOv()">Refresh &amp; relock counter</button>
-      <button class="btn dead" onclick="closeOv()">Pass</button>`);
+      <div class="rofresh" onclick="refreshOdds()"><span class="rolab">Refresh odds</span><span class="rosub" id="roSub">informational only \u00b7 does not accept, counter or decline</span></div>
+      <button class="btn grn" onclick="closeOv()">Take it \u00b7 hold $20</button>
+      <button class="btn ghost" onclick="closeOv()">Counter</button>
+      <button class="btn dead" onclick="closeOv()">Decline</button>`);
+  }
+
+  function refreshOdds(){
+    const row=document.getElementById('curOdds');
+    if(row){
+      row.style.color='var(--bone)';
+      row.innerHTML='<span>Current odds</span><span class="mono" style="color:var(--gold)">+145 <span style="font-size:9.5px;color:var(--g1)">updated now</span></span>';
+    }
+    const s=document.getElementById('roSub');
+    if(s) s.textContent='updated just now \u00b7 the offer above is unchanged';
   }
   function openSent(gm){
     showSheet(`<h3>Waiting on ${gm}</h3><div class="sub">O/U · sent 12 min ago</div>
@@ -1348,19 +1410,19 @@
       <button class="btn ghost" onclick="closeOv()">Close</button>`);
   }
   function openDecidedP(name){
-    // DECIDED — now in COMPLETED as SETTLING. Outcome known; no BAB moved until settlement commits.
+    // DECIDED — now in COMPLETED as SETTLING. Outcome known; no Credits moved until settlement commits.
     // Pending net stays in Upside left; excluded from Settled + Season record until settled.
     showSheet(`<h3 style="text-transform:uppercase;letter-spacing:.02em">${name} · settling</h3>
-      <div class="sub">Outcome decided · settlement pending · no BAB moved yet</div>
+      <div class="sub">Outcome decided · settlement pending · no Credits moved yet</div>
       <div class="lstat won" style="display:inline-block;margin:10px 0 6px">YOU WON</div>
       <div class="terms">
         <div class="tr"><span>Winning option</span><span class="mono">CULV vs Gridiron</span></div>
         <div class="tr"><span>Deciding metric</span><span class="mono">231 combined pts</span></div>
         <div class="tr"><span>Winning claims</span><span class="mono">3</span></div>
         <div class="tr tt"><span>Pot</span><span class="mono">$10</span></div>
-        <div class="tr" style="color:var(--green2)"><span>Your pending payout</span><span class="mono">+$3.33</span></div>
+        <div class="tr" style="color:var(--green2)"><span>Your pending return</span><span class="mono">+$3.33</span></div>
       </div>
-      <div style="font-size:10px;color:var(--g2);margin-top:8px;line-height:1.5">Decided, not yet settled. Your $3.33 stays in Upside left and no BAB moves until settlement commits — then it becomes a settled result.</div>
+      <div style="font-size:10px;color:var(--g2);margin-top:8px;line-height:1.5">Decided, not yet settled. Your $3.33 stays in Upside left and no Credits move until settlement commits — then it becomes a settled result.</div>
       <button class="btn ghost" onclick="closeOv()">Close</button>`);
   }
   function openPoolWait(name){
@@ -1387,17 +1449,47 @@
       <button class="btn ghost" onclick="closeOv()">Close</button>`);
   }
   function lgTog(id){ document.getElementById(id).classList.toggle('open'); }
+  function openSheet(){
+    showSheet(`<h3>The Sheet \u00b7 season reconciliation</h3>
+      <div class="sub">Authoritative reconciliation surface \u00b7 Week 5</div>
+      <div style="background:var(--goldbg);border:1px solid var(--gold);border-radius:10px;padding:11px 13px;margin:10px 0 12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-size:10px;letter-spacing:.08em;color:var(--gold)">CURRENT SETTLE</span>
+          <span class="mono neg" style="font-size:21px;font-weight:700">\u2212$45</span>
+        </div>
+        <div style="font-size:10px;color:var(--g2);margin-top:3px">You would owe $45 if the season ended now.</div>
+      </div>
+      <div class="settlerec">
+        <div class="sr" style="color:var(--g2);font-size:9px;letter-spacing:.08em"><span>SETTLEMENT-RELEVANT ASSETS</span><span></span></div>
+        <div class="sr"><span>Wallet</span><span class="mono pos">+$55</span></div>
+        <div class="sr"><span>Weekly Min Left</span><span class="mono pos">+$10</span></div>
+        <div class="sr"><span>Weekly Min Reserve</span><span class="mono pos">+$90</span></div>
+        <div class="sr"><span>In Play (your own stake)</span><span class="mono pos">+$28</span></div>
+        <div class="sr"><span>Out of circulation (returned)</span><span class="mono pos">+$8</span></div>
+        <div class="sr"><span>Earned Season Awards</span><span class="mono pos">+$24</span></div>
+        <div class="sr" style="border-top:1px solid var(--line);margin-top:3px;padding-top:5px"><span>Assets subtotal</span><span class="mono pos">+$215</span></div>
+        <div class="sr" style="color:var(--g2);font-size:9px;letter-spacing:.08em;padding-top:8px"><span>GM OBLIGATIONS</span><span></span></div>
+        <div class="sr"><span>Season-opening advance</span><span class="mono neg">\u2212$220</span></div>
+        <div class="sr"><span>Top-Off advances</span><span class="mono neg">\u2212$40</span></div>
+        <div class="sr"><span>Skunk fees</span><span class="mono">$0</span></div>
+        <div class="sr" style="border-top:1px solid var(--line);margin-top:3px;padding-top:5px"><span>Obligations subtotal</span><span class="mono neg">\u2212$260</span></div>
+        <div class="sr tot"><span>Current Settle ($215 \u2212 $260)</span><span class="mono neg">\u2212$45</span></div>
+      </div>
+      <div style="font-size:9px;color:var(--g2);margin-top:10px;line-height:1.55">Settlement-relevant assets minus GM obligations, from posted accounting state. Your season-opening advance and Top-Off advances are owed back; the Championship contribution is excluded once contributed. Earned Season Awards are final entitlements not yet posted to another account. Skunk fees are obligations, never assets.</div>
+      <div style="font-size:9px;color:var(--g2);margin-top:8px;line-height:1.55">The Ledger explains your balances and records history. The Sheet is where Current Settle is proved.</div>`);
+  }
+
   function scrollSettle(){
     const el=document.getElementById('settle-banner');
     if(el) el.scrollIntoView({behavior:'smooth',block:'end'});
   }
   function openTopOff(){
-    // BAB Top-Off request flow. Cap anchor PENDING FINAL RULING — no number invented.
-    showSheet(`<h3>Request BAB Top-Off</h3>
+    // Top-Off request flow. Cap anchor PENDING FINAL RULING — no number invented.
+    showSheet(`<h3>Request Top-Off</h3>
       <div class="sub">Issued by the league · no real money · commissioner approves</div>
       <div class="terms" style="margin-top:10px">
-        <div class="tr"><span>Current Wallet</span><span class="mono">$152</span></div>
-        <div class="tr"><span>Available to bet</span><span class="mono">$162</span></div>
+        <div class="tr"><span>Current Wallet</span><span class="mono">$55</span></div>
+        <div class="tr"><span>Available</span><span class="mono">$65</span></div>
         <div class="tr tt"><span>Top-Offs issued this season</span><span class="mono">$40</span></div>
         <div class="tr"><span>Top-Off Cap</span><span class="mono" style="color:var(--gold)">pending ruling</span></div>
         <div class="tr"><span>Remaining capacity</span><span class="mono" style="color:var(--gold)">pending ruling</span></div>
@@ -1408,7 +1500,7 @@
         <div class="mkt neu" style="flex:1;cursor:pointer">$50</div>
         <div class="mkt neu" style="flex:1;cursor:pointer">$100</div>
       </div>
-      <div style="font-size:10px;color:var(--g2);line-height:1.5;margin-bottom:10px">No BAB is added until the commissioner approves. Requests above your remaining capacity are rejected in full.</div>
+      <div style="font-size:10px;color:var(--g2);line-height:1.5;margin-bottom:10px">No Credits are added until the commissioner approves. Requests above your remaining capacity are rejected in full.</div>
       <button class="btn grn" onclick="topOffSubmitted()">Submit request</button>
       <button class="btn ghost" onclick="closeOv()">Cancel</button>`);
   }
@@ -1420,10 +1512,10 @@
       <div class="terms">
         <div class="tr"><span>Requested</span><span class="mono">$50</span></div>
         <div class="tr"><span>Top-Off Remaining before</span><span class="mono" style="color:var(--gold)">pending cap</span></div>
-        <div class="tr"><span>Submitted</span><span class="mono">Wk 8 · just now</span></div>
+        <div class="tr"><span>Submitted</span><span class="mono">Wk 5 · just now</span></div>
         <div class="tr"><span>Note</span><span class="mono" style="color:var(--g2)">— optional —</span></div>
       </div>
-      <div style="font-size:10px;color:var(--g2);margin-top:8px;line-height:1.5">Shows as a status row on your Ledger until decided. This same request appears in the commissioner's review queue. No BAB moves until approval <b>and</b> ledger posting both succeed.</div>
+      <div style="font-size:10px;color:var(--g2);margin-top:8px;line-height:1.5">Shows as a status row on your Ledger until decided. This same request appears in the commissioner's review queue. No Credits move until approval <b>and</b> ledger posting both succeed.</div>
       <button class="btn ghost" onclick="topOffReceipt()">▸ Demo: commissioner approves &amp; posts</button>
       <button class="btn ghost" onclick="topOffPostingPending()">▸ Demo: approved · posting pending</button>
       <button class="btn ghost" onclick="closeOv()">Done</button>`);
@@ -1475,9 +1567,9 @@
   }
   function openLgDetail(kind){
     const sets={
-      vwins:{t:'Versus wins',rows:[['Wk 2 · CULV Destroyers · ML +165','+$33'],['Wk 3 · Sunday Gravy · Spread −3.5','+$40'],['Wk 5 · Numbers Racket · Over 214','+$28'],['Wk 6 · Bada Bing · ML −120','+$45'],['Wk 7 · Racconti · Spread +2.5','+$40']],tot:'+$186',cls:'pos'},
-      vloss:{t:'Versus losses',rows:[['Wk 1 · Gridiron · ML +130','−$20'],['Wk 4 · Brain Trust · Under 208','−$34'],['Wk 6 · Contabile · Spread −4.5','−$40']],tot:'−$94',cls:'neg'},
-      pool:{t:'Pool net',rows:[['Wk 2 · Most Passing Yards · won','+$11'],['Wk 4 · Shootout of the Week · won','+$9'],['Wk 5 · Most Total TDs · lost','−$1'],['Wk 6 · Most Passing Yards · won','+$1']],tot:'+$20',cls:'pos'}
+      vwins:{t:'Versus wins',rows:[['Wk 2 · CULV Destroyers · ML +165','+$33'],['Wk 3 · Sunday Gravy · Spread −3.5','+$40'],['Wk 5 · Numbers Racket · Over 214','+$28'],['Wk 3 · Bada Bing · ML \u2212120','+$45'],['Wk 7 · Racconti · Spread +2.5','+$40']],tot:'+$186',cls:'pos'},
+      vloss:{t:'Versus losses',rows:[['Wk 1 · Gridiron · ML +130','−$20'],['Wk 4 · Brain Trust · Under 208','−$34'],['Wk 3 · Contabile · Spread \u22124.5','\u2212$40']],tot:'−$94',cls:'neg'},
+      pool:{t:'Pool net',rows:[['Wk 2 · Most Passing Yards · won','+$11'],['Wk 4 · Shootout of the Week · won','+$9'],['Wk 5 · Most Total TDs · lost','−$1'],['Wk 3 · Most Passing Yards · won','+$1']],tot:'+$20',cls:'pos'}
     };
     const s=sets[kind]; if(!s) return;
     const rows=s.rows.map(r=>`<div class="tr"><span style="font-size:11px">${r[0]}</span><span class="mono ${r[1][0]==='+'?'pos':'neg'}">${r[1]}</span></div>`).join('');
@@ -1490,7 +1582,7 @@
   }
   function openWon(gm,result){
     const won = result!=='lost';
-    showSheet(`<h3>${gm} · settled</h3><div class="sub">Final · paid to wallet</div>
+    showSheet(`<h3>${gm} · settled</h3><div class="sub">Final · settled · Credits posted to Wallet</div>
       <div style="background:var(--tile);border-radius:10px;padding:12px;font-size:12px;line-height:1.9">
         <div style="display:flex;justify-content:space-between"><span>Final</span><span class="mono">You 121 · ${gm} 108</span></div>
         <div style="display:flex;justify-content:space-between;color:var(--${won?'green2':'red'})"><span>Net</span><span class="mono">${won?'+$40':'−$20'}</span></div>
@@ -1506,43 +1598,103 @@
   function ruleTag(t){ return `<span style="${RULE_TAG}">${t}</span>`; }
 
   const RULE_SHEETS = {
-    'The Bets': {
-      status: 'Mixed — see each section',
+    'The Money': {
+      status: 'Canonical POR',
       html: `
-        <div style="${RULE_H}">Versus Bets${ruleTag('authoritative')}</div>
+        <div style="${RULE_H}">What are Credits?</div>
         <div style="${RULE_BODY}">
-          Want a piece of another GM? Challenge anyone in the league — you don’t have to be their Yahoo opponent this week. Pick Moneyline, Spread, or Over/Under, put up your BAB, and send it. You always bet your own side.<br><br>
-          A challenge sits open for 60 minutes, or until the games lock — whichever comes first. The other GM can take it, counter it, or pass. You can pull it back while it’s still waiting. First move wins; once it’s answered, that’s that.
+          FantasyStakes uses Credits for all in-app wagering and league accounting. Credit amounts are shown with a dollar sign for familiarity, but FantasyStakes does not collect, hold, deposit, withdraw, or transfer real money. Any real-world league settlement happens outside the app.
         </div>
-        <div style="${RULE_H}">Your BAB During an Offer${ruleTag('pending')}</div>
+        <div style="${RULE_H}">Season-opening Credits</div>
         <div style="${RULE_BODY}">
-          Not written yet. This section is filled from the league protocol before launch.
+          The selected Economy Stop determines your Weekly Min, season-opening advance, Weekly Min Reserve, and Championship contribution. Your Wallet starts at $0.<br><br>
+          <i>Example — the default $10/wk stop: $220 season-opening advance → $140 Weekly Min Reserve, $80 Championship contribution, $0 Wallet.</i>
         </div>
-        <div style="${RULE_H}">Once a Bet Is Live${ruleTag('authoritative')}</div>
+        <div style="${RULE_H}">Top-Offs</div>
         <div style="${RULE_BODY}">
-          A Locked bet freezes everything at that moment. A Dynamic bet can show you updated numbers before the final whistle, but those are just previews — your risk can only stay the same or drop, never climb.<br><br>
-          You can hold up to 10 active challenges at once. Bets settle themselves from the Yahoo results. The commissioner can’t change a line, cancel a bet, or pick a winner.
+          Need more to bet with mid-season? Request a Top-Off. It advances extra Credits into your Wallet and raises what you owe the league by the same amount — so a Top-Off doesn't change your Current Settle the moment it's issued; it just gives you more to work with now.
         </div>
-        <div style="${RULE_H}">Pool Bets${ruleTag('authoritative')}</div>
+        <div style="${RULE_H}">Current Settle</div>
         <div style="${RULE_BODY}">
-          Pool Bets are league-wide side games. Four run every week. Each one asks you to pick — one team, or one matchup — then pays out to whoever called it right. Each pool tells you the entry, the options, how you win, the tie rule, and the lock time before you join.<br><br>
-          Fresh pools rotate in every week. The four are drawn from the league's pool catalog, and a pool won't repeat while there are still unused ones to run. You can back your own team or a matchup you're in — nothing is blocked. You get one entry per pool, and you can change your pick as many times as you like until the week's first kickoff. Your entry fee is committed the moment you enter; changing your pick after that costs nothing and moves no BAB.<br><br>
-          When the games are final, the pot pays out on its own. Ties split evenly by winning claim. If a pool is eligible to roll over and nobody wins it, the pot carries into next week and that pool leads the following slate — those say so up front. The commissioner never picks the winner or touches the payout.
+          Your Current Settle is your live position: your settlement-relevant Credits and final award entitlements, minus your settlement obligations. Positive means the league owes you; negative means you'd owe the league if the season ended now.
+        </div>`
+    },
+    'Weekly Grind': {
+      status: 'Canonical POR',
+      html: `
+        <div style="${RULE_H}">Your Weekly Minimum</div>
+        <div style="${RULE_BODY}">
+          The Weekly Min keeps everyone in the action, week to week. Your Weekly Min Reserve releases a set amount into Weekly Min Left each week to fund your wagers. Wagers draw from Weekly Min first, then your Wallet.
+        </div>
+        <div style="${RULE_H}">Use it or it gets set aside</div>
+        <div style="${RULE_BODY}">
+          At Fantasy Week Close, any unused Weekly Min sweeps to Out of circulation — still owed back to you at season settlement. Credits already committed to an accepted wager stay In Play and are not moved to Out of circulation at Fantasy Week Close.
+        </div>
+        <div style="${RULE_H}">The Skunk Fee</div>
+        <div style="${RULE_BODY}">
+          The widest-margin Yahoo matchup loser each week owes a $10 Skunk Fee. It's assessed off-Wallet as an obligation — it lowers your Current Settle without touching your Wallet.
+        </div>
+        <div style="${RULE_H}">Where the Skunk Fee goes</div>
+        <div style="${RULE_BODY}">
+          No Credits are collected into any in-season Skunk pot &#8212; no Credits are held anywhere in-season. Each Skunk Fee accrues as an obligation on the GM who takes it, and the season total is owed at season end to the regular-season Points For champion. The fee defaults to 10 BAB, is commissioner-configurable before the season, and locks at kickoff. It is separate from your Weekly Minimum and never reduces what you have Available.
+        </div>`
+    },
+    'Big Money': {
+      status: 'Canonical POR',
+      html: `
+        <div style="${RULE_BODY}">
+          The Championship Pot is the season's prize, built from every GM's opening advance.
+        </div>
+        <div style="${RULE_H}">Championship Pot</div>
+        <div style="${RULE_BODY}">
+          A slice of every opening advance is contributed to the shared Championship Pot. Once contributed, those Credits are committed to the Pot — they're no longer a recoverable personal asset.
+        </div>
+        <div style="${RULE_H}">The awards — 60 / 30 / 10</div>
+        <div style="${RULE_BODY}">
+          At season end the Pot is awarded: 60% to the champion, 30% to the runner-up, and 10% to third. The 60/30/10 split is fixed.
+        </div>`
+    },
+    'The Bets': {
+      status: 'Canonical POR',
+      html: `
+        <div style="${RULE_H}">Versus</div>
+        <div style="${RULE_BODY}">
+          Want a piece of another GM? Challenge anyone in the league — you don't have to be their Yahoo opponent this week. Pick Moneyline, Spread, or Over/Under, put up your Credits, and send it. You always bet your own side.<br><br>
+          A challenge sits open for 60 minutes, or until the games lock — whichever comes first. The other GM can take it, counter it, or pass. You can pull it back while it's still waiting. First move wins; once it's answered, that's that.<br><br>
+          You can hold up to 10 active challenges at once. Bets settle themselves from the Yahoo results. The commissioner can't change a line, cancel a bet, or pick a winner.
+        </div>
+        <div style="${RULE_H}">Locked vs Dynamic</div>
+        <div style="${RULE_BODY}">
+          Every Versus challenge is either Locked or Dynamic, and you choose the mode before sending it.<br><br>
+          A Locked challenge freezes its wager terms when you create the offer. If the other GM wants different terms, they can counter with a new frozen offer. Accepting a Locked challenge makes that frozen version binding; later Yahoo lineup changes do not change the wager.<br><br>
+          A Dynamic wager keeps its permitted matchup inputs live after acceptance and can continue updating until Final Lock. Your maximum committed Credits are fixed when the wager is accepted, so later updates can never increase the amount you put at risk.<br><br>
+          The wager's mode is always shown before acceptance.
+        </div>
+        <div style="${RULE_H}">Your Credits During an Offer</div>
+        <div style="${RULE_BODY}">
+          When you send an offer, your own stake is held — funded Weekly Min first, then Wallet — and your Available drops on send. Holding is a move between your own accounts, not a loss.<br><br>
+          No Credits are held from the GM sending a counter merely for sending it. The original issuer's already-held stake remains held while the offer is pending. On acceptance, the wager is committed.<br><br>
+          If an offer is withdrawn, declined, or expires before acceptance, the held stake is released according to its original funding and the governing weekly-account rules.
+        </div>
+        <div style="${RULE_H}">Pool Bets</div>
+        <div style="${RULE_BODY}">
+          Pool Bets are league-wide side games. Some ask you to pick — one team, or one matchup. Others rank everybody automatically and you're just in. Each pool tells you the entry, the options, how you win, the tie rule, and its own lock time before you join.<br><br>
+          You get one entry per pool. In a positive pool you can back your own team; in a negative pool you can't pick yourself or a matchup you're in — the app blocks it. All pools for the week lock at the week&#8217;s first kickoff.<br><br>
+          When the games are final, the pot is awarded on its own. Ties split by the stated rule. The commissioner never picks the winner or touches the award.
+        </div>
+        <div style="${RULE_H}">Pool rollovers</div>
+        <div style="${RULE_BODY}">
+          If a rollover-eligible pool ends without a winner, its pot carries into the next eligible week and the pool reopens for new entries. The entry amount stays the same, while new entries add to the carried Pot — so the Pot gets bigger without increasing what each GM commits to enter. Rollover continues only where the pool definition permits, until a winner or its final governed resolution.
         </div>`
     },
     'The Fine Print': {
-      status: 'Mixed — see each section',
+      status: 'Canonical POR',
       html: `
-        <div style="${RULE_H}">BAB Top-Offs${ruleTag('authoritative')}</div>
+        <div style="${RULE_H}">Settling</div>
         <div style="${RULE_BODY}">
-          Need more BAB mid-season? Ask for a top-off. The commissioner sets one cap before the season — the most extra BAB anyone can get — and it’s the same for everyone, including the commissioner.<br><br>
-          Go over your remaining cap and the request bounces back in full. Just ask again for an amount that fits.<br><br>
-          The commissioner approves top-offs. If he’s topping off his own team and there’s no one else to approve it, he can sign off himself — but he has to leave a reason, and it shows up in the league log for everyone to see.<br><br>
-          BAB is just the league’s in-app currency. FantasyStakes never touches real money.
-        </div>
-        <div style="${RULE_H}">Settling Up${ruleTag('pending')}</div>
-        <div style="${RULE_BODY}">
-          Not written yet. This section is filled from the league protocol before launch.
+          When the season ends, everything comes down to one number per GM: your Current Settle. All season it has tracked the exact amount due to you or from you — the Credits still attributable to you, anything owed back to you, and any final Season Awards, set against your season-opening advance, Top-Off advances, Skunk Fees, and other settlement obligations. When every season result and award is final, that number is your finish line.<br><br>
+          Positive means the league owes you. Negative means you owe the league. At final season settlement, all GM Current Settle positions together net to zero. There is no house taking a cut and no house covering a shortfall — the final obligations reconcile within the league.<br><br>
+          Credits exist only inside FantasyStakes. FantasyStakes does not process real-money payments or track who has paid whom outside the app. Your final Current Settle is the amount due to you or from you; how the league actually settles those obligations happens outside FantasyStakes.
         </div>`
     }
   };
@@ -1558,17 +1710,237 @@
       ${r.html}
       <button class="btn ghost" onclick="closeOv()" style="margin-top:16px">Close</button>`);
   }
-  function gmPop(gm){
-    showSheet(`<h3>${gm}</h3><div class="sub">Full breakdown</div>
-      <div style="font-size:12px;line-height:1.9;color:#cfc9ba">
-        <div style="display:flex;justify-content:space-between"><span>Buy-in</span><span class="mono">$220</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Top-offs</span><span class="mono">+$40</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Net bets</span><span class="mono pos">+$112</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Frozen min</span><span class="mono" style="color:var(--gold)">−$20</span></div>
-        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:6px;padding-top:6px"><span>Projected settle</span><span class="mono">+$128</span></div>
-      </div>
-      <button class="btn g" onclick="closeOv()" style="margin-top:12px">Open full ledger</button></div>`);
+  // Commish Level 2 — 12 GM cards from the balanced illustrative dataset.
+  // Each: [name, wallet, wmReserve, wmLeft, stakes, ooc, earnedAwards, topoff, skunk]
+  // season-opening advance = 220 for all. Assets - obligations = Current Settle.
+  // Aggregates: wallets 318, wmRes 1080, wmLeft 74, stakes 268, ooc 52 -> 1792; +960 +8 = 2760.
+  const COMMISH_GMS = [
+    ['Fraser C.', 32,90,10,40,6,0,40,20],
+    ['Diego R.',  18,90,10,34,4,0,0,0],
+    ['Tara W.',   46,90,10,12,0,10,0,10],
+    ['Sam O. (you)',55,90,10,28,8,24,40,0],
+    ['Kevin M.',   8,90,0,22,2,0,0,10],
+    ['Priya N.',  27,90,10,18,6,0,0,0],
+    ['Marcus B.', 14,90,0,30,4,0,40,0],
+    ['Lena F.',   39,90,10,16,0,0,0,0],
+    ['Omar H.',   21,90,4,20,6,0,0,10],
+    ['Chen W.',   30,90,10,10,4,0,0,0],
+    ['Rosa D.',   16,90,0,14,8,0,0,0],
+    ['Jake T.',   12,90,0,24,4,0,0,0]
+  ];
+  function renderCommishGMs(){
+    const wrap=document.getElementById('commishGMs'); if(!wrap) return;
+    wrap.innerHTML=COMMISH_GMS.map((g,i)=>{
+      const [name,w,wr,wl,st,oo,aw,to,sk]=g;
+      const assets=w+wr+wl+st+oo+aw;
+      const oblig=220+to+sk;
+      const cs=assets-oblig;
+      const csTxt=(cs<0?'−$':'+$')+Math.abs(cs);
+      const csCls=cs<0?'neg':'pos';
+      const m=v=>(v<0?'−$':'$')+Math.abs(v);
+      return `<div class="gmcard" style="background:var(--card);border:1px solid var(--line2);border-radius:10px;margin-bottom:7px;overflow:hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer" onclick="gmCardTog(${i})">
+          <span style="display:flex;align-items:center;gap:7px"><span class="gmarw" id="gmarw${i}" style="font-size:11px;color:var(--g1)">&#8250;</span><span style="font-size:12px;font-weight:500">${name}</span></span>
+          <span style="text-align:right"><span style="font-size:7.5px;color:var(--g2);display:block">Current Settle</span><span class="mono ${csCls}" style="font-size:12px;font-weight:500">${csTxt}</span></span>
+        </div>
+        <div class="gmbody" id="gmbody${i}" style="display:none;padding:0 12px 11px;border-top:1px solid var(--line2)">
+          <div style="font-size:8px;letter-spacing:.5px;color:var(--g2);margin:7px 0 3px">SETTLEMENT-RELEVANT CREDITS (ASSETS)</div>
+          <div style="font-size:9.5px;color:#a9a291;line-height:1.85">
+            <div style="display:flex;justify-content:space-between"><span>Wallet</span><span class="mono">${m(w)}</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Weekly Min Reserve</span><span class="mono">${m(wr)}</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Weekly Min Left</span><span class="mono">${m(wl)}</span></div>
+            <div style="display:flex;justify-content:space-between"><span>GM stakes in play <span style="color:var(--g2)">(own only)</span></span><span class="mono">${m(st)}</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Out of circulation</span><span class="mono">${m(oo)}</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Earned Season Awards</span><span class="mono">${m(aw)}</span></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:3px;padding-top:3px"><span>Assets subtotal</span><span class="mono">${m(assets)}</span></div>
+          </div>
+          <div style="font-size:8px;letter-spacing:.5px;color:var(--g2);margin:6px 0 3px">SETTLEMENT OBLIGATIONS</div>
+          <div style="font-size:9.5px;color:#a9a291;line-height:1.85">
+            <div style="display:flex;justify-content:space-between"><span>Season-opening advance</span><span class="mono neg">−$220</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Top-Off advances</span><span class="mono ${to?'neg':''}">${to?'−$'+to:'$0'}</span></div>
+            <div style="display:flex;justify-content:space-between"><span>Skunk Fees</span><span class="mono ${sk?'neg':''}">${sk?'−$'+sk:'$0'}</span></div>
+            <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:3px;padding-top:3px"><span>Obligations subtotal</span><span class="mono neg">−$${oblig}</span></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;border-top:1px solid var(--edge);margin-top:6px;padding-top:5px;font-size:10px;font-weight:600"><span>Assets − obligations = Current Settle</span><span class="mono ${csCls}">${m(assets)} − $${oblig} = ${csTxt}</span></div>
+        </div>
+      </div>`;
+    }).join('');
   }
+  function gmCardTog(i){
+    const b=document.getElementById('gmbody'+i), a=document.getElementById('gmarw'+i);
+    if(!b) return;
+    const open=b.style.display!=='none';
+    b.style.display=open?'none':'block';
+    if(a) a.innerHTML=open?'&#8250;':'&#8964;';
+  }
+  renderCommishGMs();
+
+  // ---- The Week ----
+  const TW_CUR = 5;                 // current fantasy week
+  const TW_NEXT_PREVIEW = false;    // Week 6 Preview not published yet
+  let twWeek = TW_CUR, twState = 'preview';
+
+  const SLATE = [
+    ['CULV Destroyers','Gridiron Goodfellas','7\u20130 \u00b7 1st','6\u20131 \u00b7 2nd','fav|\u2212165','neu|\u22123.5','neu|o 218','118.4 \u2013 114.9',
+     'Game of the week, and the closest projected margin on the board. Two of the three strongest lineups in the league meet with the Destroyers still unbeaten. The market is not fully convinced \u2014 they are laying under a field goal.'],
+    ['The Brain Trust','Numbers Racket','3\u20134 \u00b7 7th','4\u20133 \u00b7 6th','neu|+110','neu|+1.5','fav|u 208','104.1 \u2013 105.6',
+     'The lowest total on the slate by nine points. Both rosters are carrying bye-week holes they could not patch on waivers. Whoever gets one clean ceiling game probably wins it.'],
+    ['Sunday Gravy','Bada Bing Bombers','1\u20136 \u00b7 12th','2\u20135 \u00b7 11th','fav|\u2212140','neu|\u22123.0','fav|o 224','116.2 \u2013 108.4',
+     'Basement bowl with the highest total of the week. Neither side has held an opponent under 105 since Week 1. Nothing is at stake but the Skunk, which is very much at stake.'],
+    ['Skipolini\u2019s Enforcers','Provenza Provolone','4\u20133 \u00b7 5th','3\u20134 \u00b7 8th','neu|\u2212120','neu|\u22122.0','neu|o 212','110.7 \u2013 108.3',
+     'A true coin flip. The Enforcers\u2019 entire edge sits at flex and it disappears if the Provolone tight end goes off. Both projections have moved less than a point since Tuesday.'],
+    ['Racconti Raiders','Contabile Cartel','3\u20134 \u00b7 9th','2\u20135 \u00b7 10th','fav|\u2212150','fav|\u22124.5','neu|o 213','112.0 \u2013 106.8',
+     'The Raiders start the highest-projected player of the week and are even everywhere else. That one slot is the whole spread. The Cartel need a bench week to turn up in the starting eleven.'],
+    ['Third And Long Island','Sunday Gravy','5\u20132 \u00b7 4th','1\u20136 \u00b7 12th','fav|\u2212210','fav|\u22128.5','dog|u 205','115.9 \u2013 101.2',
+     'Biggest spread of the week and the only line that has moved twice since Tuesday. Gravy are starting two players they picked up on Wednesday. The under is the sharper side here.']
+  ];
+
+  function twMkt(s){ const p=s.split('|'); return p[0]+'|'+p[1]; }
+
+  function twSlate(){
+    return SLATE.map(m=>`
+      <div class="twm" onclick="openYahoo('${m[0].replace(/'/g,"\\'")}','${m[1].replace(/'/g,"\\'")}')">
+        <div class="twmh"><span class="twt">${m[0]}</span><span class="twv">vs</span><span class="twt r">${m[1]}</span></div>
+        <div class="twmr"><span>${m[2]}</span><span>${m[3]}</span></div>
+        <div class="cellsrow">
+          <div class="mkt ${m[4].split('|')[0]}">ML<small>${m[4].split('|')[1]}</small></div>
+          <div class="mkt ${m[5].split('|')[0]}">SPR<small>${m[5].split('|')[1]}</small></div>
+          <div class="mkt ${m[6].split('|')[0]}">O/U<small>${m[6].split('|')[1]}</small></div>
+        </div>
+        <div class="twproj"><span>Projected</span><span class="mono">${m[7]}</span><span class="chev">&#8250;</span></div>
+        <div class="twteaser">${m[8]}</div>
+      </div>`).join('');
+  }
+
+  function twPreview(wk){
+    const live = (wk===TW_CUR);
+    const fresh = live
+      ? `<div class="twfresh"><span class="twdot"></span>Odds, Yahoo lineups and projections updated <b>18 min ago</b><span class="twre" onclick="event.stopPropagation();twRefresh()">Refresh</span></div>`
+      : `<div class="twfresh frozen"><span class="twdot frozen"></span>Frozen at Week ${wk} first kickoff \u00b7 final pre-kickoff snapshot</div>`;
+    return fresh + `<div class="eyebrow" style="margin:0 0 8px">THE SLATE \u00b7 6 MATCHUPS \u00b7 TAP FOR THE FULL READ</div>`
+      + twSlate()
+      + `<div class="eyebrow" style="margin:18px 0 8px">POOLS ${live?'OPEN':'THAT WEEK'}</div>
+        <div class="twpool"><span>Most Passing Yards</span><span class="mono">$1 \u00b7 12 in</span></div>
+        <div class="twpool"><span>Shootout of the Week</span><span class="mono">$1 \u00b7 10 in</span></div>
+        <div class="twpool"><span>Most Total Touchdowns</span><span class="mono">$1 \u00b7 9 in</span></div>
+        <div class="twpool roll"><span>10+ Combined TDs</span><span class="mono">$12 pot carried</span></div>
+        <div class="twnote">All pools for the week lock at the week\u2019s first kickoff. Preview freezes at the same moment and stays available as this week\u2019s snapshot.</div>`;
+  }
+
+  function twResults(wk){
+    if(wk===TW_CUR) return `<div class="twlock"><div class="h">Week ${wk} has not kicked off</div><div class="p">View Results opens at the week\u2019s first kickoff, when Preview freezes.</div></div>`;
+    return `<div class="twfresh${wk===TW_CUR?'':' frozen'}"><span class="twdot ${wk===TW_CUR?'live':'frozen'}"></span>${wk===TW_CUR?'Live \u00b7 scores updating':'Historical \u00b7 how Week '+wk+' stood in progress'}</div>
+      <div class="eyebrow" style="margin:0 0 8px">CLOSE MATCHUPS</div>
+      <div class="twlive"><div class="twlh"><span>Gridiron Goodfellas</span><span class="mono gold">81.4</span></div><div class="twlh"><span>CULV Destroyers</span><span class="mono">78.9</span></div><div class="twls">4 starters left \u00b7 Destroyers hold the Monday player</div></div>
+      <div class="twlive"><div class="twlh"><span>Numbers Racket</span><span class="mono gold">72.1</span></div><div class="twlh"><span>The Brain Trust</span><span class="mono">70.8</span></div><div class="twls">2 starters left each \u00b7 total tracking well under</div></div>
+      <div class="eyebrow" style="margin:16px 0 8px">FULL SLATE</div>
+      <div class="twlive"><div class="twlh"><span>Sunday Gravy</span><span class="mono">104.2</span></div><div class="twlh"><span>Bada Bing Bombers</span><span class="mono gold">119.6</span></div><div class="twls">final</div></div>
+      <div class="twlive"><div class="twlh"><span>Skipolini\u2019s Enforcers</span><span class="mono gold">112.8</span></div><div class="twlh"><span>Provenza Provolone</span><span class="mono">99.3</span></div><div class="twls">final</div></div>
+      <div class="eyebrow" style="margin:16px 0 8px">DEVELOPING</div>
+      <div class="twdev"><b>Skunk watch.</b> Sunday Gravy sits 41.2 back with three starters left \u2014 the widest margin on the board.</div>
+      <div class="twdev"><b>Pools.</b> Most Passing Yards is a two-team race. Highest Scoring Team is effectively decided.</div>
+      <div class="twdev"><b>Standings.</b> A Goodfellas win pulls them level at the top for the first time this season.</div>
+      <div class="twnote">League-wide results. Your own wagers live in <b style="color:var(--gold)">Action</b>.</div>`;
+  }
+
+  function twReview(wk){
+    if(wk===TW_CUR) return `<div class="twlock"><div class="h">Week ${wk} is not settled</div><div class="p">Review opens once Yahoo results are final <i>and</i> FantasyStakes settlement for the week is complete. Until both are true the week stays in View Results.</div></div>`;
+    return `
+
+      <div class="eyebrow" style="margin:6px 0 8px">YAHOO MATCHUPS</div>
+      <div style="font-size:12px;line-height:1.6;color:#cfc9ba;margin-bottom:13px">
+        <b style="font-weight:600">Sam O. 141.3, Kevin M. 96.1.</b> ML Sam · SPR Sam −7.5 · O/U OVER (237.4). Sam's stack went nuclear and he climbs to 2nd, while Kevin left
+        <span style="color:var(--red)">18 on the bench</span> and slides to 7th. The kind of loss you don't post about — but we're posting about it.
+      </div>
+      <div style="font-size:12px;line-height:1.6;color:#cfc9ba;margin-bottom:13px">
+        <b style="font-weight:600">Fraser 118.2, Diego 114.6.</b> ML Fraser · SPR Diego +3.5 · O/U OVER (232.8). Down to Monday night — Diego needed 9, got 5. Fraser holds 4th, Diego stays 6th. Cruel, but that's why they play the nighter.
+      </div>
+      <div class="eyebrow" style="margin:14px 0 8px">VERSUS</div>
+      <div style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:9px 11px;margin-bottom:9px">
+        <div style="font-size:11.5px;font-weight:600;color:var(--bone);margin-bottom:2px">Fraser beat Kevin on the moneyline at +140 — <span class="pos">WIN</span></div>
+        <div style="font-size:9px;color:var(--g1);letter-spacing:.06em;margin-bottom:4px">LOCKED</div>
+        <div style="font-size:11px;color:#cfc9ba;margin-bottom:5px">Stake: $20 · Profit: <span class="pos">+$28</span> · Fraser's Return: $48</div>
+        <div style="font-size:11px;line-height:1.55;color:#cfc9ba">Fraser read the Kevin collapse early and took the price. Easy money when the other guy's squad never boards the bus.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:9px 11px;margin-bottom:9px">
+        <div style="font-size:11.5px;font-weight:600;color:var(--bone);margin-bottom:2px">Tara took the under vs Sam — <span class="neg">LOSS</span></div>
+        <div style="font-size:9px;color:var(--g1);letter-spacing:.06em;margin-bottom:4px">LOCKED</div>
+        <div style="font-size:11px;color:#cfc9ba;margin-bottom:5px">Stake: $22 · Loss: <span class="neg">−$22</span> · Tara's Return: $0</div>
+        <div style="font-size:11px;line-height:1.55;color:#cfc9ba">47 unanswered points sailed past the total. Rough hold, Tara — the football gods owed you one and skipped town.</div>
+      </div>
+      <div class="eyebrow" style="margin:14px 0 8px">POOLS</div>
+      <div style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:9px 11px;margin-bottom:9px">
+        <div style="font-size:11.5px;font-weight:600;color:var(--bone);margin-bottom:2px">Biggest Winner — Sam O.</div>
+        <div style="font-size:11px;color:#cfc9ba;margin-bottom:5px">12 entries · $12 pot · 4 winners &#160;·&#160; Sam's Return: $3 · Profit: <span class="pos">+$2</span></div>
+        <div style="font-size:11px;line-height:1.55;color:#cfc9ba">The crowd saw this one coming — four GMs backed Sam and split the pot. Consensus was right, which means nobody gets to feel clever about it.</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:9px 11px">
+        <div style="font-size:11.5px;font-weight:600;color:var(--bone);margin-bottom:2px">Highest Scoring Team — Sam O.</div>
+        <div style="font-size:11px;color:#cfc9ba;margin-bottom:5px">12 entries · $12 pot · 2 winners &#160;·&#160; Winners' Return: $6 · Profit: <span class="pos">+$5</span></div>
+        <div style="font-size:11px;line-height:1.55;color:#cfc9ba">Only two GMs called the 141-burger. Contrarian read, fat reward — the chalk-chasers left money on the table.</div>
+      </div>
+    
+      `;
+  }
+
+  function twRender(){
+    // Only weeks that exist are shown. The next week appears solely once its
+    // Preview is published; no empty or unpublished future week is displayed.
+    const maxWk = TW_CUR + (TW_NEXT_PREVIEW?1:0);
+    let lo = twWeek-1, hi = twWeek+1;
+    if(hi>maxWk){ hi=maxWk; lo=Math.max(1,hi-2); }
+    if(lo<1){ lo=1; hi=Math.min(maxWk,lo+2); }
+    const weeks=[];
+    for(let n=lo;n<=hi;n++) weeks.push(['Week '+n, n===twWeek?'on':'']);
+    const canL = twWeek>1, canR = (twWeek+1<=TW_CUR) || (twWeek+1===TW_CUR+1 && TW_NEXT_PREVIEW);
+    document.getElementById('twNav').innerHTML =
+      `<div class="arw ${canL?'':'off'}" onclick="twStep(-1)">&#8249;</div>`
+      + weeks.map(x=>`<div class="wk ${x[1]}" ${x[1]===''?`onclick="twJump('${x[0]}')"`:''}>${x[0]||'&nbsp;'}</div>`).join('')
+      + `<div class="arw ${canR?'':'off'}" onclick="twStep(1)">&#8250;</div>`;
+
+    const settled = twWeek < TW_CUR;
+    const states=[['preview','Preview',true],['results','View Results',settled],['review','Review',settled]];
+    document.getElementById('twStates').innerHTML = states.map(s=>
+      `<div class="twseg ${twState===s[0]?'on':''} ${s[2]?'':'off'}" onclick="twSet('${s[0]}')">${s[1]}</div>`).join('');
+
+    document.getElementById('twTitle').textContent='Week '+twWeek;
+    document.getElementById('twSub').textContent = settled
+      ? 'Completed \u00b7 CULV Appreciation Society'
+      : 'CULV Appreciation Society \u00b7 Fantasy Sportsbook';
+    const clock=document.getElementById('koClock2'), lab=document.getElementById('koLabel2');
+    if(settled){ clock.textContent='FINAL'; lab.textContent='WEEK '+twWeek; }
+    else { clock.textContent='2d 04:11:38'; lab.textContent='FIRST KICKOFF IN'; }
+
+    const body=document.getElementById('twBody');
+    body.innerHTML = twState==='preview'?twPreview(twWeek):twState==='results'?twResults(twWeek):twReview(twWeek);
+    body.scrollTop=0;
+  }
+  function twSet(s){ twState=s; twRender(); }
+  function twStep(d){
+    const n=twWeek+d;
+    const maxWk = TW_CUR + (TW_NEXT_PREVIEW?1:0);
+    if(n<1 || n>maxWk) return;
+    twWeek=n;
+    if(twWeek>=TW_CUR && twState!=='preview') twState='preview';
+    twRender();
+  }
+  function twJump(lbl){
+    const n=parseInt(lbl.replace('Week ',''));
+    const maxWk = TW_CUR + (TW_NEXT_PREVIEW?1:0);
+    if(!n || n<1 || n>maxWk) return;
+    twWeek=n;
+    if(twWeek>=TW_CUR && twState!=='preview') twState='preview';
+    twRender();
+  }
+  function twRefresh(){
+    document.querySelectorAll('.twfresh b').forEach(b=>b.textContent='just now');
+    showSheet('<h3>Preview refreshed</h3><div class="sub">Prototype \u00b7 no live backend</div><div style="font-size:11.5px;line-height:1.65;color:#cfc9ba;margin-top:10px">Odds, Yahoo lineups, projections and analysis inputs re-pull on this action and on a timer through the week. At the week\u2019s first kickoff the Preview freezes and stays available as that week\u2019s snapshot.</div>');
+  }
+  (function(){ let x0=null; const t=document.getElementById('tab-wrap');
+    t.addEventListener('touchstart',e=>{x0=e.touches[0].clientX;},{passive:true});
+    t.addEventListener('touchend',e=>{ if(x0===null) return; const dx=e.changedTouches[0].clientX-x0; if(Math.abs(dx)>70) twStep(dx<0?1:-1); x0=null; },{passive:true});
+  })();
+  twRender();
 </script>
 </body>
 </html>
