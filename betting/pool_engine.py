@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -54,11 +54,21 @@ SOURCE = "fantasypros"
 
 # ── Pool bet-type registry ─────────────────────────────────────────────────────
 
+# bench_burn was retired from Pool scope by SPEC_Pool_Catalog_Rotation_POR_Rev1_0
+# §1.1: a legacy implementation name, never one of the 96 classified catalog
+# definitions, carried here with no evaluator and no settlement branch. It was
+# selectable through submit_pool_pick and nothing could ever settle the pick.
+# POR §11.5 requires it be unreachable as a Pool.
+#
+# Removing the row is the whole retirement. PoolBetPick.bet_type is a plain
+# String column with no CHECK constraint (db/schema.py:1114), so historical rows
+# carrying 'bench_burn' remain readable by direct query; they simply no longer
+# appear in get_pool_week's per-type output and no new ones can be written.
+# No replacement definition is added here — the catalog is a separate step.
 POOL_BET_TYPES: list[dict] = [
     {"key": "biggest_winner", "label": "Biggest Winner",        "self_pick_allowed": True},
     {"key": "worst_beat",     "label": "Worst Beat",            "self_pick_allowed": False},
     {"key": "special_teams",  "label": "Special Teams Supremacy","self_pick_allowed": False},
-    {"key": "bench_burn",     "label": "Bench Burn",            "self_pick_allowed": False},
 ]
 _VALID_BET_TYPES = {b["key"] for b in POOL_BET_TYPES}
 
@@ -211,12 +221,58 @@ def collect_weekly_entries(league_id: int, week: int, db: Session) -> PoolEntryR
     if not cfg:
         raise ValueError(f"Pool not configured for league {league_id}")
 
-    # Idempotent guard
-    existing = db.query(PoolPot).filter(
-        PoolPot.league_id == league_id,
-        PoolPot.week      == week,
-    ).first()
-    if existing and existing.entries_collected:
+    # ── Atomic week claim ─────────────────────────────────────────────────────
+    # Replaces a read-then-write guard that was unsound under contention: two
+    # concurrent callers both read `existing = None`, both ran the debit loop
+    # below, and one lost at commit on uq_pool_pot_league_week — surfacing as
+    # IntegrityError rather than the domain ValueError this function documents.
+    #
+    # Modeled on WeekSettlement's claim (settlement_engine.py:353-362) with one
+    # deliberate difference: that one commits immediately at :362. THIS ONE MUST
+    # NOT, and the difference is a money-path property, not a style choice.
+    # entries_collected is read OUTSIDE this transaction as evidence that every
+    # team was actually charged — settle_pool at :538, and
+    # shortfall_sweep._compute_wagered_cents at :90, which credits each team a
+    # weekly entry toward its wagering minimum purely on the strength of this
+    # flag. Committing the claim early would publish that evidence before a
+    # single cent moved, and would strand the flag TRUE so no later attempt
+    # could re-claim the week.
+    #
+    # Staying inside this function's single transaction means a losing caller
+    # BLOCKS on the conflicting row instead of racing it, and then resolves
+    # correctly either way: the winner commits and the loser's WHERE finds
+    # entries_collected already TRUE (zero rows -> the ValueError below), or the
+    # winner rolls back and the loser claims the week itself. So the flag still
+    # means COMPLETED to every reader outside; only inside this transaction does
+    # it additionally mean CLAIMED, and nothing inside reads it.
+    #
+    # All five values are supplied explicitly: SQLAlchemy's Column(default=...)
+    # is client-side, so the create_all DDL carries no server DEFAULT.
+    #
+    # IS NOT TRUE, not `= FALSE`. entries_collected is a NULLABLE column
+    # (db/schema.py:1040), and the guard this replaced tested Python truthiness —
+    # `if existing and existing.entries_collected` — under which BOTH False and
+    # None fell through and the week was re-collectable. `= FALSE` would evaluate
+    # to NULL against a NULL column and refuse the claim, silently narrowing that
+    # retry path and stranding any legacy row carrying NULL. The truth table
+    # required, and verified on both backends, is:
+    #     TRUE  -> refuse    FALSE -> claim    NULL -> claim
+    # Verified 2026-07-31 on SQLite 3.50.4 (the legacy pool suite's backend) and
+    # PostgreSQL 16.14, upsert-rehearsed against pre-existing TRUE/FALSE/NULL
+    # rows. One statement, no dialect branch.
+    claimed = db.execute(
+        text("""
+            INSERT INTO pool_pots
+                (league_id, week, entries_collected, worst_beat_rollover_cents, settled)
+            VALUES (:league_id, :week, TRUE, 0, FALSE)
+            ON CONFLICT (league_id, week) DO UPDATE
+               SET entries_collected = TRUE
+             WHERE pool_pots.entries_collected IS NOT TRUE
+            RETURNING id
+        """),
+        {"league_id": league_id, "week": week},
+    ).fetchone()
+    if claimed is None:
         raise ValueError(f"Pool entries already collected for league {league_id} week {week}")
 
     # FC-6b (Opus): refuse to collect a new week's entries while ANY earlier
@@ -312,14 +368,18 @@ def collect_weekly_entries(league_id: int, week: int, db: Session) -> PoolEntryR
     total_pot       = round(total_pot_cents / 100, 2)
     per_bet_share   = round(total_pot / 3, 2)
 
-    # Create or update PoolPot
-    pot = existing or PoolPot(league_id=league_id, week=week)
+    # Update the PoolPot claimed above. The claim already inserted-or-updated
+    # this week's row inside this same (uncommitted) transaction, so the row is
+    # guaranteed to exist and .one() cannot miss it. No db.add() — the row is
+    # not new to the transaction, only to the ORM identity map.
+    pot = db.query(PoolPot).filter(
+        PoolPot.league_id == league_id,
+        PoolPot.week      == week,
+    ).one()
     pot.worst_beat_rollover_cents = accumulated_rollover_cents
     pot.entries_collected          = True
     pot.settled                    = False
     pot.total_pot_cents             = total_pot_cents
-    if pot.id is None:
-        db.add(pot)
 
     db.commit()
 
