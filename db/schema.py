@@ -1121,6 +1121,176 @@ class PoolBetPick(Base):
     league      = relationship("League")
 
 
+# ── Pool rotation (SPEC_Pool_Rotation_Implementation_Scope_Rev1_0 §C1/§C2/§C3) ─
+#
+# Schema only. Nothing here is wired into collection or settlement, and no code
+# in this commit writes pot_cents or rollover_cents — creating a money-bearing
+# column is schema work; writing it is money-path work and is out of scope.
+
+class PoolDefinition(Base):
+    """One row per catalog definition — §C1. 94 active rows seeded from
+    spec/pool_catalog_rev1_0.json; seeding is a separate step and is NOT done
+    here. Columns mirror the JSON keys exactly: all 23, no more.
+
+    metric_expression and threshold_condition are stored as opaque nullable
+    strings. Storability is independent of executability — the RANK_EXTREMUM
+    grammar parses 65 of the 66 non-null metric_expressions, and no QUALIFIER
+    evaluator exists yet, but every catalog row persists losslessly regardless.
+
+    CHECK domains are taken from §C1's own pipe-delimited declarations, not from
+    the values that happen to appear in Rev1.0. `mechanic` therefore admits
+    'RANK' even though all 94 current rows are 'PREDICTION' — §C1 declares the
+    domain and a narrower CHECK would reject a row the spec permits. Fields §C1
+    does not type as an enum (category, self_pick_rule, anti_tanking_review,
+    data_dependency, tie_rule) carry no CHECK, so a new category or a non-default
+    tie_rule is not refused by the database."""
+    __tablename__ = "pool_definition"
+    __table_args__ = (
+        CheckConstraint("scope IN ('TEAM','MATCHUP')",
+                        name="ck_pool_definition_scope"),
+        CheckConstraint("mechanic IN ('PREDICTION','RANK')",
+                        name="ck_pool_definition_mechanic"),
+        CheckConstraint("evaluator_family IN ('RANK_EXTREMUM','QUALIFIER')",
+                        name="ck_pool_definition_evaluator_family"),
+        CheckConstraint("metric_kind IN ('SIMPLE_AGG','RATIO','COMPOSITE')",
+                        name="ck_pool_definition_metric_kind"),
+        CheckConstraint("direction IS NULL OR direction IN ('MAX','MIN')",
+                        name="ck_pool_definition_direction"),
+        CheckConstraint("dependency_state IN ('ENABLED','BLOCKED')",
+                        name="ck_pool_definition_dependency_state"),
+    )
+
+    # Natural String PK, per §C1 "key PK". Precedent: PlayerIdMap.fantasypros_id.
+    key                               = Column(String,  primary_key=True)
+    catalog_number                    = Column(Integer, nullable=False)
+    display_name                      = Column(String,  nullable=False)
+    category                          = Column(String,  nullable=False)
+    scope                             = Column(String,  nullable=False)
+    mechanic                          = Column(String,  nullable=False)
+    evaluator_family                  = Column(String,  nullable=False)
+    metric_kind                       = Column(String,  nullable=False)
+    direction                         = Column(String,  nullable=True)
+    metric_expression                 = Column(String,  nullable=True)
+    threshold_condition               = Column(String,  nullable=True)
+    threshold_configurable            = Column(Boolean, nullable=False)
+    self_pick_rule                    = Column(String,  nullable=False)
+    anti_tanking_review               = Column(String,  nullable=False)
+    data_dependency                   = Column(String,  nullable=False)
+    dependency_state                  = Column(String,  nullable=False)
+    block_reason                      = Column(String,  nullable=True)
+    regular_season_eligible           = Column(Boolean, nullable=False)
+    # Nullable and stays NULL until the approved postseason 32-subset is
+    # supplied. §C1: a null means NOT YET ELIGIBLE — never false-by-default,
+    # never true. Nothing in this commit reads it.
+    postseason_eligible               = Column(Boolean, nullable=True)
+    rollover_eligible                 = Column(Boolean, nullable=False)
+    tie_rule                          = Column(String,  nullable=False)
+    aggregate_over_aggregate_required = Column(Boolean, nullable=False)
+    zero_denominator_guard            = Column(Boolean, nullable=False)
+
+
+class PoolInstance(Base):
+    """One row per drawn pool occurrence — §C2. Four per league/season/week.
+
+    origin_instance_id NULL means a fresh draw; set means a rollover
+    continuation of the referenced instance, and is the lineage chain POR §5
+    requires be auditable and UI-visible.
+
+    The partial unique index is what PROVES the no-repeat invariant rather than
+    asserting it. Its predicate compares `phase` to a string literal, so `phase`
+    MUST stay String + CHECK (the repo has zero native Enum anywhere); index
+    enforcement was verified under exactly this storage on SQLite 3.50.4 and
+    PostgreSQL 16.14. Both dialect kwargs carry IDENTICAL predicate text —
+    supplying only one degrades silently to a FULL unique index on the other
+    backend, which would reject legitimate continuations."""
+    __tablename__ = "pool_instance"
+    __table_args__ = (
+        CheckConstraint("phase IN ('REGULAR','POSTSEASON')",
+                        name="ck_pool_instance_phase"),
+        CheckConstraint("slot BETWEEN 1 AND 4",
+                        name="ck_pool_instance_slot"),
+        UniqueConstraint("league_id", "season", "week", "definition_key",
+                         name="uq_pool_instance_week_definition"),
+        UniqueConstraint("league_id", "season", "week", "slot",
+                         name="uq_pool_instance_week_slot"),
+        Index(
+            "uq_pool_instance_cycle_fresh",
+            "league_id", "season", "rotation_cycle", "definition_key",
+            unique=True,
+            sqlite_where=text("origin_instance_id IS NULL AND phase = 'REGULAR'"),
+            postgresql_where=text("origin_instance_id IS NULL AND phase = 'REGULAR'"),
+        ),
+    )
+
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    league_id          = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    season             = Column(Integer, nullable=False)
+    week               = Column(Integer, nullable=False)
+    phase              = Column(String,  nullable=False)
+    rotation_cycle     = Column(Integer, nullable=False)
+    definition_key     = Column(String,  ForeignKey("pool_definition.key"),
+                                nullable=False)
+    slot               = Column(Integer, nullable=False)
+    # Money-bearing. NOT NULL DEFAULT 0 deliberately: PoolPot.total_pot_cents is
+    # nullable and every reader has to special-case it (settle_pool's explicit
+    # NULL guard, and `pot.worst_beat_rollover_cents or 0`). An accumulator that
+    # starts at zero is not an absent fact. Nothing in this commit writes these.
+    #
+    # server_default, not just default: Column(default=…) is CLIENT-side, so
+    # create_all would emit a bare NOT NULL while the migration's DDL emits
+    # DEFAULT 0. A raw INSERT omitting these would then succeed against the
+    # migration's schema and fail against the ORM's — two schema sources for one
+    # table, disagreeing. server_default makes both emit the same DDL.
+    pot_cents          = Column(BigInteger, nullable=False,
+                                default=0, server_default=text("0"))
+    rollover_cents     = Column(BigInteger, nullable=False,
+                                default=0, server_default=text("0"))
+    # Self-FK, audit lineage. Named, following the single precedent
+    # beef_challenges.revived_from_challenge_id. No ON DELETE: cascade would
+    # destroy lineage POR §5 requires, and SET NULL would silently convert a
+    # continuation into a fresh draw and change what the partial index means.
+    origin_instance_id = Column(Integer,
+                                ForeignKey("pool_instance.id",
+                                           name="fk_pool_instance_origin"),
+                                nullable=True)
+    settled            = Column(Boolean, nullable=False,
+                                default=False, server_default=text("false"))
+    settled_at         = Column(DateTime(timezone=True), nullable=True)
+    # No created_at. §C2 gives an explicit field list and a creation timestamp
+    # is not in it; neither spec contains any authority requiring one (searched:
+    # created_at, creation, timestamp, drawn, recorded at, selection time). POR
+    # §4 line 111 enumerates what a persisted draw carries — "week, slot, cycle
+    # and lineage" — and a timestamp is not among them. "Other audit tables have
+    # one" is convention, not authority to expand a governed schema.
+
+    league = relationship("League")
+    origin = relationship("PoolInstance", remote_side=[id])
+
+
+class PoolRotationCycle(Base):
+    """One row per cycle open — §C3 verbatim: league_id, season, rotation_cycle,
+    opened_week, eligible_set_size, opened_at. Satisfies POR §4's auditable-reset
+    requirement ("one row recording league, season, cycle, opening week, and
+    eligible-set size at open"). Nothing in this commit writes it — the selector
+    SIGNALS a reset, it never performs one."""
+    __tablename__ = "pool_rotation_cycle"
+    __table_args__ = (
+        UniqueConstraint("league_id", "season", "rotation_cycle",
+                         name="uq_pool_rotation_cycle_open"),
+    )
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    league_id         = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    season            = Column(Integer, nullable=False)
+    rotation_cycle    = Column(Integer, nullable=False)
+    opened_week       = Column(Integer, nullable=False)
+    eligible_set_size = Column(Integer, nullable=False)
+    opened_at         = Column(DateTime(timezone=True),
+                               default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+
+
 # ── NFL Schedule ──────────────────────────────────────────────────────────────
 
 class NflSchedule(Base):
