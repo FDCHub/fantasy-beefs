@@ -1,3 +1,8 @@
 tools/prototype/index.html text eol=lf
 spec/*.html               text eol=lf
 spec/*.md                 text eol=lf
+
+# Governed Pool catalog data. Byte identity is product authority: Rev1.0
+# is retained unchanged as historical authority and is verified by SHA-256.
+# Markdown is already covered by spec/*.md above. See FR-REPO-CRLF-1.
+spec/pool_catalog_rev*.json text eol=lf
