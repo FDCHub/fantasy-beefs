@@ -46,3 +46,10 @@ step6b_run.txt
 
 # Repo archives are not source: snapshot zips of the working tree, never tracked files.
 *.zip
+
+# Findings-register deltas, absorbed into vol. II Section 22 at 65b4e2c.
+# Exact names, not a glob: a pending delta must stay visible in git status,
+# which is how FR-DOC-DELTA-1 was found. Each future delta is a deliberate
+# decision, matching the exact-name convention on lines 28-30. See vol. II 23.2.
+/spec/FantasyBeefs_Findings_Register_Delta_2026-07-30.md
+/spec/FantasyBeefs_Findings_Register_Delta_2026-07-31.md

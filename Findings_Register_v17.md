@@ -622,6 +622,9 @@ Deployments are `railway up` from the CLI. **No GitHub connection, no connected 
 
 **The finding is therefore wider than logged.** It is not only that four commits run nowhere; it is that **what is running in production cannot be established.**
 
+> **SUPERSEDED on the deployment mechanism — see vol. II 23.3.** The
+> paragraph below is preserved as historical audit evidence.
+
 Related: `railway up` uploads the working tree, which currently carries ~24 untracked documents, an `archive/` directory, and a 26 MB repo zip. `.railwayignore` **already exists** (620 bytes, 7/23) — its contents still need review before the controlled deployment.
 
 ### 19.11 — Migration execution path
@@ -1631,3 +1634,258 @@ Same class as FR-PROC-PANEL-2 at 22.19, which recorded the panel-versus-repo div
 Held pending inspection of the documented convention governing delta and update artifacts. If deltas are governed temporary append instructions that are intentionally untracked, the exposure is absorption lag rather than absent version control, and the wording and severity change accordingly.
 
 Lead, not evidence: eight `FantasyBeefs_Findings_Register_Update_*.md` files dating to 2026-07-16 are also untracked, which is consistent with a standing convention but does not establish one. No written convention has been located. The inspection has not been run.
+
+---
+
+## Section 23 — Documentation Lifecycle and Deployment-Surface Corrections
+
+Session of 2026-07-31, Step 3 review. All entries below rest on direct
+measurement taken this session. Absorbing commit for Section 22 is
+`65b4e2ccd3030a979d00e373d1b20f445c91963a`, committer date 2026-07-31.
+
+---
+
+### 23.1 — FR-DOC-DELTA-1 — NEW, ADOPTED. Findings-delta artifacts carry no absorption record
+
+**Severity: LOW.**
+
+**Issue Summary**
+
+A findings delta is a temporary append instruction. It names a destination
+register and a placement, is consumed into that register, and then has no
+further authority. Nothing on the artifact records that consumption.
+
+The defect fired inside the artifact that documents it. The 2026-08-01 delta
+opens by stating that whether the 07-30 and 07-31 deltas had been absorbed was
+unconfirmed, and that assigning a section number before checking risked a
+second collision on top of the one FR-DOC-REG-1 already records.
+
+A reader encountering a delta on disk cannot distinguish "pending, apply this"
+from "spent, ignore this." The two states look identical and carry opposite
+instructions.
+
+**Ruling — ADOPTED, severity LOW**
+
+Every delta receives an absorption stamp once its content is committed into the
+governing register. Stamp format:
+
+    Status: ABSORBED — DO NOT REAPPLY
+    Destination: Findings_Register_v17.md, volume II
+    Section: 22
+    Absorbing commit: <full SHA>
+    Absorption date: <YYYY-MM-DD, committer date of the absorbing commit>
+
+The stamp is additive. It does not modify, remove, or supersede delta content.
+Severity is LOW because absorbed content is committed and hash-fenced in the
+register; the exposure is reader confusion and duplicate application, not loss.
+
+**Committer date, not author date.** The two coincided for `65b4e2c`, but the
+committer date is the measure of when a commit entered history and is the
+governing field.
+
+**A session date is not a commit date.** The delta named 2026-08-01 is absorbed
+by a commit dated 2026-07-31. Both are correct. `c60f73a` landed at 19:58 and
+`65b4e2c` at 22:24, both on the evening of 31 July, Pacific. A session carries
+its working label; a commit carries its clock. Do not reconcile the two.
+
+**Visibility is part of the control.** A pending delta must remain visible in
+`git status`. This finding was discovered because the deltas appeared there.
+Any ignore rule that conceals a delta before absorption reproduces the defect
+in a less detectable form. See 23.2.
+
+**Applied this session** to the two disk deltas at
+`spec/FantasyBeefs_Findings_Register_Delta_2026-07-30.md` and
+`spec/FantasyBeefs_Findings_Register_Delta_2026-07-31.md`.
+
+**Not applied** to `FantasyBeefs_Findings_Register_Delta_2026-08-01.md`, which
+was measured absent from disk at both `spec/` and the repository root and exists
+only in the Claude project panel. No disk copy was created for the purpose of
+stamping it.
+
+---
+
+### 23.2 — FR-DOC-IGNORE-1 — NEW, ADOPTED. Findings deltas escaped a valid ignore convention through two independent changes
+
+**Severity: LOW.**
+
+**Issue Summary**
+
+`.gitignore` line 25 reads `/FantasyBeefs_*_Update_*.md`. Lines 23 and 24 state
+the intent: loose planning docs at the repo root are kept local and never
+tracked, and the leading slash means subfolders are deliberately unaffected.
+
+The convention works. Measured this session: 66 ignored entries, including
+eight `FantasyBeefs_Findings_Register_Update_*.md` files at the repo root.
+
+The current findings deltas escape it through two changes, either of which
+alone would have been sufficient:
+
+  - the family name changed from `_Update_` to `_Delta_`
+  - placement moved from the repo root to `spec/`
+
+Measured directly. `spec/FantasyBeefs_Findings_Register_Delta_2026-07-30.md`
+and `_2026-07-31.md` both return `git ls-files --error-unmatch` exit 1 and
+`git check-ignore -q` exit 1. `git check-ignore -v --no-index` reports no
+matching rule for either, so no negation or override is involved.
+
+They are **untracked and unignored** — a third state with neither Git history
+nor deliberate exclusion.
+
+**The convention did not break. The artifacts moved out from under it.**
+
+**Ruling — ADOPTED, severity LOW**
+
+Remediation is scoped to the two existing absorbed deltas by exact name.
+
+A family-wide glob over `/spec/FantasyBeefs_Findings_Register_Delta_*.md` was
+drafted and **rejected**. It would ignore every future delta on creation,
+including one not yet absorbed, concealing pending instructions and defeating
+the visibility control recorded at 23.1. The proposed remedy would have
+reproduced the defect it was meant to close.
+
+A rename into an explicitly absorbed family, ignored by glob, is lifecycle-
+correct and remains available. It was not adopted here because Section 22 and
+the session transition packages cite these artifacts by full path, and a rename
+would dangle every one of those pointers.
+
+Exact names also match the convention already documented at `.gitignore` lines
+28 to 30: exact names rather than globs, so each versioned file is a deliberate
+decision.
+
+Severity is LOW. A companion deployment-surface finding was investigated and
+**not opened** — see 23.3.
+
+---
+
+### 23.3 — Authoritative correction to vol. II §19.10 — deployment mechanism
+
+**§19.10 is preserved unchanged as historical audit evidence. Its
+deployment-mechanism statement is superseded by this section.**
+
+§19.10 states that `railway up` uploads the working tree, naming untracked
+documents, `archive/`, and a 26 MB repo zip as deployment inputs. That
+mechanism claim is wrong.
+
+**Measured rule:**
+
+  - default `railway up` respects **both** `.gitignore` and `.railwayignore`
+  - `--no-gitignore` disables `.gitignore` handling only
+  - `.railwayignore` is the deployment-specific exclusion layer and remains in
+    force under `--no-gitignore`
+
+Source: Railway CLI documentation for `railway up`, read 2026-07-31.
+
+`.railwayignore` measured this session: 24 lines, excluding `*.md`, `spec/`,
+`archive/`, `*.sql`, and named scratch artifacts. `.gitignore` independently
+excludes `secrets/`, `backups/`, `*.zip`, `*.db`, and
+`.claude/settings.local.json`.
+
+Under the default path none of the artifacts named in §19.10 reaches
+production. `archive/` measures 11 files and 146,881 bytes and is excluded
+regardless.
+
+**No deployment-surface finding is opened.**
+
+**FR-DEPLOY-IGN-1 — HELD as a defense-in-depth candidate, not a finding.**
+`.railwayignore` alone does not exclude `secrets/`, `*.zip`, `*.db`, or
+`.claude/`. Those depend on `.gitignore`. No evidence exists that
+`--no-gitignore` is used or authorized. Mirroring the four categories into
+`.railwayignore` may be proposed later as hardening.
+
+**Process note.** Two successive deployment-surface hazards were proposed
+during this review and both were killed by measurement — first the untracked
+documents, then the repo zip. The pattern is hunting for a finding rather than
+measuring a surface. Recorded so the reflex is visible next time.
+
+---
+
+### 23.4 — Measurements taken this session
+
+Recorded because several supersede figures carried in earlier documents.
+
+| Measure | Value |
+|---|---|
+| Untracked entries | 54 |
+| Ignored entries | 66 |
+| `archive/` | 11 files, 146,881 bytes |
+| `.gitignore` | 48 lines |
+| `.railwayignore` | 24 lines |
+| Tracked text files scanned for the v17 hash | 270 |
+| Tracked references to the v17 hash | **0** |
+| Untracked references to the v17 hash | 2, both in the 2026-08-01 Rev2 session-close package |
+
+**The register's own hash fence lives only in an untracked document.** Zero
+tracked files record it. Recorded as an observation, not a finding.
+
+**`Findings_Register_v12_2.md` is tracked.** This closes the open sub-question
+carried at vol. II 20.5, which asked whether vol. I was tracked, untracked, or
+gitignore-swallowed. Measured: `git ls-files --error-unmatch` exit 0.
+
+**`Findings_Register_v15.md` and `Findings_Register_v16.md` are absent from
+disk and absent from the index.** They exist only in the Claude project panel.
+Panel removal is therefore not provably lossless and is deferred indefinitely.
+Note that `git ls-files` reads the current index only; vol. II 19.12 records a
+successful `git show HEAD:Findings_Register_v16.md` at an earlier HEAD, so v16
+was tracked once and has since been removed.
+
+**The project panel served a stale vol. II.** The panel copy measured 99,345
+bytes, 1,257 lines, eight section headings ending at Section 21, hashing
+`48A40850EDB942CE335ED21098C6DD1A0AB4C1037E412A728937AE8A84CA22C8`. It does not
+contain Section 22. The panel is not a substitute for the repository and must
+not be used as a base for register edits.
+
+---
+
+### 23.5 — Absorption record authority — AMENDMENT to 23.1
+
+**This subsection amends 23.1. Where 23.1 describes the absorption stamp as the
+remedy, this subsection governs.**
+
+23.1 as first written left FR-DOC-DELTA-1 remediated by artifacts that a fresh
+clone would not contain. The two stamped deltas are ignored at `.gitignore:54`
+and `:55` and exist only in one working tree. A control that lives outside
+version control is not a control.
+
+**1. The governing register entry and its commit history are the durable,
+authoritative absorption record.** Absorption is established by what this
+register says and by the commit that put it here. Nothing else.
+
+**2. A local stamp on an untracked delta is a convenience marker only.** It
+helps a reader who encounters the file on disk. Its loss does not erase
+absorption, does not reverse it, and does not reopen FR-DOC-DELTA-1. A missing
+stamp is not evidence that a delta is pending — the ledger below is.
+
+**3. Every future absorption must be recorded in the governing register** with
+all five fields:
+
+  - delta identity and path
+  - destination volume and section
+  - absorbing commit SHA
+  - committer date of the absorbing commit
+  - `ABSORBED — DO NOT REAPPLY` status
+
+A stamp on the delta file itself is optional. The register entry is not.
+
+---
+
+**Absorption ledger — deltas absorbed at `65b4e2c`**
+
+| Delta identity and path | Destination | Absorbing commit | Committer date | Status |
+|---|---|---|---|---|
+| `spec/FantasyBeefs_Findings_Register_Delta_2026-07-30.md` | vol. II, Section 22 | `65b4e2ccd3030a979d00e373d1b20f445c91963a` | 2026-07-31 | ABSORBED — DO NOT REAPPLY |
+| `spec/FantasyBeefs_Findings_Register_Delta_2026-07-31.md` | vol. II, Section 22 | `65b4e2ccd3030a979d00e373d1b20f445c91963a` | 2026-07-31 | ABSORBED — DO NOT REAPPLY |
+| `FantasyBeefs_Findings_Register_Delta_2026-08-01.md` (panel only, absent from disk) | vol. II, Section 22 | `65b4e2ccd3030a979d00e373d1b20f445c91963a` | 2026-07-31 | ABSORBED — DO NOT REAPPLY |
+
+All three destinations were retargeted to vol. II as recorded at 23.1. The
+2026-07-30 delta originally named `Findings_Register_v16.md`.
+
+The third row is the point of this ledger. That delta has no disk file and can
+carry no stamp. It is nonetheless absorbed, and this row is the proof. The same
+holds for the other two if their working-tree copies are ever lost.
+
+**The two disk deltas are ignored by default and are not intended to be
+committed.** That is the disposition ruled at 23.2 and it stands. Their stamps
+are convenience markers over the ledger above, not the record itself.
+
+**Committer date, not author date.** They coincided for `65b4e2c`
+(`2026-07-31T22:24:50-07:00`). The committer date remains the governing field.
