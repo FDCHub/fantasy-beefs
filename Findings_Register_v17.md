@@ -1255,3 +1255,379 @@ Eight instances this session, all one shape: a careful local section written cor
 8. Rehearsal Rev 6 — M1's changed semantics ignored by the password-only branch
 
 **Structural mitigations adopted:** derivation tables instead of prose summaries · instruments named, never counted · one-row-per-state branch tables mirroring the state definition exactly.
+
+---
+
+## Section 22 — 2026-07-30 → 2026-08-01: Pool catalog Rev1.1, FR-8.7 test 6d progress, Pool settlement findings, and Pool authorization
+
+**Checkpoint:** `c60f73a7e38dae0c4a3af794320f858c745df6cf` · branch `remediation/foundation-phase-1` · HEAD equals origin.
+
+**Sources folded.** Five, listed with provenance:
+
+| | Source | Status |
+|---|---|---|
+| A | `FantasyBeefs_Findings_Register_Delta_2026-07-30.md` | untracked working tree · destination retargeted from v16 to v17 |
+| B | `FantasyBeefs_Findings_Register_Delta_2026-07-31.md` | untracked working tree |
+| C | `FantasyBeefs_Findings_Register_Delta_2026-08-01.md` | panel-only, not on disk |
+| D | `spec/POOL_SETTLEMENT_FINDINGS_2026-07-30.md` | **tracked** · preserved unchanged as dated evidence |
+| E | Current-session rulings | integrated into the findings they update, not listed separately |
+
+Source D is preserved unchanged by this consolidation and receives no superseded marker. It set its own fold condition — *"Fold them into the register once its authority is settled"* — and that condition is satisfied by FR-DOC-REG-1. **This section is the register authority for FR-POOL-1 and FR-POOL-2.** Source D remains the dated evidence they were derived from, including its Rev1.0 product-authority pointer, which is historical provenance and is not to be rewritten.
+
+Sources A, B, and C function as pending append instructions in this consolidation. Whether such delta artifacts are governed to remain untracked is unresolved under candidate FR-DOC-DELTA-1.
+
+---
+
+### 22.1 — FR-8.7-LOG-7 — NEW, OPEN. WalletMovement reports a payout against unchanged balances
+
+`SettlementReport.WalletMovement` reports a real payout while its before and after balances are identical. Both read `Wallet.balance`, which the legacy float settlement correctly never writes.
+
+Same family as LOG-5, distinct instance. LOG-5 computes the payout wrong. LOG-7 sources the balances wrong.
+
+Open, uninvestigated. Routed to B2.
+
+### 22.2 — FR-8.7-TEST-1 — NEW, OPEN. The shared fixture cannot discriminate the payout path
+
+The $25/$40 at 2.60-odds fixture yields 65.00 under both actual-escrow payout and `amount × odds`. Every 6500 assertion across 6d-2, 6d-3, and 6d-5a is therefore blind.
+
+The ledger is structurally safe — a three-leg posting must sum to zero. Report and feed surfaces are not.
+
+Discriminating variant for LOG-5's regression test: stake 25.00, odds 3.00, opponent 40.00. Wrong path yields 75.00, right path 65.00.
+
+Open. Routed to B2.
+
+### 22.3 — FR-8.7-TEST-2 — NUMBER ASSIGNED this session. PARTIAL. Vacuous-on-empty assertions
+
+6d-6 assertions 22 through 25 would have passed against an empty serialization: `token not in ""` is True, and `findall("")` returns `[]`. Guarded before commit with a hard `RuntimeError` precondition rather than a 45th assertion.
+
+The same class may exist in 6d-1, 6d-2, 6d-3, and 6d-5a. Never checked.
+
+Fixed in 6d-6. Unaudited in the four siblings. The number was proposed in source A and is assigned here.
+
+### 22.4 — FR-8.7 test 6d — status
+
+Five of eight execution units green: 6d-1, 6d-2, 6d-3, 6d-5a, 6d-6.
+Remaining: 6d-5b, 6d-4, 6d-7 — all isolation-gated behind FR-AC-ISO-1.
+
+Assertion counts, source-counted, labels 0-indexed and contiguous:
+
+| Unit | Sites |
+|---|---|
+| 6d-1 | 19 |
+| 6d-2 | 20 |
+| 6d-3 | 25 |
+| 6d-5a | 37 |
+| 6d-6 | 44 |
+| **Total** | **145** |
+
+Prior figures of 97 and 37/37 were low by one per suite. Zero-indexed labels with assertion 0 scrolled off truncated console tails. Systematic, not random.
+
+### 22.5 — Amendment: 6d-6 coverage boundary
+
+The frozen 6d-5/6d-6 expectation that a no-token normal caller is refused at `settlement_engine.py` 479–482 is **incorrect for sequential execution.**
+
+Both refusals reachable without concurrency are pre-lock bare raises: 397 for no token supplied, 407 for token mismatch. The `SELECT … FOR UPDATE` sits at 437–444. The under-lock revalidation guards' refusal branches require a concurrent state change between the pre-lock read and the locked re-read, and belong to 6d-4, 6d-5b, and 6d-7. 6d-6 Phase E passes through the under-lock revalidation on its admit branch only.
+
+Corrected wording is committed in the 6d-6 module docstring and repeated above its Phase D.
+
+### 22.6 — Carried observations — not findings
+
+- The one-file-per-process rule for the 6d suites holds, but its stated cause is unverified. The observed failure was the empty-database ownership guard after a stranded schema, not a Guard 5 destination collision.
+- `_SAFE_URL` in `test_support_crash_selftest.py` is port 5432 against a 5433 Docker instance. Guard-passing syntax only. No connectivity is claimed.
+- `_balance_of_in_session` populates `escrow_accounts_verified` only where `beef_challenge_id is not None`. Straight wagers contribute no escrow evidence to the recovery audit. May be correct by design.
+- `recover_week`'s JSON-serializability guard at 905–911 is unreachable through the crash harness by construction. Not a defect. Recorded so no later document claims coverage.
+- The 6d-6 docstring states 6d-5a's magnitude assertion is sound because its sibling context pins the intent. That is softer than FR-8.7-TEST-1. Reconcile the committed comment when TEST-1 is actioned.
+
+---
+
+### 22.7 — FR-POOL-ROLL-1 — CLOSED by `53fe0ba`. Rollover eligibility misclassified for #84 and #87
+
+Rev1.0 marked 19 definitions rollover-eligible. The non-rollover 75 were 73 RANK_EXTREMUM plus 2 QUALIFIER: #84 `matchups_where_neither_team_lost_a_fumble` and #87 `matchups_with_zero_total_turnovers`.
+
+**Cause.** `FR-6_1_CATALOG_CLASSIFICATION.md` assigned rollover eligibility by section — §1 Milestone & Achievement, 12 rows, and §12 Binary Qualifier Pools, 7 rows, each marked all rollover-eligible. `evaluator_family` was assigned later by bet shape. The two methods were never reconciled. #84 and #87 are QUALIFIER-shaped bets sitting in §11 Turnovers, outside both blanket-marked sections.
+
+Arithmetic closes: 21 QUALIFIER = 12 + 7 + 2 strays.
+
+**Inherited, not introduced.** Handoff v43 states 19 rollover-eligible and "the other 77 are rank-based" at 96 rows. Retiring #57 and #96 turned 77 into 75. The miscount rode through three artifacts unchanged.
+
+**RULING (Fraser, 2026-07-31):** rollover eligibility follows evaluator family without exception. RANK_EXTREMUM `false`, QUALIFIER `true`. #84 and #87 are metadata defects, not governed exceptions.
+
+Rev1.1 sets both to `true` and the declared count to 21. Rev1.0 preserved byte-for-byte. Guarded permanently by `test_pool_catalog_invariants.py` assertions 2, 3, 4, and 5.
+
+Supersedes carried finding 7 from the 07-31 opener, which raised this as an open product question.
+
+### 22.8 — FR-POOL-POR-1 — CLOSED by `53fe0ba`. POR stated the wrong derivation twice
+
+`SPEC_Pool_Catalog_Rotation_POR_Rev1_0.md` carried the section-based derivation in two independent places: line 39 as a table cell, Section 5 as prose. Correcting one and missing the other would have left the document internally contradictory.
+
+Rev1.1 corrects both. Line 39 reads 21, All QUALIFIER. Section 5 is rewritten to derive eligibility from evaluator family.
+
+### 22.9 — FR-POOL-POR-2 — NEW, CLOSED by `53fe0ba`. POR Section 10 table was a third unswept location
+
+The approved edit plan covered four POR changes: pointers, supersession, the line 39 count cell, and the Section 5 prose. It missed the Section 10 catalog table, which carries an RO column across all 94 rows and encoded 19, with #84 and #87 blank.
+
+Executing the plan as written would have produced a Rev1.1 stating 21 at line 39, 21 in prose at line 140, and 19 in the table. Internally inconsistent on its face — FR-POOL-POR-1 firing a second time inside the document meant to remediate it.
+
+Caught during pre-execution review. Lines 325 and 328 set to `Y`. Guarded permanently by assertion 10, which parses the Section 10 table and compares it row by row against the JSON.
+
+### 22.10 — FR-POOL-SCOPE-1 — CLOSED by `53fe0ba`, git-verified. §I step 8 wording debt
+
+**Closure determined this session. No source delta recorded it.**
+
+§I step 8 read "Seed 85 rotatable definitions" while §C1 read "94 rows seeded." The committed schema carries `dependency_state` ENABLED|BLOCKED and `block_reason`, so 94 rows with 9 excluded is fully supported. Seed-scope wording only — not a product decision, database blocker, or count conflict.
+
+**Verification.** `HEAD:spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md`, 278 lines. §I heading at line 238, §J heading at line 263, each unique. Within that bounded range, exactly one row matched `^\|\s*8\s*\|`:
+
+    | 8 | Seed all 94 active definitions — 85 `ENABLED`, 9 `BLOCKED` and excluded from rotation | no | — |
+
+Read from tracked HEAD, not from the project panel. Closure confirmed.
+
+**Method note.** Two earlier probes failed before this one succeeded. The first matched row 8 in both §H and §I, because both tables number from 1. The second bounded the start at §I but left the end at end-of-file. Only the §I-to-§J bounded slice produced a single unambiguous row. Recorded under FR-PROC-SWEEP-1.
+
+The 08-01 delta's CLOSED list omitted this finding. Also recorded as an FR-PROC-SWEEP-1 instance: a closure sweep that covered the findings named in the edit plan and missed one the same commit also resolved.
+
+### 22.11 — FR-POOL-SCOPE-2 — NEW, CLOSED by `53fe0ba`. Scope line 22 stated 19 alongside 21
+
+`SPEC_Pool_Rotation_Implementation_Scope_Rev1_0.md` line 22 read "85 rotatable, 19 rollover-eligible, 2 evaluator families, RANK_EXTREMUM 73 and QUALIFIER 21" — contradicting itself eight words apart.
+
+Not in the approved edit plan. Caught during pre-execution review. Rev1.1 reads 21.
+
+### 22.12 — FR-POOL-TITLE-1 — NEW, CLOSED by `53fe0ba`. Both Rev1.1 titles still declared Revision 1.0
+
+The plan's pointer sweep used the filename token `rev1_0`, blind to the prose form. POR line 2 and Scope line 1 both read "Revision 1.0." Each file would have declared itself Revision 1.0 on its title line and Revision 1.1 in a supersession block two lines below.
+
+Caught during pre-execution review. Both corrected. Both Date lines updated to 2026-08-01 by ruling.
+
+### 22.13 — FR-REPO-CRLF-1 — NEW, CLOSED by `002ea4a`. core.autocrlf could rewrite governed catalog files to CRLF
+
+`core.autocrlf` is `true` from system config. `git ls-files --eol` measured `attr/` empty on both `pool_catalog_rev*.json` files, so the next checkout, reset, stash, or branch switch would have rewritten them to CRLF and broken the working-tree Rev1.0 hash fence until the files were restored byte-for-byte.
+
+The pre-existing `.gitattributes` rule `spec/*.md text eol=lf` already covered all four governed Markdown files. Only the two JSON files were exposed. The originally proposed exposure was overstated.
+
+Remediated by appending `spec/pool_catalog_rev*.json text eol=lf`. Verified: no tracked-file renormalization occurred, both JSON files report `i/lf w/lf attr/text eol=lf`, all three Rev1.0 hashes intact.
+
+### 22.14 — FR-REPO-CRLF-2 — OPEN, not blocking. The protector is itself unprotected
+
+`.gitattributes` and repo-root Python remain subject to platform line-ending conversion. Neither is currently governed by a byte-level hash requirement, so this is a consistency and future-proofing issue, not an active authority-integrity failure.
+
+`.gitattributes` now pins six governed spec files to LF but carries `attr/` itself, and `git add` warned on it during `002ea4a`. Repo-root Python sits outside every pattern; the same warning fired on `test_pool_catalog_invariants.py` during `c60f73a`.
+
+Resolvable later as its own scoped change. Deliberately excluded from `002ea4a` to hold that commit to one path.
+
+### 22.15 — FR-PROC-SWEEP-1 — OPEN, process. Token sweeps find filenames, not meaning
+
+FR-POOL-POR-2, FR-POOL-SCOPE-2, and FR-POOL-TITLE-1 share one cause. The edit plan swept for the token `rev1_0` and treated the result as complete. That grep cannot see the prose form "Revision 1.0," cannot see a stale count 19, and cannot see a blank cell in a table column.
+
+Three defects, three disguises, one missed pass. All three were caught only because the target text was read before being written to.
+
+**Standing rule proposed:** a revision sweep is not complete until it covers filename tokens, prose revision references, every restated count, and every table column encoding the changed property. Token match is a starting point, never a completion criterion.
+
+A related failure occurred inside the same session's validation block. A hardcoded index `[21]` was written against pre-insertion line numbering while the same document ordered an insertion two lines above it. The check could only pass if the insertion were skipped. Replaced with a content-anchored assertion rather than renumbered — renumbering resets the same trap.
+
+**Extended this session.** Four further instances, all arising during this register consolidation:
+
+1. A `git show` probe against an assumed `spec/` path returned exit 128 while five token counts read 0. The empty variable made every count vacuous. A positive-control token and an emptiness guard were added; the corrected probe returned control count 2. **Standing rule: every absence probe carries a token that must be present.**
+2. `git ls-files | Select-String 'Findings_Register'` returned two entries and both 07-30/07-31 deltas were absent from it. That absence was read as presence. Direct `git ls-files --error-unmatch` returned `TRACKED=False` for both. **Standing rule: absence from a filtered listing is not evidence. Ask the index directly.**
+3. A Step 8 probe matched two rows, because §H and §I both number their tables from 1, and a subsequent fix bounded only the start of the range. **Standing rule: bound a structural slice at both edges by unique anchors, and assert the expected match count before reading the value.**
+4. The 07-31 delta's "all seven measurable fields" was carried forward into later documents after `c60f73a` replaced hand-counting with an automated nine-key control. **Standing rule: when a control is added over a previously hand-measured quantity, re-derive every prior figure from the control.**
+
+### 22.16 — FR-POOL-H15-1 — OPEN. §H trial-balance wording
+
+§H states every scenario asserts trial balance zero, including pure-evaluator scenarios 14, 15, and 16. Existing pure tests prove evaluator behavior. A future integrated §H scenario may still want a no-ledger-movement assertion. Not resolved. Does not invalidate existing tests.
+
+Step 15 harness-design clarification.
+
+### 22.17 — FR-POOL-H19-1 — OPEN. Scenario 19 conflates two unreachability claims
+
+Scoping precision, not a defect.
+
+§H scenario 19 covers four items with two truth conditions. #57 and #96 are absent from the active catalog. `bench_burn` acceptance was retired at `13b4fef`. **The Lineup is retired from Pool scope while a live single-party `Bet.bet_type` settled by `settlement_engine._eval_the_lineup` still exists outside it.**
+
+A test proving Pool-scope unreachability proves nothing about the legacy path. Connects to existing single-party retirement work. The claim is the catalog's; `settlement_engine.py` was not read.
+
+### 22.18 — FR-POOL-DEP-1 — WITHDRAWN 2026-07-31. Do not record as a finding
+
+Hypothesis: ENABLED QUALIFIER rows with null `metric_expression` are enabled-but-unexecutable, making `dependency_state` an insufficient draw guard.
+
+**Wrong at the layer.** `metric_expression` is the RANK_EXTREMUM carrier. QUALIFIER governs through `threshold_condition`. A null expression on a QUALIFIER is the family's designed shape, confirmed by the catalog's own note: *"metric_expression is a declarative settlement basis, not implementation code."*
+
+The real blocker was already recorded — step 6 needs structured predicate and threshold catalog fields authored. No `EVALUATOR_UNBUILT` state is authorized.
+
+**Process note:** this re-derived a known blocker under a new name and pointed it at the wrong artifact. Cause: treating one evaluator family's contract as universal. `pool_definition` holds two families in one table; a null in a family-specific column proves nothing until the owning family is known.
+
+### 22.19 — FR-PROC-PANEL-2 — CLOSED this session. Pool authority files absent from project panel
+
+`git ls-files` confirmed all three Pool authority files tracked while none appeared in the project panel. A thread opening on Pool work and reaching for the panel found nothing and reconstructed intent from legacy sources.
+
+**Closed by panel swap, verified 2026-08-01.** Rev1.0 POR, Scope, and catalog JSON are absent from the panel. All three Rev1.1 files are present.
+
+**Provenance qualifier.** Verification is panel-side. The panel is the system this finding measures, so panel-side verification is sufficient for closure. No claim is made about repository file retention.
+
+The finding's related clause cited 45 untracked files at repo root and in `spec/`. That count predates the three commits of 2026-08-01 and is not carried forward. The untracked-artifact exposure is recorded at 22.27 and remains subject to a separate read-only inventory.
+
+---
+
+### 22.20 — FR-POOL-1 — OPEN, money-path. Biggest Winner empty result reported as distributed
+
+**Recorded, not fixed. Product ruling required. Opus-gated before implementation.**
+
+Source: `spec/POOL_SETTLEMENT_FINDINGS_2026-07-30.md`, preserved unchanged. Line references are evidence dated 2026-07-30 — re-grep before implementing.
+
+**Location.** `betting/pool_engine.py` · `settle_pool` · evaluator `_biggest_winner` at approximately 419–446, accounting at approximately 782.
+
+**Behavior.** `_biggest_winner` returns every team tied at maximum wins. When no matchups produce a result the list is empty, `_split_even([], ...)` returns `{}`, no `_credit` call fires, and no ledger posting occurs. The Biggest Winner pot is never paid. `bw_share_cents` is nonetheless added into `total_distributed_cents`.
+
+**Ledger remains conserved.** Nothing was posted, so conservation holds and trial balance remains zero. The defect is in reporting.
+
+**Reported distribution is false.** `PoolSettlementResult` reports a distribution that did not happen. Any consuming surface — settlement report, feed, commissioner reconciliation — states that money moved when it did not. Same family as FR-8.7-LOG-5 and FR-8.7-LOG-7: the ledger is right and a derived surface is wrong.
+
+**Stranded cents and reconciliation interaction remain unresolved.** The pot balance is neither swept nor carried, so cents are stranded in `pool:{league_id}` with no lineage record. A later week's reconciliation guard at approximately 562–595 computes against expected balances and may or may not surface the discrepancy. Not investigated.
+
+**Minimum reproduction.** A league/week where the evaluator returns an empty set — no `Matchup` rows, or no matchup with a determinable result — with a funded pot. Assert `total_distributed_cents` against actual `wager`-door postings, not against the reported figure. The fixture must be discriminating: reported and actual distribution must differ. A zero pot proves nothing.
+
+**Why separate from rotation.** Rotation changes which definitions run and how the pot is divided. It does not change what an evaluator does with an empty result set. This defect exists at three pots today and would exist at four, or at ninety-four. Fixing it inside rotation work would fuse an accounting correction with a structural change, and the two fail for different reasons.
+
+**Candidate treatments, not chosen.** Either exclude unpaid shares from `total_distributed_cents` and route the unpaid pot through the governed zero-claim rule per POR §6; or fail closed on an empty evaluator result and refuse to settle the week, on the grounds that an empty result at a funded pot indicates missing upstream data rather than a legitimate outcome. Both depend on 22.22.
+
+### 22.21 — FR-POOL-2 — OPEN, money-path. Special Teams empty result raises instead of failing closed
+
+**Recorded, not fixed. Product ruling required. Opus-gated before implementation.**
+
+Source: `spec/POOL_SETTLEMENT_FINDINGS_2026-07-30.md`, preserved unchanged.
+
+**Location.** `betting/pool_engine.py` · `settle_pool` · Special Teams branch at approximately 753–775, `max()` call at approximately 757. No empty guard. When `st_scores` is empty, Python raises `ValueError: max() arg is an empty sequence`.
+
+**Rollback prevents partial payout. Ledger remains conserved.** The raise aborts the transaction. Whatever postings the settlement had staged roll back, so no partial payout survives.
+
+**A generic ValueError is not a governed domain refusal.** The failure surfaces as a `ValueError` indistinguishable from any other. It carries no domain message, names no cause, and is not routed through the fail-closed discipline the rest of the settlement path uses. An operator sees a stack trace, not a reason. Retry reproduces it. The week cannot settle until upstream data changes, and nothing in the error says so.
+
+**Minimum reproduction.** A league/week reaching the Special Teams branch with empty `st_scores`. Assert that settlement raises a **named domain error** identifying the empty result set, distinguishable from the general `ValueError` surface. Asserting only that it raises is non-discriminating — the current code raises too. The test must assert on the message.
+
+**Why separate from rotation.** An evaluator-level guard, not a slate-level concern. Under the two-family architecture the guard belongs to `RANK_EXTREMUM` generally, not to Special Teams specifically — an argument for fixing it in the evaluator framework rather than patching one branch.
+
+**Candidate treatments, not chosen.** The narrow fix is an empty guard on the Special Teams branch with a named domain error. The better fix is a single empty-result rule inside the `RANK_EXTREMUM` evaluator specified in the POR, applied uniformly across all 73 definitions in that family. Both depend on 22.22.
+
+### 22.22 — Shared unresolved dependency for FR-POOL-1 and FR-POOL-2
+
+> **What is the governed settlement behavior when an evaluator returns an empty result set?**
+
+FR-POOL-1 treats an empty result as a silent no-op. FR-POOL-2 treats it as a crash. Neither is a governed outcome. Whatever rule is chosen applies to both.
+
+**An empty evaluator result must not be assumed equivalent to zero eligible claims.** POR §6's zero-eligible-claims rule addresses a different condition. Treating the two as the same requires an explicit product ruling and has not received one.
+
+**Split of authorization.**
+
+| Work | Authorization |
+|---|---|
+| Define the rule — what an empty result set means, written into POR §6 and the catalog | Rev1.2 catalog and specification authoring · **authorized under FR-POOL-AUTH-1 Option B** |
+| Implement the rule — evaluator guards, named domain errors, `total_distributed_cents` correction | Evaluator implementation · **Stage H, Opus math review gate** |
+
+The rule must exist before the fix can be specified. Rev1.2 authoring is the precondition for these two findings, not a detour from them.
+
+---
+
+### 22.23 — FR-POOL-AUTH-1 — OPEN, blocking scope narrowed by ruling. Pool work proceeded ahead of Stage H without a ruling
+
+**Original finding, 2026-08-01.** Pool specification and control work proceeded ahead of Stage H in the merged build sequence. No authorizing ruling was found. The three pushed commits do not violate the Scope status, because they changed specification authority, metadata durability, and read-only invariant controls only.
+
+Evidence: `Merged_Build_Sequence_2026-07-26.md` places Spec 4 at Stage H, behind Stages A through G. `SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md` line 3 reads **"Status: Scope — not authorized for build,"** preserved deliberately in Rev1.1 by ruling.
+
+**RULING (Fraser, 2026-08-01). Option B approved with a strict boundary.**
+
+Pool product-definition work may proceed ahead of Stage H only to author and validate Rev1.2 catalog semantics and their governed document representation.
+
+**Authorized now:**
+- define structured predicate semantics
+- define quantifier semantics
+- define threshold semantics and catalog fields
+- identify required source-stat mappings
+- revise the POR, Scope, and catalog JSON
+- add pure, read-only invariant controls for those authored semantics
+
+**Not authorized:**
+- database columns or tables
+- ORM model changes
+- migrations
+- evaluator code
+- collection integration
+- settlement or rollover execution
+- balance movement
+- production wiring
+- deployment
+
+Those remain Stage H work and remain covered by the current status: **Scope — not authorized for build.**
+
+**Blocking scope after this ruling:**
+- no longer blocks Rev1.2 catalog and specification authoring
+- continues to block all Pool implementation
+
+Status remains **OPEN.**
+
+### 22.24 — Terminology ruling: catalog field versus database carrier
+
+**RULED (Fraser, 2026-08-01).** "Schema carrier" is retired as ambiguous. It has been used for both a JSON key and a database column, which are on opposite sides of the FR-POOL-AUTH-1 boundary.
+
+| Term | Meaning |
+|---|---|
+| **catalog field** / **catalog structure** | JSON and POR representation. Authorized under Option B |
+| **database carrier** | persisted database columns or tables. Stage H |
+
+**Candidate Rev1.2 terminology edits located; no governed file changed.** In `spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md`: line 243, §I row 2, `pool_definition` schema — means a database table, should read database carrier. Line 259, "if the metadata schema shifts" — means JSON key structure, should read catalog structure. Lines 31–32 reference `db/schema.py` as a filename and are not the ambiguity; do not sweep them.
+
+`SPEC_Pool_Catalog_Rotation_POR_Rev1_1.md` carries zero occurrences.
+
+Correction is a Rev1.2 edit. Not executed.
+
+### 22.25 — Step 6 restatement
+
+**RULED (Fraser, 2026-08-01).** The Step 6 description is replaced with:
+
+> Step 6 cannot begin as evaluator implementation. It first requires governed Rev1.2 catalog authoring to define structured predicate, quantifier, threshold, and source-stat semantics. Database carriers, ORM changes, migrations, and evaluator code remain Stage H work.
+
+Placement in `SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md` is undecided. §I is a four-column implementation-order table spanning lines 238 to 262; the replacement text is prose and does not fit a cell. Candidates: a prose note beneath the §I table, a new row in §J Blockers alongside the existing six, or both. Not executed.
+
+---
+
+### 22.26 — Verified facts, no finding
+
+- Three commits pushed as a fast-forward from `fb6a71b`: `53fe0ba` (8 paths, 3074 insertions, 12 deletions), `002ea4a` (1 path, 5 insertions), `c60f73a` (1 path, 287 insertions)
+- HEAD equals origin at `c60f73a7e38dae0c4a3af794320f858c745df6cf`
+- `test_pool_catalog_invariants.py`: 10 assertions, 0 failures, exit 0. 287 lines at tracked HEAD
+- **`pool_catalog_rev1_1.json` declares nine `counts` keys:** `active`, `blocked`, `matchup`, `qualifier`, `rank_extremum`, `retired`, `rollover_eligible`, `rotatable`, `team`. Assertion 6 builds a nine-entry measured set and asserts three conditions together — no value drift, nothing measured-but-undeclared, nothing declared-but-unmeasured. Label: *"6. Declared counts equal measured counts, all nine keys."* Read from `HEAD:test_pool_catalog_invariants.py` and `HEAD:spec/pool_catalog_rev1_1.json`
+- **Supersedes the 2026-07-31 delta's "all seven measurable fields,"** a hand-count taken before `c60f73a` added the control. The verified figure is nine. Recorded as an FR-PROC-SWEEP-1 instance at 22.15
+- The Rev1.0 hash fence held at every gate: pre-flight, mid-edit, after each of the three commits, and after the push
+- Exactly two rollover corrections, #84 and #87. 73 definitions remain `rollover_eligible: false`, all RANK_EXTREMUM
+- `pool_catalog_rev1_0.json` has no terminal newline; Rev1.1 preserves that. It explains the 2403-line diff stat against 2402 counted lines
+- `SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md` is 278 lines at tracked HEAD. §I heading at line 238, §J heading at line 263, each unique
+- 96 classified rows − 2 anti-tanking retirements = 94 active
+- `counts.retired: 4` spans two kinds: classified-then-retired (#57, #96) and never-classified legacy names (The Lineup, Bench Burn)
+- Retired records carry 4 fields and **no `key`**. `key` is the `pool_definition` PK, so a retired definition cannot be expressed as a row. Retirement-by-absence is structurally the only option. No RETIRED state required or authorized
+- Scope line 43's "91 approved definitions" = 94 − 3 currently supported
+- `db/schema.py:1186` — `rollover_eligible` Boolean, `nullable=False`, no default, no CHECK. Rev1.1 needs no database change
+- §E weekly lifecycle branches generically on eligibility, never on identity
+- No production code loads the catalog. All `betting/` references are comments
+- Volume II ends at Section 21 prior to this append. Section 22 heading count 0, measured against tracked `HEAD:Findings_Register_v17.md`, 1257 lines, with positive control `FR-DOC-REG-1` returning 2
+- Tracked registers are exactly two: `Findings_Register_v12_2.md` (vol. I) and `Findings_Register_v17.md` (vol. II). `v16` is neither tracked nor in the panel
+- `Findings_Register_v10.md` and `Findings_Register_v13.md` remain untracked in the working tree, contrary to the v17 working-tree convention
+- The 2026-07-30 and 2026-07-31 deltas are untracked working-tree files, measured by `git ls-files --error-unmatch`. The 2026-08-01 delta exists only in the project panel and is not on disk
+- Nothing deployed. No migration run. Railway untouched
+
+### 22.27 — Untracked artifacts
+
+The working tree carries a substantial set of untracked entries at the repo root and under `spec/`, including an `archive/` directory, planning documents, prototypes, superseded registers, and execution instruction files.
+
+**Untracked does not mean immaterial.** Some may be current authority that never reached the repository. Others may be superseded and safe to remove. Which is which is unknown.
+
+A separate read-only inventory and disposition review is required before any recovery, tracking, archiving, or deletion. Do not treat the untracked list as noise. Do not clean it incidentally during other work.
+
+Same class as FR-PROC-PANEL-2 at 22.19, which recorded the panel-versus-repo divergence from the other direction.
+
+### 22.28 — Candidates raised and not adopted
+
+**FR-POOL-PTR-1 — DROPPED by ruling.** Proposed on the grounds that `spec/POOL_SETTLEMENT_FINDINGS_2026-07-30.md` cites Rev1.0 as product authority. **Rejected:** the artifact is dated 2026-07-30 and records evidence from that time. Its Rev1.0 pointer is historical provenance, not a stale current-authority pointer. It is not to be rewritten to Rev1.1.
+
+**FR-DOC-DELTA-1 — CANDIDATE, held. Not adopted into this section.** Proposed on the grounds that findings deltas accumulate outside version control, creating a window in which findings exist only as untracked or panel-only files.
+
+Held pending inspection of the documented convention governing delta and update artifacts. If deltas are governed temporary append instructions that are intentionally untracked, the exposure is absorption lag rather than absent version control, and the wording and severity change accordingly.
+
+Lead, not evidence: eight `FantasyBeefs_Findings_Register_Update_*.md` files dating to 2026-07-16 are also untracked, which is consistent with a standing convention but does not establish one. No written convention has been located. The inspection has not been run.
