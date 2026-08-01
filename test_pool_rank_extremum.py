@@ -5,7 +5,7 @@ No database. No Session. No network. Synthetic fixtures are authoritative, per
 R2 — the evaluator never retrieves a stat, so there is nothing to integrate
 against.
 
-The canonical corpus is driven FROM spec/pool_catalog_rev1_0.json, never from a
+The canonical corpus is driven FROM spec/pool_catalog_rev1_1.json, never from a
 hand-copied list: a hand-copied list drifts from the catalog silently and would
 keep passing after the catalog changed.
 
@@ -41,7 +41,7 @@ def _assert(label: str, condition: bool, detail: str = "") -> None:
 
 _CATALOG = json.load(open(
     os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                 "spec", "pool_catalog_rev1_0.json"), encoding="utf-8"))
+                 "spec", "pool_catalog_rev1_1.json"), encoding="utf-8"))
 _DEFS = _CATALOG["definitions"]
 
 
@@ -63,7 +63,7 @@ def main() -> None:
     # ================================================================
     # CANONICAL CORPUS — every regular expression parses, driven from JSON.
     # ================================================================
-    print("\n-- canonical corpus (driven from spec/pool_catalog_rev1_0.json) --")
+    print("\n-- canonical corpus (driven from spec/pool_catalog_rev1_1.json) --")
 
     rank_defs = [d for d in _DEFS if d["evaluator_family"] == "RANK_EXTREMUM"]
     non_null = [d for d in rank_defs if d["metric_expression"] is not None]

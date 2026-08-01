@@ -1121,7 +1121,7 @@ class PoolBetPick(Base):
     league      = relationship("League")
 
 
-# ── Pool rotation (SPEC_Pool_Rotation_Implementation_Scope_Rev1_0 §C1/§C2/§C3) ─
+# ── Pool rotation (SPEC_Pool_Rotation_Implementation_Scope_Rev1_1 §C1/§C2/§C3) ─
 #
 # Schema only. Nothing here is wired into collection or settlement, and no code
 # in this commit writes pot_cents or rollover_cents — creating a money-bearing
@@ -1129,7 +1129,7 @@ class PoolBetPick(Base):
 
 class PoolDefinition(Base):
     """One row per catalog definition — §C1. 94 active rows seeded from
-    spec/pool_catalog_rev1_0.json; seeding is a separate step and is NOT done
+    spec/pool_catalog_rev1_1.json; seeding is a separate step and is NOT done
     here. Columns mirror the JSON keys exactly: all 23, no more.
 
     metric_expression and threshold_condition are stored as opaque nullable

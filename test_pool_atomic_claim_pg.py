@@ -1,8 +1,8 @@
 """
 test_pool_atomic_claim_pg.py -- atomic week claim + bench_burn retirement (PostgreSQL).
 
-Product authority: spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_0.md
-Implementation scope: spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_0.md, steps 1 and 13.
+Product authority: spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_1.md
+Implementation scope: spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md, steps 1 and 13.
 
 WHAT WAS WRONG. collect_weekly_entries guarded against double collection with a
 read-then-write check: SELECT the PoolPot row, raise if entries_collected. Two

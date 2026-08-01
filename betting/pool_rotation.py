@@ -1,8 +1,8 @@
 """
 Weekly Pool slate selector — build_week_slate. Step 7.
 
-Product authority : spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_0.md §4, §11
-Implementation    : spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_0.md §E
+Product authority : spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_1.md §4, §11
+Implementation    : spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md §E
 
 PURE. No Session, no ORM, no I/O, no randomness, no clock. Given the same
 inputs it returns the same slate in every process, on every machine, forever.

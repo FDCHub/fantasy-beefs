@@ -1,8 +1,8 @@
 """
 Pool evaluator framework — RANK_EXTREMUM. Step 5.
 
-Product authority : spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_0.md
-Implementation    : spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_0.md §C5
+Product authority : spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_1.md
+Implementation    : spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md §C5
 
 PURE. No Session, no ORM query, no DB write, no network call, no rollover logic,
 and no branch on definition_key or display_name anywhere. The evaluator never
@@ -24,7 +24,7 @@ declarative metadata, not permission to invent Pool semantics:
 
 Whitespace is literal and strict: " + " and " / " with spaces, exactly as
 ratified. Input is never normalized before parsing. All 65 regular canonical
-expressions in spec/pool_catalog_rev1_0.json parse under this grammar with zero
+expressions in spec/pool_catalog_rev1_1.json parse under this grammar with zero
 failures, verified against the JSON rather than a hand-copied list.
 
 No eval(). No ast evaluation. No attribute access. No function call other than
