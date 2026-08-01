@@ -6,3 +6,6 @@ spec/*.md                 text eol=lf
 # is retained unchanged as historical authority and is verified by SHA-256.
 # Markdown is already covered by spec/*.md above. See FR-REPO-CRLF-1.
 spec/pool_catalog_rev*.json text eol=lf
+
+# Governed root findings registers. See FR-REPO-CRLF-2.
+/Findings_Register_v*.md text eol=lf
