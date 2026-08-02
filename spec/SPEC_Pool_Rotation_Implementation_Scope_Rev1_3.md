@@ -6,7 +6,7 @@
 **Canonical stat vocabulary:** `spec/pool_stat_vocabulary_rev1_0.json`
 **Catalog data:** `spec/pool_catalog_rev1_3.json`
 
-**Revision 1.3 is DRAFT. It supersedes Revision 1.2 only on adoption. Revisions 1.0, 1.1 and 1.2 are retained unchanged as historical authority.**
+**Revision 1.3 supersedes Revision 1.2 as the current implementation scope. Revision 1.2 is marked superseded. Revisions 1.0 and 1.1 are retained unchanged as historical authority.**
 
 **Correction pass, 2026-08-01.** This copy supersedes the pre-correction Revision 1.3 scope, SHA-256 `DAF6B0D4DB9D44873A27C3392E3E04246C7A785DF6351FE50FFBC528A1BF25B9`. It applies the accepted independent-review findings and the owner kicker and tied-payout-remainder rulings.
 

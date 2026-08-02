@@ -1,13 +1,13 @@
 {
   "artifact": "pool_catalog_rev1_3.json",
   "revision": "1.3",
-  "status": "DRAFT - NOT PRODUCT OF RECORD",
+  "status": "Product of Record",
   "source_artifact": "FR-6_1_CATALOG_CLASSIFICATION.md",
   "governing_spec": "spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_3.md",
   "stat_vocabulary": "spec/pool_stat_vocabulary_rev1_0.json",
   "supersedes": "spec/pool_catalog_rev1_2.json",
   "notes": [
-    "REV1.3 CORRECTION PASS, 2026-08-01. This file supersedes the pre-correction Rev1.3 draft (SHA-256 6DB15C7991D4A0BAB7FAC982D11CFC970688F8C86B3EE63B8CB9F9BC98E965C2). It applies accepted independent-review findings A through D and the owner kicker and tied-payout-remainder rulings of 2026-08-01. STATUS IS UNCHANGED: DRAFT, not Product of Record. Nothing in this file authorizes implementation, migration, seeding, deployment or any production-data change.",
+    "REV1.3 CORRECTION PASS, 2026-08-01. This file supersedes the pre-correction Rev1.3 draft (SHA-256 6DB15C7991D4A0BAB7FAC982D11CFC970688F8C86B3EE63B8CB9F9BC98E965C2). It applies accepted independent-review findings A through D and the owner kicker and tied-payout-remainder rulings of 2026-08-01. This file was DRAFT at the time of that correction pass and was adopted as Product of Record on 2026-08-02. Nothing in this file authorizes implementation, migration, seeding, deployment or any production-data change.",
     "Original catalog numbers are preserved. Active definitions are not renumbered; retired numbers remain reserved and are never reused.",
     "postseason_eligible is null on every row pending the approved fixed 32-definition postseason subset, which was not located. Do not infer.",
     "metric_expression is a declarative settlement basis, not implementation code.",

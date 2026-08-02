@@ -1,24 +1,24 @@
 # FantasyStakes — Pool Catalog, Rotation & Settlement
 # Product of Record, Revision 1.3
 
-**Status:** DRAFT — NOT PRODUCT OF RECORD
+**Status:** Product of Record — current
 **Date:** 2026-08-01
 **Source artifact:** `FR-6_1_CATALOG_CLASSIFICATION.md` (96-row classified catalog)
 **Machine-readable catalog:** `spec/pool_catalog_rev1_3.json`
 **Canonical stat vocabulary:** `spec/pool_stat_vocabulary_rev1_0.json`
 **Implementation scope:** `spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_3.md`
 
-**Revision 1.3 is DRAFT. It supersedes Revision 1.2 only on adoption. Revisions 1.0, 1.1 and 1.2 are retained unchanged as historical authority.**
+**Revision 1.3 supersedes Revision 1.2 as the current Product of Record. Revision 1.2 is marked superseded. Revisions 1.0 and 1.1 are retained unchanged as historical authority.**
 
-**Revision 1.3 applies the owner deterministic-formula rulings of 2026-08-01 and remains draft.**
+**Revision 1.3 applies the owner deterministic-formula rulings of 2026-08-01.**
 
-**Correction pass, 2026-08-01.** This copy supersedes the pre-correction Revision 1.3 draft, SHA-256 `5F2B5640F7A40A6AA5E284EB91603C5F4AA1FF7960267070E55C6F0C4BC26F7D`. It applies the accepted independent-review findings and two owner rulings: the kicker ruling (#18 and #77 renamed, #97 and #98 retired) and the tied-payout-remainder ruling (§6.3). Status is unchanged: **DRAFT**. Nothing here authorizes implementation, migration, seeding, deployment or any production-data change.
+**Correction pass, 2026-08-01.** This copy supersedes the pre-correction Revision 1.3 draft, SHA-256 `5F2B5640F7A40A6AA5E284EB91603C5F4AA1FF7960267070E55C6F0C4BC26F7D`. It applies the accepted independent-review findings and two owner rulings: the kicker ruling (#18 and #77 renamed, #97 and #98 retired) and the tied-payout-remainder ruling (§6.3). This document was **DRAFT** at the time of that correction pass and was adopted as Product of Record on 2026-08-02. Nothing here authorizes implementation, migration, seeding, deployment or any production-data change.
 
 ---
 
 ## 0. Authority
 
-> **On adoption, this document becomes the Product of Record** for FantasyStakes Pool catalog composition, Pool eligibility, weekly Pool rotation, Pool rollover behavior, Pool settlement classification, and Pool selection rules.
+> **This document is the current Product of Record** for FantasyStakes Pool catalog composition, Pool eligibility, weekly Pool rotation, Pool rollover behavior, Pool settlement classification, and Pool selection rules.
 >
 > Where current code, legacy pool constants, archived documents, UI mock data, or prior Pool concepts conflict with this POR, this POR governs product behavior unless a newer approved Pool POR explicitly supersedes it.
 >

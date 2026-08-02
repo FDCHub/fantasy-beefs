@@ -1,19 +1,19 @@
 # FantasyStakes — Pool Catalog, Rotation & Settlement
 # Product of Record, Revision 1.2
 
-**Status:** Product of Record — current
+**Status:** Superseded by Revision 1.3
 **Date:** 2026-08-01
 **Source artifact:** `FR-6_1_CATALOG_CLASSIFICATION.md` (96-row classified catalog)
 **Machine-readable catalog:** `spec/pool_catalog_rev1_2.json`
 **Implementation scope:** `spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_2.md`
 
-**Revision 1.2 supersedes Revision 1.1 as the current Product of Record. Revisions 1.0 and 1.1 are retained unchanged as historical authority.**
+**Revision 1.2 supersedes Revision 1.1 as Product of Record. Revisions 1.0 and 1.1 are retained unchanged as historical authority.**
 
 ---
 
 ## 0. Authority
 
-> This document is the current Product of Record for FantasyStakes Pool catalog composition, Pool eligibility, weekly Pool rotation, Pool rollover behavior, Pool settlement classification, and Pool selection rules.
+> This document was the Product of Record for FantasyStakes Pool catalog composition, Pool eligibility, weekly Pool rotation, Pool rollover behavior, Pool settlement classification, and Pool selection rules.
 >
 > Where current code, legacy pool constants, archived documents, UI mock data, or prior Pool concepts conflict with this POR, this POR governs product behavior unless a newer approved Pool POR explicitly supersedes it.
 >

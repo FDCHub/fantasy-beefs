@@ -1,14 +1,14 @@
 {
   "artifact": "pool_stat_vocabulary_rev1_0.json",
   "revision": "1.0",
-  "status": "DRAFT - NOT PRODUCT OF RECORD",
+  "status": "Product of Record",
   "governing_spec": "spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_3.md",
   "catalog_mapped": "spec/pool_catalog_rev1_3.json",
   "authored": "2026-08-01",
   "blocker": "A fresh OAuth Authorization Code grant completed successfully, but the new token received the identical refusal at game/461/metadata. The stored user grant is not the cause. The existing Yahoo application is not currently authorized to access the Fantasy Sports API. Approval through Yahoo's current access program is the only identified remediation path, although Yahoo has not formally confirmed the cause.",
   "notes": [
-    "REV1.3 CORRECTION PASS, 2026-08-01. This file supersedes the pre-correction copy (SHA-256 BD1AE32129F1173CE6CA5A65C4F7237CA107B5BE6B702F13C1D802AFD247CB5F). It records the retirement of catalog #97 and #98 and the resulting removal of made_field_goal_distance as an active catalog dependency. The governed meaning of kicking_points is unchanged. Revision stays 1.0 and status stays DRAFT. Nothing here authorizes implementation, migration, deployment or any production-data change.",
-    "DRAFT ONLY. Remains draft until catalog mapping and independent Opus review are complete. Not committed as Product of Record.",
+    "REV1.3 CORRECTION PASS, 2026-08-01. This file supersedes the pre-correction copy (SHA-256 BD1AE32129F1173CE6CA5A65C4F7237CA107B5BE6B702F13C1D802AFD247CB5F). It records the retirement of catalog #97 and #98 and the resulting removal of made_field_goal_distance as an active catalog dependency. The governed meaning of kicking_points is unchanged. Revision stays 1.0; this file was DRAFT at the time of that correction pass. Nothing here authorizes implementation, migration, deployment or any production-data change.",
+    "ADOPTION PRECONDITIONS CLEARED 2026-08-02. CATALOG MAPPING: verified complete by census against pool_catalog_rev1_3.json. All 24 distinct required_stats operands across the 80 active definitions resolve to canonical vocabulary entries; zero unresolved; zero require alias resolution. The 13 source-incomplete enabled definitions are mapped but source-unavailable, blocked only on Yahoo stat_categories access for pass_attempts, completions and opportunities, and all 13 carry definition_runtime_eligible false. BOUNDED INDEPENDENT REVIEW: completed 2026-08-02 against hash-verified inputs with criteria fixed before inspection, covering schema integrity, operand resolution, representability, source-completeness classification, unsupported-entry dependents, kicker-ruling consistency and cross-artifact contradictions. Two findings returned for owner ruling. V-1, superseded kicker names persisting as internal catalog keys, adopted as-is; keys are stable identifiers and the POR wording is to be narrowed in a future substantive revision. V-2, two canonical operands absent from catalog_operand_coverage, repaired in this commit by adding REPRESENTED_DIRECT rows for player_fantasy_points and total_touchdown_credits and adjusting six affected count values; catalog_operand_coverage REPRESENTED_DIRECT rows now equal the catalog required_stats set exactly. ADOPTED as Revision 1.0 Product of Record, governed by spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_3.md. Adoption does not authorize implementation, migration, seeding, deployment or any production-data change.",
     "No entry asserts that a documented Yahoo field is currently accessible to this application. DOCUMENTED_NOT_LIVE_VERIFIED means Yahoo documents the field and this application cannot presently read it.",
     "RUNTIME AVAILABILITY versus SEMANTIC MISSING BEHAVIOR are distinct and are carried in separate fields. missing_value_behavior is the governed product rule. source_population_verification tracks whether the source is readable and populated. They are never conflated.",
     "Yahoo stat IDs are taken from the league stat_categories sample published in the Yahoo Fantasy Sports API documentation, accessed 2026-08-01. That sample enumerates one league's ENABLED categories. League-specific enabled-stat behavior for league 461.l.488800 remains UNMEASURED.",
@@ -127,23 +127,23 @@
       "UNMAPPED_PENDING_GAME_STAT_CATEGORIES": 2,
       "UNSUPPORTED_BY_YAHOO_FANTASY_FEED": 1
     },
-    "catalog_operands_total": 31,
-    "operands_represented": 28,
-    "operands_with_authoritative_source_mapping": 25,
+    "catalog_operands_total": 33,
+    "operands_represented": 30,
+    "operands_with_authoritative_source_mapping": 27,
     "operands_represented_but_source_unmapped": 3,
     "operands_pending_owner_ruling": 0,
     "operands_source_unsupported": 0,
     "operands_retired": 3,
     "operands_absent_from_vocabulary": 0,
     "by_representation": {
-      "REPRESENTED_DIRECT": 22,
+      "REPRESENTED_DIRECT": 24,
       "REPRESENTED_VIA_ALIAS": 6,
       "RETIRED": 3
     },
     "by_source_mapping": {
-      "AUTHORITATIVE_LOCAL_FIELD": 3,
+      "AUTHORITATIVE_LOCAL_FIELD": 4,
       "AUTHORITATIVE_YAHOO_STAT_ID": 13,
-      "DERIVED_FROM_AUTHORITATIVE": 9,
+      "DERIVED_FROM_AUTHORITATIVE": 10,
       "NOT_APPLICABLE": 3,
       "SOURCE_UNMAPPED": 2,
       "SOURCE_UNMAPPED_TRANSITIVE": 1
@@ -153,7 +153,7 @@
       "opportunities",
       "pass_attempts"
     ],
-    "_coverage_unchanged_note": "The #97/#98 retirement removed made_field_goal_distance from catalog required_stats. That operand was never an entry in catalog_operand_coverage, so every coverage count below is unchanged and was re-verified against the corrected catalog on 2026-08-01."
+    "_coverage_unchanged_note": "The #97/#98 retirement removed made_field_goal_distance from catalog required_stats. That operand was never an entry in catalog_operand_coverage, so every coverage count below is unchanged and was re-verified against the corrected catalog on 2026-08-01. Two canonical operands were subsequently found absent from that verification and were added on 2026-08-02; see the adoption note."
   },
   "stats": [
     {
@@ -1128,6 +1128,12 @@
       "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
     },
     {
+      "operand": "player_fantasy_points",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "player_fantasy_points",
+      "source_mapping": "AUTHORITATIVE_LOCAL_FIELD"
+    },
+    {
       "operand": "receiving_production",
       "representation": "RETIRED",
       "canonical_name": null,
@@ -1179,6 +1185,12 @@
       "operand": "scrimmage_yards",
       "representation": "REPRESENTED_DIRECT",
       "canonical_name": "scrimmage_yards",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "total_touchdown_credits",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "total_touchdown_credits",
       "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
     },
     {

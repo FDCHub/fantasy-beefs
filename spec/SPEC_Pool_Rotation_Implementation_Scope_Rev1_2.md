@@ -5,7 +5,7 @@
 **Product authority:** `spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_2.md`
 **Catalog data:** `spec/pool_catalog_rev1_2.json`
 
-**Revision 1.2 supersedes Revision 1.1 as the current implementation scope. Revisions 1.0 and 1.1 are retained unchanged as historical authority.**
+**Revision 1.2 is superseded by Revision 1.3. It superseded Revision 1.1 as implementation scope. Revisions 1.0 and 1.1 are retained unchanged as historical authority.**
 
 ---
 
