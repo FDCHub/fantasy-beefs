@@ -62,6 +62,14 @@ from auth.jwt_auth import (
     register_user,
     require_commissioner,
 )
+from auth.allocation_gate import (
+    get_allocation_enforcement_active,
+    get_season_allocation_gate,
+)
+
+# Temporary B2 compatibility export for tests; remove during Group 5.
+get_buyin_gate = get_season_allocation_gate
+
 from payments.stripe_connect import (
     AuditEntry,
     BuyInLink,
@@ -73,14 +81,18 @@ from payments.stripe_connect import (
     create_connect_onboarding_link,
     execute_payouts,
     get_audit_log,
-    get_buyin_enforcement_active,
-    get_buyin_gate,
     get_buyin_status,
     get_treasury_state,
     handle_stripe_webhook,
     preview_payouts,
     set_buyin_enforcement_active,
     setup_league_treasury,
+)
+from economy.season_allocation import (
+    ConflictingAllocationError,
+    NoTeamsError,
+    PartialAllocationError,
+    activate_season_allocation,
 )
 from notifications.tuesday_sync import (
     TuesdayRunSummary,
@@ -496,7 +508,7 @@ def projections(
 def place_bet(
     req:          BetRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_buyin_gate),
+    current_user: User    = Depends(get_season_allocation_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
 
@@ -767,7 +779,7 @@ class PropBetRequest(BaseModel):
 def bet_straight(
     req:          StraightBetRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_buyin_gate),
+    current_user: User    = Depends(get_season_allocation_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
@@ -788,7 +800,7 @@ def bet_straight(
 def bet_spread(
     req:          SpreadBetRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_buyin_gate),
+    current_user: User    = Depends(get_season_allocation_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
@@ -809,7 +821,7 @@ def bet_spread(
 def bet_over_under(
     req:          OverUnderRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_buyin_gate),
+    current_user: User    = Depends(get_season_allocation_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
@@ -830,7 +842,7 @@ def bet_over_under(
 def bet_prop(
     req:          PropBetRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_buyin_gate),
+    current_user: User    = Depends(get_season_allocation_gate),
 ):
     assert_own_wallet(req.wallet_id, current_user, db)
     try:
@@ -1110,7 +1122,7 @@ def _challenge_out(c: ChallengeOut) -> ChallengeOut_API:
 def beef_challenge(
     req:          ChallengeRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_buyin_gate),
+    current_user: User    = Depends(get_season_allocation_gate),
 ):
     assert_own_team(req.challenger_team_id, current_user)
     try:
@@ -1458,8 +1470,73 @@ def payments_set_buyin_enforcement(
 @app.get("/payments/buyin-enforcement/{league_id}", response_model=BuyinEnforcementOut)
 def payments_get_buyin_enforcement(league_id: int, db: Session = Depends(get_db)):
     """Read current buy-in enforcement status for a league (open endpoint)."""
-    active = get_buyin_enforcement_active(league_id, db)
+    active = get_allocation_enforcement_active(league_id, db)
     return BuyinEnforcementOut(league_id=league_id, active=active)
+
+
+# ── Season allocation (B2) ────────────────────────────────────────────────────
+
+class SeasonAllocationOut(BaseModel):
+    league_id:         int
+    season:            int
+    team_ids:          list[int]
+    buyin_cents:       int
+    wallet_cents:      int
+    reserve_cents:     int
+    total_buyin_cents: int
+    created:           bool
+
+
+@app.post("/league/{league_id}/season-allocation", response_model=SeasonAllocationOut, status_code=200)
+def league_activate_season_allocation(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_commissioner),
+):
+    """
+    Commissioner activates the whole league's season allocation (B2).
+
+    Whole-league operation — the per-team rows and their ledger postings are
+    written inside activate_season_allocation(), in one transaction. The
+    season is NOT accepted from the request; it comes from config.
+
+    Idempotent: re-activating a league whose allocation is already complete
+    and matching returns the existing result with created=false and posts
+    nothing. An inconsistent league (partial or conflicting) is refused with
+    409 and nothing is mutated.
+
+    TRANSACTION OWNERSHIP: activate_season_allocation() takes ownership of the
+    request session's transaction — it commits on the create path and rolls
+    back on every other terminal path. This route must therefore not hold
+    uncommitted work on `db` across the call, and does not.
+
+    ERROR MAPPING is deliberately NARROW (R-1). Only the three named domain
+    refusals are converted to 4xx. There is no `except ValueError` here: the
+    ledger's LedgerImbalanceError, InsufficientFundsError and
+    AlreadySettledError all subclass ValueError, and a broad clause would
+    convert a conservation failure — the loudest event this system can
+    produce — into a quiet 400 carrying an internal message, so it would
+    never page as a 5xx. Ledger errors, configuration errors and anything
+    unexpected propagate and surface as 500. SeasonAllocationError, the
+    shared parent, is deliberately NOT caught: catching it would reintroduce
+    the same over-broad swallow one level down.
+    """
+    try:
+        result = activate_season_allocation(league_id, db)
+    except (PartialAllocationError, ConflictingAllocationError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except NoTeamsError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return SeasonAllocationOut(
+        league_id         = result.league_id,
+        season            = result.season,
+        team_ids          = list(result.team_ids),
+        buyin_cents       = result.buyin_cents,
+        wallet_cents      = result.wallet_cents,
+        reserve_cents     = result.reserve_cents,
+        total_buyin_cents = result.total_buyin_cents,
+        created           = result.created,
+    )
 
 
 @app.get("/payments/treasury/{league_id}", response_model=TreasuryOut)

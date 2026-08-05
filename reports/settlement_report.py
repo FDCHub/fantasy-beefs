@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import Team
-from payments.stripe_connect import _compute_standings_order, DEFAULT_PAYOUT_SPLIT
+from reports.standings import _compute_standings_order, DEFAULT_PAYOUT_SPLIT
 from ledger.ledger import balance_of
 
 

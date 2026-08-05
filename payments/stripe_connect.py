@@ -53,8 +53,6 @@ STRIPE_SECRET_KEY     = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 MOCK_MODE             = not bool(STRIPE_SECRET_KEY)
 
-DEFAULT_PAYOUT_SPLIT = [60, 30, 10]
-
 if not MOCK_MODE:
     import stripe as _stripe
     _stripe.api_key = STRIPE_SECRET_KEY
@@ -489,46 +487,6 @@ class PayoutPreview:
     blocking_issues: list[str]
 
 
-def _championship_total(league_id: int, db: Session) -> int:
-    """
-    Finding 5.2 — the corrected championship-payout source of truth.
-
-    Under BAB, each GM's buy-in splits into wallet:{team_id} (wagerable)
-    and reserve:{team_id} (their committed share of the championship pot)
-    at confirmation (Door 1, confirm_buyin_payment() — confirmed this
-    session as the SOLE writer to reserve:{team_id} anywhere in the
-    codebase; see 5.2-1 and this module's test suite's regression guard).
-    reserve:{team_id} IS that GM's contribution to the pot already — it
-    never moves anywhere else, never gets refunded, and is summed here,
-    not relocated.
-
-    The B2 shortfall sweep separately credits the shared "championship"
-    account for money that isn't any one GM's own contribution (unmet
-    weekly minimums swept from the league at large). Two funding sources,
-    same pot, tracked separately because their provenance differs —
-    summed only here, at payout-computation time.
-
-    LeagueTreasury.total_collected_cents is NOT read here — it went stale
-    the moment Session B1 moved buy-in confirmation onto the ledger and
-    stopped writing that field. Retired from this path, not deleted from
-    the schema (a column removal is separate, lower-priority cleanup).
-
-    FR-5.5 interim bridge (SC-1/SC-2, Opus-reviewed): pool_engine.py's
-    settle_pool() now sweeps to the league-scoped championship:{league_id}
-    key (pool_rollover_expiry, pool_no_predictors_sweep), while
-    shortfall_sweep.py still writes the bare, global "championship"
-    account. Until shortfall_sweep.py is converted to scoped keys (the
-    full FR-5.5 resolution — separate scope, not done in this pass), this
-    function reads BOTH keys and sums them. Single-league-only interim
-    measure: summing championship:{league_id} across every league would
-    double-count once a second league starts sweeping there, but today
-    there is exactly one league in production, so this is safe as written.
-    """
-    team_ids = [t.id for t in db.query(Team).filter(Team.league_id == league_id).all()]
-    reserve_total = sum(balance_of(f"reserve:{tid}") for tid in team_ids)
-    return reserve_total + balance_of("championship") + balance_of(f"championship:{league_id}")
-
-
 def preview_payouts(
     league_id:       int,
     db:              Session,
@@ -729,27 +687,6 @@ def execute_payouts(
     return records
 
 
-def _compute_standings_order(league_id: int, db: Session) -> list[int]:
-    """Return team IDs sorted by regular-season record (desc wins, desc PF)."""
-    matchups = (
-        db.query(Matchup)
-        .filter(Matchup.league_id == league_id, Matchup.week <= 14)
-        .all()
-    )
-    stats: dict[int, dict] = {}
-    for m in matchups:
-        for team_id, pf, pa in (
-            (m.home_team_id, m.home_score, m.away_score),
-            (m.away_team_id, m.away_score, m.home_score),
-        ):
-            if team_id not in stats:
-                stats[team_id] = {"w": 0, "pf": 0.0}
-            stats[team_id]["pf"] += pf
-            if team_id == m.winner_team_id:
-                stats[team_id]["w"] += 1
-    return sorted(stats, key=lambda t: (-stats[t]["w"], -stats[t]["pf"]))
-
-
 # ── Webhook handler ───────────────────────────────────────────────────────────
 
 def handle_stripe_webhook(payload: bytes, sig_header: str, db: Session) -> dict:
@@ -862,45 +799,34 @@ def set_buyin_enforcement_active(
     return league.buyin_enforcement_active
 
 
-def get_buyin_enforcement_active(league_id: int, db: Session) -> bool:
-    """Reads League.buyin_enforcement_active. False (inactive) if the
-    league doesn't exist — same fail-open posture as an unconfigured stop."""
-    league = db.query(League).filter(League.id == league_id).first()
-    return bool(league.buyin_enforcement_active) if league else False
+# ── TEMPORARY COMPATIBILITY EXPORTS — B2 Group 1 ─────────────────────────────
+#
+# Five definitions were relocated out of this module in B2 Group 1:
+#   DEFAULT_PAYOUT_SPLIT, _compute_standings_order -> reports/standings.py
+#   _championship_total                            -> economy/championship.py
+#   get_buyin_gate, get_buyin_enforcement_active   -> auth/allocation_gate.py
+#                                                     (renamed, see below)
+#
+# The bindings below are ALIASES, not duplicate implementations — there is
+# exactly one definition of each symbol, in the new module. They exist so
+# every old public name still resolves from payments.stripe_connect while the
+# remaining B2 groups land.
+#
+# TEMPORARY: later groups delete this module outright and retarget the tests
+# that still import these names from here.
+#
+# set_buyin_enforcement_active is deliberately NOT relocated — it stays
+# defined above because it writes StripeAuditLog through this module's
+# private _log helper. It is deferred to Group 3. Its alias therefore runs
+# the OTHER direction: the new name points at the implementation living here.
 
+from reports.standings import DEFAULT_PAYOUT_SPLIT, _compute_standings_order
+from economy.championship import _championship_total
+from auth.allocation_gate import (
+    get_season_allocation_gate,
+    get_allocation_enforcement_active,
+)
 
-# ── FastAPI dependency — buy-in gate ─────────────────────────────────────────
-
-def get_buyin_gate(
-    current_user: User    = Depends(get_current_gm),
-    db:           Session = Depends(get_db),
-) -> User:
-    """
-    FastAPI dependency — blocks GMs from betting/beefs until their buy-in is paid.
-    Commissioner always bypasses.
-    Gate is inactive unless the league's commissioner has explicitly turned
-    on League.buyin_enforcement_active (B2, Finding 5.3) — independent of
-    LeagueTreasury entirely.
-    """
-    if current_user.role == "commissioner":
-        return current_user
-
-    # Find the team's league via the team's league_id
-    if current_user.team_id is None:
-        return current_user
-
-    team = db.query(Team).filter(Team.id == current_user.team_id).first()
-    if not team:
-        return current_user
-
-    league = db.query(League).filter(League.id == team.league_id).first()
-    if not league or not league.buyin_enforcement_active:
-        return current_user  # enforcement off — gate inactive by explicit choice
-
-    if not current_user.buy_in_paid:
-        raise HTTPException(
-            status_code = status.HTTP_402_PAYMENT_REQUIRED,
-            detail      = "Buy-in payment required before placing bets or issuing challenges",
-        )
-
-    return current_user
+get_buyin_gate                    = get_season_allocation_gate
+get_buyin_enforcement_active      = get_allocation_enforcement_active
+set_allocation_enforcement_active = set_buyin_enforcement_active

@@ -1889,3 +1889,144 @@ are convenience markers over the ledger above, not the record itself.
 
 **Committer date, not author date.** They coincided for `65b4e2c`
 (`2026-07-31T22:24:50-07:00`). The committer date remains the governing field.
+
+## Section 24 — B2 Group 2 documentary closeout (2026-08-02)
+
+Documentary only. No code, schema, test, or migration changed. Nothing staged,
+committed, or pushed. Group 3 not begun.
+
+The Group 2 season-allocation contract of record is established at
+`spec/SPEC_B2_Group2_Season_Allocation_Contract_v1.md`, Revision 1. No prior
+durable contract existed; a tracked-document sweep returned zero hits. That file
+is authoritative for the five-state model, season authority, commit discipline,
+transaction ownership, isolation posture, the gate surface, concurrency evidence,
+integrity checkpoint, and deployment order. This section records only the
+dispositions that belong to the register.
+
+### 24.1 — R-6 — Group 2 revert posture
+
+**Disposition:** RECORDED. Revert Group 2 **as a unit** unless separately
+reviewed.
+
+Production `buy_in_paid` distribution is **unknown**. It has not been measured.
+Measuring it requires separate read-only authorization and a production read,
+neither of which exists.
+
+Partial revert is not authorized. The Group 2 changes were verified together, as
+one set, against one manifest. No subset has been verified independently. A
+partial revert would ship a combination that was never tested.
+
+Reverting only the gate retarget would restore `User.buy_in_paid` as the
+enforcement source. With the production distribution unknown, that could block
+users who should pass or permit users on stale legacy state.
+
+### 24.2 — R-11 — accepted risks and debt
+
+**Disposition:** RECORDED. **No behavior change is authorized by this entry.**
+All items below verified by direct source read of `auth/allocation_gate.py`
+(SHA-256 `98657F17…37D3D5C0`) and `payments/stripe_connect.py` on 2026-08-02.
+
+**Accepted risks — enumerated, in evaluation order:**
+
+- commissioner role → bypass, evaluated first, ahead of every other branch;
+- `current_user.team_id is None` → fail open;
+- `Team` row missing → fail open;
+- `League` row missing → fail open.
+
+The League branch is compound: `if not league or not league.buyin_enforcement_active`.
+Only the missing-League half is accepted risk. Enforcement-off is deliberate
+design under Finding 5.3, not a risk, and must not be reclassified as one.
+
+**No behavior change to these branches is authorized in Group 2.**
+
+They are recorded so acceptance is explicit rather than inherited by silence.
+
+**Compensating control.** The wallet non-negative ledger guard. It does not remove
+the accepted risks above. It bounds the consequence.
+
+**Policy-drift debt — classified.**
+
+Two independent policy-read implementations exist. The status route calls
+`get_allocation_enforcement_active()`, while the enforcement dependency separately
+reads `League.buyin_enforcement_active` inline. Compatibility aliases in
+`api/main.py` and `payments/stripe_connect.py` expose those same implementations
+under legacy names; they do not create additional implementations. The drift risk
+is that one policy is evaluated through two independently maintained code paths.
+
+`set_buyin_enforcement_active()` in `payments/stripe_connect.py` is a writer, not
+an enforcement-decision reader. It was retained in that module because it writes
+`StripeAuditLog` through the module-private `_log` helper, and is deferred to
+Group 3.
+
+Classified as **policy-drift debt, not unused-helper cleanup.** The distinction is
+load-bearing. Treating it as an unused helper invites deleting the helper, which
+would leave the inline read as the sole path and hide the drift rather than close
+it. Any future fix must converge the two paths, not remove one.
+
+**Debt — temporary compatibility aliases.**
+
+- `api/main.py` exports `get_buyin_gate` as a temporary compatibility alias,
+  marked in-source for removal during Group 5.
+- `payments/stripe_connect.py` exports compatibility aliases pending deletion of
+  that module in later B2 work: `get_buyin_gate`,
+  `get_buyin_enforcement_active`, and `set_allocation_enforcement_active`.
+
+The `set_allocation_enforcement_active` binding runs the **reverse direction** of
+the others: the new name points at an implementation that still lives in the old
+module, because `set_buyin_enforcement_active` was deliberately not relocated in
+Group 1.
+
+Recorded so the removals are not lost. No change authorized in Group 2.
+
+**Debt.** Free-text ledger door names. Recorded, unaddressed.
+
+**Debt — stale docstring.** `payments/stripe_connect.py:787` refers to
+`get_buyin_gate` reading the column fresh. That name now resolves only through an
+alias. The behavior described is accurate; the name is stale. No change
+authorized.
+
+### 24.3 — Method rules confirmed this pass
+
+- `git grep` searches tracked files only. Any sweep required to be complete must
+  include untracked files. A tracked-only sweep on this branch would have returned
+  a false clean (R-5).
+- A hash proves bytes are intact, not that they are the right bytes. Pair every
+  hash with a marker or content check.
+- The untracked manifest cannot detect edits to tracked files. Tracked-file changes
+  require a separate per-file diffstat assertion. File-count alone cannot
+  distinguish a documentary edit from a code edit.
+- A symbol appearing in a module is not an implementation of that symbol. Imports
+  and alias bindings must be read as source before being counted. This pass
+  initially over-counted the enforcement-policy implementations on symbol reach
+  alone.
+
+### 24.4 — Append method — direct append, deliberately
+
+This section was appended directly to the register rather than written as a delta
+for later absorption under the Section 23 mechanism.
+
+The choice is deliberate. No commit and no cross-session transfer is occurring.
+The delta mechanism exists to carry content across those boundaries until an
+absorbing commit retires it. Creating a delta here would produce a second artifact
+requiring its own absorption row later, for no transfer benefit.
+
+Direct append is therefore the correct instrument for this pass, and no absorption
+row is owed for Section 24.
+
+### 24.5 — Documentation divergence recorded, not corrected
+
+`economy/season_allocation.py` states "ONE top-level commit" in its opening
+summary while its own COMMIT COUNT section states the precise rule: at most one
+commit per invocation, exactly one on create, zero on replay, zero on errors. The
+summary is overbroad.
+
+Recorded in full at §3.4 of the contract, which adopts the COMMIT COUNT rule and
+not the summary. Not duplicated here, and **not corrected in this pass.** Changing
+the Python file requires separat
+
+
+
+
+
+
+e authorization.

@@ -1361,6 +1361,42 @@ class SettlementRecoveryAudit(Base):
     league = relationship("League")
 
 
+# ── Season allocation (B2) ────────────────────────────────────────────────────
+
+class SeasonAllocation(Base):
+    """One row per team per league per season — the GM's season buy-in
+    allocation, replacing the Stripe-mediated buy-in path.
+
+    ROW EXISTENCE IS THE STATE. There is deliberately no status column
+    (owner-ruled): an allocation for (league_id, team_id, season) either
+    exists or it does not, and activate_season_allocation() derives every
+    decision from that fact alone. No stripe_* column of any kind belongs
+    here — this table is the replacement for that path, not a mirror of it.
+    """
+    __tablename__ = "season_allocation"
+    __table_args__ = (
+        UniqueConstraint("league_id", "team_id", "season",
+                         name="uq_season_allocation_league_team_season"),
+    )
+
+    id            = Column(Integer,  primary_key=True, autoincrement=True)
+    league_id     = Column(Integer,  ForeignKey("leagues.id", name="fk_season_allocation_league"), nullable=False)
+    team_id       = Column(Integer,  ForeignKey("teams.id",   name="fk_season_allocation_team"),   nullable=False)
+    season        = Column(Integer,  nullable=False)
+    # B1 Discrete-Stop Economy Table SNAPSHOT — written once, at activation,
+    # from whichever stop is active at that moment, and never updated
+    # afterwards. Read back FROM THIS ROW, never from live config, so a
+    # later economy-stop change cannot split one season's allocation across
+    # two different stops. Same rationale as BuyInRecord's identical trio.
+    buyin_cents   = Column(Integer,  nullable=False)
+    wallet_cents  = Column(Integer,  nullable=False)
+    reserve_cents = Column(Integer,  nullable=False)
+    created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+    team   = relationship("Team")
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def create_all() -> None:

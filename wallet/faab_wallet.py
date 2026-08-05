@@ -45,7 +45,7 @@ from db.schema import (
 )
 from db.deps import get_db
 from auth.jwt_auth import get_current_gm
-from payments.stripe_connect import get_buyin_gate
+from auth.allocation_gate import get_season_allocation_gate
 from wallet.wallet_manager import deposit as wm_deposit
 from wallet.wallet_manager import _challenge_reserved
 
@@ -729,7 +729,7 @@ def _tx_record(t: FaabTransaction) -> FaabTxRecord:
 # ── FastAPI dependency — bet-funded gate ─────────────────────────────────────
 
 def get_bet_funded(
-    current_user: "User" = Depends(get_buyin_gate),
+    current_user: "User" = Depends(get_season_allocation_gate),
     db:           Session = Depends(get_db),
 ) -> "User":
     """
