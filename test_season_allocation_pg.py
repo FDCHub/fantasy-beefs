@@ -51,10 +51,22 @@ SCENARIOS (a-p):
        (R-1 regression guard — without it the over-broad except returns)
     s  replay leaves NO active transaction on the caller's session
 
-CONCURRENCY EVIDENCE LIMIT (R-9). Scenario (m2)'s observed race loser has
-always been the UNIQUE-CONSTRAINT path; the concurrent replay-loser path has
-never been observed and is not claimed to be proven. Sequential replay is
-proven separately by scenario (g). See the comment above (m1) for detail.
+CONCURRENCY EVIDENCE (R-9, SUPERSEDED BY B6 GROUP B). This note formerly
+recorded that scenario (m2)'s race loser had always taken the
+UNIQUE-CONSTRAINT path and that the concurrent replay-loser path had never
+been observed. B6 Group B added a League row lock, taken FOR NO KEY UPDATE as
+the first statement of activation, which makes the replay-loser path
+DETERMINISTIC: the loser blocks on the League row and, once the winner
+commits, re-reads committed state under READ COMMITTED and returns
+created=False. (m2)'s tally therefore now reads {'created': N, 'replayed': N,
+'raced': 0}, and its assertions — which accept either loser outcome by design
+— are unchanged and still pass.
+
+Scenario (m1) is UNAFFECTED and still proves the unique index is a live
+guard, because its holder INSERTs an allocation row directly and so never
+takes the League lock. A raw write that bypasses the activation seam is
+corruption, not a concurrent activation. Sequential replay remains proven
+separately by scenario (g). See the comment above (m1) for detail.
 
 Requires TEST_DATABASE_URL exported to a dedicated, empty, _test-named,
 non-Railway PostgreSQL database (see test_support_postgres guards).
@@ -462,19 +474,20 @@ def main(tdb) -> None:
     # arrangement that actually exercises uq_... as the final race guard, and
     # it proves the loser leaves no partial state.
     #
-    # m2 is the barrier race over several rounds. Its outcome is legitimately
-    # timing-dependent: a loser that reads AFTER the winner commits would take
-    # the idempotent replay path (created=False, nothing posted), while a
-    # loser that reads BEFORE hits the uq guard and rolls back. Both would be
-    # correct outcomes.
+    # m2 is the barrier race over several rounds. Its outcome was formerly
+    # timing-dependent: a loser that read AFTER the winner committed took the
+    # idempotent replay path (created=False, nothing posted), while a loser
+    # that read BEFORE hit the uq guard and rolled back. Both are correct
+    # outcomes and the assertions below still accept either.
     #
-    # EVIDENCE LIMIT (R-9). In every run recorded so far the tally has been
-    # {'created': N, 'replayed': 0, 'raced': N} — the loser has ALWAYS taken
-    # the unique-constraint path. The concurrent replay-loser path has NEVER
-    # been observed here and is NOT claimed to be proven by this scenario.
-    # Sequential replay is proven separately by scenario (g). The assertions
-    # below accept either loser outcome by design, but the tally printed at
-    # the end is the honest record of which one actually occurred.
+    # EVIDENCE (R-9, UPDATED BY B6 GROUP B). Runs recorded before Group B
+    # tallied {'created': N, 'replayed': 0, 'raced': N} — the loser ALWAYS
+    # took the unique-constraint path, and the concurrent replay-loser path
+    # was never observed. Group B's League row lock removed that
+    # indeterminacy: both racers now serialize on the League row, so the
+    # loser reads the winner's committed state and the tally reads
+    # {'created': N, 'replayed': N, 'raced': 0}. The assertions are unchanged
+    # and the printed tally remains the honest record of what occurred.
     #
     # What must hold every round is the money invariant: exactly one thread
     # reports created=True and exactly one activation's worth of money moves.

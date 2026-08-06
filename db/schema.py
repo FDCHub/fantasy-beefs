@@ -50,6 +50,17 @@ class Base(DeclarativeBase):
 
 class League(Base):
     __tablename__ = "leagues"
+    __table_args__ = (
+        # B6 §2.1 — the editable pre-activation cap multiplier. Only the five
+        # certified stops on the Discrete-Stop ladder are representable; the
+        # CHECK is the outer of two guards, the inner being ck_lstc_multiplier_bps
+        # on the frozen snapshot. Both are needed: this one stops a bad value
+        # ever being set, that one stops a bad value ever being frozen.
+        CheckConstraint(
+            "topoff_cap_multiplier_bps IN (0, 5000, 10000, 15000, 20000)",
+            name="ck_leagues_topoff_multiplier_bps",
+        ),
+    )
 
     id                = Column(Integer, primary_key=True, autoincrement=True)
     season            = Column(Integer, nullable=False)
@@ -66,6 +77,20 @@ class League(Base):
     # already went inactive under B1 once LeagueTreasury stopped being
     # written to) — this migration changes nothing for existing leagues.
     buyin_enforcement_active = Column(Boolean, nullable=False, default=False)
+    # B6 §2.1 — BAB Top-Off cap multiplier in basis points, EDITABLE ONLY
+    # BEFORE SEASON ACTIVATION. This is the commissioner's dial, never a
+    # money-path read: activation copies it once into
+    # league_season_topoff_config and every later approval reads THAT row
+    # (§2.6, invariant 29). Changing this column after activation is inert by
+    # design — it cannot retroactively move an activated season's cap, and an
+    # activation replay against a changed value is a CONFLICT, not a replay
+    # (§2.5). Default 10000 bps = 100% of the Wallet allocation.
+    #
+    # server_default, not just default: Column(default=…) is CLIENT-side, so
+    # create_all would emit a bare NOT NULL while the Group F migration's DDL
+    # emits DEFAULT 10000, giving one table two disagreeing schema sources.
+    topoff_cap_multiplier_bps = Column(Integer, nullable=False,
+                                       default=10000, server_default=text("10000"))
 
     teams    = relationship("Team",         back_populates="league")
     matchups = relationship("Matchup",      back_populates="league")
@@ -1395,6 +1420,61 @@ class SeasonAllocation(Base):
 
     league = relationship("League")
     team   = relationship("Team")
+
+
+# ── Frozen top-off multiplier snapshot (B6 Group B) ───────────────────────────
+
+class LeagueSeasonTopoffConfig(Base):
+    """One row per league per season — the BAB Top-Off cap multiplier frozen
+    at season activation (B6 §2.2).
+
+    INSERT-ONLY. No application route, admin function or governed migration
+    updates or deletes a row. Correcting a post-activation mistake requires a
+    separately governed season-reset protocol, which is out of B6 scope. There
+    is deliberately no updated_at, no version column and no status column: a
+    row's existence and its single frozen value are the whole record.
+
+    WHY ONE ROW PER LEAGUE-SEASON, NOT ONE PER TEAM. The multiplier could have
+    been repeated on every SeasonAllocation row. Storing it exactly once is
+    what makes divergence STRUCTURALLY IMPOSSIBLE (§2.3): with one row there is
+    no pair of rows that can disagree, so no reconciliation code is needed and
+    no drift is representable. SeasonAllocation carries no multiplier column of
+    any name, and test S6 asserts that it never acquires one.
+
+    UNIQUENESS IS DATABASE-ENFORCED. uq_lstc_league_season makes a duplicate
+    league-season snapshot impossible by construction rather than by
+    application check. Like uq_season_allocation_league_team_season, it is a
+    FINAL DEFENSE-IN-DEPTH GUARD ONLY — activation serializes on the League
+    row, so two concurrent activations never reach it, and its violation is
+    never used as the idempotency path.
+
+    SEASON is config.ALLOCATION_SEASON (2026), deliberately distinct from
+    config.CURRENT_SEASON (2025, the projection-data year). A money event is
+    stamped with the allocation season.
+
+    THE COLUMN IS topoff_cap_multiplier_bps, matching League's column name
+    exactly. The two are compared directly on every activation replay (§2.5),
+    and an asymmetric name would invite a comparison against the wrong field.
+    """
+    __tablename__ = "league_season_topoff_config"
+    __table_args__ = (
+        UniqueConstraint("league_id", "season", name="uq_lstc_league_season"),
+        CheckConstraint(
+            "topoff_cap_multiplier_bps IN (0, 5000, 10000, 15000, 20000)",
+            name="ck_lstc_multiplier_bps",
+        ),
+    )
+
+    id                        = Column(Integer, primary_key=True, autoincrement=True)
+    league_id                 = Column(Integer,
+                                       ForeignKey("leagues.id", name="fk_lstc_league"),
+                                       nullable=False)
+    season                    = Column(Integer,  nullable=False)
+    topoff_cap_multiplier_bps = Column(Integer,  nullable=False)
+    created_at                = Column(DateTime, nullable=False,
+                                       default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
 
 
 # ── Commissioner authority ────────────────────────────────────────────────────
