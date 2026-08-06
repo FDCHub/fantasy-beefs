@@ -108,8 +108,6 @@ def _log_tx(
     wallet_to:    Optional[str]      = None,
     status:       str                = "applied",
     note:         Optional[str]      = None,
-    stripe_link_id:  Optional[str]   = None,
-    stripe_link_url: Optional[str]   = None,
     apply_on:     Optional[datetime] = None,
     applied_at:   Optional[datetime] = None,
 ) -> FaabTransaction:
@@ -122,8 +120,6 @@ def _log_tx(
         wallet_to       = wallet_to,
         status          = status,
         note            = note,
-        stripe_link_id  = stripe_link_id,
-        stripe_link_url = stripe_link_url,
         apply_on        = apply_on,
         applied_at      = applied_at,
     )

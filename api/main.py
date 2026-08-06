@@ -1614,8 +1614,8 @@ def faab_topup_bet(
     current_user: User    = Depends(get_current_gm),
 ):
     """
-    Top up the bet wallet via Stripe.
-    Mock mode: applied immediately. Real mode: returns Payment Link URL.
+    Request a bet-wallet top-up. Recorded pending, awaiting commissioner
+    confirmation. No payment is processed — Stripe is not part of the MVP.
     """
     assert_own_team(req.team_id, current_user)
     try:
