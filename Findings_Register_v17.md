@@ -2030,3 +2030,81 @@ the Python file requires separat
 
 
 e authorization.
+
+## Section 25 — B2 Stripe removal (2026-08-05)
+
+### 25.1 — Finding 5.2-1 sole-writer invariant: SUPERSEDED
+
+**Superseded:** `confirm_buyin_payment()` is the only production writer to
+`reserve:{team_id}`.
+
+**In force:** `activate_season_allocation()` is the sole production writer of the
+season-opening wallet and championship-reserve funding posting.
+
+The superseded statement was correct for the Stripe-funded design. It is retained
+in this register rather than deleted, so a future reader comparing Finding 5.2
+against the shipped code finds the divergence explained.
+
+Governing document: `spec/SPEC_B2_Stripe_Removal_Addendum_v1.md`.
+
+### 25.2 — B-1 blocker: CLOSED
+
+B-1 was raised when `test_championship_payout.py` Item 8 failed after B2 added a
+second `reserve:{team_id}` writer while the Group 2 contract stayed silent on the
+invariant.
+
+Door 1 reachability evidence established that `confirm_buyin_payment()` was
+production-reachable at `86e7402` via `POST /payments/buyin-confirm`, a registered
+route gated only by `require_commissioner`, with no Stripe secret, webhook
+signature or feature flag on the path. The two funding paths held zero
+cross-references, so double funding was possible and no conservation check would
+have detected it — each posting was independently balanced.
+
+B-1 is closed by **removal, not by mutual exclusion**: Door 1 and the entire
+Stripe surface are gone. Proven by `test_stripe_removal_regression.py` Items 1–3.
+
+### 25.3 — Guard strengthened from text search to structural check
+
+The replacement sole-writer guard walks the AST of every production module,
+finds each `post()` / `ledger_post()` call, and flags any whose leg list
+constructs a `reserve:{...}` account, reporting the enclosing function. It no
+longer trips on comments or docstrings and cannot be defeated by reformatting.
+
+### 25.4 — Second Stripe funding rail found in FAAB top-ups
+
+`wallet/faab_wallet.py` carried an independent Stripe rail that the removal plan
+did not enumerate: `_create_stripe_link()`, the `stripe` SDK import,
+`STRIPE_SECRET_KEY`, `MOCK_MODE`, and real-mode branches in both top-up creators,
+reachable via `POST /faab/topup-bet` and `POST /faab/topup-waiver`. Removed.
+
+Consistent with `FantasyBeefs_BAB_TopOff_UIUX_Spec_2026-07-21.md`, which already
+ruled a top-off an internal BAB issuance event with no real money moving through
+the application. That spec's item B6 issuance ledger model remains **unbuilt** —
+the issuance account and door are unpinned, and approver identity and
+request↔credit linkage are absent. Not invented here.
+
+### 25.5 — DEBT: pre-existing gate-test failures, NOT caused by this package
+
+`test_buyin_enforcement.py` (13 pass / 2 fail) and
+`test_bet_funded_retirement.py` (17 pass / 3 fail) fail because the B2 Group 2
+gate retarget made `SeasonAllocation` existence the gate condition, while those
+tests still set only `User.buy_in_paid`. Every failure is a 402 from the gate.
+
+Verified pre-existing: both produce **identical** pass/fail counts when run
+against a clean checkout of `86e7402`, before any Stripe-removal change. They are
+recorded as Group 2 test debt and were deliberately not repaired inside a Stripe
+removal package.
+
+Classified **REQUIRED — next package**.
+
+### 25.6 — DEBT: commissioner authorization is global
+
+`require_commissioner` tests `user.role` only; it takes no `league_id`, and
+`User` has no league column. Any commissioner can invoke any commissioner route
+for any league, including `POST /league/{league_id}/season-allocation` — now the
+only registered money-moving commissioner route.
+
+Not created or widened by this package. League-scoping the dependency touches 38
+route declarations and is an authorization redesign.
+
+Classified **REQUIRED — next package**.

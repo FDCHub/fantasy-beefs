@@ -37,10 +37,10 @@ from db.schema import (
 )
 from auth.jwt_auth import get_current_gm, get_current_user, hash_password
 from db.deps import get_db
-from payments.stripe_connect import (
-    get_buyin_gate,
-    set_buyin_enforcement_active,
-    get_buyin_enforcement_active,
+from auth.allocation_gate import (
+    get_season_allocation_gate as get_buyin_gate,
+    set_allocation_enforcement_active as set_buyin_enforcement_active,
+    get_allocation_enforcement_active as get_buyin_enforcement_active,
 )
 from ledger.ledger import post as ledger_post, create_ledger_table, balance_of
 

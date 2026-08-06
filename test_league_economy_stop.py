@@ -1,14 +1,14 @@
 """
-test_league_economy_stop.py — Session B1-12: create_buyin_link()'s
+test_league_economy_stop.py — Session B1-12, retargeted by the B2 Stripe removal:
 dependency on LeagueTreasury is fully removed. The stop now lives on
 League.economy_stop_weekly_min_cents, read via
 payments.economy_config.get_league_economy_stop(), independent of
 LeagueTreasury entirely.
 
 Covers:
-  1. create_buyin_link() succeeds for a league with NO LeagueTreasury
+  1. get_league_economy_stop() resolves the default for a league with NO LeagueTreasury
      row at all, using the default stop.
-  2. set_league_economy_stop() + create_buyin_link() together: a
+  2. set_league_economy_stop() + get_league_economy_stop() together: a
      non-default stop selection is honored end-to-end, independent of
      LeagueTreasury.
   3. set_league_economy_stop() rejects a weekly_min_cents value that
@@ -26,18 +26,17 @@ import tempfile
 _TMP_DIR = tempfile.mkdtemp()
 _DB_PATH = os.path.join(_TMP_DIR, "test_league_economy_stop.db")
 os.environ["DATABASE_URL"] = f"sqlite:///{_DB_PATH}"
-os.environ.pop("STRIPE_SECRET_KEY", None)  # force MOCK_MODE regardless of shell env
+# Stripe is removed from the MVP; no payment env var participates in this test.
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from db.schema import Base, engine, SessionLocal, BuyInRecord, League, LeagueTreasury, Team
+from db.schema import Base, engine, SessionLocal, League, LeagueTreasury, Team
 from payments.economy_config import (
     ECONOMY_STOPS,
     DEFAULT_STOP,
     set_league_economy_stop,
     get_league_economy_stop,
 )
-from payments.stripe_connect import create_buyin_link, MOCK_MODE
 
 _failures: list[str] = []
 
@@ -53,7 +52,9 @@ def _assert(label: str, condition: bool, detail: str = "") -> None:
 # ── DB bootstrap ──────────────────────────────────────────────────────────────
 
 Base.metadata.create_all(engine)
-_assert("running in MOCK_MODE (no real Stripe calls)", MOCK_MODE is True)
+_assert("no payment rail is importable (Stripe removed from the MVP)",
+        __import__("importlib").util.find_spec("payments.stripe_connect") is None,
+        "payments.stripe_connect still importable")
 
 
 def _make_league_and_team(name: str) -> tuple[int, int]:
@@ -67,9 +68,9 @@ def _make_league_and_team(name: str) -> tuple[int, int]:
         return league.id, team.id
 
 
-# ── ITEM 1: create_buyin_link() succeeds with NO LeagueTreasury row at all ────
+# ── ITEM 1: the stop resolver works with NO LeagueTreasury row at all ─────
 
-print("\nItem 1: create_buyin_link() succeeds for a league with zero LeagueTreasury rows, using the default stop")
+print("\nItem 1: the default stop resolves for a league with zero LeagueTreasury rows")
 
 league_id1, team_id1 = _make_league_and_team("no_treasury")
 
@@ -80,22 +81,20 @@ _assert("confirmed: zero LeagueTreasury rows exist for this league", treasury_co
 raised_no_treasury = False
 try:
     with SessionLocal() as db:
-        link1 = create_buyin_link(league_id1, team_id1, db)
+        stop1 = get_league_economy_stop(league_id1, db)
 except Exception as e:
     raised_no_treasury = True
     print(f"    unexpected exception: {e}")
-_assert("create_buyin_link() did NOT raise despite no LeagueTreasury row", not raised_no_treasury)
+_assert("get_league_economy_stop() did NOT raise despite no LeagueTreasury row", not raised_no_treasury)
 
 if not raised_no_treasury:
-    with SessionLocal() as db:
-        record1 = db.query(BuyInRecord).filter(BuyInRecord.id == link1.record_id).first()
-    _assert("default stop used: buyin_cents == 22000", record1.buyin_cents == DEFAULT_STOP.buyin_cents, f"got {record1.buyin_cents}")
-    _assert("default stop used: wallet_cents == 14000", record1.wallet_cents == DEFAULT_STOP.wallet_cents, f"got {record1.wallet_cents}")
-    _assert("default stop used: reserve_cents == 8000", record1.reserve_cents == DEFAULT_STOP.reserve_cents, f"got {record1.reserve_cents}")
+    _assert("default stop used: buyin_cents == 22000", stop1.buyin_cents == DEFAULT_STOP.buyin_cents, f"got {stop1.buyin_cents}")
+    _assert("default stop used: wallet_cents == 14000", stop1.wallet_cents == DEFAULT_STOP.wallet_cents, f"got {stop1.wallet_cents}")
+    _assert("default stop used: reserve_cents == 8000", stop1.reserve_cents == DEFAULT_STOP.reserve_cents, f"got {stop1.reserve_cents}")
     _assert("default stop's weekly_min is 1000", DEFAULT_STOP.weekly_min_cents == 1000, f"got {DEFAULT_STOP.weekly_min_cents}")
 
 
-# ── ITEM 2: set_league_economy_stop() + create_buyin_link() — non-default stop honored ──
+# ── ITEM 2: set_league_economy_stop() — non-default stop honored end-to-end ──
 
 print("\nItem 2: setting a non-default stop (weekly_min=2000) is honored end-to-end, independent of LeagueTreasury")
 
@@ -114,14 +113,13 @@ with SessionLocal() as db:
 _assert("get_league_economy_stop reflects the write", stop_now.weekly_min_cents == 2000, f"got {stop_now.weekly_min_cents}")
 
 with SessionLocal() as db:
-    link2 = create_buyin_link(league_id2, team_id2, db)
-with SessionLocal() as db:
-    record2 = db.query(BuyInRecord).filter(BuyInRecord.id == link2.record_id).first()
+    stop2 = get_league_economy_stop(league_id2, db)
 
-_assert("weekly_min=2000 stop: buyin_cents == 44000", record2.buyin_cents == 44000, f"got {record2.buyin_cents}")
-_assert("weekly_min=2000 stop: wallet_cents == 28000", record2.wallet_cents == 28000, f"got {record2.wallet_cents}")
-_assert("weekly_min=2000 stop: reserve_cents == 16000", record2.reserve_cents == 16000, f"got {record2.reserve_cents}")
-_assert("amount_cents matches buyin_cents", record2.amount_cents == 44000, f"got {record2.amount_cents}")
+_assert("weekly_min=2000 stop: buyin_cents == 44000", stop2.buyin_cents == 44000, f"got {stop2.buyin_cents}")
+_assert("weekly_min=2000 stop: wallet_cents == 28000", stop2.wallet_cents == 28000, f"got {stop2.wallet_cents}")
+_assert("weekly_min=2000 stop: reserve_cents == 16000", stop2.reserve_cents == 16000, f"got {stop2.reserve_cents}")
+_assert("wallet + reserve == buyin for this stop", stop2.wallet_cents + stop2.reserve_cents == stop2.buyin_cents,
+        f"got {stop2.wallet_cents} + {stop2.reserve_cents} vs {stop2.buyin_cents}")
 
 
 # ── ITEM 3: set_league_economy_stop() rejects a non-matching weekly_min_cents ──

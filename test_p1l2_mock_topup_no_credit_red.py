@@ -3,7 +3,7 @@ Target (hardened mock): mock creates ONE pending FaabTransaction, credits nothin
 Current defect: mock branch calls wm_deposit, credits the wallet, marks 'applied'."""
 import os, sys, tempfile
 
-# Force MOCK_MODE: STRIPE_SECRET_KEY must be unset BEFORE importing wallet.faab_wallet.
+# Stripe is removed from the MVP; STRIPE_SECRET_KEY is irrelevant and unset here.
 os.environ.pop("STRIPE_SECRET_KEY", None)
 _TMP_DIR = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(_TMP_DIR, 'p1l2_mock.db')}"
@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from db.schema import (Base, engine, SessionLocal, League, Team, Wallet,
                        FaabWallet, Transaction, FaabTransaction)
-from wallet.faab_wallet import create_bet_topup, MOCK_MODE
+from wallet.faab_wallet import create_bet_topup
 
 Base.metadata.create_all(engine)
 _failures: list[str] = []
@@ -40,9 +40,9 @@ def _state(tid):
 
 print("=" * 52); print("P1-L2 RED — mock create_bet_topup no-credit"); print("=" * 52)
 
-_assert("SETUP: MOCK_MODE is active for this test",
-        MOCK_MODE is True,
-        f"MOCK_MODE={MOCK_MODE}; expected True (STRIPE_SECRET_KEY unset at import)")
+_assert("SETUP: no payment rail exists — create_bet_topup has a single path",
+        not hasattr(__import__("wallet.faab_wallet", fromlist=["x"]), "MOCK_MODE"),
+        "MOCK_MODE still defined; Stripe removal incomplete")
 
 tid = _make()
 bal_b, wtx_b, faab_b = _state(tid)

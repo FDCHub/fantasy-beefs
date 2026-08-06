@@ -8,15 +8,17 @@ Architecture
   • Commissioner calls setup_faab_config() to set opening balances + transfer rules.
   • Commissioner calls init_season_wallets() once to credit opening balances to all teams.
   • Opening balance can be $0 (betting is then opt-in via top-up).
-  • GMs top up their bet wallet via Stripe → applied immediately.
-  • GMs top up their waiver wallet via Stripe → queued until next Tuesday.
+  • GMs request a bet-wallet top-up → recorded pending, awaiting commissioner approval.
+  • GMs request a waiver-wallet top-up → recorded pending, queued until next Tuesday.
   • GMs may transfer between wallets subject to FaabConfig.allow_* flags.
   • If a GM's bet wallet balance reaches $0, betting is frozen until they top up.
   • All FAAB movements are logged to faab_transactions for a full audit trail.
 
-Stripe
-  • Real mode: STRIPE_SECRET_KEY env-var set → creates Stripe Payment Links.
-  • Mock mode: env-var absent → fake link IDs; bet top-ups apply immediately.
+Funding model
+  • No payment processing. Stripe was removed from the MVP: there is no payment
+    link, webhook, connected account or payout path here. A top-up is an
+    internal request that a commissioner confirms; no real money moves through
+    the application. See spec/SPEC_B2_Stripe_Removal_Addendum_v1.md.
 """
 
 from __future__ import annotations
@@ -51,15 +53,8 @@ from wallet.wallet_manager import _challenge_reserved
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
-MOCK_MODE         = not bool(STRIPE_SECRET_KEY)
-
 DEFAULT_OPENING_BET    = 50.00
 DEFAULT_OPENING_WAIVER = 50.00
-
-if not MOCK_MODE:
-    import stripe as _stripe
-    _stripe.api_key = STRIPE_SECRET_KEY
 
 
 # ── Date helpers ──────────────────────────────────────────────────────────────
@@ -176,8 +171,7 @@ class TopupResult:
     amount:      float
     status:      str          # "applied" | "pending"
     apply_on:    Optional[str]  # ISO if pending, else None
-    payment_url: Optional[str]  # Stripe link or None (mock-immediate)
-    mock_mode:   bool
+    payment_url: Optional[str]  # always None in the MVP; no payment rail exists
 
 
 @dataclass
@@ -352,39 +346,6 @@ def get_league_faab(league_id: int, db: Session) -> list[FaabWalletState]:
 
 # ── Top-ups ───────────────────────────────────────────────────────────────────
 
-def _create_stripe_link(
-    team: Team,
-    amount: float,
-    wallet_type: str,
-    faab_tx_id: int,
-) -> tuple[str, str]:
-    """Return (link_id, link_url). Creates real Stripe link or mock."""
-    if MOCK_MODE:
-        link_id  = _mock_link_id()
-        link_url = f"https://buy.stripe.com/mock/{link_id}"
-        return link_id, link_url
-
-    price = _stripe.Price.create(
-        unit_amount  = int(amount * 100),
-        currency     = "usd",
-        product_data = {
-            "name": f"Fantasy Beefs {wallet_type.title()} Wallet Top-Up — {team.team_name}",
-        },
-    )
-    link_obj = _stripe.PaymentLink.create(
-        line_items = [{"price": price.id, "quantity": 1}],
-        metadata   = {
-            "wallet_type": wallet_type,
-            "team_id":     str(team.id),
-            "faab_tx_id":  str(faab_tx_id),
-        },
-        after_completion = {
-            "type":     "redirect",
-            "redirect": {"url": f"https://fantasybeefs.com/faab/topup-done/{wallet_type}"},
-        },
-    )
-    return link_obj.id, link_obj.url
-
 
 def create_bet_topup(
     team_id:      int,
@@ -393,10 +354,10 @@ def create_bet_topup(
     performer_id: Optional[int] = None,
 ) -> TopupResult:
     """
-    Top up the bet wallet via Stripe.
+    Request a bet-wallet top-up.
 
-    Real mode : creates a Stripe Payment Link — funds applied on webhook / manual confirm.
-    Mock mode : applies immediately (calls wallet_manager.deposit directly).
+    Records a pending request. No payment is taken and no funds move here;
+    a commissioner confirms it via confirm_topup(), which performs the credit.
     """
     if amount <= 0:
         raise ValueError("Top-up amount must be positive")
@@ -404,53 +365,30 @@ def create_bet_topup(
     fw   = _get_faab_wallet(team_id, db)
     team = fw.team
 
-    if MOCK_MODE:
-        tx = _log_tx(
-            db,
-            fw.league_id,
-            team_id,
-            "topup_bet",
-            amount,
-            wallet_from="stripe",
-            wallet_to="bet",
-            status="pending",
-            note=f"Mock bet top-up request: ${amount:.2f} — awaiting commissioner approval",
-        )
-        db.flush()
-        db.commit()
-        db.refresh(tx)
-        return TopupResult(
-            faab_tx_id=tx.id,
-            team_id=team_id,
-            wallet_type="bet",
-            amount=amount,
-            status="pending",
-            apply_on=None,
-            payment_url=None,
-            mock_mode=True,
-        )
-
-    # Real mode: create Stripe link, return for GM to pay
-    tx = _log_tx(db, fw.league_id, team_id, "topup_bet", amount,
-                 wallet_from="stripe", wallet_to="bet",
-                 status="pending",
-                 note=f"Bet top-up ${amount:.2f} — awaiting Stripe payment")
+    tx = _log_tx(
+        db,
+        fw.league_id,
+        team_id,
+        "topup_bet",
+        amount,
+        wallet_from="issuance",
+        wallet_to="bet",
+        status="pending",
+        note=f"Bet top-up request: ${amount:.2f} — awaiting commissioner approval",
+    )
     db.flush()
-    link_id, link_url = _create_stripe_link(team, amount, "bet", tx.id)
-    tx.stripe_link_id  = link_id
-    tx.stripe_link_url = link_url
     db.commit()
     db.refresh(tx)
     return TopupResult(
-        faab_tx_id  = tx.id,
-        team_id     = team_id,
-        wallet_type = "bet",
-        amount      = amount,
-        status      = "pending",
-        apply_on    = None,
-        payment_url = link_url,
-        mock_mode   = False,
+        faab_tx_id=tx.id,
+        team_id=team_id,
+        wallet_type="bet",
+        amount=amount,
+        status="pending",
+        apply_on=None,
+        payment_url=None,
     )
+
 
 
 def create_waiver_topup(
@@ -460,11 +398,10 @@ def create_waiver_topup(
     performer_id: Optional[int] = None,
 ) -> TopupResult:
     """
-    Queue a waiver wallet top-up for the next Tuesday, even in mock mode.
+    Queue a waiver-wallet top-up for the next Tuesday.
 
-    Real mode : creates a Stripe Payment Link — once paid, status becomes "pending"
-                (awaiting Tuesday apply).
-    Mock mode : creates a "pending" record with apply_on = next Tuesday (no Stripe call).
+    Records a pending request with apply_on = next Tuesday. No payment is taken
+    and no funds move here.
     """
     if amount <= 0:
         raise ValueError("Top-up amount must be positive")
@@ -473,37 +410,13 @@ def create_waiver_topup(
     team    = fw.team
     tuesday = _next_tuesday()
 
-    if MOCK_MODE:
-        tx = _log_tx(db, fw.league_id, team_id, "topup_waiver", amount,
-                     wallet_from="stripe", wallet_to="waiver",
-                     status="pending",
-                     note=f"Waiver top-up ${amount:.2f} — queued for {tuesday.date()}",
-                     apply_on=tuesday)
-        fw.pending_waiver_topup = round(fw.pending_waiver_topup + amount, 2)
-        fw.updated_at           = _now()
-        db.commit()
-        db.refresh(tx)
-        return TopupResult(
-            faab_tx_id  = tx.id,
-            team_id     = team_id,
-            wallet_type = "waiver",
-            amount      = amount,
-            status      = "pending",
-            apply_on    = tuesday.isoformat(),
-            payment_url = None,
-            mock_mode   = True,
-        )
-
-    # Real mode: create Stripe link; on payment webhook, status → pending (awaiting Tuesday)
     tx = _log_tx(db, fw.league_id, team_id, "topup_waiver", amount,
-                 wallet_from="stripe", wallet_to="waiver",
+                 wallet_from="issuance", wallet_to="waiver",
                  status="pending",
                  note=f"Waiver top-up ${amount:.2f} — queued for {tuesday.date()}",
                  apply_on=tuesday)
-    db.flush()
-    link_id, link_url = _create_stripe_link(team, amount, "waiver", tx.id)
-    tx.stripe_link_id  = link_id
-    tx.stripe_link_url = link_url
+    fw.pending_waiver_topup = round(fw.pending_waiver_topup + amount, 2)
+    fw.updated_at           = _now()
     db.commit()
     db.refresh(tx)
     return TopupResult(
@@ -513,21 +426,23 @@ def create_waiver_topup(
         amount      = amount,
         status      = "pending",
         apply_on    = tuesday.isoformat(),
-        payment_url = link_url,
-        mock_mode   = False,
+        payment_url = None,
     )
 
 
+
 def confirm_topup(
-    faab_tx_id:       int,
-    db:               Session,
-    stripe_session_id: Optional[str] = None,
+    faab_tx_id: int,
+    db:         Session,
 ) -> TopupResult:
     """
-    Confirm payment for a pending top-up (called from webhook or manually).
+    Commissioner confirms a pending top-up request.
 
     Bet top-up  : applies immediately — credits bet wallet via wallet_manager.deposit().
-    Waiver topup: marks Stripe payment received; funds remain queued for Tuesday.
+    Waiver topup: stays pending until Tuesday (applied by apply_pending_topups).
+
+    No payment is verified here. Stripe was removed from the MVP; confirmation
+    is a commissioner decision recorded against the FaabTransaction.
     """
     tx = db.query(FaabTransaction).filter(FaabTransaction.id == faab_tx_id).first()
     if not tx:
@@ -536,9 +451,6 @@ def confirm_topup(
         return _tx_to_topup_result(tx)
     if tx.status not in ("pending",):
         raise ValueError(f"Transaction {faab_tx_id} has status '{tx.status}' — cannot confirm")
-
-    if stripe_session_id:
-        tx.stripe_session_id = stripe_session_id
 
     if tx.type == "topup_bet":
         bet_wallet = _get_bet_wallet(tx.team_id, db)
@@ -551,7 +463,7 @@ def confirm_topup(
 
     elif tx.type == "topup_waiver":
         # Payment confirmed — keep pending until Tuesday (applied by apply_pending_topups)
-        tx.note = (tx.note or "") + " [Stripe payment received]"
+        tx.note = (tx.note or "") + " [confirmed by commissioner]"
         db.commit()
 
     db.refresh(tx)
@@ -566,8 +478,7 @@ def _tx_to_topup_result(tx: FaabTransaction) -> TopupResult:
         amount      = tx.amount,
         status      = tx.status,
         apply_on    = tx.apply_on.isoformat() if tx.apply_on else None,
-        payment_url = tx.stripe_link_url,
-        mock_mode   = MOCK_MODE,
+        payment_url = None,
     )
 
 

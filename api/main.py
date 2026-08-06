@@ -65,29 +65,17 @@ from auth.jwt_auth import (
 from auth.allocation_gate import (
     get_allocation_enforcement_active,
     get_season_allocation_gate,
+    set_allocation_enforcement_active,
 )
 
 # Temporary B2 compatibility export for tests; remove during Group 5.
 get_buyin_gate = get_season_allocation_gate
 
-from payments.stripe_connect import (
-    AuditEntry,
-    BuyInLink,
-    BuyInStatus,
-    PayoutPreview,
-    TreasuryState,
-    confirm_buyin_payment,
-    create_buyin_link,
-    create_connect_onboarding_link,
-    execute_payouts,
-    get_audit_log,
-    get_buyin_status,
-    get_treasury_state,
-    handle_stripe_webhook,
-    preview_payouts,
-    set_buyin_enforcement_active,
-    setup_league_treasury,
-)
+# payments.stripe_connect is intentionally NOT imported. Stripe is out of the
+# MVP: there is no payment-processing, connected-account, payout or webhook
+# surface in the registered API. Season allocation plus the internal Credits
+# ledger is the sole funding and accounting model. See
+# spec/SPEC_B2_Stripe_Removal_Addendum_v1.md.
 from economy.season_allocation import (
     ConflictingAllocationError,
     NoTeamsError,
@@ -1295,160 +1283,11 @@ class BuyinEnforcementOut(BaseModel):
     active:    bool
 
 
-class TreasuryOut(BaseModel):
-    league_id:             int
-    buy_in_amount_cents:   int
-    buy_in_dollars:        str
-    payout_split:          list[int]
-    total_collected_cents: int
-    total_paid_out_cents:  int
-    season_payout_done:    bool
-    teams_paid_in:         int
-    teams_total:           int
-    mock_mode:             bool
-
-
-class BuyInLinkOut(BaseModel):
-    record_id:    int
-    team_id:      int
-    team_name:    str
-    owner:        str
-    amount_cents: int
-    amount_dollars: str
-    payment_url:  str
-    status:       str
-    mock_mode:    bool
-
-
-class BuyInStatusOut(BaseModel):
-    team_id:      int
-    team_name:    str
-    owner:        str
-    email:        str
-    status:       str
-    amount_cents: int
-    paid_at:      Optional[str]
-    payment_url:  Optional[str]
-
-
-class BuyInConfirmRequest(BaseModel):
-    record_id:               int
-    stripe_session_id:       Optional[str] = None
-    stripe_payment_intent_id: Optional[str] = None
-
-
-class PayoutPreviewRowOut(BaseModel):
-    place:             int
-    team_id:           int
-    team_name:         str
-    owner:             str
-    pct:               int
-    amount_cents:      int
-    amount_dollars:    str
-    stripe_account_id: Optional[str]
-    can_receive:       bool
-
-
-class PayoutPreviewOut(BaseModel):
-    league_id:       int
-    treasury_cents:  int
-    treasury_dollars: str
-    payout_split:    list[int]
-    rows:            list[PayoutPreviewRowOut]
-    mock_mode:       bool
-    blocking_issues: list[str]
-
-
-class PayoutExecuteRequest(BaseModel):
-    league_id:       int
-    standings_order: Optional[list[int]] = Field(
-        default=None,
-        description="Team IDs in rank order. If omitted, computed from regular-season record."
-    )
-
-
-class PayoutRecordOut(BaseModel):
-    id:                      int
-    place:                   int
-    team_id:                 int
-    team_name:               str
-    pct:                     int
-    amount_cents:            int
-    amount_dollars:          str
-    status:                  str
-    stripe_transfer_id:      Optional[str]
-    stripe_connected_account: Optional[str]
-    sent_at:                 Optional[str]
-
-
-class ConnectLinkOut(BaseModel):
-    team_id:        int
-    onboarding_url: str
-    mock_mode:      bool
-
-
-class AuditEntryOut(BaseModel):
-    id:            int
-    event_type:    str
-    description:   str
-    league_id:     Optional[int]
-    team_id:       Optional[int]
-    stripe_object: Optional[str]
-    amount_cents:  Optional[int]
-    created_at:    str
-
-
 def _cents_to_dollars(cents: int) -> str:
     return f"${cents / 100:,.2f}"
 
 
-def _treasury_out(s: TreasuryState) -> TreasuryOut:
-    return TreasuryOut(
-        league_id             = s.league_id,
-        buy_in_amount_cents   = s.buy_in_amount_cents,
-        buy_in_dollars        = _cents_to_dollars(s.buy_in_amount_cents),
-        payout_split          = s.payout_split,
-        total_collected_cents = s.total_collected_cents,
-        total_paid_out_cents  = s.total_paid_out_cents,
-        season_payout_done    = s.season_payout_done,
-        teams_paid_in         = s.teams_paid_in,
-        teams_total           = s.teams_total,
-        mock_mode             = s.mock_mode,
-    )
-
-
-def _buyin_link_out(b: BuyInLink) -> BuyInLinkOut:
-    return BuyInLinkOut(
-        record_id      = b.record_id,
-        team_id        = b.team_id,
-        team_name      = b.team_name,
-        owner          = b.owner,
-        amount_cents   = b.amount_cents,
-        amount_dollars = _cents_to_dollars(b.amount_cents),
-        payment_url    = b.payment_url,
-        status         = b.status,
-        mock_mode      = b.mock_mode,
-    )
-
-
 # ── Payment endpoints ─────────────────────────────────────────────────────────
-
-@app.post("/payments/setup-treasury", response_model=TreasuryOut, status_code=200)
-def payments_setup_treasury(
-    req:   TreasurySetupRequest,
-    db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
-):
-    """Commissioner sets the season buy-in amount and payout split."""
-    try:
-        state = setup_league_treasury(
-            req.league_id, req.buy_in_cents, db,
-            payout_split = req.payout_split,
-            performer_id = _comm.id,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _treasury_out(state)
 
 
 @app.post("/payments/buyin-enforcement", response_model=BuyinEnforcementOut, status_code=200)
@@ -1457,9 +1296,15 @@ def payments_set_buyin_enforcement(
     db:    Session = Depends(get_db),
     _comm: User    = Depends(require_commissioner),
 ):
-    """Commissioner turns buy-in enforcement on/off for a league (B2, Finding 5.3)."""
+    """Commissioner turns season-allocation enforcement on/off for a league.
+
+    The route path and the League.buyin_enforcement_active column keep their
+    historical names; the flag governs the season-allocation gate and has no
+    Stripe or payment meaning. Renaming both is deferred to a controlled
+    post-MVP migration.
+    """
     try:
-        active = set_buyin_enforcement_active(
+        active = set_allocation_enforcement_active(
             req.league_id, req.active, db, performer_id=_comm.id,
         )
     except ValueError as e:
@@ -1539,224 +1384,6 @@ def league_activate_season_allocation(
     )
 
 
-@app.get("/payments/treasury/{league_id}", response_model=TreasuryOut)
-def payments_get_treasury(league_id: int, db: Session = Depends(get_db)):
-    """Get current treasury state (open endpoint — GMs can see the pot)."""
-    try:
-        state = get_treasury_state(league_id, db)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    return _treasury_out(state)
-
-
-@app.get("/payments/buyin-status/{league_id}", response_model=list[BuyInStatusOut])
-def payments_buyin_status(
-    league_id:    int,
-    db:           Session = Depends(get_db),
-    _user:        User    = Depends(get_current_gm),
-):
-    """List buy-in status for all teams (any authenticated user)."""
-    league = db.query(League).filter(League.id == league_id).first()
-    if not league:
-        raise HTTPException(status_code=404, detail=f"League {league_id} not found")
-    statuses = get_buyin_status(league_id, db)
-    return [
-        BuyInStatusOut(
-            team_id      = s.team_id,
-            team_name    = s.team_name,
-            owner        = s.owner,
-            email        = s.email,
-            status       = s.status,
-            amount_cents = s.amount_cents,
-            paid_at      = s.paid_at,
-            payment_url  = s.payment_url,
-        )
-        for s in statuses
-    ]
-
-
-@app.post("/payments/buyin-link/{team_id}", response_model=BuyInLinkOut, status_code=200)
-def payments_buyin_link(
-    team_id:      int,
-    league_id:    int = Query(..., description="League ID"),
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
-):
-    """
-    Generate (or return existing) Stripe Payment Link for a GM's buy-in.
-    GMs can request their own link; commissioner can request any team's link.
-    """
-    assert_own_team(team_id, current_user)
-    try:
-        link = create_buyin_link(league_id, team_id, db, performer_id=current_user.id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _buyin_link_out(link)
-
-
-@app.post("/payments/buyin-confirm", response_model=BuyInStatusOut, status_code=200)
-def payments_buyin_confirm(
-    req:   BuyInConfirmRequest,
-    db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
-):
-    """Commissioner manually confirms a buy-in payment (or called via webhook)."""
-    try:
-        record = confirm_buyin_payment(
-            req.record_id, db,
-            stripe_session_id        = req.stripe_session_id,
-            stripe_payment_intent_id = req.stripe_payment_intent_id,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    team = db.query(Team).filter(Team.id == record.team_id).first()
-    return BuyInStatusOut(
-        team_id      = record.team_id,
-        team_name    = team.team_name if team else str(record.team_id),
-        owner        = team.owner if team else "",
-        email        = team.email if team else "",
-        status       = record.status,
-        amount_cents = record.amount_cents,
-        paid_at      = record.paid_at.isoformat() if record.paid_at else None,
-        payment_url  = record.stripe_payment_link_url,
-    )
-
-
-@app.get("/payments/connect-link/{team_id}", response_model=ConnectLinkOut)
-def payments_connect_link(
-    team_id:      int,
-    return_url:   str = Query(default="", description="URL to redirect after Stripe onboarding"),
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
-):
-    """
-    Get a Stripe Connect onboarding URL so a GM can link their account for payouts.
-    GMs can request their own link; commissioner can request any team's link.
-    """
-    assert_own_team(team_id, current_user)
-    try:
-        url = create_connect_onboarding_link(team_id, db, return_url=return_url)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return ConnectLinkOut(
-        team_id        = team_id,
-        onboarding_url = url,
-        mock_mode      = not bool(
-            db.query(User).filter(User.team_id == team_id).first().stripe_account_id or ""
-        ),
-    )
-
-
-@app.get("/payments/payout-preview/{league_id}", response_model=PayoutPreviewOut)
-def payments_payout_preview(
-    league_id:       int,
-    db:              Session = Depends(get_db),
-    _comm:           User    = Depends(require_commissioner),
-):
-    """Preview season-end payout amounts before executing."""
-    try:
-        preview = preview_payouts(league_id, db)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return PayoutPreviewOut(
-        league_id        = preview.league_id,
-        treasury_cents   = preview.treasury_cents,
-        treasury_dollars = _cents_to_dollars(preview.treasury_cents),
-        payout_split     = preview.payout_split,
-        rows             = [
-            PayoutPreviewRowOut(
-                place             = r.place,
-                team_id           = r.team_id,
-                team_name         = r.team_name,
-                owner             = r.owner,
-                pct               = r.pct,
-                amount_cents      = r.amount_cents,
-                amount_dollars    = _cents_to_dollars(r.amount_cents),
-                stripe_account_id = r.stripe_account_id,
-                can_receive       = r.can_receive,
-            )
-            for r in preview.rows
-        ],
-        mock_mode        = preview.mock_mode,
-        blocking_issues  = preview.blocking_issues,
-    )
-
-
-@app.post("/payments/payout-execute", response_model=list[PayoutRecordOut], status_code=200)
-def payments_payout_execute(
-    req:   PayoutExecuteRequest,
-    db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
-):
-    """Execute season-end payouts. Commissioner-only. Idempotent per record."""
-    try:
-        records = execute_payouts(
-            req.league_id, db,
-            standings_order = req.standings_order,
-            performer_id    = _comm.id,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    result = []
-    for r in records:
-        team = db.query(Team).filter(Team.id == r.team_id).first()
-        result.append(PayoutRecordOut(
-            id                       = r.id,
-            place                    = r.place,
-            team_id                  = r.team_id,
-            team_name                = team.team_name if team else str(r.team_id),
-            pct                      = r.pct,
-            amount_cents             = r.amount_cents,
-            amount_dollars           = _cents_to_dollars(r.amount_cents),
-            status                   = r.status,
-            stripe_transfer_id       = r.stripe_transfer_id,
-            stripe_connected_account = r.stripe_connected_account,
-            sent_at                  = r.sent_at.isoformat() if r.sent_at else None,
-        ))
-    return result
-
-
-@app.get("/payments/audit-log/{league_id}", response_model=list[AuditEntryOut])
-def payments_audit_log(
-    league_id: int,
-    limit:  int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0,   ge=0),
-    db:     Session = Depends(get_db),
-    _comm:  User    = Depends(require_commissioner),
-):
-    """Full Stripe audit trail for the league. Commissioner-only."""
-    entries = get_audit_log(league_id, db, limit=limit, offset=offset)
-    return [
-        AuditEntryOut(
-            id            = e.id,
-            event_type    = e.event_type,
-            description   = e.description,
-            league_id     = e.league_id,
-            team_id       = e.team_id,
-            stripe_object = e.stripe_object,
-            amount_cents  = e.amount_cents,
-            created_at    = e.created_at,
-        )
-        for e in entries
-    ]
-
-
-@app.post("/payments/webhook", status_code=200)
-async def payments_webhook(
-    request: Request,
-    db:      Session = Depends(get_db),
-):
-    """Stripe webhook receiver. Configure in Stripe Dashboard to point here."""
-    payload    = await request.body()
-    sig_header = request.headers.get("stripe-signature", "")
-    try:
-        result = handle_stripe_webhook(payload, sig_header, db)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return result
-
-
 # ── FAAB schemas ──────────────────────────────────────────────────────────────
 
 class FaabSetupRequest(BaseModel):
@@ -1803,13 +1430,11 @@ class TopupOut(BaseModel):
     amount:      float
     status:      str
     apply_on:    Optional[str]
-    payment_url: Optional[str]
-    mock_mode:   bool
+    payment_url: Optional[str]  # always None; the MVP has no payment rail
 
 
 class TopupConfirmRequest(BaseModel):
-    faab_tx_id:        int
-    stripe_session_id: Optional[str] = None
+    faab_tx_id: int
 
 
 class TransferRequest(BaseModel):
@@ -1884,7 +1509,6 @@ def _topup_out(t: TopupResult) -> TopupOut:
         status      = t.status,
         apply_on    = t.apply_on,
         payment_url = t.payment_url,
-        mock_mode   = t.mock_mode,
     )
 
 
@@ -2026,11 +1650,12 @@ def faab_topup_confirm(
     _comm: User    = Depends(require_commissioner),
 ):
     """
-    Manually confirm a pending top-up (commissioner or webhook dispatch).
+    Commissioner confirms a pending top-up request.
     Bet top-ups apply immediately; waiver top-ups remain queued for Tuesday.
+    No payment is processed — Stripe is not part of the MVP.
     """
     try:
-        result = confirm_topup(req.faab_tx_id, db, stripe_session_id=req.stripe_session_id)
+        result = confirm_topup(req.faab_tx_id, db)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _topup_out(result)

@@ -17,15 +17,23 @@ existence check would let last season's row open this season's gate.
 User.buy_in_paid is deliberately NOT removed from the schema — it survives as
 DEBT-3 and is simply no longer consulted here.
 
-The commissioner-facing setter (set_buyin_enforcement_active) is deferred to
-Group 3 and still lives in payments/stripe_connect.py, because it writes the
-StripeAuditLog via that module's private _log helper.
+B2 Stripe removal. The commissioner-facing setter was relocated here as
+set_allocation_enforcement_active. It previously lived in
+payments/stripe_connect.py and wrote a StripeAuditLog row through that module's
+private _log helper; that module no longer exists in the MVP, and the audit
+write went with it. The setter's product behaviour — writing
+League.buyin_enforcement_active and returning the stored value — is unchanged.
+
+League.buyin_enforcement_active keeps its historical column name. It is the
+season-allocation enforcement flag; it does not mean a Stripe buy-in was paid.
+Renaming the column is deferred to a controlled post-MVP migration.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -43,6 +51,32 @@ def get_allocation_enforcement_active(league_id: int, db: Session) -> bool:
     league doesn't exist — same fail-open posture as an unconfigured stop."""
     league = db.query(League).filter(League.id == league_id).first()
     return bool(league.buyin_enforcement_active) if league else False
+
+
+def set_allocation_enforcement_active(
+    league_id:    int,
+    active:       bool,
+    db:           Session,
+    performer_id: Optional[int] = None,
+) -> bool:
+    """
+    Commissioner-facing setter. Flips League.buyin_enforcement_active.
+    Takes effect on the very next request — get_season_allocation_gate reads
+    this column fresh on every call and nothing caches it.
+
+    Relocated from payments/stripe_connect.py during the B2 Stripe removal.
+    The StripeAuditLog write that accompanied it there is gone with that
+    module; performer_id is retained in the signature so callers and their
+    tests are unchanged, and so a future non-Stripe audit surface can record
+    it without another signature change.
+    """
+    league = db.query(League).filter(League.id == league_id).first()
+    if not league:
+        raise ValueError(f"League {league_id} not found")
+
+    league.buyin_enforcement_active = active
+    db.commit()
+    return league.buyin_enforcement_active
 
 
 # ── FastAPI dependency — buy-in gate ─────────────────────────────────────────

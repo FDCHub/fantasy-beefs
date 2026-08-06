@@ -44,7 +44,7 @@ from db.schema import (
 from auth.jwt_auth import get_current_gm, hash_password
 from db.deps import get_db
 from wallet.faab_wallet import set_freeze
-from payments.stripe_connect import set_buyin_enforcement_active
+from auth.allocation_gate import set_allocation_enforcement_active as set_buyin_enforcement_active
 from ledger.ledger import post as ledger_post, create_ledger_table, balance_of
 
 import api.main as api_main
