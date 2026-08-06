@@ -124,11 +124,7 @@ from wallet.faab_wallet import (
     FaabWalletState,
     TopupResult,
     TransferResult,
-    apply_pending_topups,
     check_and_freeze,
-    confirm_topup,
-    create_bet_topup,
-    create_waiver_topup,
     get_faab_config,
     get_faab_transactions,
     get_faab_wallet,
@@ -1607,72 +1603,37 @@ def faab_league_wallets(
     return [_fw_out(s) for s in get_league_faab(league_id, db)]
 
 
-@app.post("/faab/topup-bet", response_model=TopupOut, status_code=200)
-def faab_topup_bet(
-    req:          TopupRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
-):
-    """
-    Request a bet-wallet top-up. Recorded pending, awaiting commissioner
-    confirmation. No payment is processed — Stripe is not part of the MVP.
-    """
-    assert_own_team(req.team_id, current_user)
-    try:
-        result = create_bet_topup(req.team_id, req.amount, db, performer_id=current_user.id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _topup_out(result)
-
-
-@app.post("/faab/topup-waiver", response_model=TopupOut, status_code=200)
-def faab_topup_waiver(
-    req:          TopupRequest,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
-):
-    """
-    Queue a waiver wallet top-up for the next Tuesday.
-    Funds are reserved (pending_waiver_topup) but not yet available for bids.
-    """
-    assert_own_team(req.team_id, current_user)
-    try:
-        result = create_waiver_topup(req.team_id, req.amount, db, performer_id=current_user.id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _topup_out(result)
-
-
-@app.post("/faab/topup-confirm", response_model=TopupOut, status_code=200)
-def faab_topup_confirm(
-    req:   TopupConfirmRequest,
-    db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
-):
-    """
-    Commissioner confirms a pending top-up request.
-    Bet top-ups apply immediately; waiver top-ups remain queued for Tuesday.
-    No payment is processed — Stripe is not part of the MVP.
-    """
-    try:
-        result = confirm_topup(req.faab_tx_id, db)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return _topup_out(result)
-
-
-@app.post("/faab/apply-pending", response_model=list[FaabTxOut], status_code=200)
-def faab_apply_pending(
-    db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
-):
-    """
-    Apply all waiver top-ups whose apply_on date has passed.
-    Commissioner-only. Intended for Tuesday automation.
-    """
-    applied = apply_pending_topups(db)
-    return [_tx_out(t) for t in applied]
-
+# ── FAAB top-up surface — DEREGISTERED PENDING B6 ────────────────────────────
+#
+# POST /faab/topup-bet, /faab/topup-waiver, /faab/topup-confirm and
+# /faab/apply-pending are NOT registered.
+#
+# Stripe is out of the MVP, so the payment rail these routes were built on no
+# longer exists. The temporary request-and-confirm flow that replaced it is
+# NOT an acceptable permanent Credits issuance model: it mints wallet balance
+# with no counterparty and no ledger posting behind it.
+#
+# These routes remain unavailable until the B6 issuance-ledger model exists.
+# B6 must provide:
+#   - a balanced ledger posting;
+#   - an issuance counterparty/account (a top-off must NOT debit `world`,
+#     which is reserved for real external capital);
+#   - approver identity;
+#   - request-to-credit provenance.
+# See FantasyBeefs_BAB_TopOff_UIUX_Spec_2026-07-21.md item B6 and
+# spec/SPEC_B2_Stripe_Removal_Addendum_v1.md.
+#
+# The underlying implementation in wallet/faab_wallet.py is intentionally NOT
+# deleted — it is the starting point for B6 and its historical models hold
+# real rows. Only the production-reachable route surface is removed.
+#
+# REMAINING NON-ROUTE REACHABILITY, recorded rather than assumed away:
+# notifications/tuesday_sync.py::_step_apply_topups still calls
+# apply_pending_topups(), and that pipeline is reachable via
+# POST /admin/tuesday-sync. With the request routes gone no route can create
+# an eligible pending record, but that is a database precondition, not a
+# structural guarantee. Neutralising the Tuesday step is tracked as REQUIRED
+# and is deliberately out of scope for this closure package.
 
 @app.post("/faab/transfer", status_code=410, deprecated=True)
 def faab_do_transfer():

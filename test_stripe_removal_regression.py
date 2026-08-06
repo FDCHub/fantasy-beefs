@@ -77,6 +77,9 @@ _routes = sorted({getattr(r, "path", "") for r in api_main.app.routes})
 _FORBIDDEN_FRAGMENTS = (
     "webhook", "payout", "connect-link", "connect-onboarding",
     "buyin-link", "buyin-confirm", "buyin-status", "treasury", "stripe",
+    # B-2 closure: the unfinished FAAB issuance surface is also forbidden
+    # until the B6 issuance-ledger model exists.
+    "topup", "top-up", "apply-pending",
 )
 _offenders = [p for p in _routes if any(f in p.lower() for f in _FORBIDDEN_FRAGMENTS)]
 
@@ -225,6 +228,47 @@ _assert("championship_total = summed reserves + shared championship accounts",
 _assert("championship_total counts the season-allocation reserves specifically",
         total >= first.reserve_cents * len(team_ids),
         f"got {total} for {len(team_ids)} teams at {first.reserve_cents}c each")
+
+
+# ── ITEM 6: the unfinished FAAB mint surface is not registered ───────────────
+
+print("\nItem 6: no registered route can mint Credits through the FAAB top-up flow")
+
+_FAAB_MINT_ROUTES = (
+    "/faab/topup-bet",
+    "/faab/topup-waiver",
+    "/faab/topup-confirm",
+    "/faab/apply-pending",
+)
+for _r in _FAAB_MINT_ROUTES:
+    _assert(f"{_r} is NOT registered", _r not in _routes)
+
+_assert("no registered path contains 'topup'",
+        [p for p in _routes if "topup" in p.lower()] == [],
+        f"got {[p for p in _routes if 'topup' in p.lower()]}")
+
+# The read-only FAAB surface must survive — this is a mint removal, not a
+# feature deletion.
+for _keep in ("/faab/wallet/{team_id}", "/faab/league/{league_id}", "/faab/setup"):
+    _assert(f"{_keep} IS still registered (read/config surface preserved)",
+            _keep in _routes)
+
+# wm_deposit is the mint. Prove no route handler can reach it: api.main must
+# not import the functions that call it.
+import api.main as _am
+for _gone in ("confirm_topup", "create_bet_topup", "create_waiver_topup",
+              "apply_pending_topups"):
+    _assert(f"api.main no longer imports {_gone}", not hasattr(_am, _gone))
+
+# RECORDED, NOT ASSERTED AWAY: notifications/tuesday_sync.py::_step_apply_topups
+# still calls apply_pending_topups(), reachable via POST /admin/tuesday-sync.
+# With the request routes gone, no route can create an eligible pending record,
+# but that is a database precondition rather than a structural guarantee. This
+# assertion documents the residue instead of pretending it is absent.
+import notifications.tuesday_sync as _ts
+_assert("KNOWN RESIDUE: tuesday_sync still references apply_pending_topups",
+        "apply_pending_topups" in open(_ts.__file__, encoding="utf-8").read(),
+        "if this ever fails, the residue is gone and the note can be dropped")
 
 
 # ── Summary ──────────────────────────────────────────────────────────────────

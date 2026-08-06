@@ -864,6 +864,48 @@ def main(tdb) -> None:
     finally:
         api_main.app.dependency_overrides.clear()
 
+    # ── (t) PERSISTED LEDGER-DOOR INVARIANT ───────────────────────────────────
+    #
+    # The AST guard in test_stripe_removal_regression.py proves, from SOURCE,
+    # that only activate_season_allocation() constructs a reserve:{...} leg.
+    # This assertion is the runtime counterpart: it reads the PERSISTED
+    # LedgerEntry rows back out of PostgreSQL and proves every reserve:% row
+    # actually carries door="season_allocation".
+    #
+    # SCOPE, STATED EXACTLY. These are the rows produced by THIS suite's setup
+    # in the disposable _test database created by setup_postgres_test_db().
+    # No production database is inspected and NO claim is made about historical
+    # production rows — none are visible here and none were read.
+    #
+    # Other SQLite suites (test_ledger.py, test_championship_payout.py)
+    # deliberately post reserve legs with door="buy_in_paid"/"buy_in_tab" as
+    # HISTORICAL fixtures for the pre-B2 funding model. They are a different
+    # database and a different scope; this assertion does not reach them and
+    # was not weakened to accommodate them.
+    print("\n(t) persisted reserve entries all carry door='season_allocation'")
+
+    with SessionLocal() as db:
+        reserve_rows = (
+            db.query(LedgerEntry)
+            .filter(LedgerEntry.account.like("reserve:%"))
+            .all()
+        )
+        doors = sorted({r.door for r in reserve_rows})
+        offenders = [(r.account, r.door, r.amount_cents)
+                     for r in reserve_rows if r.door != "season_allocation"]
+
+    _assert("(t) the suite actually persisted reserve rows to inspect",
+            len(reserve_rows) > 0, f"got {len(reserve_rows)} rows")
+    _assert("(t) EVERY persisted reserve:% row has door='season_allocation'",
+            offenders == [], f"offending rows: {offenders}")
+    _assert("(t) exactly one distinct door across all reserve rows",
+            doors == ["season_allocation"], f"distinct doors: {doors}")
+    _assert("(t) reserve row count equals one per allocated team",
+            len(reserve_rows) == len({r.account for r in reserve_rows}),
+            f"{len(reserve_rows)} rows over "
+            f"{len({r.account for r in reserve_rows})} distinct accounts")
+
+
 
 def _rows_match_stop(SessionLocal, SeasonAllocation, league_id, season, stop) -> bool:
     with SessionLocal() as db:

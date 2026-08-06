@@ -2108,3 +2108,96 @@ Not created or widened by this package. League-scoping the dependency touches 38
 route declarations and is an authorization redesign.
 
 Classified **REQUIRED — next package**.
+
+
+## Section 26 — B-2 closure (2026-08-05)
+
+### 26.1 — B-2: CLOSED
+
+B-2 was the last B2 blocker: the accepted championship distribution arithmetic
+and remainder rule lived only inside payout code deleted with the Stripe
+surface, and would otherwise have been lost with it.
+
+Closed by preserving the rule as a pure function,
+`economy.championship.championship_distribution()`.
+
+### 26.2 — Finding 5.2-3, Option A — the accepted rule, now in code
+
+1. Each ordinary amount is `floor(total_cents * pct / 100)`.
+2. The ENTIRE remainder after flooring every place goes to FIRST PLACE.
+3. Therefore `sum(amount_cents) == total_cents` for every valid input.
+
+Integer cents only, verified at AST level: zero true-division nodes, zero float
+literals, one floor-division node. Invalid input raises `ValueError` and is never
+silently normalised. `bool` is rejected explicitly because it is an `int`
+subclass.
+
+Covered by `test_championship_distribution.py` — 280 assertions including a
+10,000-case sweep proving the sum identity and that no non-first place ever
+receives remainder.
+
+### 26.3 — What was NOT built
+
+`championship_distribution()` is ARITHMETIC ONLY. No database, no session, no
+ledger, no posting. **Internal Credits championship settlement remains UNBUILT**
+and is not part of this closure package. Nothing in this section may be read as
+evidence that a season can be settled.
+
+Idempotent settlement and payout-split configurability remain later decisions.
+
+`ECONOMY_STOPS` does NOT define payout splits — it carries only
+`weekly_min_cents`, `wallet_cents`, `buyin_cents`, `reserve_cents`. The only
+splits in the codebase are `reports.standings.DEFAULT_PAYOUT_SPLIT = [60,30,10]`
+and the `LeagueTreasury.payout_split_json` column default. The test matrix uses
+stop reserve totals as POT TOTALS combined with that accepted split, and says so.
+
+### 26.4 — Season-funding invariant
+
+PRESERVED: at most one season-opening funding posting per (team, season).
+
+Enforced by removal of every alternative production writer plus the
+`SeasonAllocation` unique constraint on (league_id, team_id, season). There is no
+cross-writer runtime exclusion check, because there is no second writer to
+exclude. The stale `confirm_buyin_payment()` sole-writer docstring in
+`economy/championship.py` was corrected to say this.
+
+### 26.5 — Persisted ledger-door assertion
+
+The B2 PostgreSQL suite now reads persisted `LedgerEntry` rows back and asserts
+every `reserve:%` row carries `door = "season_allocation"` (scenario (t), 4 new
+assertions; suite total 108 -> 112).
+
+SCOPE STATED EXACTLY: rows produced by that suite's own setup in the disposable
+`_test` database. No production database is inspected; no claim is made about
+historical production rows.
+
+Other SQLite suites (`test_ledger.py`, `test_championship_payout.py`)
+deliberately post reserve legs with `door="buy_in_paid"` / `"buy_in_tab"` as
+historical pre-B2 fixtures. Different database, different scope. The assertion
+was NOT weakened to accommodate them.
+
+### 26.6 — FAAB top-up routes deregistered pending B6
+
+`POST /faab/topup-bet`, `/faab/topup-waiver`, `/faab/topup-confirm` and
+`/faab/apply-pending` are no longer registered. The temporary
+request-and-confirm flow mints wallet balance with no counterparty and no ledger
+posting, which is not an acceptable permanent Credits issuance model.
+
+Unavailable until B6 provides a balanced ledger posting, an issuance
+counterparty/account, approver identity, and request-to-credit provenance. The
+implementation in `wallet/faab_wallet.py` is retained as B6's starting point; the
+read-only FAAB surface survives. Route count 86 -> 82.
+
+### 26.7 — DEBT: residual non-route mint reachability
+
+`notifications/tuesday_sync.py::_step_apply_topups` still calls
+`apply_pending_topups()`, which credits `FaabWallet.waiver_balance` directly with
+no ledger posting, and that pipeline is reachable via `POST /admin/tuesday-sync`.
+
+With the request routes gone no route can create an eligible pending record — but
+that is a DATABASE PRECONDITION, not a structural guarantee, and it is recorded
+here rather than assumed away. `test_stripe_removal_regression.py` Item 6 asserts
+the residue exists so its eventual removal is noticed.
+
+Classified **REQUIRED — next package**. Neutralising the Tuesday step is outside
+a B-2 closure package.

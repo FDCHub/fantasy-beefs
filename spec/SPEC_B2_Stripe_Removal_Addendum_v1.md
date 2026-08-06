@@ -161,3 +161,83 @@ declarations and is an authorization redesign, not Stripe removal.
 | Rev | Date | Change |
 |---|---|---|
 | 1 | 2026-08-05 | First issue. Records the Stripe removal, supersedes the Finding 5.2-1 sole-writer invariant, and states the replacement in force. |
+
+---
+
+## 8. B-2 closure (Revision 1 addition, 2026-08-05)
+
+B-2 was the last B2 blocker: the accepted championship distribution arithmetic
+and remainder rule were reachable only through payout code deleted with the
+Stripe surface, and would otherwise have been lost.
+
+### 8.1 — Finding 5.2-3, Option A — the accepted rule, preserved
+
+`economy.championship.championship_distribution(total_cents, split, order)`
+returns `(place, team_id, pct, amount_cents)` per place, in `order`, numbered
+from 1.
+
+1. Each ordinary amount is `floor(total_cents * pct / 100)`.
+2. The **entire** remainder after flooring every place goes to **first place**.
+3. Therefore `sum(amount_cents) == total_cents` for every valid input.
+
+Integer cents only — verified at AST level: zero true-division nodes, zero float
+literals, one floor-division node. Invalid input raises `ValueError` and is never
+silently normalised; `bool` is rejected explicitly because it is an `int`
+subclass.
+
+### 8.2 — What it is NOT
+
+`championship_distribution()` is **arithmetic only**. It touches no database, no
+session, no ledger, and posts nothing. **Internal Credits championship
+settlement remains UNBUILT** and is not part of this package. Nothing here may
+be read as evidence that a season can be settled.
+
+Idempotent settlement and configurable payout split remain later decisions.
+`ECONOMY_STOPS` does **not** define payout splits — the only splits in the
+codebase are `reports.standings.DEFAULT_PAYOUT_SPLIT = [60, 30, 10]` and the
+`LeagueTreasury.payout_split_json` column default.
+
+### 8.3 — Season-funding invariant, and how it is enforced
+
+**PRESERVED INVARIANT: at most one season-opening funding posting per
+`(team, season)`.**
+
+Enforced by removal of every alternative production writer, plus the
+`SeasonAllocation` unique constraint on `(league_id, team_id, season)`. There is
+**no cross-writer runtime exclusion check**, because after the Stripe removal
+there is no second writer to exclude.
+
+### 8.4 — Persisted ledger-door assertion
+
+Source-level proof (the AST guard) is now paired with a runtime one. The B2
+PostgreSQL suite reads persisted `LedgerEntry` rows back and asserts every
+`reserve:%` row carries `door = "season_allocation"`.
+
+**Scope, stated exactly:** the rows produced by that suite's own setup in the
+disposable `_test` database. **No production database is inspected and no claim
+is made about historical production rows.** Other SQLite suites deliberately
+post reserve legs with `door="buy_in_paid"` / `"buy_in_tab"` as historical
+pre-B2 fixtures; they are a different database and a different scope, and the
+assertion was not weakened to accommodate them.
+
+### 8.5 — FAAB top-up routes deregistered pending B6
+
+`POST /faab/topup-bet`, `/faab/topup-waiver`, `/faab/topup-confirm` and
+`/faab/apply-pending` are **no longer registered**. The temporary
+request-and-confirm flow is not an acceptable permanent Credits issuance model:
+it mints wallet balance with no counterparty and no ledger posting.
+
+They remain unavailable until B6 provides a balanced ledger posting, an issuance
+counterparty/account, approver identity, and request-to-credit provenance. The
+underlying implementation in `wallet/faab_wallet.py` is retained as B6's starting
+point. The read-only FAAB surface (`/faab/wallet`, `/faab/league`, `/faab/setup`,
+`/faab/config`, `/faab/transactions`, `/faab/freeze`, `/faab/init-season`)
+survives — this is a mint removal, not a feature deletion.
+
+**RESIDUE, RECORDED NOT ASSUMED AWAY:**
+`notifications/tuesday_sync.py::_step_apply_topups` still calls
+`apply_pending_topups()`, which credits `FaabWallet.waiver_balance` directly, and
+that pipeline is reachable via `POST /admin/tuesday-sync`. With the request
+routes gone, no route can create an eligible pending record — but that is a
+**database precondition, not a structural guarantee**. Neutralising the Tuesday
+step is classified REQUIRED and is deliberately out of scope here.
