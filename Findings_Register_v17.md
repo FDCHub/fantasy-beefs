@@ -2465,3 +2465,57 @@ supplies the "authorized league commissioner" half and implements no issuance.
 
 SPRINT POSITION: Sprint 1 of 8 - commissioner authority plumbing complete; B6
 specification and implementation remain before Sprint 1 closure.
+
+
+## Section 30 - Commissioner grant review closure (2026-08-06)
+
+Sprint 1 of 8, closing phase. Package 1 of 3 REMAINS ACCEPTED; this is a
+review-closure patch, not a re-open.
+
+### 30.1 - R-G1 CLOSED
+
+The grant route converted EVERY IntegrityError into the duplicate 409, which
+could misreport a foreign-key or NOT NULL failure as "already a commissioner".
+
+The handler now rolls back FIRST, then returns 409 only when
+e.orig.diag.constraint_name == "uq_league_commissioner_league_user". Every other
+integrity failure is re-raised unchanged.
+
+Exact constraint inspection was chosen over a post-rollback re-query and was
+VERIFIED against the installed driver first: psycopg2 2.9.10 / PostgreSQL 16.14
+reports the unique constraint name for 23505 and the FK name for 23503. getattr
+is used defensively so a driver lacking .diag re-raises rather than crashing.
+
+Proven in test_commissioner_genesis_and_grant_pg.py item 21: FK violation
+reports fk_league_commissioner_league (so it is re-raised), duplicate reports
+uq_league_commissioner_league_user, route duplicate still 409, and a grant
+immediately after a 409 succeeds - showing rollback precedes both exits.
+
+### 30.2 - R-G2 CLOSED
+
+The docstring claimed FastAPI rejected unknown request keys while the model
+silently ignored them. Corrected to state that unsupported fields are rejected
+with 422 by model validation, matching the code.
+
+### 30.3 - R-G3 CLOSED
+
+CommissionerGrantRequest sets model_config = ConfigDict(extra="forbid").
+Installed Pydantic is 2.13.4, so ConfigDict is the correct form; the Pydantic 1
+inner-Config style is not used. Requests carrying source, assigned_by_user_id,
+league_id, created_at or any other extra key receive HTTP 422 and create no
+authority row. A clean user_id-only request still succeeds.
+
+The prior test asserted the OLD behaviour (201 with extras discarded) and was
+updated to assert 422, per field and in combination.
+
+### 30.4 - Nothing else changed
+
+Authority semantics, genesis behaviour, the 409 duplicate contract,
+league-scoped authorization, global-role and team-ownership behaviour, schema,
+migration, B6, wallets, Credits ledger, season allocation, settlement and Yahoo
+integration are untouched. Money-path snapshot unchanged: (0, 0, 0, 0) before
+and after.
+
+SPRINT POSITION: Sprint 1 of 8, closing phase. Package 1 of 3 accepted and
+review-closed. Package 2 of 3 - B6 top-off accounting specification - is next
+and NOT started.

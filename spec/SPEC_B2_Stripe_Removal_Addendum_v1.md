@@ -599,3 +599,72 @@ implements none of the issuance.
 
 **SPRINT POSITION: Sprint 1 of 8 - commissioner authority plumbing complete. B6
 specification and implementation remain before Sprint 1 closure.**
+
+
+---
+
+## 12. Commissioner grant review closure (2026-08-06)
+
+Sprint 1 of 8, closing phase. **Package 1 of 3 remains ACCEPTED** - this is a
+small review-closure patch, not a re-open. B6 specification is still the next
+package.
+
+### 12.1 - R-G1 CLOSED: duplicate 409 is now narrowly classified
+
+The grant route previously converted **every** `IntegrityError` into the
+duplicate 409. A foreign-key violation - a league or user deleted concurrently -
+or a NOT NULL failure would then have been reported as "already a commissioner",
+hiding a real defect behind a benign-looking conflict.
+
+The handler now rolls back **first**, then inspects the violated constraint via
+`e.orig.diag.constraint_name`, and returns 409 **only** for
+`uq_league_commissioner_league_user`. Every other integrity failure is re-raised
+unchanged.
+
+Exact constraint inspection was chosen over a post-rollback pair re-query
+because it is unambiguous and needs no second round trip. It was verified
+against the installed driver before being relied on: psycopg2 2.9.10 against
+PostgreSQL 16.14 reports `constraint_name='uq_league_commissioner_league_user'`
+for a unique violation (SQLSTATE 23505) and the FK's own name for a foreign-key
+violation (23503), so the two are cleanly distinguishable. `getattr` is used
+defensively so a driver without `.diag` re-raises rather than crashing inside
+the handler.
+
+Proven: the duplicate path still reports the unique constraint; a genuine FK
+violation reports `fk_league_commissioner_league` and is therefore re-raised;
+the sequential duplicate still returns 409; the concurrent duplicate still
+yields one 201 and one 409; and a grant issued immediately after a 409 succeeds,
+which shows the rollback precedes both the domain response and the re-raise.
+
+### 12.2 - R-G2 and R-G3 CLOSED: unknown fields are rejected, and the docstring says so
+
+**R-G3.** `CommissionerGrantRequest` now sets `model_config =
+ConfigDict(extra="forbid")`. The installed Pydantic is **2.13.4**, so the
+`ConfigDict` form is correct; the inner-`Config` form would be the Pydantic 1
+style and is not used. No other model in `api/main.py` carried an explicit
+config, so this sets the convention for the one model that needs it rather than
+changing any existing behaviour.
+
+A request containing only `user_id` proceeds. A request containing `source`,
+`assigned_by_user_id`, `league_id`, `created_at` or any other key is rejected
+with **HTTP 422** (`extra_forbidden`) and creates no authority row.
+
+**R-G2.** The docstring previously claimed FastAPI rejected unknown keys while
+the model in fact ignored them silently. That mismatch is corrected: the
+docstring now states that unsupported fields are rejected with 422 by model
+validation, which is what the code does.
+
+The previous test asserted the old behaviour - a 201 with extras discarded - and
+was updated to assert the 422, per field and in combination.
+
+### 12.3 - Unchanged
+
+Commissioner authority semantics, genesis behaviour, the duplicate 409 contract
+itself, league-scoped authorization, global-role behaviour, team-ownership
+behaviour, schema, migration, B6, wallets, the Credits ledger, season
+allocation, settlement and Yahoo integration are all untouched. No money-path
+table changed.
+
+**SPRINT POSITION: Sprint 1 of 8, closing phase. Package 1 of 3 accepted and now
+review-closed. Package 2 of 3 - B6 top-off accounting specification - is next
+and is NOT started.**

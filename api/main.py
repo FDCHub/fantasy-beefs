@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1333,6 +1333,15 @@ class SeasonAllocationOut(BaseModel):
 
 
 class CommissionerGrantRequest(BaseModel):
+    """Grant request. `user_id` is the ONLY accepted field.
+
+    extra="forbid" (Pydantic 2) makes any additional key a 422 validation
+    error rather than a silently dropped one. Provenance fields — source,
+    assigned_by_user_id, league_id, created_at — are server-set, and a caller
+    that tries to supply them is told so instead of being quietly ignored.
+    """
+    model_config = ConfigDict(extra="forbid")
+
     user_id: int
 
 
@@ -1366,10 +1375,14 @@ def league_grant_commissioner(
 
     PROVENANCE IS SERVER-SET AND UNSPOOFABLE. The request body carries ONLY the
     target user_id. league_id comes from the path, source is fixed to
-    "local_grant", and assigned_by_user_id is the authenticated caller. A client
-    cannot submit source, assigned_by_user_id, created_at or a different
-    league_id — those fields are not on the request model at all, so FastAPI
-    rejects unknown keys rather than silently honouring them.
+    "local_grant", and assigned_by_user_id is the authenticated caller.
+
+    A client that submits source, assigned_by_user_id, created_at or a
+    different league_id is REJECTED WITH 422 by model validation —
+    CommissionerGrantRequest sets extra="forbid". An earlier version of this
+    docstring claimed FastAPI rejected unknown keys while the model in fact
+    ignored them silently; that mismatch was R-G2 and the model now matches the
+    documented contract.
 
     DUPLICATE CONTRACT: 409, never overwrite. If the target already holds
     authority for this league the request is refused with 409 and the existing
@@ -1413,11 +1426,28 @@ def league_grant_commissioner(
     db.add(row)
     try:
         db.commit()
-    except IntegrityError:
-        # Concurrent duplicate: the other transaction won the unique
-        # constraint. Roll back and answer with the same 409 the sequential
-        # path gives, so exactly one row exists and neither caller sees a 500.
+    except IntegrityError as e:
+        # Roll back FIRST — the session is unusable until we do, and every exit
+        # from here (domain 409 or re-raise) must leave a clean transaction.
         db.rollback()
+
+        # NARROW CLASSIFICATION (R-G1). Only the named duplicate-pair
+        # constraint becomes a 409. Catching every IntegrityError would
+        # misreport a foreign-key violation (e.g. a league or user deleted
+        # concurrently) or a NOT NULL failure as "already a commissioner",
+        # hiding a real defect behind a benign-looking conflict.
+        #
+        # psycopg2 exposes the violated constraint on the DBAPI error's
+        # diagnostics. Verified against PostgreSQL 16: a unique violation
+        # reports constraint_name='uq_league_commissioner_league_user'
+        # (SQLSTATE 23505) while a foreign-key violation reports its own FK
+        # name (23503), so the two are cleanly distinguishable. getattr is used
+        # defensively so a driver without .diag re-raises rather than crashing
+        # inside the handler.
+        constraint = getattr(getattr(e.orig, "diag", None), "constraint_name", None)
+        if constraint != "uq_league_commissioner_league_user":
+            raise            # not a duplicate pair — surface the real failure
+
         raise HTTPException(
             status_code=409,
             detail=(f"User {req.user_id} is already a commissioner of league "

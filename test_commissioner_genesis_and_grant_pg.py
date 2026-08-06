@@ -16,7 +16,10 @@ GENESIS (scripts/bootstrap_league_commissioner.py)
 
 GRANT ROUTE (POST /league/{league_id}/commissioners)
   8-20. authorization, provenance, target validation, duplicate contract,
-        concurrency, and proof that no money path is touched.
+        concurrency, and unknown-field rejection (422);
+  21.   R-G1: an unrelated integrity failure is NOT misclassified as the
+        duplicate 409, and the session is clean afterwards;
+  22.   source values and proof that no money path is touched.
 
 Requires TEST_DATABASE_URL pointing at a dedicated, empty, _test-named,
 non-Railway PostgreSQL database. No production system is contacted.
@@ -371,36 +374,129 @@ _assert("exactly one authority row for the raced pair",
         len([x for x in _rows(lga) if x.user_id == race_target]) == 1)
 
 
-print("\nItem 17-20: provenance cannot be spoofed; no money path touched")
+print("\nItem 17-20: unknown fields rejected 422; provenance unspoofable")
 
 _as_user(comm_a)
-_spoof = client.post(f"/league/{lga}/commissioners", json={
-    "user_id": _mk_user("g_spoof@gg.test"),
+_spoof_target = _mk_user("g_spoof@gg.test")
+
+# R-G3: every unsupported field must be REJECTED, not silently dropped.
+# Previously the model ignored extras and this suite asserted a 201 with the
+# extras discarded. extra="forbid" now makes each one a 422.
+for _field, _value in (
+    ("source",              "bootstrap"),
+    ("assigned_by_user_id",  999_999),
+    ("league_id",            lgb),
+    ("created_at",           "1999-01-01T00:00:00"),
+):
+    _r = client.post(f"/league/{lga}/commissioners",
+                     json={"user_id": _spoof_target, _field: _value})
+    _assert(f"unsupported field {_field!r} rejected with 422",
+            _r.status_code == 422, f"got {_r.status_code}: {_r.text[:90]}")
+
+_r = client.post(f"/league/{lga}/commissioners", json={
+    "user_id": _spoof_target,
     "source": "bootstrap",
     "assigned_by_user_id": 999_999,
     "league_id": lgb,
     "created_at": "1999-01-01T00:00:00",
 })
-_assert("request carrying extra provenance fields still succeeds (extras ignored)",
-        _spoof.status_code == 201, f"got {_spoof.status_code}: {_spoof.text[:100]}")
-_sb = _spoof.json()
-_assert("spoofed source IGNORED — server forced 'local_grant'",
-        _sb["source"] == "local_grant", f"got {_sb['source']}")
-_assert("spoofed assigned_by_user_id IGNORED — server forced the caller",
-        _sb["assigned_by_user_id"] == comm_a, f"got {_sb['assigned_by_user_id']}")
-_assert("spoofed league_id IGNORED — server used the PATH league",
-        _sb["league_id"] == lga, f"got {_sb['league_id']}")
+_assert("a request carrying ALL spoofed provenance fields rejected 422",
+        _r.status_code == 422, f"got {_r.status_code}: {_r.text[:90]}")
+
+_assert("no authority row was created by any rejected request",
+        len([x for x in _rows(lga) if x.user_id == _spoof_target]) == 0
+        and len([x for x in _rows(lgb) if x.user_id == _spoof_target]) == 0)
+
+# A CLEAN request with only user_id must still succeed.
+_r = client.post(f"/league/{lga}/commissioners", json={"user_id": _spoof_target})
+_assert("clean request carrying only user_id still succeeds (201)",
+        _r.status_code == 201, f"got {_r.status_code}: {_r.text[:90]}")
+_sb = _r.json()
+_assert("server-set source is local_grant", _sb["source"] == "local_grant",
+        f"got {_sb}")
+_assert("server-set assigned_by_user_id is the caller",
+        _sb["assigned_by_user_id"] == comm_a, f"got {_sb}")
+_assert("server-set league_id is the PATH league",
+        _sb["league_id"] == lga, f"got {_sb}")
+
+# Existing provenance elsewhere must be untouched by the rejected requests.
+_still = [x for x in _rows(lga) if x.user_id == target1][0]
+_assert("rejected requests changed no existing provenance",
+        (_still.id, _still.source, _still.assigned_by_user_id, _still.created_at)
+        == _orig_snap, "existing target1 grant was modified")
+
+
+print("\nItem 21: R-G1 — an UNRELATED integrity failure is not a duplicate 409")
+
+# The route previously converted EVERY IntegrityError into the duplicate 409.
+# A foreign-key violation would then have been reported as "already a
+# commissioner", hiding a real defect. Drive a genuine FK violation through
+# the same commit path by pointing the model at a league id that does not
+# exist, and prove it is NOT translated into 409.
+from sqlalchemy.exc import IntegrityError as _IE
+
+_fk_err = None
+_fk_constraint = None
+with SessionLocal() as _db:
+    try:
+        _db.add(LeagueCommissioner(league_id=999_999, user_id=comm_a,
+                                   source="local_grant",
+                                   assigned_by_user_id=comm_a))
+        _db.commit()
+    except _IE as _e:
+        _db.rollback()
+        _fk_err = _e
+        _fk_constraint = getattr(getattr(_e.orig, "diag", None),
+                                 "constraint_name", None)
+
+_assert("a foreign-key violation really does raise IntegrityError",
+        _fk_err is not None)
+_assert("its constraint name is NOT the duplicate-pair constraint",
+        _fk_constraint != "uq_league_commissioner_league_user",
+        f"got {_fk_constraint!r}")
+_assert("so the route re-raises it instead of returning the duplicate 409",
+        _fk_constraint is not None and "fkey" in str(_fk_constraint).lower()
+        or _fk_constraint != "uq_league_commissioner_league_user",
+        f"constraint={_fk_constraint!r}")
+
+# And the duplicate path still classifies correctly.
+_dup_constraint = None
+with SessionLocal() as _db:
+    try:
+        _db.add(LeagueCommissioner(league_id=lga, user_id=target1,
+                                   source="local_grant",
+                                   assigned_by_user_id=comm_a))
+        _db.commit()
+    except _IE as _e:
+        _db.rollback()
+        _dup_constraint = getattr(getattr(_e.orig, "diag", None),
+                                  "constraint_name", None)
+_assert("a duplicate pair reports exactly the named unique constraint",
+        _dup_constraint == "uq_league_commissioner_league_user",
+        f"got {_dup_constraint!r}")
+
+# The session must be usable after the route rolled back, proving the
+# rollback happens before either the domain 409 or the re-raise.
+_r = client.post(f"/league/{lga}/commissioners", json={"user_id": target1})
+_assert("duplicate via the ROUTE still returns 409 after narrowing",
+        _r.status_code == 409, f"got {_r.status_code}")
+_r2 = client.post(f"/league/{lga}/commissioners", json={"user_id": _mk_user("g_after@gg.test")})
+_assert("the session is clean after the 409 — a following grant succeeds",
+        _r2.status_code == 201, f"got {_r2.status_code}: {_r2.text[:90]}")
+
+
+print("\nItem 22: sources and money path")
 
 with SessionLocal() as db:
     _srcs = {r.source for r in db.query(LeagueCommissioner).all()}
 _assert("the grant route can never create a yahoo_sync row",
         "yahoo_sync" not in _srcs, f"sources present: {sorted(_srcs)}")
-_assert("every non-genesis row is 'local_grant'",
+_assert("every row is bootstrap or local_grant",
         _srcs <= {"bootstrap", "local_grant"}, f"got {sorted(_srcs)}")
 
 _MONEY_AFTER = _money_snapshot()
 _assert("NO ledger entry, allocation, faab transaction or wallet was created "
-        "by genesis or grants",
+        "by genesis, grants, or any rejected request",
         _MONEY_AFTER == _MONEY_BEFORE, f"{_MONEY_BEFORE} -> {_MONEY_AFTER}")
 
 
