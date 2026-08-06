@@ -65,6 +65,8 @@ from auth.jwt_auth import (
 from auth.allocation_gate import (
     get_allocation_enforcement_active,
     get_season_allocation_gate,
+    is_league_commissioner,
+    require_league_commissioner,
     set_allocation_enforcement_active,
 )
 
@@ -1332,10 +1334,23 @@ class SeasonAllocationOut(BaseModel):
 def league_activate_season_allocation(
     league_id: int,
     db:        Session = Depends(get_db),
-    _comm:     User    = Depends(require_commissioner),
+    _comm:     User    = Depends(require_league_commissioner),
 ):
     """
-    Commissioner activates the whole league's season allocation (B2).
+    A commissioner AUTHORIZED FOR THIS LEAGUE activates its season allocation.
+
+    LEAGUE-SCOPED AUTHORIZATION. This route requires a LeagueCommissioner row
+    for (league_id, current_user.id). The global User.role == "commissioner" is
+    NOT sufficient: a commissioner of another league, or a global commissioner
+    with no authority row here, receives 403. Team ownership grants nothing.
+
+    Response ordering is deliberate — 403 for an unauthorized caller is
+    returned BEFORE any league-existence lookup, so league ids cannot be probed
+    by comparing 403 against 404. A 404 for a genuinely absent league is
+    therefore only reachable by a caller already authorized for that id.
+
+    This is the ONLY route narrowed in this package; the other commissioner
+    routes still use the global require_commissioner and remain open findings.
 
     Whole-league operation — the per-team rows and their ledger postings are
     written inside activate_season_allocation(), in one transaction. The

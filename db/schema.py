@@ -1397,6 +1397,63 @@ class SeasonAllocation(Base):
     team   = relationship("Team")
 
 
+# ── Commissioner authority ────────────────────────────────────────────────────
+
+class LeagueCommissioner(Base):
+    """Local, enforceable record that a user may administer a league.
+
+    THE AUTHORIZATION KEYS ARE LOCAL IDS. Authorization is decided by the
+    presence of a (league_id, user_id) row here — never by User.role alone,
+    never by team ownership, and never by any Yahoo identifier. Commissioner
+    authority is deliberately INDEPENDENT of User.team_id: a commissioner need
+    not own a team in the league they administer.
+
+    CARDINALITY IS MANY-TO-MANY. One user may hold rows for several leagues,
+    and one league may have several commissioners or co-commissioners. The
+    unique constraint prevents only a duplicate of the SAME pair.
+
+    `source` records where the authority came from:
+      yahoo_sync   — reconciled from Yahoo's commissioner designation.
+                     Yahoo reconciliation is NOT built; no row carries this
+                     value yet.
+      local_grant  — granted inside FantasyStakes by an existing authority,
+                     recorded in assigned_by_user_id.
+      bootstrap    — temporary authority recorded at a first trusted import.
+                     NOT built: it requires a per-user Yahoo credential
+                     binding that does not exist. See the addendum.
+
+    `assigned_by_user_id` is nullable because bootstrap and Yahoo-derived rows
+    have no granting user. It is not an audit log — this package deliberately
+    implements no revocation history.
+
+    Yahoo reconciliation identifiers belong on User and League, not here: this
+    table's job is local authorization, and substituting a remote identifier
+    for a local FK would make authorization depend on an unreconciled system.
+    """
+    __tablename__ = "league_commissioners"
+    __table_args__ = (
+        UniqueConstraint("league_id", "user_id",
+                         name="uq_league_commissioner_league_user"),
+        CheckConstraint("source IN ('yahoo_sync','local_grant','bootstrap')",
+                        name="ck_league_commissioner_source"),
+    )
+
+    id                  = Column(Integer,  primary_key=True, autoincrement=True)
+    league_id           = Column(Integer,  ForeignKey("leagues.id", name="fk_league_commissioner_league"),
+                                 nullable=False)
+    user_id             = Column(Integer,  ForeignKey("users.id",   name="fk_league_commissioner_user"),
+                                 nullable=False)
+    source              = Column(String,   nullable=False)
+    assigned_by_user_id = Column(Integer,  ForeignKey("users.id",   name="fk_league_commissioner_assigned_by"),
+                                 nullable=True)
+    created_at          = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                                 nullable=False)
+
+    league      = relationship("League")
+    user        = relationship("User", foreign_keys=[user_id])
+    assigned_by = relationship("User", foreign_keys=[assigned_by_user_id])
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def create_all() -> None:

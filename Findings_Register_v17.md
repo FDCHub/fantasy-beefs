@@ -2274,3 +2274,96 @@ acceptable permanent ruling. Classified REQUIRED - open.
 Internal Credits championship settlement remains UNBUILT. B6 remains UNBUILT.
 No new funding writer. Commissioner authorization remains global (Section 26,
 U-5) and is untouched outside the blocked scoping item.
+
+
+## Section 28 - Commissioner-to-league authority (2026-08-06)
+
+B2 acceptance is NOT reopened.
+
+### 28.1 - league_commissioners authority model added
+
+New table/model `league_commissioners` / `LeagueCommissioner`: id, league_id
+(FK, NOT NULL), user_id (FK, NOT NULL), source (NOT NULL, checked),
+assigned_by_user_id (FK, NULL), created_at (NOT NULL). Unique on
+(league_id, user_id).
+
+Authorization is decided by the presence of a row. Not by User.role alone, not
+by team ownership, not by any Yahoo identifier. COMMISSIONER AUTHORITY IS
+INDEPENDENT OF TEAM OWNERSHIP - User.team_id is never consulted, and a GM
+granted an explicit row IS authorized (proven by test).
+
+MANY-TO-MANY: one user may administer several leagues; one league may have
+several commissioners or co-commissioners. Duplicate pairs are rejected.
+
+Source values: yahoo_sync (unbuilt, no row carries it), local_grant (granted
+locally, recorded in assigned_by_user_id), bootstrap (unbuilt - see 28.3).
+assigned_by_user_id is nullable for bootstrap and Yahoo-derived rows. NO
+revocation history is implemented.
+
+### 28.2 - Season-allocation route is league-scoped
+
+POST /league/{league_id}/season-allocation now requires a LeagueCommissioner row
+for (league_id, current_user.id). This is the ONLY route narrowed; the other
+commissioner routes still use the global dependency and remain open.
+
+Ordering is deliberate: 403 for an unauthorized caller is returned BEFORE any
+league-existence lookup, so league ids cannot be probed by comparing 403 against
+404.
+
+### 28.3 - Bootstrap: BLOCKED, NOT IMPLEMENTED
+
+No bootstrap code was written. The Yahoo OAuth credential is NOT stored per
+user - it is a process-level file pair (secrets/yahoo_oauth.json,
+secrets/private.json) loaded at import in yahoo_auth.py. One shared credential
+serves every request, and nothing links the guid it writes to a User row. There
+is also NO authenticated league-import route: no route creates or updates a
+League.
+
+SMALLEST MISSING RELATIONSHIP: a per-user Yahoo identity binding (unique
+nullable User.yahoo_guid, or a per-user credential row) populated at an
+authenticated OAuth callback, PLUS an authenticated league-import route that
+creates the League in the same transaction as the requesting user.
+
+No authority was inferred from team ownership, email, name, or global role.
+Classified REQUIRED - open.
+
+### 28.4 - R-H1 CLOSED
+
+Proof added: enforcement ACTIVE + buy_in_paid = 1 + no qualifying
+SeasonAllocation -> HTTP 402. The legacy column cannot authorize by itself. The
+complementary direction is retained: a valid allocation passes with
+buy_in_paid = 0.
+
+### 28.5 - U-1 and U-2 CLOSED BY CONSTRUCTION
+
+U-1: a concurrent replay-loser that finds a complete matching allocation takes
+the SAME state-2 branch already proven by scenario (g). The implementation
+cannot observe whether another transaction overlapped it, so no
+concurrency-specific alternative behaviour exists to test. The observable
+concurrent path - the unique-constraint race - is proven by (m1) and (m2).
+CLOSED BY CONSTRUCTION, NOT WAIVED.
+
+U-2: closed under the prior reviewer rationale; _championship_total is now
+imported directly from economy.championship by two suites.
+
+Historical entries preserved; this is an appended closure ruling so these two
+stop recurring in every review.
+
+### 28.6 - Migration
+
+db/migrations/migrate_league_commissioners.py is additive and idempotent:
+creates the table and all named constraints, DROPS NOTHING, and BACKFILLS NO
+AUTHORITY ROW. No grant is inferred from User.team_id, audit rows,
+commissioner-created records, emails, names, or global role. An empty table
+after migration is the correct outcome.
+
+Proven on real PostgreSQL: runs on a database already holding users and leagues
+without altering either, run TWICE per the R-5 ruling with the second run
+reporting nothing done, and zero authority rows after both runs.
+
+### 28.7 - B6 unchanged
+
+B6 top-offs remain an MVP requirement and remain UNBUILT. Accepted flow: GM
+requests top-off -> authorized league commissioner approves -> balanced
+Credits-ledger issuance posts -> GM wallet receives Credits. This package adds
+the authority model that the approval step needs; it implements no issuance.

@@ -803,7 +803,15 @@ def main(tdb) -> None:
             return db.query(User).filter(User.role == "commissioner").first()
 
     api_main.app.dependency_overrides[api_main.get_db] = _override_db
+    # The season-allocation route is now league-scoped: it depends on
+    # require_league_commissioner, not the global require_commissioner. These
+    # scenarios exercise the route's ERROR MAPPING, not its authorization —
+    # authorization is proven exhaustively in
+    # test_league_commissioner_authority_pg.py — so the league-scoped
+    # dependency is overridden here to stand in for an authorized caller.
+    # Both names are overridden so the block stays correct if either is used.
     api_main.app.dependency_overrides[api_main.require_commissioner] = _override_comm
+    api_main.app.dependency_overrides[api_main.require_league_commissioner] = _override_comm
     client = TestClient(api_main.app, raise_server_exceptions=False)
 
     try:

@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import config
-from db.schema import League, SeasonAllocation, Team, User
+from db.schema import League, LeagueCommissioner, SeasonAllocation, Team, User
 from db.deps import get_db
 from auth.jwt_auth import get_current_gm
 
@@ -127,4 +127,59 @@ def get_season_allocation_gate(
             detail      = "Season allocation required before placing bets or issuing challenges",
         )
 
+    return current_user
+
+
+# ── League-scoped commissioner authority ─────────────────────────────────────
+#
+# Authorization is decided by a LeagueCommissioner row for (league_id, user_id).
+# The global User.role == "commissioner" is retained as defence in depth but is
+# NEVER sufficient on its own: a global commissioner with no row for the league
+# is denied. Team ownership grants nothing — commissioner authority is
+# deliberately independent of User.team_id.
+
+
+def is_league_commissioner(user_id: int, league_id: int, db: Session) -> bool:
+    """True iff a LeagueCommissioner row exists for exactly this pair.
+
+    Pure lookup: no role inspection, no team traversal, no fallback. One user
+    may be authorized for many leagues and one league may have many
+    commissioners; this answers only the single pair asked about.
+    """
+    return (
+        db.query(LeagueCommissioner)
+        .filter(
+            LeagueCommissioner.league_id == league_id,
+            LeagueCommissioner.user_id == user_id,
+        )
+        .first()
+        is not None
+    )
+
+
+def require_league_commissioner(
+    league_id:    int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+) -> User:
+    """FastAPI dependency — authenticated commissioner authorized for THIS league.
+
+    `league_id` binds to the route's own path parameter, so the authority check
+    is against the league actually being acted on, not one supplied separately.
+
+    Response ordering, stated explicitly because it is a security decision:
+      401  unauthenticated / inactive — from get_current_gm, unchanged.
+      403  authenticated but not authorized for this league. This is returned
+           BEFORE any league-existence lookup, so an unauthorized caller cannot
+           probe which league ids exist by comparing 403 against 404.
+      404  league genuinely absent — raised by the route body, only after
+           authorization has already succeeded.
+
+    That ordering is deliberate: authorization precedes resource disclosure.
+    """
+    if not is_league_commissioner(current_user.id, league_id, db):
+        raise HTTPException(
+            status_code = status.HTTP_403_FORBIDDEN,
+            detail      = "Commissioner access required for this league",
+        )
     return current_user

@@ -332,3 +332,138 @@ name/email inference was used.** Recorded as an open REQUIRED finding.
 Internal Credits championship settlement remains **unbuilt**. B6 remains
 **unbuilt**. No new funding writer exists. `activate_season_allocation()`
 remains the sole production writer of the season-opening posting.
+
+
+---
+
+## 10. Commissioner-to-league authority (2026-08-06)
+
+B2 acceptance is **not reopened**.
+
+### 10.1 - The local authority model
+
+`league_commissioners` (model `LeagueCommissioner`, `db/schema.py`):
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | Integer PK | autoincrement, repository convention |
+| `league_id` | Integer NOT NULL | FK `fk_league_commissioner_league` -> leagues.id |
+| `user_id` | Integer NOT NULL | FK `fk_league_commissioner_user` -> users.id |
+| `source` | String NOT NULL | check `ck_league_commissioner_source` |
+| `assigned_by_user_id` | Integer NULL | FK `fk_league_commissioner_assigned_by` -> users.id |
+| `created_at` | DateTime NOT NULL | UTC default |
+
+Unique constraint `uq_league_commissioner_league_user` on `(league_id, user_id)`.
+
+**THE AUTHORIZATION KEYS ARE LOCAL IDS.** Authorization is decided by the
+presence of a row - never by `User.role` alone, never by team ownership, never
+by a Yahoo identifier.
+
+**Commissioner authority is independent of team ownership.** `User.team_id` is
+not consulted. A commissioner need not own a team in the league they
+administer, and a GM granted an explicit row IS authorized - proven by test.
+
+**Cardinality is many-to-many.** One user may hold rows for several leagues; one
+league may have several commissioners or co-commissioners. The unique constraint
+prevents only a duplicate of the same pair.
+
+### 10.2 - Source values
+
+- `yahoo_sync` - reconciled from Yahoo's commissioner designation. **Yahoo
+  reconciliation is NOT built; no row carries this value.**
+- `local_grant` - granted inside FantasyStakes by an existing authority,
+  recorded in `assigned_by_user_id`.
+- `bootstrap` - temporary authority at a first trusted import. **NOT built** -
+  see 10.4.
+
+`assigned_by_user_id` is nullable because bootstrap and Yahoo-derived rows have
+no granting user. It is not an audit log; this package implements **no
+revocation history**.
+
+Yahoo reconciliation identifiers belong on `User` and `League`, not on this join
+table: substituting a remote identifier for a local FK would make authorization
+depend on an unreconciled system.
+
+### 10.3 - The season-allocation route is league-scoped
+
+`POST /league/{league_id}/season-allocation` now depends on
+`require_league_commissioner`. **This is the only route narrowed.** Every other
+commissioner route still uses the global `require_commissioner` and remains an
+open finding.
+
+Response ordering, a deliberate security decision:
+
+- **401** unauthenticated / inactive - unchanged.
+- **403** authenticated but not authorized for this league, returned **before**
+  any league-existence lookup, so league ids cannot be probed by comparing 403
+  against 404.
+- **404** league genuinely absent - reachable only by a caller already
+  authorized for that id.
+
+### 10.4 - Bootstrap: BLOCKED, NOT IMPLEMENTED
+
+**No bootstrap code was written.** The identity relationship it requires does
+not exist.
+
+1. **The Yahoo OAuth credential is NOT stored per user.** It lives in
+   process-level files (`secrets/yahoo_oauth.json`, `secrets/private.json`)
+   loaded at module import in `yahoo_auth.py`. There is no token table, no
+   OAuth model, and no token column on `User`.
+2. **Credential ownership cannot be proven.** One shared credential serves every
+   request. `yahoo_auth.py` writes a `guid` into `secrets/private.json`, but
+   nothing links that guid to a `User` row.
+3. **There is no authenticated league-import boundary.** No route creates or
+   updates a `League`. The only `League(...)` constructions are a dev helper in
+   `db/schema.py` and the offline `seed_real_2025_season_LIVE.py`.
+
+**Smallest missing local relationship:** a per-user Yahoo identity binding - a
+unique nullable `User.yahoo_guid` (or a per-user credential row) populated at an
+authenticated OAuth callback - **plus** an authenticated league-import route
+that creates the `League` in the same transaction as the requesting user. Only
+then can "this authenticated user performed the first trusted import" be
+asserted rather than assumed.
+
+No bootstrap was inferred from team ownership, email, display name, or global
+role. Recorded as an open REQUIRED finding.
+
+### 10.5 - Yahoo reconciliation remains unbuilt
+
+Automated Yahoo commissioner synchronization is not in this package and requires
+read-only payload evidence before any field is assumed. No Yahoo API call was
+made to discover commissioner fields.
+
+### 10.6 - R-H1 closed
+
+A focused proof now exists: enforcement ACTIVE + `buy_in_paid = 1` + **no**
+qualifying `SeasonAllocation` -> **HTTP 402**. The legacy column cannot
+authorize access by itself. The complementary direction is retained: a valid
+allocation passes with `buy_in_paid = 0`.
+
+### 10.7 - U-1 and U-2 closed by construction
+
+**U-1 - concurrent replay-loser returning `created=False`. CLOSED BY
+CONSTRUCTION, not waived.** A concurrent loser that finds a complete matching
+allocation takes the *same* state-2 branch already proven by scenario (g):
+return the existing result, post nothing, commit nothing. The implementation
+cannot observe whether another transaction overlapped it - there is no
+concurrency-specific alternative behaviour to test, because none exists in the
+code. The distinct concurrent path that *is* observable, the unique-constraint
+race, is proven by (m1) and (m2).
+
+**U-2 - direct-import proof of `economy.championship`. CLOSED** under the prior
+reviewer rationale; `_championship_total` is now imported directly from
+`economy.championship` by both `test_championship_payout.py` and
+`test_stripe_removal_regression.py`.
+
+Historical entries are preserved; this is an appended closure ruling.
+
+### 10.8 - B6 top-offs
+
+B6 remains an **MVP requirement** and remains **unbuilt**. Accepted flow:
+
+> GM requests top-off -> authorized league commissioner approves -> balanced
+> Credits-ledger issuance posts -> GM wallet receives Credits.
+
+The league-authority model added here is a prerequisite for the "authorized
+league commissioner approves" step. Nothing in this package implements the
+issuance posting.
