@@ -134,6 +134,57 @@ with SessionLocal() as db:
 ledger_post([("world", -100_000_00), (f"wallet:{t1_id}", 100_000_00)], door="buy_in_paid")
 
 
+# ── B2 gate retarget fixtures ────────────────────────────────────────────────
+#
+# The accepted B2 gate no longer reads User.buy_in_paid — it requires a
+# SeasonAllocation row for (league, team, config.ALLOCATION_SEASON). These two
+# helpers grant and revoke that row directly.
+#
+# The row is inserted rather than produced by activate_season_allocation()
+# deliberately: the authoritative operation also posts the three-leg funding
+# ledger entry, which would move wallet:{t1} and invalidate this file's
+# existing ledger-balance assertions. The gate is NOT bypassed or patched —
+# it still performs its own season-qualified lookup against a real row.
+#
+# buy_in_paid is still written alongside, so the suite keeps proving that the
+# legacy column does not drive the decision either way.
+
+import config as _config
+from db.schema import SeasonAllocation as _SeasonAllocation
+from payments.economy_config import DEFAULT_STOP as _STOP
+
+
+def _grant_allocation(team_id: int, league_id: int) -> None:
+    with SessionLocal() as db:
+        exists = (
+            db.query(_SeasonAllocation)
+            .filter(_SeasonAllocation.league_id == league_id,
+                    _SeasonAllocation.team_id == team_id,
+                    _SeasonAllocation.season == _config.ALLOCATION_SEASON)
+            .first()
+        )
+        if not exists:
+            db.add(_SeasonAllocation(
+                league_id     = league_id,
+                team_id       = team_id,
+                season        = _config.ALLOCATION_SEASON,
+                buyin_cents   = _STOP.buyin_cents,
+                wallet_cents  = _STOP.wallet_cents,
+                reserve_cents = _STOP.reserve_cents,
+            ))
+            db.commit()
+
+
+def _revoke_allocation(team_id: int, league_id: int) -> None:
+    with SessionLocal() as db:
+        db.query(_SeasonAllocation).filter(
+            _SeasonAllocation.league_id == league_id,
+            _SeasonAllocation.team_id == team_id,
+            _SeasonAllocation.season == _config.ALLOCATION_SEASON,
+        ).delete()
+        db.commit()
+
+
 def _bet_request():
     return {"matchup_id": matchup_id, "wallet_id": wallet1_id,
             "picked_team_id": t1_id, "amount": 10.0, "week": 1}
@@ -156,6 +207,7 @@ with SessionLocal() as db:
         raised = True
 _assert("direct call: unpaid GM passes when enforcement is off", not raised)
 
+_grant_allocation(t1_id, league_id)
 with SessionLocal() as db:
     user = db.query(User).filter(User.id == gm_id).first()
     user.buy_in_paid = 1
@@ -165,9 +217,10 @@ with SessionLocal() as db:
         get_buyin_gate(current_user=user, db=db)
     except HTTPException:
         raised = True
-_assert("direct call: paid GM also passes when enforcement is off (same result either way)", not raised)
+_assert("direct call: allocated GM also passes when enforcement is off (same result either way)", not raised)
 
-# Reset to unpaid for the HTTP round-trip below
+# Reset to unallocated/unpaid for the HTTP round-trip below
+_revoke_allocation(t1_id, league_id)
 with SessionLocal() as db:
     user = db.query(User).filter(User.id == gm_id).first()
     user.buy_in_paid = 0
@@ -201,6 +254,7 @@ _assert(
     f"got {resp_on_unpaid.status_code}: {resp_on_unpaid.text}",
 )
 
+_grant_allocation(t1_id, league_id)
 with SessionLocal() as db:
     user = db.query(User).filter(User.id == gm_id).first()
     user.buy_in_paid = 1
@@ -208,7 +262,7 @@ with SessionLocal() as db:
 
 resp_on_paid = client.post("/bets/straight", json=_bet_request())
 _assert(
-    "HTTP: paid GM passes through (201) once enforcement is on",
+    "HTTP: allocated GM passes through (201) once enforcement is on",
     resp_on_paid.status_code == 201,
     f"got {resp_on_paid.status_code}: {resp_on_paid.text}",
 )
@@ -219,9 +273,10 @@ _assert("wallet:t1 ledger balance debited by both successful bets so far ($10 in
 
 print("\nItem 4: toggling the flag takes effect on the very next call — no stale state")
 
+_revoke_allocation(t1_id, league_id)
 with SessionLocal() as db:
     user = db.query(User).filter(User.id == gm_id).first()
-    user.buy_in_paid = 0  # back to unpaid
+    user.buy_in_paid = 0  # back to unallocated/unpaid
     db.commit()
 
 with SessionLocal() as db:

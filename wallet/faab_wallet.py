@@ -53,6 +53,16 @@ from wallet.wallet_manager import _challenge_reserved
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
+class TopUpsUnavailableError(RuntimeError):
+    """Raised when a FAAB/BAB top-up would be applied while the B6
+    issuance-ledger model is unavailable.
+
+    This is a refusal, not a failure: it is raised BEFORE any wallet,
+    transaction or ledger state is read for mutation, so nothing is left
+    half-applied. Callers that treat it as a step outcome should record the
+    step as unavailable — never as applied."""
+
+
 DEFAULT_OPENING_BET    = 50.00
 DEFAULT_OPENING_WAIVER = 50.00
 
@@ -480,9 +490,36 @@ def _tx_to_topup_result(tx: FaabTransaction) -> TopupResult:
 
 def apply_pending_topups(db: Session) -> list[FaabTxRecord]:
     """
-    Apply all waiver top-ups whose apply_on <= now.
-    Commissioner calls this every Tuesday (or Tuesday Automation triggers it).
+    REFUSES. Applying a pending top-up would mint wallet balance with no
+    counterparty and no ledger posting behind it, which is not an acceptable
+    Credits issuance model.
+
+    Stripe is out of the MVP and the B6 issuance-ledger model does not exist
+    yet, so there is currently no correct way to apply a top-up. This function
+    therefore raises TopUpsUnavailableError as its FIRST statement — before any
+    query, any FaabWallet read, any status change and any ledger call — so no
+    pending row, wallet balance or ledger entry can be touched.
+
+    This is deliberately not an environment flag and not a silent no-op: a
+    no-op would report success while quietly applying nothing, which is worse
+    than refusing.
+
+    B6 must supply a balanced ledger posting, an issuance counterparty/account,
+    approver identity and request-to-credit provenance before this refusal is
+    lifted. The body below is retained unreached as B6's starting point.
+
+    See spec/SPEC_B2_Stripe_Removal_Addendum_v1.md and
+    FantasyBeefs_BAB_TopOff_UIUX_Spec_2026-07-21.md item B6.
     """
+    raise TopUpsUnavailableError(
+        "FAAB/BAB top-ups are unavailable: applying one would credit a wallet "
+        "with no balanced issuance-ledger posting behind it. This remains "
+        "refused until the B6 issuance-ledger model provides a balanced "
+        "posting, an issuance counterparty account, approver identity and "
+        "request-to-credit provenance. No pending top-up was applied and no "
+        "balance was changed."
+    )
+
     due = (
         db.query(FaabTransaction)
         .filter(

@@ -954,7 +954,16 @@ def _step_freeze_wallets(league_id: int, db: Session):
 # ── Step 4: Apply pending waiver top-ups ─────────────────────────────────────
 
 def _step_apply_topups(db: Session):
-    from wallet.faab_wallet import apply_pending_topups
+    """Apply due waiver top-ups.
+
+    UNAVAILABLE PENDING B6. apply_pending_topups() now refuses outright — it
+    would otherwise mint wallet balance with no balanced issuance-ledger
+    posting behind it. The refusal is recorded as an unavailable step so the
+    run stays truthful: it never reports top-ups as applied, and it does not
+    fail the rest of the Tuesday pipeline, which is the module's established
+    handling for a step that cannot run.
+    """
+    from wallet.faab_wallet import apply_pending_topups, TopUpsUnavailableError
     t0 = time.monotonic()
     try:
         applied = apply_pending_topups(db)
@@ -963,6 +972,16 @@ def _step_apply_topups(db: Session):
         msg  = f"Applied {len(applied)} waiver top-up(s) totalling ${total:.2f}"
         data = {"applied_count": len(applied), "total_applied": total}
         return StepResult("apply_topups", True, msg, data, None, ms), applied
+    except TopUpsUnavailableError as e:
+        # Expected refusal, not a fault. Recorded as unavailable with zero
+        # applied so no downstream reader can mistake it for a successful run.
+        ms = int((time.monotonic() - t0) * 1000)
+        return StepResult(
+            "apply_topups", False,
+            "top-ups unavailable pending B6 issuance-ledger model",
+            {"applied_count": 0, "total_applied": 0.0, "unavailable": True},
+            str(e), ms,
+        ), []
     except Exception as e:
         ms = int((time.monotonic() - t0) * 1000)
         return StepResult("apply_topups", False, "top-up apply failed", {}, str(e), ms), []

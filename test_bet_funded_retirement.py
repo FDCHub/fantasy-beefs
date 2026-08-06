@@ -45,6 +45,30 @@ from auth.jwt_auth import get_current_gm, hash_password
 from db.deps import get_db
 from wallet.faab_wallet import set_freeze
 from auth.allocation_gate import set_allocation_enforcement_active as set_buyin_enforcement_active
+import config as _config
+from payments.economy_config import DEFAULT_STOP as _STOP
+
+
+def _grant_allocation(team_id: int, league_id: int) -> None:
+    """Grant the SeasonAllocation row the accepted B2 gate requires.
+
+    Inserted directly rather than via activate_season_allocation(), which would
+    also post the three-leg funding entry and move wallet:{team} — that would
+    invalidate this file's ledger-balance assertions. The gate itself is not
+    patched or bypassed: it still performs its own season-qualified lookup.
+    """
+    from db.schema import SeasonAllocation as _SA
+    with SessionLocal() as db:
+        found = (db.query(_SA)
+                 .filter(_SA.league_id == league_id, _SA.team_id == team_id,
+                         _SA.season == _config.ALLOCATION_SEASON).first())
+        if not found:
+            db.add(_SA(league_id=league_id, team_id=team_id,
+                       season=_config.ALLOCATION_SEASON,
+                       buyin_cents=_STOP.buyin_cents,
+                       wallet_cents=_STOP.wallet_cents,
+                       reserve_cents=_STOP.reserve_cents))
+            db.commit()
 from ledger.ledger import post as ledger_post, create_ledger_table, balance_of
 
 import api.main as api_main
@@ -202,9 +226,10 @@ _assert("unpaid GM blocked with HTTP 402", resp_unpaid.status_code == 402, f"got
 
 print("\nItem 3: FAAB-frozen GM (bet_frozen=1) can now bet, provided the BAB ledger wallet is funded")
 
+_grant_allocation(t1_id, league_id)   # B2 gate condition: SeasonAllocation, not buy_in_paid
 with SessionLocal() as db:
     user1 = db.query(User).filter(User.id == user1_id).first()
-    user1.buy_in_paid = 1  # flip to paid — this scenario tests the FAAB layer, not the buy-in layer
+    user1.buy_in_paid = 1  # legacy column retained to prove it does NOT drive the gate
 
     fw = FaabWallet(team_id=t1_id, league_id=league_id)
     db.add(fw)
@@ -259,6 +284,10 @@ with SessionLocal() as db:
     wallet3_id = wallet3.id
     matchup2_id = matchup2.id
     user_uf_id = user_uf.id
+
+# The underfunded scenario must reach the LEDGER check, so this GM has to clear
+# the allocation gate first — otherwise the 402 masks the 400 under test.
+_grant_allocation(t3_id, league_id)
 
 # Deliberately NOT funding wallet:{t3_id} in the ledger — it stays at 0.
 _set_current_user(user_uf_id)

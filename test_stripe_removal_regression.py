@@ -260,15 +260,90 @@ for _gone in ("confirm_topup", "create_bet_topup", "create_waiver_topup",
               "apply_pending_topups"):
     _assert(f"api.main no longer imports {_gone}", not hasattr(_am, _gone))
 
-# RECORDED, NOT ASSERTED AWAY: notifications/tuesday_sync.py::_step_apply_topups
-# still calls apply_pending_topups(), reachable via POST /admin/tuesday-sync.
-# With the request routes gone, no route can create an eligible pending record,
-# but that is a database precondition rather than a structural guarantee. This
-# assertion documents the residue instead of pretending it is absent.
+# ── ITEM 7: the Tuesday-sync top-up mint is structurally refused ─────────────
+#
+# The previous revision of this suite merely RECORDED that
+# notifications/tuesday_sync.py still called apply_pending_topups(). That
+# residue is now closed: apply_pending_topups() refuses as its first statement.
+# These assertions prove the refusal happens BEFORE any mutation, using a real
+# pending row in the disposable test database.
+
+print("\nItem 7: the Tuesday-sync top-up mint is structurally refused")
+
+from wallet.faab_wallet import (
+    TopUpsUnavailableError, apply_pending_topups, _log_tx,
+)
+from db.schema import FaabWallet, FaabTransaction, Wallet
+from datetime import datetime, timedelta, timezone
+
+with SessionLocal() as db:
+    _t = db.query(Team).filter(Team.league_id == league_id).first()
+    db.add(Wallet(team_id=_t.id, balance=0.0))
+    db.add(FaabWallet(league_id=league_id, team_id=_t.id,
+                      waiver_balance=0.0, pending_waiver_topup=25.0))
+    db.commit()
+    _tx = _log_tx(db, league_id, _t.id, "topup_waiver", 25.0,
+                  wallet_from="issuance", wallet_to="waiver", status="pending",
+                  apply_on=datetime.now(timezone.utc) - timedelta(days=1))
+    db.commit()
+    _tx_id, _team_id = _tx.id, _t.id
+
+def _mint_state():
+    with SessionLocal() as db:
+        fw = db.query(FaabWallet).filter(FaabWallet.team_id == _team_id).first()
+        tx = db.query(FaabTransaction).filter(FaabTransaction.id == _tx_id).first()
+        w  = db.query(Wallet).filter(Wallet.team_id == _team_id).first()
+        n  = db.query(FaabTransaction).count()
+        # bet balance lives on Wallet, not FaabWallet
+        return (tx.status, fw.waiver_balance, w.balance,
+                fw.pending_waiver_topup, n, balance_of(f"wallet:{_team_id}"))
+
+_before = _mint_state()
+_raised = None
+try:
+    apply_pending_topups_result = apply_pending_topups(None)   # arg irrelevant; refuses first
+except TopUpsUnavailableError as _e:
+    _raised = _e
+except Exception as _e:
+    _raised = _e
+_after = _mint_state()
+
+_assert("apply_pending_topups() raises TopUpsUnavailableError",
+        isinstance(_raised, TopUpsUnavailableError),
+        f"got {type(_raised).__name__ if _raised else 'no exception'}")
+_assert("the refusal message names the B6 issuance-ledger model",
+        _raised is not None and "B6" in str(_raised) and "issuance" in str(_raised).lower(),
+        f"message: {str(_raised)[:80]}")
+_assert("it refuses even when passed no session at all (refusal precedes any query)",
+        isinstance(_raised, TopUpsUnavailableError))
+
+_assert("the due pending row did NOT change status",
+        _before[0] == _after[0] == "pending", f"{_before[0]} -> {_after[0]}")
+_assert("FaabWallet.waiver_balance unchanged",
+        _before[1] == _after[1], f"{_before[1]} -> {_after[1]}")
+_assert("Wallet.balance (bet side) unchanged",
+        _before[2] == _after[2], f"{_before[2]} -> {_after[2]}")
+_assert("FaabWallet.pending_waiver_topup unchanged",
+        _before[3] == _after[3], f"{_before[3]} -> {_after[3]}")
+_assert("no FaabTransaction row was added or removed",
+        _before[4] == _after[4], f"{_before[4]} -> {_after[4]}")
+_assert("no ledger entry was added for the team wallet",
+        _before[5] == _after[5], f"{_before[5]} -> {_after[5]}")
+
+# The Tuesday pipeline step must surface this as unavailable, never as applied.
 import notifications.tuesday_sync as _ts
-_assert("KNOWN RESIDUE: tuesday_sync still references apply_pending_topups",
-        "apply_pending_topups" in open(_ts.__file__, encoding="utf-8").read(),
-        "if this ever fails, the residue is gone and the note can be dropped")
+_step_res, _applied = _ts._step_apply_topups(None)
+_assert("/admin/tuesday-sync step reports success=False for top-ups",
+        _step_res.success is False, f"success={_step_res.success}")
+_assert("the step message says unavailable pending B6",
+        "unavailable" in _step_res.message.lower() and "B6" in _step_res.message,
+        f"message={_step_res.message!r}")
+_assert("the step applied ZERO top-ups", _applied == [], f"got {_applied}")
+_assert("the step data records applied_count 0 and unavailable=True",
+        _step_res.data.get("applied_count") == 0 and _step_res.data.get("unavailable") is True,
+        f"data={_step_res.data}")
+_assert("state STILL unchanged after the pipeline step ran",
+        _mint_state() == _before, f"{_before} -> {_mint_state()}")
 
 
 # ── Summary ──────────────────────────────────────────────────────────────────

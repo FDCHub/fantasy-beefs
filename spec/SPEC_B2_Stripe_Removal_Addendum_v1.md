@@ -241,3 +241,94 @@ that pipeline is reachable via `POST /admin/tuesday-sync`. With the request
 routes gone, no route can create an eligible pending record — but that is a
 **database precondition, not a structural guarantee**. Neutralising the Tuesday
 step is classified REQUIRED and is deliberately out of scope here.
+
+
+---
+
+## 9. Post-acceptance hardening (2026-08-05)
+
+B2 acceptance is **not reopened**. These are bounded hardening items applied
+after Groups 1 and 2 were accepted and B-1/B-2 closed.
+
+### 9.1 - Tuesday-sync top-up mint structurally refused
+
+`wallet.faab_wallet.apply_pending_topups()` now raises `TopUpsUnavailableError`
+as its **first executable statement** - before any query, any `FaabWallet` read,
+any status change and any ledger call. Verified structurally: the function's
+first non-docstring AST node is a `Raise`.
+
+Not an environment flag, and not a silent no-op - a no-op would report success
+while applying nothing, which is worse than refusing.
+
+`notifications/tuesday_sync.py::_step_apply_topups` catches it specifically and
+records the step as "top-ups unavailable pending B6 issuance-ledger model" with
+`applied_count = 0` and `unavailable = True`. The rest of the Tuesday pipeline
+is unaffected, which is that module's established handling for a step that
+cannot run.
+
+**No registered or automated production path can now apply a legacy pending
+top-up.** Proven in `test_stripe_removal_regression.py` Item 7 against a real
+due pending row: status unchanged, waiver_balance unchanged, Wallet.balance
+unchanged, pending_waiver_topup unchanged, no FaabTransaction added, no ledger
+entry added - before and after the pipeline step runs.
+
+### 9.2 - Gate tests retargeted to SeasonAllocation
+
+The five stale failures are closed by **fixture retargeting**, not by weakening.
+`test_buyin_enforcement.py` and `test_bet_funded_retirement.py` now seed a real
+`SeasonAllocation` row for `config.ALLOCATION_SEASON`.
+
+The row is inserted directly rather than produced by
+`activate_season_allocation()`, which would also post the three-leg funding
+entry and move `wallet:{team}`, invalidating each file's existing ledger-balance
+assertions. **The gate is not patched or bypassed** - it still performs its own
+season-qualified lookup against a real row. `buy_in_paid` is still written
+alongside, so both suites keep proving the legacy column does not drive the
+decision. No expected status code was weakened.
+
+### 9.3 - Season-allocation league scoping: BLOCKED
+
+**Not implemented. The route is NOT league-scoped, and is not recorded as such.**
+
+No authoritative user-to-league relationship exists for commissioners:
+
+- `User` has no `league_id`; `League` has no commissioner/owner column;
+- there is no membership or commissioner-assignment table;
+- the only structural path is `User.team_id` -> `Team.league_id`, and
+  `User.team_id` is **nullable** - a commissioner need not own a team, and the
+  gate code already handles `team_id is None`;
+- the five models carrying both `user_id` and `league_id` (`BuyInRecord`,
+  `PayoutRecord`, `StripeAuditLog`, `CommissionerRule`, `RuleAuditLog`) are
+  **audit records of who performed an action**, not grants of authority.
+  Deriving authority from `CommissionerRule.created_by_user_id` would be
+  circular, and would fail for a commissioner who has created no rules.
+
+Minimum decision needed: an explicit commissioner-to-league authority record
+(a `league_commissioners` join table, or a nullable
+`League.commissioner_user_id`), plus a product ruling on whether a commissioner
+must own a team in the league they administer. **No schema was invented and no
+name/email inference was used.** Recorded as an open REQUIRED finding.
+
+### 9.4 - Distribution hygiene
+
+- **Mismatched split/order is rejected deliberately.** The deleted payout
+  implementation zipped and silently truncated, which could under-distribute the
+  pot while appearing to succeed. Raising preserves the exact-distribution
+  invariant. Tested in both directions.
+- **Zero-percent first place still takes the remainder.** With `[0, 60, 40]`,
+  place 1 floors to 0 yet receives the whole remainder - Option A is not
+  special-cased on pct > 0. Note `[0, 100]` can never strand a remainder, since
+  `total * 100 // 100` is exact; the suite asserts that rather than overstating.
+- **Purity is now AST-verified by the committed test**, not by source-string
+  inspection: zero `ast.Div` nodes, at least one `ast.FloorDiv`, zero float
+  literals, no `float()`/`round()`, no DB/session/ledger call, and no
+  Stripe/payment identifier anywhere in the body.
+- **`order` is an already-ranked input**, best team first. The function assigns
+  place 1 to `order[0]` and does not compute or verify standings; ranking is the
+  caller's responsibility. Recorded in the docstring.
+
+### 9.5 - Unchanged
+
+Internal Credits championship settlement remains **unbuilt**. B6 remains
+**unbuilt**. No new funding writer exists. `activate_season_allocation()`
+remains the sole production writer of the season-opening posting.

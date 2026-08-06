@@ -2201,3 +2201,76 @@ the residue exists so its eventual removal is noticed.
 
 Classified **REQUIRED — next package**. Neutralising the Tuesday step is outside
 a B-2 closure package.
+
+
+## Section 27 - Post-B2-acceptance hardening (2026-08-05)
+
+B2 acceptance is NOT reopened. Four bounded hardening items; three completed,
+one blocked on missing authoritative data.
+
+### 27.1 - Tuesday-sync top-up mint: STRUCTURALLY REFUSED
+
+`apply_pending_topups()` raises `TopUpsUnavailableError` as its first executable
+statement - before any query, wallet read, status change or ledger call.
+Verified structurally (first non-docstring AST node is a Raise). Not an
+environment flag; not a silent no-op.
+
+`_step_apply_topups` records the step as unavailable with applied_count = 0 and
+unavailable = True, never as applied, and does not fail the rest of the Tuesday
+pipeline.
+
+NO REGISTERED OR AUTOMATED PRODUCTION PATH CAN NOW APPLY A LEGACY PENDING
+TOP-UP. Proven against a real due pending row: nothing mutated, before or after
+the pipeline step. Closes the U-6 residue recorded in Section 26.7.
+
+### 27.2 - The five gate-test failures: CLOSED by fixture retargeting
+
+`test_buyin_enforcement.py` (was 13/2) and `test_bet_funded_retirement.py` (was
+17/3) now seed a real SeasonAllocation row for config.ALLOCATION_SEASON. Both
+suites are fully green.
+
+The gate was NOT patched, monkeypatched or bypassed, buy_in_paid was NOT
+restored as an authorization condition, and no expected status code was
+weakened. The row is inserted directly rather than via
+activate_season_allocation() because that operation also posts the funding
+ledger entry, which would invalidate each file's existing ledger assertions.
+
+### 27.3 - Season-allocation league scoping: BLOCKED, NOT IMPLEMENTED
+
+The route is NOT league-scoped and is NOT recorded as such.
+
+No authoritative commissioner-to-league relationship exists. User has no
+league_id; League has no commissioner column; there is no membership table. The
+only structural path is User.team_id -> Team.league_id, and team_id is nullable
+- a commissioner need not own a team. The five models carrying both user_id and
+league_id are audit records of who acted, not grants of authority; deriving
+authority from CommissionerRule.created_by_user_id would be circular and would
+fail for a commissioner who has created no rules.
+
+MINIMUM DECISION NEEDED: an explicit commissioner-to-league authority record (a
+league_commissioners join table, or a nullable League.commissioner_user_id),
+plus a product ruling on whether a commissioner must own a team in the league
+they administer. No schema was invented; no name/email inference was used.
+
+The operator runs multiple leagues, so a single-league assumption is not an
+acceptable permanent ruling. Classified REQUIRED - open.
+
+### 27.4 - Distribution hygiene (four accepted corrections)
+
+1. Mismatched split/order is deliberately rejected; the deleted implementation
+   silently truncated and could under-distribute the pot. Tested both
+   directions.
+2. Zero-percent first place still receives the flooring remainder. [0,100]
+   cannot strand a remainder at all (total*100//100 is exact) and the suite
+   asserts that rather than overstating; [0,60,40] demonstrates the real case.
+3. Purity is AST-verified by the committed test: zero ast.Div, at least one
+   ast.FloorDiv, zero float literals, no float()/round(), no DB/session/ledger
+   call, no Stripe/payment identifier.
+4. `order` is an already-ranked, best-first input; the function assigns place 1
+   to order[0] and does not compute standings.
+
+### 27.5 - Unchanged
+
+Internal Credits championship settlement remains UNBUILT. B6 remains UNBUILT.
+No new funding writer. Commissioner authorization remains global (Section 26,
+U-5) and is untouched outside the blocked scoping item.

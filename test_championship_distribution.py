@@ -176,6 +176,32 @@ _assert("sum == total for 2000 totals x 5 splits (10,000 cases)", _sweep_ok)
 _assert("remainder never touched a non-first place across all 10,000 cases", _sweep_first_only)
 
 
+print("\nItem 15: zero-percent first place still receives the flooring remainder")
+
+# [0, 100] can NEVER strand a remainder: total*100//100 is exact, so the
+# remainder is always 0 and first place correctly receives 0. Asserted so
+# the claim is stated no more strongly than the arithmetic supports.
+for _t in (1, 7, 99999):
+    _rows = championship_distribution(_t, [0, 100], [5, 6])
+    _assert(f"[0,100] total={_t}: no remainder exists, first place gets 0",
+            (_rows[0][3], _rows[1][3]) == (0, _t),
+            f"got {[a for *_, a in _rows]}")
+
+# [0, 60, 40] DOES strand a remainder, and a 0% first place still absorbs it
+# in full — Option A is not special-cased on pct > 0.
+for _t in (1, 3, 101, 99999):
+    _base = [_t * p // 100 for p in (0, 60, 40)]
+    _rem = _t - sum(_base)
+    _rows = championship_distribution(_t, [0, 60, 40], [5, 6, 7])
+    _assert(f"[0,60,40] total={_t}: 0-pct first place receives the whole remainder",
+            _rows[0][3] == _base[0] + _rem,
+            f"got {_rows[0][3]}, expected {_base[0]}+{_rem}")
+    _assert(f"[0,60,40] total={_t}: sum still equals the pot exactly",
+            sum(a for *_, a in _rows) == _t,
+            f"got {sum(a for *_, a in _rows)}")
+_check_valid("zero-pct-first", 99999, [0, 60, 40], [5, 6, 7])
+
+
 # ── INVALID INPUT ────────────────────────────────────────────────────────────
 
 print("\nItem 12: invalid input is rejected, never silently normalised")
@@ -209,11 +235,57 @@ _assert_raises("bool split entry rejected",
                championship_distribution, 1000, [True, 99], [1, 2])
 _assert_raises("bool team id rejected", championship_distribution, 1000, [100], [True])
 
-print("\nItem 14: the function is pure — no db/session/ledger imports reachable")
-import inspect
-_src = inspect.getsource(championship_distribution)
-for _bad in ("db.", "Session", "query(", "ledger_post", "balance_of", "stripe", "commit("):
-    _assert(f"function body contains no {_bad!r}", _bad not in _src)
+print("\nItem 14: purity proven at AST level, not by source-string inspection")
+
+import ast as _ast
+
+_champ_src = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "economy", "championship.py")
+_mod_tree = _ast.parse(open(_champ_src, encoding="utf-8").read())
+_fn = next(n for n in _ast.walk(_mod_tree)
+           if isinstance(n, _ast.FunctionDef)
+           and n.name == "championship_distribution")
+
+_divs   = [n for n in _ast.walk(_fn)
+           if isinstance(n, _ast.BinOp) and isinstance(n.op, _ast.Div)]
+_floors = [n for n in _ast.walk(_fn)
+           if isinstance(n, _ast.BinOp) and isinstance(n.op, _ast.FloorDiv)]
+_floats = [n for n in _ast.walk(_fn)
+           if isinstance(n, _ast.Constant) and isinstance(n.value, float)]
+_named  = {n.func.id for n in _ast.walk(_fn)
+           if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Name)}
+_attrs  = {n.func.attr for n in _ast.walk(_fn)
+           if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Attribute)}
+_all_calls = _named | _attrs
+
+_assert("AST: zero true-division (ast.Div) nodes in the function body",
+        len(_divs) == 0, f"got {len(_divs)}")
+_assert("AST: at least one floor-division (ast.FloorDiv) node",
+        len(_floors) >= 1, f"got {len(_floors)}")
+_assert("AST: zero float literals in the function body",
+        len(_floats) == 0, f"got {[f.value for f in _floats]}")
+_assert("AST: no call to float() or round()",
+        not ({"float", "round"} & _all_calls), f"calls={sorted(_all_calls)}")
+
+_FORBIDDEN_CALLS = {
+    "query", "add", "commit", "rollback", "flush", "refresh", "execute",
+    "post", "ledger_post", "balance_of", "trial_balance",
+    "Session", "SessionLocal", "sessionmaker", "get_db",
+}
+_assert("AST: no DB/session/query/ledger-posting call in the function body",
+        not (_FORBIDDEN_CALLS & _all_calls),
+        f"forbidden: {sorted(_FORBIDDEN_CALLS & _all_calls)}")
+
+_assert("AST: the only calls made are pure builtins and the local validator",
+        _all_calls <= {"ValueError", "_reject_non_int", "count", "enumerate",
+                       "isinstance", "len", "list", "set", "sorted", "sum", "zip"},
+        f"got {sorted(_all_calls)}")
+
+_names_used = {n.id for n in _ast.walk(_fn) if isinstance(n, _ast.Name)}
+_assert("AST: no Stripe/payment/provider identifier appears in the body",
+        not any("stripe" in n.lower() or "payment" in n.lower()
+                for n in _names_used),
+        f"names={sorted(_names_used)}")
 
 
 # ── Summary ──────────────────────────────────────────────────────────────────

@@ -109,6 +109,12 @@ def championship_distribution(
     Returns one (place, team_id, pct, amount_cents) tuple per place, in the
     order given by `order`, with place numbering starting at 1.
 
+    RANK-ORDER CONTRACT. `order` must already be in FINAL RANK ORDER, best team
+    first. This function assigns place 1 to order[0] and does not compute,
+    verify or re-sort standings — ranking is the caller's responsibility (see
+    reports/standings.py::_compute_standings_order). Passing an unranked list
+    silently pays the wrong teams, and no validation here can detect it.
+
     THE RULE:
       1. Each ordinary amount is floor(total_cents * pct / 100).
       2. Whatever remains after flooring EVERY place is added, in full, to
@@ -127,6 +133,19 @@ def championship_distribution(
 
     Raises ValueError on any invalid input. Invalid input is never silently
     normalised — a bad split is a caller bug and must surface as one.
+
+    MISMATCHED split/order IS REJECTED, DELIBERATELY. The deleted payout
+    implementation zipped the two lists and silently truncated to the shorter
+    one, which could under-distribute the pot while still looking successful.
+    Raising here preserves the accepted invariant that exactly `total_cents` is
+    distributed: a caller that cannot say how many places there are cannot be
+    given a correct answer.
+
+    ZERO-PERCENT FIRST PLACE STILL TAKES THE REMAINDER. With a split such as
+    [0, 100], place 1 floors to 0 but still receives the entire flooring
+    remainder. That is faithful to Option A, which sends the whole remainder to
+    first place unconditionally — it is not special-cased on pct > 0, and the
+    sum identity holds either way.
     """
     _reject_non_int(total_cents, "total_cents")
     if total_cents < 0:
