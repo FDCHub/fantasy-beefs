@@ -27,12 +27,32 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Uuid, text
+from sqlalchemy import BigInteger, Column, DateTime, Index, Integer, String, Uuid, text
 from sqlalchemy.orm import Session, declarative_base
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from db.schema import engine, SessionLocal
+
+# ── B6 canonical issuance door ────────────────────────────────────────────────
+#
+# The ONE door under which an approved BAB Top-Off issues Credits. Defined here,
+# beside the guard it modifies, and imported by the issuance module rather than
+# re-spelled as a literal at the call site.
+#
+# FAILURE MODE IF THE LITERAL IS WRONG — loud, never silent. The exemption in
+# _run_checks_and_write() activates on this EXACT string and nothing else. A
+# mistyped or alternate door leaves bab_issuance:* fully guarded, so a valid
+# issuance posted under the wrong literal is REFUSED with InsufficientFundsError
+# (the issuance account starts at zero and the debit would take it negative).
+# Importing the constant is therefore about not having to debug that refusal —
+# it is not what makes the guard safe. Nothing is silently accepted either way.
+#
+# This door is limited to approved eligible BAB Top-Off issuance. It is NOT a
+# generic mint, an opening-allocation door, a correction door, a refund door, or
+# a waiver door. Its only legal posting shape is the two legs
+#   ("bab_issuance:{league_id}:{season}", -T), ("wallet:{team_id}", +T).
+APPROVED_BAB_TOPOFF_DOOR = "approved_bab_topoff"
 
 # Separate declarative base from db.schema's — this table is defined here,
 # in isolation, specifically so db/schema.py (an existing, shared file)
@@ -49,6 +69,23 @@ class LedgerEntry(_LedgerBase):
     computed on demand by balance_of()/trial_balance().
     """
     __tablename__ = "ledger_entries"
+
+    # This table carried NO index of any kind before B6 — not even on
+    # posting_id. Both reads below are on the approval hot path and both would
+    # otherwise be sequential scans that grow with every posting the platform
+    # ever makes, forever.
+    #
+    #   posting_id      provenance lookup: given a FaabTransaction's
+    #                   ledger_posting_id, fetch that posting's legs. Deliberately
+    #                   NON-UNIQUE — every leg of one posting shares the value.
+    #   (door, account) cap-consumption read: sum governed issuance for one
+    #                   wallet account under one door. Column order matters —
+    #                   door is the low-cardinality discriminator and leads, so
+    #                   the index also serves door-only scans.
+    __table_args__ = (
+        Index("ix_ledger_entries_posting_id",   "posting_id"),
+        Index("ix_ledger_entries_door_account", "door", "account"),
+    )
 
     # SQLite only grants ROWID autoincrement to a column that compiles as
     # exactly INTEGER; BigInteger compiles to BIGINT there and silently gets
@@ -197,9 +234,30 @@ def _run_checks_and_write(
 
     # (b) MS-L1-5.1 — funded-balance guard, every door, every debited account,
     # except "world" and "receivable:*" — see docstring above for why these
-    # two are exempt (unbounded external/IOU accounts, not real pools).
+    # two are exempt (unbounded external/IOU accounts, not real pools) — and
+    # except "bab_issuance:*" UNDER THE CANONICAL TOP-OFF DOOR ONLY (B6).
     for account, amount in entries:
         if amount < 0 and account != "world" and not account.startswith("receivable:"):
+            # B6 — DOOR-BOUND exemption. bab_issuance:{league_id}:{season} is a
+            # league-season issuance account: it starts at zero and is debited
+            # negative by exactly the Credits that league has put into
+            # circulation this season, so its debit balance IS the tally. Under
+            # the generic guard the very first top-off would raise
+            # InsufficientFundsError.
+            #
+            # The door is half of the condition, not decoration. The account
+            # prefix ALONE is deliberately insufficient: were the exemption
+            # keyed on the prefix, any future caller could mint unbacked
+            # Credits from bab_issuance:* through any door it liked. Under
+            # every other door a bab_issuance:* debit stays fully guarded and
+            # MUST fail — that is asserted directly by the Group A suite.
+            #
+            # "world" and "receivable:*" behaviour is untouched above, and the
+            # ten other production post() call sites pass neither this door nor
+            # this prefix, so none of them changes behaviour.
+            if door == APPROVED_BAB_TOPOFF_DOOR and account.startswith("bab_issuance:"):
+                continue
+
             current = _balance_of_in_session(db, account)
             if current + amount < 0:
                 raise InsufficientFundsError(
@@ -241,6 +299,14 @@ def post(
          from 0 — both go negative by design, not by error. Every other
          account (wallet:*, escrow:*, reserve:*, championship, skunk) is a
          real accumulated pool and stays fully guarded.
+
+         B6 adds a THIRD exemption that is DOOR-BOUND rather than
+         account-bound: "bab_issuance:*" is exempt only when door ==
+         APPROVED_BAB_TOPOFF_DOOR. That account is a league-season issuance
+         tally which starts at 0 and is debited negative by exactly the
+         Credits issued. Under ANY other door a "bab_issuance:*" debit is
+         fully guarded and raises InsufficientFundsError exactly as before.
+         Unlike "world" and "receivable:*", the prefix alone grants nothing.
       c. MS-L1-5.2 — if door == "wager_settled", every escrow:* account
          being debited must have a nonzero CURRENT balance before this
          posting applies (AlreadySettledError if it's already 0 — this
