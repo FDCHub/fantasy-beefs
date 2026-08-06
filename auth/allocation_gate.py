@@ -169,13 +169,20 @@ def require_league_commissioner(
 
     Response ordering, stated explicitly because it is a security decision:
       401  unauthenticated / inactive — from get_current_gm, unchanged.
-      403  authenticated but not authorized for this league. This is returned
-           BEFORE any league-existence lookup, so an unauthorized caller cannot
-           probe which league ids exist by comparing 403 against 404.
-      404  league genuinely absent — raised by the route body, only after
-           authorization has already succeeded.
+      403  authenticated but not authorized for this league. Returned BEFORE
+           any downstream route work, so an unauthorized caller cannot use the
+           guarded route to learn whether a league id exists.
 
-    That ordering is deliberate: authorization precedes resource disclosure.
+    THE ACTUAL PROPERTY (R-C1 correction): league-scoped authorization runs
+    before downstream route work, preventing an unauthorized caller from using
+    that route to distinguish league existence.
+
+    An earlier version of this docstring claimed a 404 was reachable after
+    successful authorization for an absent league. That was false. Authority is
+    a LeagueCommissioner row whose league_id carries a foreign key to
+    leagues.id, so a row for a nonexistent league is structurally impossible —
+    a caller can never be authorized for a league that does not exist. No such
+    404 path is claimed here, because none is established by code or test.
     """
     if not is_league_commissioner(current_user.id, league_id, db):
         raise HTTPException(

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -18,6 +19,7 @@ from db.schema import (
     Bet,
     BeefChallenge,
     League,
+    LeagueCommissioner,
     Matchup,
     Player,
     Projection,
@@ -1330,6 +1332,109 @@ class SeasonAllocationOut(BaseModel):
     created:           bool
 
 
+class CommissionerGrantRequest(BaseModel):
+    user_id: int
+
+
+class CommissionerGrantOut(BaseModel):
+    authority_row_id:    int
+    league_id:           int
+    user_id:             int
+    source:              str
+    assigned_by_user_id: Optional[int]
+    created_at:          str
+
+
+@app.post("/league/{league_id}/commissioners", response_model=CommissionerGrantOut,
+          status_code=201)
+def league_grant_commissioner(
+    league_id: int,
+    req:       CommissionerGrantRequest,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """
+    An existing commissioner of THIS league grants another user commissioner
+    authority for the same league.
+
+    AUTHORIZATION. require_league_commissioner demands a LeagueCommissioner row
+    for (league_id, caller). The global User.role is not consulted: a caller
+    whose role is "gm" but who holds an authority row succeeds, and a global
+    commissioner with no row is refused 403. Team ownership grants nothing. A
+    commissioner of another league cannot grant here, because league_id comes
+    from the path and the authority check is against that same path league.
+
+    PROVENANCE IS SERVER-SET AND UNSPOOFABLE. The request body carries ONLY the
+    target user_id. league_id comes from the path, source is fixed to
+    "local_grant", and assigned_by_user_id is the authenticated caller. A client
+    cannot submit source, assigned_by_user_id, created_at or a different
+    league_id — those fields are not on the request model at all, so FastAPI
+    rejects unknown keys rather than silently honouring them.
+
+    DUPLICATE CONTRACT: 409, never overwrite. If the target already holds
+    authority for this league the request is refused with 409 and the existing
+    row is left exactly as it was. Provenance exists only at grant time; a
+    second call must not rewrite who granted it, when, or under what source.
+    Idempotent-success was the alternative and was rejected for that reason —
+    it would have to either return stale provenance as if fresh, or rewrite it.
+
+    TARGET VALIDATION. The target must exist and be active. It need NOT own a
+    team, need NOT hold the global commissioner role, and MAY already administer
+    other leagues.
+
+    This route performs no money, wallet, ledger, allocation or top-off write.
+    """
+    target = db.query(User).filter(User.id == req.user_id).first()
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"User {req.user_id} not found")
+    if not target.is_active:
+        raise HTTPException(status_code=400,
+                            detail=f"User {req.user_id} is inactive")
+
+    existing = (
+        db.query(LeagueCommissioner)
+        .filter(LeagueCommissioner.league_id == league_id,
+                LeagueCommissioner.user_id == req.user_id)
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"User {req.user_id} is already a commissioner of league "
+                    f"{league_id}; existing grant is unchanged"),
+        )
+
+    row = LeagueCommissioner(
+        league_id           = league_id,
+        user_id             = req.user_id,
+        source              = "local_grant",
+        assigned_by_user_id = _comm.id,
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent duplicate: the other transaction won the unique
+        # constraint. Roll back and answer with the same 409 the sequential
+        # path gives, so exactly one row exists and neither caller sees a 500.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(f"User {req.user_id} is already a commissioner of league "
+                    f"{league_id}; existing grant is unchanged"),
+        )
+    db.refresh(row)
+
+    return CommissionerGrantOut(
+        authority_row_id    = row.id,
+        league_id           = row.league_id,
+        user_id             = row.user_id,
+        source              = row.source,
+        assigned_by_user_id = row.assigned_by_user_id,
+        created_at          = row.created_at.isoformat(),
+    )
+
+
 @app.post("/league/{league_id}/season-allocation", response_model=SeasonAllocationOut, status_code=200)
 def league_activate_season_allocation(
     league_id: int,
@@ -1344,10 +1449,15 @@ def league_activate_season_allocation(
     NOT sufficient: a commissioner of another league, or a global commissioner
     with no authority row here, receives 403. Team ownership grants nothing.
 
-    Response ordering is deliberate — 403 for an unauthorized caller is
-    returned BEFORE any league-existence lookup, so league ids cannot be probed
-    by comparing 403 against 404. A 404 for a genuinely absent league is
-    therefore only reachable by a caller already authorized for that id.
+    Response ordering is deliberate: league-scoped authorization runs BEFORE any
+    downstream route work, so an unauthorized caller cannot use this route to
+    distinguish league existence.
+
+    R-C1 correction: an earlier version of this docstring claimed a 404 was
+    reachable after successful authorization for an absent league. That is
+    false. Authority is a LeagueCommissioner row whose league_id is a foreign
+    key to leagues.id, so no one can hold authority for a league that does not
+    exist, and this route establishes no such 404 path.
 
     This is the ONLY route narrowed in this package; the other commissioner
     routes still use the global require_commissioner and remain open findings.

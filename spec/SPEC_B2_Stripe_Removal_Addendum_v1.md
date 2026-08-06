@@ -395,10 +395,18 @@ Response ordering, a deliberate security decision:
 
 - **401** unauthenticated / inactive - unchanged.
 - **403** authenticated but not authorized for this league, returned **before**
-  any league-existence lookup, so league ids cannot be probed by comparing 403
-  against 404.
-- **404** league genuinely absent - reachable only by a caller already
-  authorized for that id.
+  any downstream route work.
+
+**THE ACTUAL PROPERTY (corrected by R-C1):** league-scoped authorization runs
+before downstream route work, preventing an unauthorized caller from using that
+route to distinguish league existence.
+
+The earlier claim that a **404** was reachable after successful authorization
+for an absent league was **false and is withdrawn**. Authority is a
+`LeagueCommissioner` row whose `league_id` carries a foreign key to
+`leagues.id`, so authority for a nonexistent league is structurally impossible.
+No reachable authorized-absent-league path is claimed, because none is
+established by code or test.
 
 ### 10.4 - Bootstrap: BLOCKED, NOT IMPLEMENTED
 
@@ -467,3 +475,127 @@ B6 remains an **MVP requirement** and remains **unbuilt**. Accepted flow:
 The league-authority model added here is a prerequisite for the "authorized
 league commissioner approves" step. Nothing in this package implements the
 issuance posting.
+
+
+---
+
+## 11. Commissioner genesis and grant path (2026-08-06)
+
+Sprint 1 of 8, closing phase, package 1 of 3. **Sprint 1 is NOT complete.**
+
+### 11.1 - The authorization contract
+
+**Authority is the row alone.** A user may act as commissioner of a league if
+and only if a `LeagueCommissioner` row exists for `(league_id, user_id)`.
+
+`User.role == "commissioner"` is **neither necessary nor sufficient**: a caller
+whose role is `gm` but who holds a row succeeds, and a global commissioner with
+no row is refused 403. Team ownership grants nothing.
+
+**The security perimeter is therefore the authority-row CREATION path**, not the
+route check. Exactly two paths create a row, and this package builds both.
+
+### 11.2 - Genesis CLI (`scripts/bootstrap_league_commissioner.py`)
+
+Operator-only. Creates the **first** commissioner of one league and nothing
+else. Required explicit `--league-id` and `--user-id`; no names, emails, team
+ids, Yahoo ids, role names or discovery of any kind.
+
+**SELF-LIMITING:** refuses if ANY authority row exists for the league, including
+one naming the same user. It can only ever create row number one. That
+restriction belongs to the CLI alone - the table and the grant route remain
+many-to-many.
+
+Writes `source="bootstrap"`, `assigned_by_user_id=NULL` (genesis has no granting
+user), normal `created_at`. Exactly one commit, only on success; every refusal
+rolls back and exits non-zero having written nothing.
+
+No HTTP exposure, no import side effect, explicit `main()` under a
+`__name__` guard, no credential or database URL printed, no production default,
+no retry.
+
+**CONCURRENT GENESIS PROTECTION.** The unique constraint on
+`(league_id, user_id)` does **not** prevent two *different* users from both
+becoming the first commissioner concurrently - it blocks only a duplicate of the
+same pair. A plain count-then-insert is therefore insufficient. The CLI takes
+`SELECT id FROM leagues WHERE id = :lid FOR UPDATE` **before** counting,
+following `betting/settlement_engine.py`, so concurrent invocations serialize on
+the league row and exactly one can observe an empty authority set. Proven by a
+two-thread barrier race: one success, one refusal, one row.
+
+### 11.3 - Grant route (`POST /league/{league_id}/commissioners`)
+
+An existing commissioner of the league grants another user authority for that
+same league. Guarded by `require_league_commissioner` against the **path**
+league.
+
+**PROVENANCE IS SERVER-SET AND UNSPOOFABLE.** The request body carries ONLY the
+target `user_id`. `league_id` comes from the path, `source` is fixed to
+`"local_grant"`, `assigned_by_user_id` is the authenticated caller, `created_at`
+is model default. `source`, `assigned_by_user_id`, `created_at` and `league_id`
+are not on the request model at all, so a client supplying them is ignored -
+proven by test, including an attempt to set `source="bootstrap"`, a foreign
+`assigned_by_user_id` and a different `league_id` in one request.
+
+The route can never create a `bootstrap` or `yahoo_sync` row.
+
+**DUPLICATE CONTRACT: HTTP 409, never overwrite.** If the target already holds
+authority for the league the request is refused and the existing row is left
+exactly as it was - same id, source, `assigned_by_user_id` and `created_at`.
+
+Idempotent-success was the alternative and was **rejected**: provenance exists
+only at grant time, so an idempotent return would have to either present stale
+provenance as fresh or rewrite history. Neither is acceptable.
+
+**CONCURRENT GRANT PROTECTION.** Two simultaneous identical grants resolve to
+exactly one 201 and one 409 - the loser's `IntegrityError` on the unique
+constraint is caught and converted to the same 409 the sequential path returns,
+so no caller sees a 500 and exactly one row exists.
+
+Target must exist and be active. It need NOT own a team, need NOT hold the
+global commissioner role, and MAY already administer other leagues.
+
+This route performs no money, wallet, ledger, allocation or top-off write -
+proven by a before/after snapshot of ledger entries, allocations, FAAB
+transactions and wallets across the whole suite.
+
+### 11.4 - R-C1 CLOSED
+
+The claim that a **404 was reachable after successful authorization for an
+absent league** was **false and is withdrawn** from
+`require_league_commissioner`, the season-allocation route docstring, this
+addendum and the Findings Register.
+
+Authority is a `LeagueCommissioner` row whose `league_id` carries a foreign key
+to `leagues.id`, so authority for a nonexistent league is **structurally
+impossible**. No such 404 path exists.
+
+**The actual property, stated correctly:** league-scoped authorization runs
+before downstream route work, preventing an unauthorized caller from using that
+route to distinguish league existence.
+
+### 11.5 - R-C2 CLOSED
+
+The genesis and grant protections required for R-C2 are complete: explicit-id
+genesis, self-limitation to the first commissioner, row-lock protection against
+concurrent genesis, authenticated league-scoped grants, server-set unspoofable
+provenance, a non-overwriting duplicate contract, and deterministic concurrent
+grant resolution. All are proven on real PostgreSQL.
+
+### 11.6 - Unchanged
+
+Automatic **Yahoo bootstrap remains blocked** on missing per-user Yahoo identity
+and authenticated league-import infrastructure (Section 10.4), and is separate
+from the operator genesis CLI added here. **Yahoo reconciliation remains
+unbuilt.**
+
+**B6 top-offs remain an MVP requirement and remain UNBUILT.** Accepted flow:
+
+> GM requests top-off -> authorized league commissioner approves -> balanced
+> Credits-ledger issuance posts -> GM wallet receives Credits.
+
+This package supplies the "authorized league commissioner" half of that flow and
+implements none of the issuance.
+
+**SPRINT POSITION: Sprint 1 of 8 - commissioner authority plumbing complete. B6
+specification and implementation remain before Sprint 1 closure.**
