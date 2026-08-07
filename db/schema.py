@@ -801,6 +801,30 @@ class FaabTransaction(Base):
             name="ck_faab_tx_topup_bet_linkage",
         ),
         Index("ix_faab_tx_team_created", "team_id", "created_at"),
+        # B6 §8.5 — AT MOST ONE OPEN TOP-OFF REQUEST per (league, team, season).
+        # This index IS the duplicate-creation mechanism: §8.5 assigns duplicate
+        # creation to "a partial unique index", not to an application check, so a
+        # concurrent pair of creates that both pass a pre-check still resolves to
+        # one row. The Group E service pre-checks for a clean refusal and treats
+        # a violation of THIS index — by name — as the same refusal; any other
+        # IntegrityError propagates.
+        #
+        # PARTIAL, and both predicates are required. Scoped to
+        # type='topup_bet' AND status='pending' so it constrains only OPEN B6
+        # requests: a team may hold any number of applied, rejected or cancelled
+        # rows for one season, and legacy topup_waiver history is untouched.
+        # postgresql_where alone would emit a FULL unique index on SQLite —
+        # api/main.py's create_all() builds the fallback SQLite database from
+        # this same model — which would forbid a second terminal row for a team
+        # and break the lifecycle outright. Both dialects therefore carry the
+        # predicate explicitly.
+        Index(
+            "uq_faab_tx_one_open_topoff",
+            "league_id", "team_id", "season",
+            unique=True,
+            postgresql_where=text("type = 'topup_bet' AND status = 'pending'"),
+            sqlite_where=text("type = 'topup_bet' AND status = 'pending'"),
+        ),
     )
 
     id               = Column(Integer,  primary_key=True, autoincrement=True)

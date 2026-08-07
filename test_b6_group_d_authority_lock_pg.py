@@ -23,7 +23,9 @@ It does NOT exercise, approximate or stub:
     - creation/rejection/cancellation after close      (Group E/F)
     - migrations, or any money engine behaviour beyond the narrow
       no-side-effects check in G-k.
-Nothing here imports economy/top_off.py, which does not exist.
+Nothing here imports economy/top_off.py. That module did not exist when this
+suite was written; from Group E (§15 item 18) it legitimately does, and G-j was
+amended accordingly — see the note there.
 
 Postgres only, and not incidentally: the claim under test is a row-lock mode
 that SQLite cannot parse, and every blocking proof reads pg_blocking_pids()
@@ -1201,8 +1203,21 @@ def main(tdb) -> None:
     _assert("G-j RUNTIME: no registered route removes commissioner authority",
             not any("DELETE" in methods for _, methods in comm_routes),
             str(comm_routes))
-    _assert("G-j economy/top_off.py remains ABSENT",
-            not (REPO / "economy" / "top_off.py").exists())
+
+    # RETIRED FENCE. This scenario used to assert that economy/top_off.py did not
+    # exist. That was a Group D deferral marker, correct only while Group E had
+    # not begun; §15 item 18 explicitly authorizes that module, so the file now
+    # legitimately exists and its presence says nothing about item 16 either way.
+    # A Top-Off issuance service is not a revoke writer and is not treated as one
+    # here. What continues to matter is that it is audited by the SAME narrow
+    # checks above — economy/ is one of the scanned production directories — so
+    # the assertion below replaces the absence check with the claim that actually
+    # carries the item-16 contract forward: the new service was in scope when the
+    # revoke-mutation and revoke-name scans ran, and neither flagged it.
+    _assert("G-j the Group E Top-Off service is INSIDE the scanned production "
+            "surface, so the checks above audited it too",
+            "economy/top_off.py" in sources,
+            str(sorted(k for k in sources if k.startswith("economy/"))))
 
     # ══════════════════════════════════════════════════════════════════════
     # G-k — no money-path side effects
