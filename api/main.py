@@ -1395,15 +1395,55 @@ def league_grant_commissioner(
     team, need NOT hold the global commissioner role, and MAY already administer
     other leagues.
 
+    SERIALIZATION (B6 §6.4, item 15). The League row is the serialization point
+    for every authority writer. This handler takes it FOR UPDATE as the first
+    database statement of its body, before the target lookup, before the
+    duplicate pre-check and before the insert, so concurrent authority writes on
+    one league order themselves there. Plain FOR UPDATE is required — the same
+    mode genesis (scripts/bootstrap_league_commissioner.py) and close_season()
+    take — so all three serialize against one another; key_share=True is
+    deliberately not passed, an authority writer being no FK-child inserter.
+
+    The authorization dependency's preliminary UNLOCKED read of
+    league_commissioners has already happened on this session by the time the
+    handler runs. That is permitted and unchanged: it decides authorization
+    only, and every read this handler acts on is taken after the lock.
+
+    Each refusal reached after the lock rolls back before raising, so the League
+    row is released immediately rather than at request teardown.
+
     This route performs no money, wallet, ledger, allocation or top-off write.
     """
+    # THE SERIALIZATION POINT — see SERIALIZATION above. FIRST database
+    # statement of the handler body.
+    locked_league = (
+        db.query(League)
+        .filter(League.id == league_id)
+        .with_for_update()
+        .first()
+    )
+    if locked_league is None:
+        # Defence in depth, not a routine path: require_league_commissioner has
+        # already 403'd any caller without an authority row, and such a row
+        # cannot exist for an absent league (FK to leagues.id). Reaching here
+        # means the league vanished between that check and this lock. Roll back
+        # first so the transaction opened by the lock attempt holds nothing.
+        db.rollback()
+        raise HTTPException(status_code=404,
+                            detail=f"League {league_id} not found")
+
     target = db.query(User).filter(User.id == req.user_id).first()
     if target is None:
+        db.rollback()          # release the League row before refusing
         raise HTTPException(status_code=404, detail=f"User {req.user_id} not found")
     if not target.is_active:
+        db.rollback()
         raise HTTPException(status_code=400,
                             detail=f"User {req.user_id} is inactive")
 
+    # Read under the lock. A duplicate pre-check taken before it could be stale
+    # by the time the lock was granted — which is exactly the window a
+    # concurrent grant of the same pair would use.
     existing = (
         db.query(LeagueCommissioner)
         .filter(LeagueCommissioner.league_id == league_id,
@@ -1411,6 +1451,7 @@ def league_grant_commissioner(
         .first()
     )
     if existing is not None:
+        db.rollback()
         raise HTTPException(
             status_code=409,
             detail=(f"User {req.user_id} is already a commissioner of league "
@@ -1431,6 +1472,13 @@ def league_grant_commissioner(
         # from here (domain 409 or re-raise) must leave a clean transaction.
         db.rollback()
 
+        # RETAINED UNDER THE LOCK. The League lock above makes the duplicate
+        # pre-check authoritative for concurrent grants, so this branch should
+        # no longer be reachable that way — it is kept because the unique
+        # constraint, not the lock, is what actually guarantees one row per
+        # pair, and because a write arriving from any future path that does not
+        # take the lock must still be refused correctly rather than 500.
+        #
         # NARROW CLASSIFICATION (R-G1). Only the named duplicate-pair
         # constraint becomes a 409. Catching every IntegrityError would
         # misreport a foreign-key violation (e.g. a league or user deleted
