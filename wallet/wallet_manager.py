@@ -27,6 +27,12 @@ from ledger.ledger import _dollars_to_cents
 MIN_BET     = 5.00
 MAX_BET_PCT = 0.20
 
+# P1-L3B: MAX_BET_PCT expressed in basis points, DERIVED from the constant above
+# so the product rule has exactly one source and the two cannot drift. Used only
+# by validate_bet_amount()'s integer-cent cap arithmetic — MAX_BET_PCT itself is
+# unchanged and remains what every display/report site reads.
+_MAX_BET_BPS = round(MAX_BET_PCT * 10_000)   # 2000 bps == 20%
+
 
 # ── Result dataclasses ────────────────────────────────────────────────────────
 
@@ -211,20 +217,55 @@ def transaction_history(
     )
 
 
-def validate_bet_amount(amount: float, wallet_balance: float) -> None:
+def validate_bet_amount(amount: float, wallet_balance_cents: int) -> None:
     """
-    Raise ValueError if amount violates bet-sizing rules.
+    Raise BetValidationError if amount violates bet-sizing rules.
     Called by bet_engine before any bet is placed.
+
+    P1-L3B: `wallet_balance_cents` is the AUTHORITATIVE integer-cent ledger
+    balance for the funding account — not the float Wallet.balance mirror, which
+    this function no longer accepts. A float (or any non-int) argument is refused
+    outright rather than coerced: silently accepting one would reintroduce exactly
+    the binary-float capacity decision this correction exists to remove. That
+    refusal is the only caller-visible behavior change; the product rules
+    themselves (MIN_BET, the MAX_BET_PCT cap, the message text) are unchanged.
+
+    ROUNDING — the 20% cap is still ROUNDED to the nearest cent, exactly as the
+    prior `round(wallet_balance * MAX_BET_PCT, 2)` was. It is NOT floored. The
+    integer form below is half-up:
+
+        max_allowed_cents = (balance_cents * 2000 + 5000) // 10000
+
+    and half-up is exactly nearest here, with no tie-breaking ambiguity at all:
+    20% of an integer number of cents is balance_cents / 5, whose fractional part
+    is always one of {.0, .2, .4, .6, .8} — never .5. So the tie case is
+    unreachable by construction and the result is fully deterministic. Where
+    floor and round disagree (any balance_cents % 5 in {3, 4}) this preserves the
+    ROUNDED, more permissive result the product rule has always had.
+
+    The basis-point multiplier is DERIVED from MAX_BET_PCT rather than hard-coded,
+    so the constant remains the single source of the 20% product rule and the two
+    cannot drift apart.
     """
     if amount < MIN_BET:
         raise BetValidationError(
             f"Bet amount ${amount:.2f} is below the minimum of ${MIN_BET:.2f}"
         )
-    max_allowed = round(wallet_balance * MAX_BET_PCT, 2)
-    if amount > max_allowed:
+
+    if isinstance(wallet_balance_cents, bool) or not isinstance(wallet_balance_cents, int):
+        raise TypeError(
+            f"wallet_balance_cents must be integer cents from authoritative ledger "
+            f"state, not {type(wallet_balance_cents).__name__} "
+            f"({wallet_balance_cents!r}). P1-L3B: no float wallet mirror may drive "
+            f"a funding-capacity decision."
+        )
+
+    amount_cents      = _dollars_to_cents(amount)
+    max_allowed_cents = (wallet_balance_cents * _MAX_BET_BPS + 5_000) // 10_000
+    if amount_cents > max_allowed_cents:
         raise BetValidationError(
             f"Bet amount ${amount:.2f} exceeds the maximum of "
-            f"{MAX_BET_PCT:.0%} of your balance (${max_allowed:.2f})"
+            f"{MAX_BET_PCT:.0%} of your balance (${max_allowed_cents / 100:.2f})"
         )
 
 

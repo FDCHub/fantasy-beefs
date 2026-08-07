@@ -33,7 +33,7 @@ from odds.odds_engine_headless import (
     INJURY_MULTIPLIERS,
     simulate_scores,
 )
-from ledger.ledger import post as ledger_post, _dollars_to_cents
+from ledger.ledger import post as ledger_post, _dollars_to_cents, _balance_of_in_session
 
 from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
@@ -111,7 +111,12 @@ def _place_bet(
     # entry points (place_straight_bet/spread/over_under/prop). Return value
     # discarded (validation only); the ValueError propagates.
     _dollars_to_cents(amount)
-    validate_bet_amount(amount, wallet.balance)
+    # P1-L3B: the capacity input is the AUTHORITATIVE integer-cent ledger balance
+    # for wallet:{team_id}, read inside this same session/transaction — never the
+    # float Wallet.balance mirror. Plain wallet balance is the correct account
+    # here: this legacy single-party path debits wallet:{team_id} and nothing
+    # else, and Weekly Minimum accounts do not exist on it.
+    validate_bet_amount(amount, _balance_of_in_session(db, f"wallet:{wallet.team_id}"))
 
     bet = Bet(
         matchup_id     = matchup_id,

@@ -568,10 +568,24 @@ def _place_beef_side(
 ) -> Bet:
     if amount < MIN_BET:
         raise ValueError(f"Bet amount ${amount:.2f} is below the minimum of ${MIN_BET:.2f}")
-    if wallet.balance < amount:
+    # P1-L3B: this funding-capacity decision reads the AUTHORITATIVE integer-cent
+    # ledger balance for wallet:{team_id}, in this same caller-owned session — never
+    # the float Wallet.balance mirror, which is a display/compatibility column that
+    # can legitimately disagree with the ledger. _to_cents() is deliberately the
+    # SAME conversion the wager_placed posting below uses, so this gate and that
+    # posting cannot disagree merely at a conversion boundary.
+    #
+    # This is a defensive re-check, not the only one: respond_to_challenge() already
+    # runs _verify_wallet_available() (also ledger-cent) for both sides beforehand,
+    # and ledger.post()'s funded-account guard remains the final transactional
+    # defense below. Retiring this site belongs to the later Spec 2 legacy-path
+    # retirement, not to P1-L3B — the legacy path is still reachable today.
+    amount_cents  = _to_cents(amount)
+    balance_cents = _balance_of_in_session(db, f"wallet:{wallet.team_id}")
+    if balance_cents < amount_cents:
         raise ValueError(
             f"{wallet.team.team_name}'s wallet has insufficient funds: "
-            f"${wallet.balance:.2f} < ${amount:.2f}"
+            f"${balance_cents / 100:.2f} < ${amount:.2f}"
         )
 
     bet = Bet(
