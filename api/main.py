@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from db.schema import (
     Bet,
     BeefChallenge,
+    FaabTransaction,
     League,
     LeagueCommissioner,
     Matchup,
@@ -70,6 +71,27 @@ from auth.allocation_gate import (
     is_league_commissioner,
     require_league_commissioner,
     set_allocation_enforcement_active,
+)
+from economy.top_off import (
+    approve_top_off,
+    cancel_top_off,
+    create_top_off_request,
+    reject_top_off,
+    AttemptValidationAbort,
+    AuthorizationAttemptAbort,
+    CreationRefused,
+    IntegrityAttemptAbort,
+    RequestNotFoundError,
+    SeasonClosedAbort,
+    TOPUP_BET,
+    REASON_CAP_EXHAUSTED,
+    REASON_INVALID_AMOUNT,
+    REASON_MULTIPLIER_ZERO,
+    REASON_NO_ALLOCATION,
+    REASON_OPEN_REQUEST,
+    REASON_OVER_CAPACITY,
+    REASON_SEASON_CLOSED,
+    REASON_TEAM_NOT_IN_LEAGUE,
 )
 
 # Temporary B2 compatibility export for tests; remove during Group 5.
@@ -1583,6 +1605,437 @@ def league_activate_season_allocation(
     )
 
 
+# ── BAB Top-Off (B6 §10) ──────────────────────────────────────────────────────
+#
+# Five routes, `league_id` always in the path. They are a THIN MAPPING LAYER over
+# economy/top_off.py and nothing else: every lock, every cap computation, every
+# ledger posting, the disclosure write and the single commit live in the service.
+# No route here computes a cap, derives a reason code, writes a ledger entry or
+# commits — a route that did would be a second issuance implementation.
+#
+# TRANSACTION OWNERSHIP. Each route hands the request-scoped Session straight to
+# the service, which owns the transaction on it: it commits on its one writing
+# path and rolls back on every abort. These routes therefore hold no uncommitted
+# work across a service call and issue no commit or rollback of their own.
+#
+# PROVENANCE IS SERVER-SET AND UNSPOOFABLE (§10.2). The client supplies `amount`
+# at creation and `decision_reason` where applicable. Everything else — league,
+# team, season, both identities, the classification, the cap, both linkage ids,
+# every timestamp, decision and status — is derived server-side, and every write
+# body sets extra="forbid" so an attempt to supply one is a 422 rather than a
+# silently dropped key.
+
+
+class TopOffCreateRequest(BaseModel):
+    """Create body. `amount` in DOLLARS is the ONLY accepted field (§10.2).
+
+    extra="forbid" makes any additional key a 422 rather than a silently dropped
+    one — the same contract CommissionerGrantRequest already carries. A client
+    that tries to supply amount_cents, season, league_id, team_id, requester
+    identity or any cap figure is told so.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    amount: float
+
+
+class TopOffDecisionRequest(BaseModel):
+    """Approve/reject body. `decision_reason` is the only accepted field.
+
+    OPTIONAL BY CONTRACT, not by oversight: §5.3 requires a non-empty reason on a
+    SELF-approval and imposes no such requirement otherwise. The service decides
+    which case applies — the route never classifies self-approval itself.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    decision_reason: Optional[str] = None
+
+
+class TopOffCancelRequest(BaseModel):
+    """Cancel body. Deliberately EMPTY.
+
+    The requester is the authenticated caller and the request is identified by
+    the path, so there is nothing left for a client to supply. It still exists,
+    and still carries extra="forbid", because §10.2 governs all four write
+    bodies: an empty model that forbids extras rejects a spoofed field, whereas
+    accepting no body at all would let one be ignored.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+
+class TopOffCreateOut(BaseModel):
+    request_id:               int
+    league_id:                int
+    team_id:                  int
+    season:                   int
+    requester_user_id:        int
+    amount_cents:             int
+    decision:                 str
+    status:                   str
+    cap_cents:                int
+    remaining_capacity_cents: int
+
+
+class TopOffDecisionOut(BaseModel):
+    request_id:               int
+    league_id:                int
+    team_id:                  int
+    season:                   int
+    requester_user_id:        Optional[int]
+    amount_cents:             Optional[int]
+    decision:                 str
+    status:                   str
+    decided_by_user_id:       Optional[int]
+    decided_at:               Optional[str]
+    self_approved:            Optional[bool]
+    decision_reason:          Optional[str]
+    ledger_posting_id:        Optional[str]
+    disclosure_event_id:      Optional[str]
+    cap_cents:                Optional[int]
+    remaining_capacity_cents: Optional[int]
+    posted:                   bool
+    replayed:                 bool
+
+
+class TopOffRequestOut(BaseModel):
+    """One persisted top-off request, as stored.
+
+    EVERY FIELD IS READ FROM THE ROW. Nothing here is recomputed — not the cap,
+    not remaining capacity, not a balance, not current authority. A read that
+    recomputed a cap would report a number taken under no lock, which approval
+    would then be free to contradict.
+
+    ledger_posting_id and disclosure_event_id are present because they are the
+    provenance chain: request -> posting -> both ledger legs -> disclosure
+    (§4.7). They are the whole reason a caller can traverse it from this payload.
+    """
+    id:                  int
+    league_id:           int
+    team_id:             int
+    season:              Optional[int]
+    requester_user_id:   Optional[int]
+    amount_cents:        Optional[int]
+    decision:            Optional[str]
+    status:              str
+    decided_by_user_id:  Optional[int]
+    decided_at:          Optional[str]
+    self_approved:       Optional[bool]
+    decision_reason:     Optional[str]
+    ledger_posting_id:   Optional[str]
+    disclosure_event_id: Optional[str]
+    created_at:          Optional[str]
+
+
+def _iso(value) -> Optional[str]:
+    return value.isoformat() if value is not None else None
+
+
+def _uuid_str(value) -> Optional[str]:
+    return str(value) if value is not None else None
+
+
+def _member_team_id(user: User, league_id: int, db: Session) -> Optional[int]:
+    """The id of `user`'s team IF that team belongs to `league_id`, else None.
+
+    PURE READ. One SELECT, no write of any kind — no add, flush, commit, delete,
+    merge or ORM mutation. That is not stylistic: the service that runs next owns
+    the transaction on this same session and rolls it back on every abort, so a
+    dependency-side write here would be silently discarded.
+
+    Membership is TEAM-BASED because that is what the league roster is. Holding a
+    commissioner authority row is a separate question, asked separately.
+    """
+    if user.team_id is None:
+        return None
+    team = db.query(Team).filter(Team.id == user.team_id).first()
+    if team is None or team.league_id != league_id:
+        return None
+    return team.id
+
+
+def _topoff_http(exc: Exception) -> HTTPException:
+    """Map ONE service exception to its HTTP answer (§10.1).
+
+    The reason codes are the SERVICE's — read off the exception, never
+    re-derived here. §2.10 keeps the three zero-headroom causes distinct
+    (multiplier is 0, no valid allocation, cap exhausted) and merging them in the
+    mapping layer would undo that at the last step.
+
+    503 for an integrity or season-close abort is deliberate and is what §10.1
+    assigns: neither is the caller's fault, neither changed the request, and both
+    are retryable once the underlying condition is fixed. Answering 4xx would
+    tell the caller to change something about the request, which is false.
+    """
+    if isinstance(exc, CreationRefused):
+        code = {
+            REASON_INVALID_AMOUNT:     400,
+            REASON_TEAM_NOT_IN_LEAGUE: 403,
+            REASON_SEASON_CLOSED:      503,
+            REASON_OPEN_REQUEST:       409,
+            REASON_OVER_CAPACITY:      422,
+            REASON_MULTIPLIER_ZERO:    422,
+            REASON_NO_ALLOCATION:      422,
+            REASON_CAP_EXHAUSTED:      422,
+        }.get(exc.reason_code, 422)
+        detail = {"reason_code": exc.reason_code, "message": str(exc)}
+        # §10.1 requires remaining capacity to be STATED on the over-capacity
+        # answer. It is carried on the exception by the service, which computed
+        # it; the route reports it and does not recompute it.
+        if exc.remaining_capacity_cents is not None:
+            detail["remaining_capacity_cents"] = exc.remaining_capacity_cents
+        return HTTPException(status_code=code, detail=detail)
+
+    if isinstance(exc, RequestNotFoundError):
+        return HTTPException(status_code=404, detail={
+            "reason_code": "request_not_found", "message": str(exc)})
+    if isinstance(exc, AuthorizationAttemptAbort):
+        return HTTPException(status_code=403, detail={
+            "reason_code": "not_authorized", "message": str(exc)})
+    if isinstance(exc, AttemptValidationAbort):
+        return HTTPException(status_code=422, detail={
+            "reason_code": "self_approval_reason_required", "message": str(exc)})
+    if isinstance(exc, SeasonClosedAbort):
+        return HTTPException(status_code=503, detail={
+            "reason_code": "season_closed", "message": str(exc)})
+    if isinstance(exc, IntegrityAttemptAbort):
+        return HTTPException(status_code=503, detail={
+            "reason_code": "integrity_abort", "message": str(exc)})
+    raise exc                      # not a top-off domain refusal — surface it
+
+
+def _decision_out(result) -> TopOffDecisionOut:
+    return TopOffDecisionOut(
+        request_id               = result.request_id,
+        league_id                = result.league_id,
+        team_id                  = result.team_id,
+        season                   = result.season,
+        requester_user_id        = result.requester_user_id,
+        amount_cents             = result.amount_cents,
+        decision                 = result.decision,
+        status                   = result.status,
+        decided_by_user_id       = result.decided_by_user_id,
+        decided_at               = _iso(result.decided_at),
+        self_approved            = result.self_approved,
+        decision_reason          = result.decision_reason,
+        ledger_posting_id        = _uuid_str(result.ledger_posting_id),
+        disclosure_event_id      = _uuid_str(result.disclosure_event_id),
+        cap_cents                = result.cap_cents,
+        remaining_capacity_cents = result.remaining_capacity_cents,
+        posted                   = result.posted,
+        replayed                 = result.replayed,
+    )
+
+
+def _settle_replay(result, expected_decision: str) -> TopOffDecisionOut:
+    """§10.1's replay rule, applied identically on all three decision routes.
+
+    A repeat of the SAME decision returns 200 with the original payload — the
+    caller's first request did land, and saying so is the truthful answer to a
+    retry after a lost response. A DIFFERENT action against a terminal request is
+    409: the request is decided, and this caller asked for something else.
+    """
+    if not result.replayed or result.decision == expected_decision:
+        return _decision_out(result)
+    raise HTTPException(status_code=409, detail={
+        "reason_code": "terminal_state_conflict",
+        "message": (f"Top-off request {result.request_id} is already "
+                    f"{result.decision!r} (status {result.status!r}); it cannot "
+                    f"now be {expected_decision!r}."),
+        "decision": result.decision,
+        "status":   result.status,
+    })
+
+
+@app.post("/league/{league_id}/top-offs", response_model=TopOffCreateOut,
+          status_code=201)
+def league_create_top_off(
+    league_id:    int,
+    req:          TopOffCreateRequest,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """A GM of THIS league asks for more Credits (§10).
+
+    MEMBERSHIP, NOT AUTHORITY. The caller must own a team in the path league;
+    holding a commissioner row is neither required nor sufficient. A commissioner
+    who owns a team here may request as a GM — §5.3 makes authority and team
+    ownership independent by design.
+
+    team_id and requester identity are taken from the AUTHENTICATED USER and the
+    persisted Team row, never from the body. The body carries `amount` alone.
+    """
+    team_id = _member_team_id(current_user, league_id, db)
+    if team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    try:
+        result = create_top_off_request(
+            league_id, team_id, current_user.id, req.amount, db=db,
+        )
+    except Exception as exc:                       # noqa: BLE001 — mapped below
+        raise _topoff_http(exc)
+    return TopOffCreateOut(
+        request_id               = result.request_id,
+        league_id                = result.league_id,
+        team_id                  = result.team_id,
+        season                   = result.season,
+        requester_user_id        = result.requester_user_id,
+        amount_cents             = result.amount_cents,
+        decision                 = result.decision,
+        status                   = result.status,
+        cap_cents                = result.cap_cents,
+        remaining_capacity_cents = result.remaining_capacity_cents,
+    )
+
+
+@app.post("/league/{league_id}/top-offs/{request_id}/approve",
+          response_model=TopOffDecisionOut, status_code=200)
+def league_approve_top_off(
+    league_id:  int,
+    request_id: int,
+    req:        TopOffDecisionRequest,
+    db:         Session = Depends(get_db),
+    _comm:      User    = Depends(require_league_commissioner),
+):
+    """A commissioner of THIS league approves a top-off and issues the Credits.
+
+    §5.1 assigns this route Depends(require_league_commissioner): authority is a
+    LeagueCommissioner row for (league_id, caller). The dependency's read is
+    preliminary — the service revalidates it under the League row lock at step 14
+    and holds that lock through commit, so a revocation cannot land between the
+    check and the issuance.
+
+    SELF-APPROVAL IS PERMITTED (§5.2) and needs a non-empty decision_reason. The
+    route neither classifies it nor counts commissioners; the service does the
+    one comparison that decides it.
+    """
+    try:
+        result = approve_top_off(league_id, request_id, _comm.id,
+                                 req.decision_reason, db=db)
+    except Exception as exc:                       # noqa: BLE001 — mapped below
+        raise _topoff_http(exc)
+    return _settle_replay(result, "approved")
+
+
+@app.post("/league/{league_id}/top-offs/{request_id}/reject",
+          response_model=TopOffDecisionOut, status_code=200)
+def league_reject_top_off(
+    league_id:  int,
+    request_id: int,
+    req:        TopOffDecisionRequest,
+    db:         Session = Depends(get_db),
+    _comm:      User    = Depends(require_league_commissioner),
+):
+    """A commissioner of THIS league explicitly declines an open request.
+
+    One of the three things §7.4 reserves terminal rejection for. No posting, no
+    wallet movement, no disclosure, no linkage — and after close it is not
+    decided at all (§7.5), which the service enforces under the League lock.
+    """
+    try:
+        result = reject_top_off(league_id, request_id, _comm.id,
+                                req.decision_reason, db=db)
+    except Exception as exc:                       # noqa: BLE001 — mapped below
+        raise _topoff_http(exc)
+    return _settle_replay(result, "rejected")
+
+
+@app.post("/league/{league_id}/top-offs/{request_id}/cancel",
+          response_model=TopOffDecisionOut, status_code=200)
+def league_cancel_top_off(
+    league_id:    int,
+    request_id:   int,
+    req:          TopOffCancelRequest,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """The requester withdraws his own open request (§7.2).
+
+    IDENTITY IS ENFORCED BY THE SERVICE, from persisted state, under the request
+    row lock — not here. The route cannot know who opened the request without
+    reading it, and reading it outside the lock would be exactly the stale read
+    the lock exists to prevent. A caller who is not the requester receives 403
+    from the service's own refusal.
+    """
+    try:
+        result = cancel_top_off(league_id, request_id, current_user.id, db=db)
+    except Exception as exc:                       # noqa: BLE001 — mapped below
+        raise _topoff_http(exc)
+    return _settle_replay(result, "cancelled")
+
+
+@app.get("/league/{league_id}/top-offs", response_model=list[TopOffRequestOut])
+def league_list_top_offs(
+    league_id:    int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """Top-off request history for this league (§10).
+
+    SCOPE. A commissioner of the path league sees every B6 top-off request in it.
+    Any other caller must own a team in the league and sees only that team's
+    requests. Everyone else receives 403 — league membership is checked before
+    any row is returned, so this route cannot be used to probe another league.
+
+    ONLY B6 ROWS. Filtered to type='topup_bet'. Legacy topup_waiver history is
+    dormant (§11.5) and is not a top-off request.
+
+    PERSISTED STATE ONLY. Every field is read from the row. Nothing is
+    recomputed — no cap, no remaining capacity, no balance, no current authority.
+    remaining_capacity_cents is deliberately ABSENT: it is not stored, it would
+    have to be derived outside any lock, and approval's re-check under lock 2 is
+    the only authoritative answer (§2.10).
+
+    Ordering is created_at then id, ascending. That is implementation
+    determinism so a caller gets a stable page, not a product rule.
+
+    applied_at is deliberately NOT read. It is a legacy column the B6 issuance
+    path does not write; `decision`, `status` and `decided_at` are the B6 record.
+    """
+    if not is_league_commissioner(current_user.id, league_id, db):
+        team_id = _member_team_id(current_user, league_id, db)
+        if team_id is None:
+            raise HTTPException(status_code=403, detail={
+                "reason_code": "not_a_league_member",
+                "message": (f"User {current_user.id} is neither a commissioner "
+                            f"of league {league_id} nor an owner of a team in "
+                            f"it."),
+            })
+    else:
+        team_id = None             # commissioner: the whole league
+
+    q = (db.query(FaabTransaction)
+         .filter(FaabTransaction.league_id == league_id,
+                 FaabTransaction.type == TOPUP_BET))
+    if team_id is not None:
+        q = q.filter(FaabTransaction.team_id == team_id)
+
+    rows = q.order_by(FaabTransaction.created_at, FaabTransaction.id).all()
+    return [
+        TopOffRequestOut(
+            id                  = r.id,
+            league_id           = r.league_id,
+            team_id             = r.team_id,
+            season              = r.season,
+            requester_user_id   = r.requester_user_id,
+            amount_cents        = r.amount_cents,
+            decision            = r.decision,
+            status              = r.status,
+            decided_by_user_id  = r.decided_by_user_id,
+            decided_at          = _iso(r.decided_at),
+            self_approved       = r.self_approved,
+            decision_reason     = r.decision_reason,
+            ledger_posting_id   = _uuid_str(r.ledger_posting_id),
+            disclosure_event_id = _uuid_str(r.disclosure_event_id),
+            created_at          = _iso(r.created_at),
+        )
+        for r in rows
+    ]
+
+
 # ── FAAB schemas ──────────────────────────────────────────────────────────────
 
 class FaabSetupRequest(BaseModel):
@@ -1806,29 +2259,30 @@ def faab_league_wallets(
     return [_fw_out(s) for s in get_league_faab(league_id, db)]
 
 
-# ── FAAB top-up surface — DEREGISTERED PENDING B6 ────────────────────────────
+# ── FAAB top-up surface — PERMANENTLY REPLACED BY B6 ─────────────────────────
 #
 # POST /faab/topup-bet, /faab/topup-waiver, /faab/topup-confirm and
-# /faab/apply-pending are NOT registered.
+# /faab/apply-pending are NOT registered, and are NOT restored (§10.3). The five
+# Top-Off routes above replace them.
 #
 # Stripe is out of the MVP, so the payment rail these routes were built on no
-# longer exists. The temporary request-and-confirm flow that replaced it is
-# NOT an acceptable permanent Credits issuance model: it mints wallet balance
+# longer exists. The temporary request-and-confirm flow that replaced it was
+# NOT an acceptable permanent Credits issuance model: it minted wallet balance
 # with no counterparty and no ledger posting behind it.
 #
-# These routes remain unavailable until the B6 issuance-ledger model exists.
-# B6 must provide:
-#   - a balanced ledger posting;
-#   - an issuance counterparty/account (a top-off must NOT debit `world`,
-#     which is reserved for real external capital);
-#   - approver identity;
-#   - request-to-credit provenance.
+# B6 SUPPLIES WHAT WAS MISSING, and it lives in economy/top_off.py:
+#   - a balanced two-leg ledger posting under the canonical top-off door;
+#   - an issuance counterparty account, bab_issuance:{league_id}:{season} — a
+#     top-off never debits `world`, which is reserved for real external capital;
+#   - approver identity, revalidated under the League row lock before posting;
+#   - request-to-credit provenance, request -> posting -> disclosure.
 # See FantasyBeefs_BAB_TopOff_UIUX_Spec_2026-07-21.md item B6 and
 # spec/SPEC_B2_Stripe_Removal_Addendum_v1.md.
 #
-# The underlying implementation in wallet/faab_wallet.py is intentionally NOT
-# deleted — it is the starting point for B6 and its historical models hold
-# real rows. Only the production-reachable route surface is removed.
+# The legacy implementation in wallet/faab_wallet.py is intentionally NOT
+# deleted — its historical models hold real rows. Its three writers now REFUSE
+# structurally (§11.5), so economy/top_off.py is the one production issuance
+# path and no legacy route or writer can bypass it.
 #
 # REMAINING NON-ROUTE REACHABILITY, recorded rather than assumed away:
 # notifications/tuesday_sync.py::_step_apply_topups still calls

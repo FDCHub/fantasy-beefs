@@ -360,11 +360,34 @@ def create_bet_topup(
     performer_id: Optional[int] = None,
 ) -> TopupResult:
     """
-    Request a bet-wallet top-up.
+    REFUSES (B6 §11.5). Creating a top-up request through this path would open a
+    request the B6 issuance service does not govern: no frozen cap check, no
+    allocation lock, no League-row serialization, and no route to a balanced
+    issuance posting. It raises TopUpsUnavailableError as its FIRST executable
+    statement — before any FaabWallet read, any FaabTransaction insert, any flush
+    and any commit — so no row can be written by it.
 
-    Records a pending request. No payment is taken and no funds move here;
-    a commissioner confirms it via confirm_topup(), which performs the credit.
+    The replacement is POST /league/{league_id}/top-offs, served by
+    economy/top_off.py. That is the ONE production issuance path.
+
+    The refusal is structural rather than an environment flag, and it is not a
+    silent no-op: a no-op would report a request that does not exist.
+
+    This writer is also already unrepresentable at the database. It builds its
+    row through _log_tx(), which sets `status` but no `decision`, and a
+    topup_bet row with a NULL decision violates ck_faab_tx_topup_bet_lifecycle
+    (§4.4). Refusing here turns an opaque IntegrityError into a diagnosis.
+
+    The body below is retained UNREACHED as historical reference; the B6
+    replacement does not derive from it.
     """
+    raise TopUpsUnavailableError(
+        "Legacy FAAB/BAB bet top-up requests are retired. Creating one here "
+        "would open a request outside the B6 issuance service, with no frozen "
+        "cap check, no allocation lock and no path to a balanced issuance "
+        "posting. Use POST /league/{league_id}/top-offs. Nothing was written."
+    )
+
     if amount <= 0:
         raise ValueError("Top-up amount must be positive")
 
@@ -404,11 +427,26 @@ def create_waiver_topup(
     performer_id: Optional[int] = None,
 ) -> TopupResult:
     """
-    Queue a waiver-wallet top-up for the next Tuesday.
+    REFUSES (B6 §11.5). Queuing a waiver top-up would create a pending row for
+    the Tuesday pipeline to apply, and applying one is itself refused by
+    apply_pending_topups() because it would mint wallet balance with no balanced
+    issuance posting behind it. Creating work that can only ever be refused is
+    not a lifecycle; it raises TopUpsUnavailableError as its FIRST executable
+    statement, before any FaabWallet read, insert, flush or commit.
 
-    Records a pending request with apply_on = next Tuesday. No payment is taken
-    and no funds move here.
+    WAIVER TOP-UPS ARE OUT OF B6 ENTIRELY (§3.5). Credits land in
+    wallet:{team_id} and nowhere else; the waiver lifecycle is not a top-off and
+    gets no replacement route here. There is deliberately no B6 equivalent to
+    point at, which is why this is a plain retirement rather than a redirect.
+
+    The body below is retained UNREACHED as historical reference.
     """
+    raise TopUpsUnavailableError(
+        "Legacy FAAB waiver top-up requests are retired. The Tuesday apply step "
+        "that would have consumed them refuses outright, and waiver top-ups are "
+        "excluded from B6 issuance entirely. Nothing was written."
+    )
+
     if amount <= 0:
         raise ValueError("Top-up amount must be positive")
 
@@ -442,14 +480,33 @@ def confirm_topup(
     db:         Session,
 ) -> TopupResult:
     """
-    Commissioner confirms a pending top-up request.
+    REFUSES (B6 §11.5). This is the writer B6 exists to replace: it credited a
+    wallet through wallet_manager.deposit() on a commissioner's say-so, with no
+    balanced ledger posting, no issuance counterparty, no frozen cap, no
+    disclosure and no locks. It raises TopUpsUnavailableError as its FIRST
+    executable statement — before the FaabTransaction lookup, before any status
+    change, before any deposit and before any commit — so no balance can move.
 
-    Bet top-up  : applies immediately — credits bet wallet via wallet_manager.deposit().
-    Waiver topup: stays pending until Tuesday (applied by apply_pending_topups).
+    The replacement is POST /league/{league_id}/top-offs/{request_id}/approve,
+    served by approve_top_off() in economy/top_off.py, which posts two balanced
+    legs, mirrors the Wallet from the ledger's own post-state, writes the durable
+    disclosure and commits once, all under three row locks.
 
-    No payment is verified here. Stripe was removed from the MVP; confirmation
-    is a commissioner decision recorded against the FaabTransaction.
+    It is also already unrepresentable at the database: setting a topup_bet row
+    to status='applied' without both linkage fields violates
+    ck_faab_tx_topup_bet_linkage (§4.4). Refusing here reports the retirement
+    instead of an opaque IntegrityError.
+
+    The body below is retained UNREACHED as historical reference.
     """
+    raise TopUpsUnavailableError(
+        "Legacy FAAB/BAB top-up confirmation is retired. Confirming here would "
+        "credit a wallet with no balanced issuance-ledger posting, no frozen cap "
+        "check and no disclosure record. Use POST "
+        "/league/{league_id}/top-offs/{request_id}/approve. No balance was "
+        "changed and nothing was written."
+    )
+
     tx = db.query(FaabTransaction).filter(FaabTransaction.id == faab_tx_id).first()
     if not tx:
         raise ValueError(f"FAAB transaction {faab_tx_id} not found")
