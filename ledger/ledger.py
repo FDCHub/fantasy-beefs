@@ -85,6 +85,8 @@ class LedgerEntry(_LedgerBase):
     __table_args__ = (
         Index("ix_ledger_entries_posting_id",   "posting_id"),
         Index("ix_ledger_entries_door_account", "door", "account"),
+        # SPEC 2 / Ruling 1 — the leg's link up to its balanced batch.
+        Index("ix_ledger_entries_batch_id", "batch_id"),
     )
 
     # SQLite only grants ROWID autoincrement to a column that compiles as
@@ -100,6 +102,22 @@ class LedgerEntry(_LedgerBase):
     posting_id   = Column(Uuid, nullable=False)
     # Audit trail — which door produced this entry.
     door         = Column(String, nullable=False)
+    # SPEC 2 / Foundation Correction Plan Ruling 1 — this leg's LedgerPostingBatch.
+    #
+    # NULLABLE, AND THAT IS THE COMPATIBILITY CONTRACT: every posting made
+    # without an explicit protocol event — which is every caller in the tree
+    # today — leaves it NULL and behaves exactly as before. Only a caller that
+    # supplies a governing event gets a batch.
+    #
+    # NO ForeignKey, deliberately. LedgerPostingBatch lives on db.schema's
+    # declarative base and this table lives on _LedgerBase below; a FK across
+    # two metadatas is not expressible here. Same reasoning B6 §4.7 recorded for
+    # FaabTransaction.ledger_posting_id. The link is by value.
+    #
+    # IT CARRIES NO UNIQUENESS. Ruling 1 is explicit that idempotency authority
+    # lives on ProtocolEvent.event_id and that LedgerEntry must not become a
+    # second event home. Many legs share one batch — that is the whole point.
+    batch_id     = Column(Integer, nullable=True)
     created_at   = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -197,12 +215,43 @@ def trial_balance() -> int:
         return int(result)
 
 
+def _open_posting_batch(
+    db: Session,
+    posting_id: uuid.UUID,
+    door: str,
+    protocol_event_id: int,
+) -> int:
+    """SPEC 2 / Ruling 1 — create this posting's LedgerPostingBatch and return
+    its id, so every leg written below can link to it.
+
+    One ProtocolEvent may own several batches: Locked acceptance produces three
+    balanced ones (true-up, Anchor migration, Derived funding) under a single
+    challenge_accept event. So this creates a batch per post() call and never
+    de-duplicates by event — de-duplication is the event's own job, one tier up.
+
+    Imported here rather than at module import time only for symmetry with the
+    rest of this file's local reads; db.schema is already a module-level import,
+    so there is no cycle either way.
+    """
+    from db.schema import LedgerPostingBatch
+
+    batch = LedgerPostingBatch(
+        posting_id        = posting_id,
+        protocol_event_id = protocol_event_id,
+        door              = door,
+    )
+    db.add(batch)
+    db.flush()          # flush, not commit — the caller still owns the transaction
+    return batch.id
+
+
 def _run_checks_and_write(
     db: Session,
     entries: list[tuple[str, int]],
     door: str,
     posting_id: uuid.UUID,
     now: datetime,
+    batch_id: int | None = None,
 ) -> None:
     """
     Runs checks (b) and (c) and writes (d) — see post()'s docstring for the
@@ -274,6 +323,7 @@ def _run_checks_and_write(
             amount_cents=amount,
             posting_id=posting_id,
             door=door,
+            batch_id=batch_id,       # None on every unlinked (legacy) posting
             created_at=now,
         ))
 
@@ -282,6 +332,7 @@ def post(
     entries: list[tuple[str, int]],
     door: str,
     session: Session | None = None,
+    protocol_event_id: int | None = None,
 ) -> uuid.UUID:
     """
     Atomically write one posting — a balanced set of ledger entries sharing
@@ -349,6 +400,33 @@ def post(
     Returns the new posting_id either way — on the session=None path only
     after a successful commit; on the session=provided path, once the
     entries are written to that session (still uncommitted).
+
+    protocol_event_id (SPEC 2 / Foundation Correction Plan Ruling 1): OPTIONAL
+    AND TRAILING. Omitted — which is every caller in the tree today — this
+    function behaves exactly as it always has: no batch row is created, and
+    every LedgerEntry carries batch_id NULL. Supplied, it names the already-
+    persisted ProtocolEvent governing this posting; a LedgerPostingBatch is
+    created for this posting_id and every leg links to it.
+
+    SAFE BY INVENTORY, NOT BY ASSERTION. A complete AST inventory of all 94
+    call sites at HEAD (11 production, 83 test) found a maximum of ONE
+    positional argument anywhere — `entries` — with `door` and `session` always
+    passed by keyword. No caller can bind this new fourth parameter positionally,
+    so no existing call changes meaning. Re-run that inventory before any future
+    signature change (Foundation Correction Plan, OPR-2).
+
+    THIS FUNCTION NEVER CREATES A ProtocolEvent. Ruling 1 makes the event the
+    idempotency authority, and minting one as a side effect of an ordinary
+    posting would hand out identities nobody asked for and defeat the
+    de-duplication it exists to provide. The caller creates the event; this
+    records the posting against it.
+
+    A protocol_event_id REQUIRES session. On the session=None path post() opens
+    its own connection and commits internally, so the event row would live in a
+    different transaction from the batch that references it — the FK could fail,
+    or worse, succeed against a row that later rolled back. Refused outright
+    rather than papered over; every money path in this codebase passes
+    session=db already.
     """
     total = sum(amount for _, amount in entries)
     if total != 0:
@@ -357,11 +435,22 @@ def post(
             f"{total} cents, not zero. Entries: {entries}"
         )
 
+    if protocol_event_id is not None and session is None:
+        raise ValueError(
+            "post(protocol_event_id=...) requires an explicit session: the "
+            "batch that references the event must be written inside the same "
+            "transaction as the event itself. Pass session=db."
+        )
+
     posting_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
 
     if session is not None:
-        _run_checks_and_write(session, entries, door, posting_id, now)
+        batch_id = (
+            _open_posting_batch(session, posting_id, door, protocol_event_id)
+            if protocol_event_id is not None else None
+        )
+        _run_checks_and_write(session, entries, door, posting_id, now, batch_id)
         return posting_id
 
     with SessionLocal() as db:

@@ -1784,6 +1784,288 @@ class LeagueCommissioner(Base):
     assigned_by = relationship("User", foreign_keys=[assigned_by_user_id])
 
 
+# ── SPEC 2 · Package 2B Group 1 — event / batch / provenance foundation ───────
+#
+# THE TOPOLOGY IS RULING 1's, NOT SPEC 2 §7's. The Foundation Correction Plan
+# (spec/FantasyBeefs_Foundation_Correction_Plan_2026-07-21.md, Ruling 1)
+# SUPERSEDES Spec 2 §7's ledger-linkage recommendation, and Spec 2 records that
+# supersession inline as binding. Three durable tiers, each owning exactly one
+# identity concern:
+#
+#     ProtocolEvent  1 → many  LedgerPostingBatch  1 → many  LedgerEntry
+#
+#   ProtocolEvent       the SINGLE idempotency authority, UNIQUE(event_id),
+#                       generalized across every governed money operation.
+#   LedgerPostingBatch  the balanced accounting-transaction identity. The
+#                       existing posting_id is retained as this batch identity
+#                       and is durably associated with its governing event.
+#   LedgerEntry         stays a simple accounting leg (it lives on the ledger's
+#                       own declarative base, in ledger/ledger.py).
+#
+# Idempotency asks "does this ProtocolEvent exist", never "is this ledger row
+# unique". There is NO LedgerEntry-level uniqueness authority for event_id, and
+# Group 1 introduces none.
+#
+# GROUP 1 DEFINES DURABLE REPRESENTATION ONLY. No funding behaviour, no escrow,
+# no orchestrator, no route. Those are later Package 2B groups.
+
+
+class ProtocolEvent(Base):
+    """The single authoritative idempotency identity for a governed operation.
+
+    RULING 1: "a generalized, persistent domain-event record … the single
+    idempotency authority, with a database-enforced UNIQUE(event_id). It must
+    support challenge, Beef, pool, buy-in, settlement, shortfall, and any other
+    governed money operation — not challenges only."
+
+    GENERALIZATION IS WHY event_type CARRIES NO RESTRICTIVE CHECK. Spec 2 §7
+    described a challenge-scoped table whose event_type was CHECKed against six
+    challenge verbs; Ruling 1 supersedes that section and requires the table to
+    serve every domain. A six-value CHECK would make the generalization
+    unimplementable, so the vocabulary is owned by the calling domain. The six
+    challenge verbs are named as constants below for the later groups.
+
+    ONE EVENT MAY OWN SEVERAL BATCHES. "One event may produce several balanced
+    posting batches during a complex atomic operation" — Locked acceptance is
+    exactly that: true-up, Anchor migration and Derived funding are three
+    balanced batches under one challenge_accept event.
+
+    SPEC 2 §7's `ledger_posting_ids` COLUMN IS DELIBERATELY ABSENT. Under
+    Ruling 1 the batch points UP to its event, so an array of posting ids on the
+    event would be a second, divergeable home for the same relationship.
+
+    challenge_id and proposal_id are NULLABLE because a settlement, pool or
+    buy-in event has neither. They are the challenge domain's convenience
+    linkage, not a constraint on what this table may record.
+    """
+    __tablename__ = "protocol_events"
+    __table_args__ = (
+        # THE idempotency authority. Database-enforced, per Ruling 1.
+        UniqueConstraint("event_id", name="uq_protocol_event_event_id"),
+        Index("ix_protocol_event_type_created", "event_type", "created_at"),
+        Index("ix_protocol_event_challenge", "challenge_id"),
+    )
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    # Caller-visible, caller-supplied. A repeated delivery of the same event_id
+    # must return the ORIGINAL committed result and post nothing new.
+    event_id   = Column(Uuid,    nullable=False)
+    event_type = Column(String,  nullable=False)
+
+    # Challenge-domain linkage — nullable by generalization (see docstring).
+    challenge_id = Column(Integer, ForeignKey("beef_challenges.id",
+                                              name="fk_protocol_event_challenge"),
+                          nullable=True)
+    proposal_id  = Column(Integer, ForeignKey("beef_proposals.id",
+                                              name="fk_protocol_event_proposal"),
+                          nullable=True)
+
+    # Who acted: a team id rendered as text, or the literal 'system' for
+    # system-owned transitions such as expiry. Text because the actor is not
+    # always a team, and a FK would forbid 'system'.
+    actor_identity = Column(String, nullable=True)
+
+    league_id = Column(Integer, ForeignKey("leagues.id",
+                                           name="fk_protocol_event_league"),
+                       nullable=True)
+    season    = Column(Integer, nullable=True)
+    week      = Column(Integer, nullable=True)
+
+    effective_at    = Column(DateTime, nullable=True)
+    prior_state     = Column(String,   nullable=True)
+    resulting_state = Column(String,   nullable=True)
+    # Success, or a deterministic failure code such as 'reconciliation_error'
+    # or 'insufficient_acceptance_capacity' (Spec 2 §11, §12).
+    result_code     = Column(String,   nullable=True)
+    spec_version    = Column(String,   nullable=True)
+    created_at      = Column(DateTime, nullable=False,
+                             default=lambda: datetime.now(timezone.utc))
+
+    challenge = relationship("BeefChallenge", foreign_keys=[challenge_id])
+    proposal  = relationship("BeefProposal",  foreign_keys=[proposal_id])
+    league    = relationship("League",        foreign_keys=[league_id])
+    batches   = relationship("LedgerPostingBatch", back_populates="protocol_event")
+
+
+# The six challenge protocol-event verbs (Spec 2 §7). Named here so later
+# groups share one spelling; deliberately NOT a database CHECK — see the
+# ProtocolEvent docstring on why generalization forbids constraining the column.
+CHALLENGE_EVENT_TYPES = (
+    "challenge_issue",
+    "challenge_counter",
+    "challenge_accept",
+    "challenge_decline",
+    "challenge_cancel",
+    "challenge_expire",
+)
+
+
+class LedgerPostingBatch(Base):
+    """One balanced accounting transaction, owned by one ProtocolEvent.
+
+    RULING 1: "the balanced accounting-transaction identity. The existing
+    posting_id is retained as this batch identity, but it must be durably
+    associated with its governing ProtocolEvent. One batch contains multiple
+    ledger legs and sums to zero."
+
+    posting_id IS THE SAME UUID ledger.post() already mints and stamps on every
+    LedgerEntry of the posting. It is not a new identifier — it is the existing
+    one, given a durable home and an owner. UNIQUE here because one posting_id
+    is exactly one batch; that is a structural fact about the ledger, not an
+    idempotency rule, and it must not be mistaken for one: idempotency lives on
+    ProtocolEvent.event_id and nowhere else.
+
+    NO FOREIGN KEY POINTS AT ledger_entries, in either direction. LedgerEntry
+    sits on the ledger's own declarative base (ledger/ledger.py's _LedgerBase),
+    a separate metadata from this one — the same reason B6 §4.7 gave for
+    FaabTransaction.ledger_posting_id carrying no FK. The link is by value:
+    LedgerEntry.batch_id equals this row's id.
+    """
+    __tablename__ = "ledger_posting_batches"
+    __table_args__ = (
+        # One posting_id is one batch. A structural fact, NOT an idempotency
+        # authority — that is ProtocolEvent.event_id's alone.
+        UniqueConstraint("posting_id", name="uq_ledger_posting_batch_posting_id"),
+        Index("ix_ledger_posting_batch_event", "protocol_event_id"),
+    )
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    posting_id        = Column(Uuid,    nullable=False)
+    protocol_event_id = Column(Integer,
+                               ForeignKey("protocol_events.id",
+                                          name="fk_ledger_posting_batch_event"),
+                               nullable=False)
+    # Denormalised from the entries this batch owns, which all share one door by
+    # construction — post() takes exactly one. Descriptive only; the entries'
+    # own `door` remains what the funded-balance guard reads.
+    door       = Column(String,   nullable=False)
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+
+    protocol_event = relationship("ProtocolEvent", back_populates="batches")
+
+
+class ChallengeFundingLeg(Base):
+    """Spec 2 §5 — ordered, append-only source-funding provenance.
+
+    WHY ORDERED LEGS AND NOT RUNNING TOTALS. §5: "Cumulative totals are
+    insufficient. Strict reverse-order refund (§11) needs the exact leg
+    sequence, which two running totals cannot reconstruct." A refund replays
+    actual history backwards; it never divides proportionally, because
+    proportional division invents rounding questions and describes movements
+    that never happened.
+
+    NEVER MUTATED. A reversal is a NEW row, not an edit. `fund` legs carry a
+    positive amount_cents, `reverse` legs a negative one, and every `reverse`
+    row names the exact `fund` row it draws from through
+    reverses_funding_leg_id.
+
+    remaining_reversible_cents IS DERIVED, NOT STORED, and that is §5's explicit
+    design:
+
+        remaining_reversible_cents(fund_leg) =
+            fund_leg.amount_cents
+            − SUM(abs(r.amount_cents) for r where r.reverses_funding_leg_id == fund_leg.id)
+
+    Storing it would create a second, divergeable truth for something the rows
+    already determine. The linkage plus this formula is what makes each partial
+    reversal provably exact — sequence_number alone cannot tell how much of a
+    partially-consumed leg remains, so repeated partial reductions could
+    otherwise double-reverse one leg or skip another.
+
+    GROUP 1 DEFINES THE REPRESENTATION ONLY. No funding, splitting, reversing or
+    reconciling behaviour exists yet; that is a later Package 2B group. What is
+    enforced here is structural: ordering uniqueness, the fund/reverse linkage
+    biconditional, and the sign contract.
+    """
+    __tablename__ = "challenge_funding_legs"
+    __table_args__ = (
+        # §5 — sequence_number is monotonic WITHIN a challenge and is the order
+        # a refund replays backwards. Uniqueness is what stops two writers
+        # minting the same position.
+        UniqueConstraint("challenge_id", "sequence_number",
+                         name="uq_challenge_funding_leg_sequence"),
+        CheckConstraint(
+            "leg_kind IN ('fund','reverse')",
+            name="ck_challenge_funding_leg_kind",
+        ),
+        # §5 — "null for `fund` legs, required for `reverse` legs". Stated as a
+        # biconditional so neither half can drift: a fund leg carrying a
+        # reversal target, and a reverse leg without one, are both
+        # unrepresentable.
+        CheckConstraint(
+            "(leg_kind = 'fund'    AND reverses_funding_leg_id IS NULL) "
+            "OR (leg_kind = 'reverse' AND reverses_funding_leg_id IS NOT NULL)",
+            name="ck_challenge_funding_leg_reversal_linkage",
+        ),
+        # §5 — "positive = funded, negative = reversed". A zero-amount leg is
+        # meaningless in either direction and is excluded by both branches.
+        CheckConstraint(
+            "(leg_kind = 'fund'    AND amount_cents > 0) "
+            "OR (leg_kind = 'reverse' AND amount_cents < 0)",
+            name="ck_challenge_funding_leg_amount_sign",
+        ),
+        Index("ix_challenge_funding_leg_challenge_seq",
+              "challenge_id", "sequence_number"),
+        Index("ix_challenge_funding_leg_reverses", "reverses_funding_leg_id"),
+    )
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    challenge_id = Column(Integer,
+                          ForeignKey("beef_challenges.id",
+                                     name="fk_challenge_funding_leg_challenge"),
+                          nullable=False)
+    # The funding side. Whose sources this leg drew from — always the Anchor
+    # team for issue and true-up legs, the Derived team for Derived funding.
+    team_id      = Column(Integer,
+                          ForeignKey("teams.id",
+                                     name="fk_challenge_funding_leg_team"),
+                          nullable=False)
+
+    # Strict order within the challenge's funding history (§5).
+    sequence_number = Column(Integer, nullable=False)
+
+    # Ledger account strings, recorded verbatim so the leg reproduces the exact
+    # historical movement: 'min:{team}:{week}' or 'wallet:{team}' as the source,
+    # 'escrow:challenge:{id}' or an escrow:{bet_id} as the destination.
+    source_account      = Column(String, nullable=False)
+    destination_account = Column(String, nullable=False)
+
+    # INTEGER CENTS — authoritative (§6). Positive funds, negative reverses.
+    amount_cents = Column(Integer, nullable=False)
+    leg_kind     = Column(String,  nullable=False)   # CHECK ('fund','reverse')
+
+    # The exact original `fund` leg a `reverse` leg draws from (§5).
+    reverses_funding_leg_id = Column(
+        Integer,
+        ForeignKey("challenge_funding_legs.id",
+                   name="fk_challenge_funding_leg_reverses"),
+        nullable=True,
+    )
+
+    # Provenance linkage into the event/batch topology.
+    posting_id        = Column(Uuid, nullable=False)   # the batch's posting_id
+    posting_batch_id  = Column(Integer,
+                               ForeignKey("ledger_posting_batches.id",
+                                          name="fk_challenge_funding_leg_batch"),
+                               nullable=True)
+    protocol_event_id = Column(Integer,
+                               ForeignKey("protocol_events.id",
+                                          name="fk_challenge_funding_leg_event"),
+                               nullable=False)
+
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+
+    challenge      = relationship("BeefChallenge", foreign_keys=[challenge_id])
+    team           = relationship("Team",          foreign_keys=[team_id])
+    reverses       = relationship("ChallengeFundingLeg", remote_side=[id])
+    posting_batch  = relationship("LedgerPostingBatch",
+                                  foreign_keys=[posting_batch_id])
+    protocol_event = relationship("ProtocolEvent",
+                                  foreign_keys=[protocol_event_id])
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def create_all() -> None:
