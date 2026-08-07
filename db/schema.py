@@ -93,6 +93,23 @@ class League(Base):
     # emits DEFAULT 10000, giving one table two disagreeing schema sources.
     topoff_cap_multiplier_bps = Column(Integer, nullable=False,
                                        default=10000, server_default=text("10000"))
+    # B6 §4.6 — the season-close boundary. NULL means the season is OPEN;
+    # non-NULL means it closed AT THAT INSTANT. The timestamp is BOTH the flag
+    # and the record, which is why there is deliberately no boolean, no enum and
+    # no status string beside it: a second representation of "closed" could
+    # disagree with this one.
+    #
+    # NEVER RETURNED TO NULL BY ANY PATH (invariant 33). Reopening is prohibited
+    # outright — not by a route, not by an admin function, not by the writer
+    # itself — so no reopen field exists to make it representable.
+    #
+    # economy/season_close.py holds the ONLY writer, which takes the League row
+    # FOR UPDATE and writes this column once (§9.2). Every other B6 path READS
+    # it and never writes it (§9.1).
+    #
+    # No CHECK, no index, no server_default: §4.6 specifies a bare nullable
+    # DateTime, and NULL is already the default for one.
+    season_closed_at = Column(DateTime, nullable=True)
 
     teams    = relationship("Team",         back_populates="league")
     matchups = relationship("Matchup",      back_populates="league")
