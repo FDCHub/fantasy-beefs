@@ -17,7 +17,9 @@ from sqlalchemy import (
     Integer,
     JSON,
     String,
+    Text,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
@@ -712,9 +714,74 @@ class FaabTransaction(Base):
             "'waiver_bid','waiver_refund','funding_alert')",
             name="ck_faab_tx_type",
         ),
+        # B6 §7.1 — the persisted states are pending, applied, rejected,
+        # cancelled. 'rejected' is ADDED here because §4.4's legal state matrix
+        # requires (decision='rejected', status='rejected') to be a committable
+        # row and the prior constraint forbade it outright.
+        #
+        # 'failed' is TEMPORARILY RETAINED. §7.1 states there is no `failed`
+        # state for a top-off, and the topup_bet-scoped lifecycle constraint
+        # below makes it unrepresentable on a top-off row. It survives in this
+        # GLOBAL constraint only because an unrelated legacy non-B6 writer still
+        # sets it (wallet/faab_wallet.py). Retiring that writer and dropping
+        # 'failed' from this list is Group F legacy closure, deliberately not
+        # done here — narrowing it now would break a live path outside B6 scope.
         CheckConstraint(
-            "status IN ('pending','applied','cancelled','failed')",
+            "status IN ('pending','applied','rejected','cancelled','failed')",
             name="ck_faab_tx_status",
+        ),
+        # B6 §4.1 — allowed decision values. NULL is permitted because the
+        # column is nullable on LEGACY rows that predate B6 and carry no
+        # lifecycle decision at all. For a topup_bet row a NULL decision is
+        # refused by ck_faab_tx_topup_bet_lifecycle below, so this tolerance
+        # never reaches a B6 top-off.
+        CheckConstraint(
+            "decision IS NULL "
+            "OR decision IN ('pending','approved','rejected','cancelled')",
+            name="ck_faab_tx_decision",
+        ),
+        # B6 §4.4 — the four legal decision/status pairs, scoped to topup_bet.
+        #
+        # `decision IS NOT NULL` is LOAD-BEARING and is not a null exception —
+        # it is the opposite. A SQL CHECK rejects only on a definite FALSE and
+        # passes on UNKNOWN. Without this conjunct a topup_bet row carrying
+        # decision = NULL would evaluate every disjunct to NULL, make the OR
+        # chain NULL, and SILENTLY PASS. Requiring the decision to be present
+        # turns a missing lifecycle decision into a definite violation.
+        #
+        # Consequence: a topup_bet row can never carry status='failed', because
+        # no legal pair admits it.
+        CheckConstraint(
+            "type <> 'topup_bet'"
+            " OR (decision IS NOT NULL"
+            "     AND ((decision = 'pending'   AND status = 'pending')"
+            "       OR (decision = 'approved'  AND status = 'applied')"
+            "       OR (decision = 'rejected'  AND status = 'rejected')"
+            "       OR (decision = 'cancelled' AND status = 'cancelled')))",
+            name="ck_faab_tx_topup_bet_lifecycle",
+        ),
+        # B6 §4.4 — the linkage biconditional, BOTH directions, scoped to
+        # topup_bet. Applied requires both linkage fields; every non-applied
+        # state forbids BOTH.
+        #
+        # The equality is applied PER FIELD, not once against the conjunction.
+        # §4.4's one-line shorthand reads
+        #     (decision='approved' AND status='applied')
+        #       IFF (ledger_posting_id IS NOT NULL AND disclosure_event_id IS NOT NULL)
+        # but implemented literally that lets a NON-APPLIED row carry exactly ONE
+        # linkage field: the right-hand conjunction is then FALSE, the left side
+        # is FALSE, and FALSE = FALSE passes. The authoritative reading is §4.4's
+        # prose ("every non-applied state forbids both") and its legal state
+        # matrix, which show BOTH fields absent on every non-applied row. Pairing
+        # each field separately against applied-ness enforces exactly that, and
+        # is what makes a stray half-linkage unrepresentable.
+        CheckConstraint(
+            "type <> 'topup_bet'"
+            " OR (((decision = 'approved' AND status = 'applied')"
+            "      = (ledger_posting_id IS NOT NULL))"
+            "     AND ((decision = 'approved' AND status = 'applied')"
+            "          = (disclosure_event_id IS NOT NULL)))",
+            name="ck_faab_tx_topup_bet_linkage",
         ),
         Index("ix_faab_tx_team_created", "team_id", "created_at"),
     )
@@ -726,7 +793,11 @@ class FaabTransaction(Base):
     amount           = Column(Float,    nullable=False, default=0.0)
     wallet_from      = Column(String,   nullable=True)   # "bet" | "waiver" | "stripe"
     wallet_to        = Column(String,   nullable=True)   # "bet" | "waiver"
-    status           = Column(String,   nullable=False,  default="applied")
+    # B6 §4.3 — default flipped "applied" -> "pending". A row born `applied`
+    # without linkage is an immediate violation of ck_faab_tx_topup_bet_linkage.
+    # Inert for existing writers: wallet/faab_wallet.py's _log_tx() is the only
+    # construction site and always passes status= explicitly.
+    status           = Column(String,   nullable=False,  default="pending")
     note             = Column(String,   nullable=True)
     stripe_link_id   = Column(String,   nullable=True)
     stripe_link_url  = Column(String,   nullable=True)
@@ -734,6 +805,45 @@ class FaabTransaction(Base):
     apply_on         = Column(DateTime, nullable=True)   # NULL = immediate; set for Tuesday queue
     applied_at       = Column(DateTime, nullable=True)
     created_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # ── B6 provenance (§4.1, §4.2) ────────────────────────────────────────
+    #
+    # NAMES ARE FIXED. §4.1: "load-bearing across VAL-10 R5, §5, §10, §12 and
+    # the FR-VAL10 register." No rename without a proven technical reason
+    # recorded as a finding.
+    #
+    # Every column is nullable. That is deliberate: legacy rows predating B6
+    # carry none of this, and B6 never converts them (§11.5 — dormant history,
+    # never a B6 request, never consumes cap). Completeness for a live top-off
+    # is enforced by the two scoped CHECKs above, not by NOT NULL.
+    #
+    # Nothing in Group C WRITES these columns. Population at decision time is
+    # the Group E issuance service.
+    requester_user_id   = Column(Integer,  ForeignKey("users.id", name="fk_faab_tx_requester_user"),
+                                 nullable=True)    # immutable after creation (Group E discipline)
+    decided_by_user_id  = Column(Integer,  ForeignKey("users.id", name="fk_faab_tx_decided_by_user"),
+                                 nullable=True)    # immutable after posting (Group E discipline)
+    decision            = Column(String,   nullable=True)
+    decision_reason     = Column(Text,     nullable=True)   # mandatory non-empty on self-approval (Group E)
+    decided_at          = Column(DateTime, nullable=True)
+    # UNIQUE WHEN NON-NULL. unique=True on a nullable column yields a unique
+    # index that permits repeated NULLs on both PostgreSQL and SQLite, which is
+    # exactly the required semantics — many undecided requests, at most one
+    # claim on any given posting or disclosure.
+    #
+    # NO ForeignKey to ledger_entries (§4.7): LedgerEntry.posting_id is
+    # deliberately NON-unique because every leg of a posting shares it, and the
+    # ledger sits on a SEPARATE declarative base. Uniqueness is enforced on
+    # this side only.
+    ledger_posting_id   = Column(Uuid,     nullable=True, unique=True)
+    disclosure_event_id = Column(Uuid,     nullable=True, unique=True)   # stores top_off_disclosure.event_id, NOT its integer PK
+    amount_cents        = Column(Integer,  nullable=True)   # sole authoritative amount; float `amount` is display-only
+    season              = Column(Integer,  nullable=True)   # config.ALLOCATION_SEASON
+    # §4.2 — additive classification, immutable once written. It REPLACES
+    # NOTHING: requester_user_id and decided_by_user_id remain mandatory and
+    # separate. Records requester_user_id == decided_by_user_id as evaluated at
+    # decision time (Group E).
+    self_approved       = Column(Boolean,  nullable=True)
 
     team   = relationship("Team")
     league = relationship("League")
@@ -1475,6 +1585,105 @@ class LeagueSeasonTopoffConfig(Base):
                                        default=lambda: datetime.now(timezone.utc))
 
     league = relationship("League")
+
+
+# ── Durable top-off disclosure (B6 Group C) ───────────────────────────────────
+
+class TopOffDisclosure(Base):
+    """One row per approved BAB Top-Off issuance — the durable, league-visible
+    disclosure that the issuance happened (B6 §4.5).
+
+    INSERT-ONLY. No update path, no delete path. Following the accepted
+    LeagueSeasonTopoffConfig precedent, this is an APPLICATION CONTRACT enforced
+    by write discipline and by the absence of any update/delete code path — not
+    by a trigger, rule, or revoked grant. Group C adds no trigger and no event
+    listener; the specification requires none.
+
+    SELF-CONTAINED BY DESIGN. Every field needed to reconstruct the disclosure
+    is denormalised into the row: league, season, team, amount, both identities,
+    the classification, the reason, the decision time and the posting id.
+    Reading this row years later requires NO join against mutable live state —
+    which is the whole point, since teams are renamed, users change, and league
+    configuration moves on. A normalised design would make an old disclosure
+    mean something different later.
+
+    event_id IS THE DURABLE IDENTITY, not the integer primary key.
+    FaabTransaction.disclosure_event_id stores THIS UUID. The integer `id` is a
+    storage detail and is never the linkage value — test S13 asserts exactly
+    that distinction, because storing the PK there would look correct in every
+    single-row test and silently break the provenance chain (§4.7) in practice.
+
+    faab_transaction_id is UNIQUE, so one request yields at most one disclosure.
+
+    Nothing in Group C WRITES this table. §4.5 requires the row to be written
+    INSIDE the approval transaction, so that a failed disclosure write rolls the
+    entire issuance back and money never moves without its disclosure. That is
+    the Group E issuance service.
+    """
+    __tablename__ = "top_off_disclosure"
+    __table_args__ = (
+        UniqueConstraint("event_id",            name="uq_topoff_disclosure_event_id"),
+        UniqueConstraint("faab_transaction_id", name="uq_topoff_disclosure_faab_tx"),
+        # §5.3 — a self-approved issuance REQUIRES a non-empty reason. Enforced
+        # at the database because it is one of the structural compensating
+        # controls that stand in for independent review (§5.4), not a UI nicety.
+        # A non-self-approved row needs no reason, and none is required
+        # elsewhere by the controlling text.
+        #
+        # §4.5 writes this as length(trim(decision_reason)) > 0. Implemented
+        # literally that is INSUFFICIENT: on both PostgreSQL 16 and SQLite,
+        # trim() with no character set strips SPACES ONLY, so a reason of tabs
+        # and newlines survives with a non-zero length and a whitespace-only
+        # justification would satisfy the control. The tab/newline/carriage
+        # return are therefore folded to spaces before trimming.
+        #
+        # replace()+trim() rather than btrim()/regex: btrim is PostgreSQL-only
+        # and raises "no such function" when SQLAlchemy emits this same CHECK
+        # into SQLite's CREATE TABLE, which api/main.py's create_all() does on
+        # the default fallback database. Verified equivalent on PostgreSQL 16
+        # and SQLite: NULL, empty and whitespace-only all rejected.
+        CheckConstraint(
+            "NOT self_approved OR (decision_reason IS NOT NULL AND length(trim("
+            "replace(replace(replace(decision_reason, '\t', ' '), '\n', ' '), '\r', ' ')"
+            ")) > 0)",
+            name="ck_topoff_disclosure_selfapproval_reason",
+        ),
+    )
+
+    id                  = Column(Integer,  primary_key=True, autoincrement=True)
+    event_id            = Column(Uuid,     nullable=False)
+    faab_transaction_id = Column(Integer,
+                                 ForeignKey("faab_transactions.id",
+                                            name="fk_topoff_disclosure_faab_tx"),
+                                 nullable=False)
+    league_id           = Column(Integer,
+                                 ForeignKey("leagues.id", name="fk_topoff_disclosure_league"),
+                                 nullable=False)
+    season              = Column(Integer,  nullable=False)
+    team_id             = Column(Integer,
+                                 ForeignKey("teams.id", name="fk_topoff_disclosure_team"),
+                                 nullable=False)
+    amount_cents        = Column(Integer,  nullable=False)
+    requester_user_id   = Column(Integer,
+                                 ForeignKey("users.id", name="fk_topoff_disclosure_requester"),
+                                 nullable=False)
+    decided_by_user_id  = Column(Integer,
+                                 ForeignKey("users.id", name="fk_topoff_disclosure_decided_by"),
+                                 nullable=False)
+    self_approved       = Column(Boolean,  nullable=False)
+    decision_reason     = Column(Text,     nullable=True)
+    decided_at          = Column(DateTime, nullable=False)
+    # Uuid, NOT NULL — a disclosure only exists for a posted issuance. No
+    # ForeignKey, for the same §4.7 reason as FaabTransaction.ledger_posting_id.
+    ledger_posting_id   = Column(Uuid,     nullable=False)
+    created_at          = Column(DateTime, nullable=False,
+                                 default=lambda: datetime.now(timezone.utc))
+
+    # No User relationships: two FKs to users.id would make an unqualified
+    # relationship ambiguous, and Group C needs none.
+    faab_transaction = relationship("FaabTransaction")
+    league           = relationship("League")
+    team             = relationship("Team")
 
 
 # ── Commissioner authority ────────────────────────────────────────────────────
