@@ -50,6 +50,10 @@ from auth.jwt_auth import get_current_gm
 from auth.allocation_gate import get_season_allocation_gate
 from wallet.wallet_manager import deposit as wm_deposit
 from wallet.wallet_manager import _challenge_reserved
+# From the VIEW module, not the orchestrator — importing economy.challenge_funding
+# would pull beefs.proposal_lifecycle into the app's import graph and break
+# Package 2A's G2 unreachability gate. See economy/challenge_escrow_view.py.
+from economy.challenge_escrow_view import team_open_challenge_escrow_cents
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -215,7 +219,16 @@ def _build_state(fw: FaabWallet, db: Session) -> FaabWalletState:
         Bet.wallet_id == bwallet.id, Bet.status == "pending"
     ).all()
     pending_exp        = round(sum(b.amount for b in open_bets), 2)
-    ch_reserved = _challenge_reserved(fw.team_id, db)
+    # P1-L4 — DISPLAY MODEL on the new provenance. Legacy challenges contribute
+    # their soft reservation (they have no escrow); new-model challenges
+    # contribute their REAL escrow from the funding legs. _challenge_reserved
+    # excludes new-model rows, so the two sets are disjoint and nothing is
+    # counted twice.
+    ch_reserved = round(
+        _challenge_reserved(fw.team_id, db)
+        + team_open_challenge_escrow_cents(db, fw.team_id) / 100.0,
+        2,
+    )
 
     return FaabWalletState(
         faab_wallet_id          = fw.id,

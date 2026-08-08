@@ -873,9 +873,15 @@ for py in REPO.rglob("*.py"):
             encoding="utf-8", errors="ignore"):
         continue
     importers.append(py.relative_to(REPO).as_posix())
-check("L7-10: the production surface is exactly the primitive plus its three "
+# P1-L4 UPDATE. economy/challenge_funding.py joined this list when P1-L4 landed:
+# the Spec 2 money layer is a legitimate FOURTH consumer of the mutex, and its
+# use of it is exactly what P1-L7 was built to serve. The assertion still pins
+# the surface to a known, enumerated set — a fifth, unreviewed consumer appearing
+# here is still a failure.
+check("L7-10: the production surface is exactly the primitive plus its known "
       "consumer modules",
       sorted(importers) == ["beefs/beef_engine.py", "betting/bet_engine.py",
+                            "economy/challenge_funding.py",
                             "ledger/ledger.py"], str(sorted(importers)))
 
 
@@ -928,8 +934,21 @@ with tdb.SessionLocal() as db:
     )).scalar()
 check("L7-11: no escrow:challenge: account was posted to anywhere in this suite",
       n_chal_escrow == 0, f"got {n_chal_escrow}")
-check("L7-11: economy/challenge_funding.py still does not exist",
-      not (REPO / "economy" / "challenge_funding.py").exists())
+# P1-L4 UPDATE — THE "HAS NOT BEGUN" HALF OF THIS FENCE IS RETIRED, DELIBERATELY.
+# It asserted `economy/challenge_funding.py` did not exist, which was correct
+# while P1-L7 was the frontier and is now false BY AUTHORIZATION: P1-L4 was the
+# next package in the locked sequence and it lives in exactly that file.
+#
+# What the fence was actually protecting survives above and still passes: no
+# P1-L4 escrow identifier has leaked into ledger/ledger.py, beefs/beef_engine.py
+# or betting/bet_engine.py, and this suite's own fixtures still post to no
+# escrow:challenge: account. The containment claim is the durable one; "the file
+# does not exist" was only ever a proxy for it while the file was unwritten.
+check("L7-11: P1-L4 is CONTAINED — the challenge escrow lifecycle lives in its "
+      "own module and has not leaked into the P1-L7 surface",
+      (REPO / "economy" / "challenge_funding.py").exists()
+      and "escrow:challenge:" not in (REPO / "ledger" / "ledger.py").read_text(encoding="utf-8")
+      and "escrow:challenge:" not in (REPO / "betting" / "bet_engine.py").read_text(encoding="utf-8"))
 
 section("L7-12: _challenge_reserved not retired; issue still posts no money")
 

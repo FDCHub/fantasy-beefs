@@ -905,17 +905,24 @@ def respond_to_challenge(
                 f"Contact the commissioner to check."
             )
 
-    # Guarantees every read from here through db.commit() sees one consistent snapshot
-    # of the database, so a concurrent projection refresh or wallet transfer can't land
-    # mid-sequence and produce a mismatched result.
-    if db.get_bind().dialect.name != "sqlite":
-        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-
+    # P1-L4 — THE REPEATABLE READ THAT USED TO SIT HERE IS REMOVED.
+    #
+    # It set `isolation_level: REPEATABLE READ` on a connection whose transaction
+    # had already autobegun several statements earlier, which Spec 2 §2 and
+    # Foundation Correction Plan §4 both record as "too late to be relied on".
+    # P1-L7 then made the explicit Wallet mutex below the actual control, leaving
+    # this line redundant — and worse than redundant: a REPEATABLE READ snapshot
+    # would make the under-lock balance read below serve data from BEFORE the lock
+    # was granted, which is the exact failure the lock exists to prevent, and on
+    # Postgres it converts a clean lock-and-queue into a serialization failure the
+    # caller must retry.
+    #
+    # Removing it is the smallest change that leaves one control in charge. The
+    # authoritative read below now runs at the connection's ordinary isolation,
+    # under the mutex, and sees the committed state of whoever went first.
+    #
     # P1-L7: the two-Wallet mutex for this accept, held from here to the single
-    # db.commit() at the end of the accept. THE LOCK IS THE CONTROL, NOT THE
-    # ISOLATION LEVEL — the REPEATABLE READ above is set after the transaction
-    # has already autobegun (Foundation Correction Plan §4, SPEC 2 §2), so it is
-    # not reliable and P1-L7 does not lean on it.
+    # db.commit() at the end of the accept. THE LOCK IS THE CONTROL.
     #
     # Deliberately placed HERE and not at the top of the function: the expiry,
     # kickoff-lock and decline branches above each commit and return, and a lock

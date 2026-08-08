@@ -22,6 +22,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from db.schema import Bet, BeefChallenge, Transaction, Wallet, Team
 from betting.exceptions import BetValidationError
 from ledger.ledger import _dollars_to_cents
+# P1-L4 — the provenance-derived real challenge escrow this display model reports
+# alongside the legacy soft reservation.
+#
+# IMPORTED FROM THE VIEW MODULE, NOT FROM economy.challenge_funding, AND THAT IS
+# LOAD-BEARING. challenge_funding imports beefs.proposal_lifecycle in order to
+# drive it, so importing it here would put the whole new challenge lifecycle into
+# the application's import graph — and Package 2A's gate suite (G2) proves the
+# lifecycle is UNREACHABLE from api.main, which is the guarantee that the new
+# money path cannot go live by accident. The view module reads the same
+# provenance and imports only db.schema.
+from economy.challenge_escrow_view import team_open_challenge_escrow_cents
 
 # ── Bet-sizing constants (imported by bet_engine) ─────────────────────────────
 MIN_BET     = 5.00
@@ -92,9 +103,44 @@ def _get_wallet(wallet_id: int, db: Session) -> Wallet:
 
 
 def _challenge_reserved(team_id: int, db: Session, exclude_challenge_id: int | None = None) -> float:
+    """LEGACY-MODEL SOFT RESERVATION ONLY. Dollars, not authoritative for money.
+
+    P1-L4 DISPOSITION — the `response_status IS NULL` filter is the whole point of
+    this docstring. A new-model challenge (Spec 1 Rev 3) posts REAL escrow at
+    issue: the stake has already left `wallet:{team}` as a ledger debit, so any
+    caller reading the ledger balance is already seeing it excluded. This function
+    also populates the legacy NOT NULL `status` column with 'pending' at issue
+    (proposal_lifecycle.py), so WITHOUT this filter every new-model challenge
+    would be counted here as well — and a gate doing
+    `ledger_balance − _challenge_reserved` would subtract the same committed
+    money TWICE. That double-count is precisely what the Foundation Correction
+    Plan §5 and Spec 2 §14 forbid.
+
+    So the retirement is scoped, not blanket: this value is now authoritative for
+    NOTHING on the new-model path (economy/challenge_funding.py never imports it,
+    and computes availability as min + wallet ledger cents alone), and it survives
+    only to keep the LEGACY beef_engine flow — which still posts no escrow at
+    issue — from overcommitting. Deleting it outright today would not retire a
+    soft reservation; it would remove the only capacity control the legacy path
+    has. It goes when the legacy path goes.
+
+    For the real committed-money figure on the new model, read
+    economy.challenge_escrow_view.team_open_challenge_escrow_cents(), which
+    derives it from the funding provenance.
+
+    READ IT FROM THE VIEW MODULE, NOT FROM economy.challenge_funding. The
+    orchestrator re-exports the same name, but importing it drags
+    beefs.proposal_lifecycle into the application's import graph and breaks
+    Package 2A's G2 unreachability gate — the assertion that the new challenge
+    lifecycle cannot be reached from api.main. The view module reads the same
+    provenance and imports only db.schema.
+    """
     query = db.query(BeefChallenge).filter(
         BeefChallenge.challenger_team_id == team_id,
         BeefChallenge.status.in_(["pending", "countered"]),
+        # Legacy rows only — a new-model challenge carries response_status and is
+        # backed by real escrow (see docstring).
+        BeefChallenge.response_status.is_(None),
     )
     if exclude_challenge_id is not None:
         query = query.filter(BeefChallenge.id != exclude_challenge_id)
@@ -116,7 +162,18 @@ def _wallet_state(w: Wallet, db: Session) -> WalletState:
         Bet.wallet_id == w.id, Bet.status == "pending"
     ).all()
     pending_exposure   = round(sum(b.amount for b in open_bets), 2)
-    challenge_reserved = _challenge_reserved(w.team_id, db)
+    # P1-L4 — DISPLAY MODEL, reading the new provenance (Foundation Plan §5:
+    # "the 2 display models read the new provenance"). Two disjoint sources,
+    # summed once and never double-counted:
+    #   legacy challenges  → soft reservation (no escrow exists for them)
+    #   new-model challenges → REAL escrow, from the funding legs
+    # _challenge_reserved now excludes new-model rows, so the two sets cannot
+    # overlap and no challenge contributes twice.
+    challenge_reserved = round(
+        _challenge_reserved(w.team_id, db)
+        + team_open_challenge_escrow_cents(db, w.team_id) / 100.0,
+        2,
+    )
 
     return WalletState(
         wallet_id          = w.id,

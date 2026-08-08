@@ -633,14 +633,29 @@ _assert("L3B-11 negative control: scanner ignores comment/docstring prose",
 
 print("\nL3B-12: no Package 2B Group 2 functionality pulled forward")
 
-_assert("L3B-12: economy/challenge_funding.py still does not exist",
-        not (_ROOT / "economy" / "challenge_funding.py").exists())
+# P1-L4 UPDATE — the "does not exist yet" half of this fence is retired.
+# economy/challenge_funding.py was correctly absent while P1-L3B was the
+# frontier; P1-L4 is now authorized and built, and that file is where it lives.
+# What this fence exists to protect — that the P1-L3B gates themselves stayed
+# minimal and pulled no funding-primitive surface into the three files P1-L3B
+# changed — is asserted below and is unchanged.
+_assert("L3B-12: P1-L4's challenge funding is CONTAINED in its own module",
+        (_ROOT / "economy" / "challenge_funding.py").exists())
 
 _G2_TOKENS = {
     "ProtocolEvent", "LedgerPostingBatch", "ChallengeFundingLeg", "protocol_event_id",
     "challenge_funding", "get_available_to_bet", "weekly_minimum", "WeeklyMinimum",
     "fund_challenge", "reverse_funding_leg",
 }
+# NO EXEMPTION IS NEEDED HERE, AND ADDING ONE WOULD WEAKEN THE FENCE.
+# wallet/wallet_manager.py names economy.challenge_funding only in a docstring
+# and a comment, and _code_tokens() already discards COMMENT and STRING tokens —
+# so prose about the module cannot trip this check. Exempting the token would
+# instead blind the fence to a FUTURE executable `import economy.challenge_funding`
+# in this file, which is exactly the import that would drag
+# beefs.proposal_lifecycle into the application graph and break Package 2A's G2
+# unreachability gate. The display read comes from economy.challenge_escrow_view,
+# which carries no such token.
 for _f in _CHANGED_FILES:
     _hits = _code_tokens(_f) & _G2_TOKENS
     _assert(f"L3B-12: {_f} introduces no Group 2 funding-primitive identifier",
