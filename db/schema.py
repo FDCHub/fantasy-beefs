@@ -110,6 +110,20 @@ class League(Base):
     # No CHECK, no index, no server_default: §4.6 specifies a bare nullable
     # DateTime, and NULL is already the default for one.
     season_closed_at = Column(DateTime, nullable=True)
+    # Pool POR Rev1.3 §9 — the governing season boundary, Yahoo-derived, held on
+    # League. Both are RULED and their READER IS UNBUILT (POR §12 item 5, Scope
+    # §J blocker 5): the Yahoo settings reader that populates them is Sprint 6
+    # work. Nullable is therefore the correct state today, and the governed
+    # fallbacks — season_final_week 17, playoff_start_week 15 — live in
+    # betting/pool_season_boundary.py rather than as column defaults, so a NULL
+    # stays visibly unpopulated instead of masquerading as a measured value.
+    #
+    # These exist to kill the hardcoded 14. POR §9: "The hardcoded week 14 is
+    # implementation debt and is not product authority." Rollover expiry fires
+    # at season_final_week; the no-repeat regular-season rule applies below
+    # playoff_start_week.
+    season_final_week   = Column(Integer, nullable=True)
+    playoff_start_week  = Column(Integer, nullable=True)
 
     teams    = relationship("Team",         back_populates="league")
     matchups = relationship("Matchup",      back_populates="league")
@@ -1197,6 +1211,17 @@ class PowerRanking(Base):
 class PoolConfig(Base):
     """Commissioner configures the weekly pool for a league."""
     __tablename__ = "pool_config"
+    __table_args__ = (
+        # POR Rev1.3 §6.1 — the governed bound on the Rev1.3 league-level weekly
+        # contribution. NULL passes: a league that has not yet been configured
+        # for the Rev1.3 Pool carries NULL here and reads the governed default
+        # (100) through betting/pool_funding.py, never a silent 0.
+        CheckConstraint(
+            "pool_weekly_entry_cents IS NULL OR "
+            "(pool_weekly_entry_cents >= 100 AND pool_weekly_entry_cents <= 500)",
+            name="ck_pool_config_weekly_entry_bounds",
+        ),
+    )
 
     id                      = Column(Integer, primary_key=True, autoincrement=True)
     league_id               = Column(Integer, ForeignKey("leagues.id"), unique=True)
@@ -1204,6 +1229,25 @@ class PoolConfig(Base):
     worst_beat_rollover     = Column(Boolean, default=True)
     created_at              = Column(DateTime(timezone=True),
                                      default=lambda: datetime.now(timezone.utc))
+    # ── Rev1.3 league-level weekly contribution (POR §6.1) ────────────────────
+    #
+    # WHY A SEPARATE COLUMN RATHER THAN A BOUND ON weekly_entry_cents. §6.1
+    # bounds the Rev1.3 contribution to 100..500 cents with a default of 100.
+    # weekly_entry_cents is the LEGACY three-pot engine's field and defaults to
+    # 1000 — live rows carry 1000 today. Putting the §6.1 CHECK on that column
+    # would reject every existing row at migration time, which §15's "preserve
+    # valid historical/live values" forbids. This is an extension of the same
+    # table, not a parallel subsystem: one row per league still holds the whole
+    # Pool configuration.
+    #
+    # FROZEN, not merely bounded. POR §6.1 freezes the contribution at the
+    # season freeze point. pool_weekly_entry_frozen_at is written once, by the
+    # first Rev1.3 weekly collection for the league (the first accepted Pool
+    # wager), and betting/pool_funding.py refuses any later change. The
+    # timestamp is both the flag and the record — the same single-representation
+    # rule League.season_closed_at follows.
+    pool_weekly_entry_cents     = Column(Integer, nullable=True)
+    pool_weekly_entry_frozen_at = Column(DateTime(timezone=True), nullable=True)
 
     league = relationship("League")
 
@@ -1353,12 +1397,54 @@ class PoolDefinition(Base):
                         name="ck_pool_definition_mechanic"),
         CheckConstraint("evaluator_family IN ('RANK_EXTREMUM','QUALIFIER')",
                         name="ck_pool_definition_evaluator_family"),
-        CheckConstraint("metric_kind IN ('SIMPLE_AGG','RATIO','COMPOSITE')",
-                        name="ck_pool_definition_metric_kind"),
+        # Rev1.3 widened this domain. Rev1.0 admitted only SIMPLE_AGG, RATIO and
+        # COMPOSITE; the Rev1.3 catalog additionally carries PLAYER_EXTREMUM,
+        # POINTS_AGG, BALANCE_RATIO and CATEGORY_COUNT, and COMPOSITE no longer
+        # appears on any active row (POR §3.1: "No formula is pending").
+        # COMPOSITE is retained in the domain rather than dropped — narrowing it
+        # would reject historical rows the earlier revision legitimately wrote.
+        CheckConstraint(
+            "metric_kind IN ('SIMPLE_AGG','RATIO','COMPOSITE','PLAYER_EXTREMUM',"
+            "'POINTS_AGG','BALANCE_RATIO','CATEGORY_COUNT')",
+            name="ck_pool_definition_metric_kind",
+        ),
+        # POR §3.4 / Scope §C8 — the eight governed executable shapes. This is
+        # the axis that defines COMPUTATION; evaluator_family classifies
+        # SETTLEMENT BEHAVIOR. Conflating them is the error §3.1 exists to
+        # prevent, so both are stored and both are constrained.
+        CheckConstraint(
+            "evaluator_shape IN ('CLOSED_SUM','CLOSED_RATIO','QUALIFIER_PREDICATE',"
+            "'PLAYER_EXTREMUM_WITHIN_SUBJECT','SLOT_FILTERED_POINTS_SUM',"
+            "'BALANCE_RATIO','DISTINCT_CATEGORY_COUNT','MATCHUP_SCORE_SUM')",
+            name="ck_pool_definition_evaluator_shape",
+        ),
         CheckConstraint("direction IS NULL OR direction IN ('MAX','MIN')",
                         name="ck_pool_definition_direction"),
         CheckConstraint("dependency_state IN ('ENABLED','BLOCKED')",
                         name="ck_pool_definition_dependency_state"),
+        CheckConstraint(
+            "predicate_quantifier IS NULL OR predicate_quantifier IN "
+            "('TEAM','MATCHUP_COMBINED','MATCHUP_EACH')",
+            name="ck_pool_definition_predicate_quantifier",
+        ),
+        # POR §7.0 — "Every blocked definition carries a non-null blocked_reason"
+        # and it "is null on all 77 non-blocked active definitions." Both halves
+        # are enforced; a one-sided check would let a BLOCKED row ship with no
+        # reason, which is the half that matters operationally.
+        CheckConstraint(
+            "(dependency_state = 'BLOCKED' AND blocked_reason IS NOT NULL) OR "
+            "(dependency_state = 'ENABLED' AND blocked_reason IS NULL)",
+            name="ck_pool_definition_blocked_reason",
+        ),
+        # POR §1.1 / conformance 34e, 40 — retired numbers are reserved
+        # permanently and are never reused. #8-#12, #97 and #98 are refused at
+        # the DATABASE, not only by the seeder, so no later code path (a fixture,
+        # a manual insert, a future migration) can resurrect one.
+        CheckConstraint(
+            "catalog_number NOT IN (8, 9, 10, 11, 12, 44, 45, 47, 50, 51, 52, "
+            "57, 81, 82, 88, 96, 97, 98)",
+            name="ck_pool_definition_retired_numbers",
+        ),
     )
 
     # Natural String PK, per §C1 "key PK". Precedent: PlayerIdMap.fantasypros_id.
@@ -1378,7 +1464,11 @@ class PoolDefinition(Base):
     anti_tanking_review               = Column(String,  nullable=False)
     data_dependency                   = Column(String,  nullable=False)
     dependency_state                  = Column(String,  nullable=False)
-    block_reason                      = Column(String,  nullable=True)
+    # RENAMED from block_reason by the S4-P1 migration. POR §7.0: "blocked_reason
+    # is the single canonical field." The migration uses ALTER TABLE ... RENAME
+    # COLUMN, so any value already written is preserved byte-for-byte; nothing
+    # is dropped and no second field is left behind to disagree with this one.
+    blocked_reason                    = Column(String,  nullable=True)
     regular_season_eligible           = Column(Boolean, nullable=False)
     # Nullable and stays NULL until the approved postseason 32-subset is
     # supplied. §C1: a null means NOT YET ELIGIBLE — never false-by-default,
@@ -1388,6 +1478,91 @@ class PoolDefinition(Base):
     tie_rule                          = Column(String,  nullable=False)
     aggregate_over_aggregate_required = Column(Boolean, nullable=False)
     zero_denominator_guard            = Column(Boolean, nullable=False)
+
+    # ── Revision 1.3 field set (Scope §C1) ────────────────────────────────────
+    #
+    # Every one of the 80 active definitions carries the identical field set.
+    # The two rows that formerly lacked seven of these — #97 and #98 — are
+    # retired and are not seedable (see ck_pool_definition_retired_numbers).
+    #
+    # NULLABLE ON PURPOSE, NOT BY OVERSIGHT. evaluator_shape and
+    # starter_slot_rule are NOT NULL because every active row carries them.
+    # metric_expression stays nullable because POR §3.4 rules that a null
+    # expression on a non-CLOSED_* shape is "correct and expected, not a missing
+    # formula" — the governed_definition is authoritative there.
+    evaluator_shape                   = Column(String,  nullable=False)
+    # Authoritative prose rule for the five non-closed shapes. Read by the
+    # evaluator only as documentation — it is never parsed. The executable form
+    # of each non-closed shape is a named Python evaluator selected by
+    # evaluator_shape, exactly as §C8 requires.
+    governed_definition               = Column(String,  nullable=True)
+    # POR §1.5 / Scope §C5, binding: threshold_condition is human-readable prose
+    # and is NEVER evaluated; `predicate` is the executable form. An evaluator
+    # that parses threshold_condition is non-conformant. Both are stored so the
+    # UI can show the prose without the engine ever reaching for it.
+    predicate                         = Column(String,  nullable=True)
+    predicate_quantifier              = Column(String,  nullable=True)
+    threshold_default                 = Column(Integer, nullable=True)
+    # Canonical stat-vocabulary keys ONLY — never source identifiers, aliases or
+    # formulas (POR §1.4). JSON rather than a join table: this is catalog
+    # metadata seeded from a governed artifact and read whole, never queried by
+    # element. #46 (blocked) legitimately carries NULL.
+    required_stats                    = Column(JSON,    nullable=True)
+    required_stats_resolved           = Column(Boolean, nullable=False)
+    required_stats_unresolved_reason  = Column(String,  nullable=True)
+    source_mapping_complete           = Column(Boolean, nullable=False)
+    unmapped_required_stats           = Column(JSON,    nullable=True)
+    starter_slot_rule                 = Column(String,  nullable=False)
+    slot_filter                       = Column(JSON,    nullable=True)
+    slot_exclusions                   = Column(JSON,    nullable=True)
+    # POR §1.7 — mathematically complete WITHOUT commissioner interpretation.
+    product_complete                  = Column(Boolean, nullable=False)
+    # ── GATE 1 (POR §1.2) — PERSISTENT definition metadata ────────────────────
+    # True only when product-ENABLED, required_stats resolved, every required
+    # stat authoritatively source-mapped, and product_complete. A definition
+    # NEVER loses product approval because an environment is unavailable, which
+    # is why transient provider state is not permitted anywhere on this table.
+    #
+    # GATE 2 (league_activation_ready) IS DELIBERATELY ABSENT HERE. §C1.1:
+    # storing a provider outage inside catalog metadata would make a product
+    # artifact carry an operational fact with no timestamp and no scope. Its
+    # carrier is PoolLeagueActivation below.
+    definition_runtime_eligible       = Column(Boolean, nullable=False)
+    definition_block_reason           = Column(String,  nullable=True)
+
+
+class PoolLeagueActivation(Base):
+    """GATE 2 carrier — Scope §C1.1 option B. Transient environment readiness,
+    keyed by league, provider and definition, carrying a measurement timestamp.
+
+    NEVER A COLUMN ON pool_definition. The whole point of §C1.1 is that a
+    provider refusal is an operational fact about an environment at a moment,
+    not a property of a product-approved definition. Storing it on the catalog
+    would leave a fact with no scope and no age.
+
+    STALE IS NOT-READY, NOT READY (§C1.1, binding). measured_at is NOT NULL
+    precisely so an un-aged measurement cannot exist; betting/pool_gates.py
+    applies the staleness window and treats an expired measurement as false.
+    The absence of a row is likewise not-ready — readiness must be affirmatively
+    measured, never assumed from silence.
+    """
+    __tablename__ = "pool_league_activation"
+    __table_args__ = (
+        UniqueConstraint("league_id", "provider", "definition_key",
+                         name="uq_pool_league_activation_scope"),
+    )
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    league_id      = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    provider       = Column(String,  nullable=False)
+    definition_key = Column(String,  ForeignKey("pool_definition.key"),
+                            nullable=False)
+    league_activation_ready       = Column(Boolean, nullable=False)
+    league_activation_block_reasons = Column(JSON,  nullable=True)
+    measured_at    = Column(DateTime(timezone=True), nullable=False)
+
+    league     = relationship("League")
+    definition = relationship("PoolDefinition")
 
 
 class PoolInstance(Base):
@@ -1457,6 +1632,24 @@ class PoolInstance(Base):
     settled            = Column(Boolean, nullable=False,
                                 default=False, server_default=text("false"))
     settled_at         = Column(DateTime(timezone=True), nullable=True)
+    # ── S4-P1 settlement outcome ──────────────────────────────────────────────
+    #
+    # POR §6.2 requires that no surface report a fail-closed instance as
+    # settled, completed or distributed. Recording the classification on the row
+    # is what lets a reader distinguish "settled, distributed" from "settled,
+    # swept" from "refused" WITHOUT re-deriving it, and it is written in the
+    # same transaction as the posting it describes.
+    #
+    # NULL means never evaluated. A fail-closed classification is written ONLY
+    # when the refusal is recorded for operator visibility, and `settled` stays
+    # FALSE in that case — the two columns are independent facts and the
+    # settlement code never writes `settled` on a refusal path.
+    settlement_classification = Column(String, nullable=True)
+    # Cents actually credited to winning GMs by a §6.3 distribution. 0 on a
+    # sweep or a rollover; never NULL after settlement so that "distributed
+    # nothing" and "not yet settled" stay distinguishable from settled_at alone.
+    distributed_cents  = Column(BigInteger, nullable=False,
+                                default=0, server_default=text("0"))
     # No created_at. §C2 gives an explicit field list and a creation timestamp
     # is not in it; neither spec contains any authority requiring one (searched:
     # created_at, creation, timestamp, drawn, recorded at, selection time). POR
@@ -1488,6 +1681,167 @@ class PoolRotationCycle(Base):
     eligible_set_size = Column(Integer, nullable=False)
     opened_at         = Column(DateTime(timezone=True),
                                default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+
+
+class PoolClaim(Base):
+    """One GM's Prediction pick on one pool occurrence.
+
+    A CLAIM, NOT A FUNDING TRANSACTION (Owner Ruling R3). Submitting a pick
+    moves no money, and the absence of a pick creates no refund entitlement.
+    Funding is league-level and weekly; a claim only decides who is eligible to
+    be paid once the winning subject is known.
+
+    ONE CLAIM PER GM PER OCCURRENCE, ENFORCED BY THE DATABASE. The unique
+    constraint is the enforcement, not the application check that precedes it —
+    two concurrent submissions both pass an application-level "does one exist?"
+    read and only a constraint stops the second from landing.
+
+    SUBJECT IDENTITY MIRRORS POR §6.2. selected_subject_type is TEAM or MATCHUP
+    and matches the definition's scope; selected_subject_id is a team id or a
+    matchup id accordingly. A matchup is one subject, never its two teams.
+    """
+    __tablename__ = "pool_claim"
+    __table_args__ = (
+        UniqueConstraint("pool_instance_id", "team_id",
+                         name="uq_pool_claim_instance_gm"),
+        CheckConstraint("selected_subject_type IN ('TEAM','MATCHUP')",
+                        name="ck_pool_claim_subject_type"),
+    )
+
+    id                    = Column(Integer, primary_key=True, autoincrement=True)
+    pool_instance_id      = Column(Integer, ForeignKey("pool_instance.id"),
+                                   nullable=False)
+    league_id             = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    # The claiming GM. team_id IS the canonical GM identifier throughout the
+    # Pool engine, including POR §6.3's ascending payout ordering — see
+    # betting/pool_settlement.py for why an integer team id and not owner name.
+    team_id               = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    selected_subject_type = Column(String,  nullable=False)
+    selected_subject_id   = Column(Integer, nullable=False)
+    submitted_at          = Column(DateTime(timezone=True), nullable=False)
+
+    instance = relationship("PoolInstance")
+    league   = relationship("League")
+    team     = relationship("Team", foreign_keys=[team_id])
+
+
+class PoolEconomicEvent(Base):
+    """Event-keyed idempotency for every Pool economic effect — POR §6.4, §G1.
+
+    THE UNIQUE CONSTRAINT IS THE IDEMPOTENCY, AND A ROW LOCK CANNOT REPLACE IT.
+    A lock serializes concurrent attempts inside one process lifetime. It says
+    nothing about a retry that arrives after the lock is released, and nothing
+    about a crash between posting and response. This row is inserted in the SAME
+    transaction as the ledger posting it describes, so a replay collides here
+    and the whole retry is a harmless no-op.
+
+    TWO KEY SHAPES, TWO PARTIAL INDEXES. §G1 gives the conceptual key as
+    (pool_instance_id, economic_event_type). Weekly collection and the weekly
+    division remainder are WEEK-level causes with no single owning instance, so
+    they carry a NULL pool_instance_id and are keyed
+    (league_id, season, week, event_type) instead. A single combined unique
+    constraint would not work: NULLs are distinct in a UNIQUE index on both
+    backends, so every replayed weekly collection would insert a fresh row and
+    the guard would be silently inert. Two partial indexes, each covering
+    exactly one shape, is what makes both enforceable.
+
+    posting_id IS NULLABLE BY DESIGN. A rollover continuation generates no
+    posting at all — the money never leaves pool:{league_id} — but it still
+    needs an event row so a replayed rollover determination cannot create a
+    second continuation. NULL here means "this cause moved no money", which is
+    an outcome, not a missing value.
+    """
+    __tablename__ = "pool_economic_event"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ("
+            "'WEEKLY_COLLECTION',"
+            "'WEEKLY_DIVISION_REMAINDER',"
+            "'WINNER_DISTRIBUTION',"
+            "'SUBJECT_ZERO_CLAIM_ROLLOVER',"
+            "'SUBJECT_ZERO_CLAIM_CHAMPIONSHIP_SWEEP',"
+            "'TICKET_ZERO_WINNER_ROLLOVER',"
+            "'TICKET_ZERO_WINNER_CHAMPIONSHIP_SWEEP',"
+            "'ROLLOVER_EXPIRY_SWEEP')",
+            name="ck_pool_economic_event_type",
+        ),
+        CheckConstraint("amount_cents >= 0",
+                        name="ck_pool_economic_event_amount_nonneg"),
+        Index(
+            "uq_pool_economic_event_instance",
+            "pool_instance_id", "event_type",
+            unique=True,
+            sqlite_where=text("pool_instance_id IS NOT NULL"),
+            postgresql_where=text("pool_instance_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_pool_economic_event_week",
+            "league_id", "season", "week", "event_type",
+            unique=True,
+            sqlite_where=text("pool_instance_id IS NULL"),
+            postgresql_where=text("pool_instance_id IS NULL"),
+        ),
+    )
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    league_id        = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    season           = Column(Integer, nullable=False)
+    week             = Column(Integer, nullable=False)
+    pool_instance_id = Column(Integer, ForeignKey("pool_instance.id"),
+                              nullable=True)
+    event_type       = Column(String, nullable=False)
+    # The ledger posting this event caused, or NULL when the cause legitimately
+    # moved no money (a rollover continuation).
+    posting_id       = Column(Uuid, nullable=True)
+    amount_cents     = Column(BigInteger, nullable=False)
+    created_at       = Column(DateTime(timezone=True), nullable=False)
+
+    league   = relationship("League")
+    instance = relationship("PoolInstance")
+
+
+class PoolLegacyRolloverMigration(Base):
+    """Immutable record of one league's legacy Worst Beat carry being retired.
+
+    OWNER RULING, 2026-08-08. Worst Beat is retired (POR Rev1.3 §1.1) and must
+    NOT be revived or mapped onto any Rev1.3 definition. A live legacy carry is
+    therefore moved in full to `championship:{league_id}` — it never attaches to
+    an active Pool definition and never creates a successor occurrence.
+
+    ONE ROW PER LEAGUE, EVER. `migration_key` is deterministic — derived from
+    the league id alone, never a timestamp and never a random value — and its
+    UNIQUE constraint is what makes a retry harmless. A second execution
+    collides here inside the same transaction as the ledger posting, so the
+    whole retry rolls back and Championship cannot be credited twice.
+
+    IMMUTABLE BY INTENT. Nothing in the codebase updates a row after insert.
+    The record exists to answer, permanently, where a specific legacy balance
+    went: which league, which source field, how much, to which account, under
+    which idempotency identity.
+    """
+    __tablename__ = "pool_legacy_rollover_migration"
+    __table_args__ = (
+        UniqueConstraint("migration_key",
+                         name="uq_pool_legacy_rollover_migration_key"),
+        CheckConstraint("amount_cents > 0",
+                        name="ck_pool_legacy_rollover_amount_positive"),
+    )
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    migration_key       = Column(String, nullable=False)
+    league_id           = Column(Integer, ForeignKey("leagues.id"),
+                                 nullable=False)
+    # The legacy field drained, named in full so the record is readable without
+    # knowing this migration's source.
+    source_field        = Column(String, nullable=False)
+    # Which pool_pots weeks contributed, so the sum is reconstructable.
+    source_weeks        = Column(JSON, nullable=False)
+    amount_cents        = Column(BigInteger, nullable=False)
+    destination_account = Column(String, nullable=False)
+    posting_id          = Column(Uuid, nullable=False)
+    migrated_at         = Column(DateTime(timezone=True), nullable=False)
 
     league = relationship("League")
 

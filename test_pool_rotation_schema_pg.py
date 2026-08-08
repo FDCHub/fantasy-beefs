@@ -67,6 +67,80 @@ def _assert(label: str, condition: bool, detail: str = "") -> None:
         _failures.append(label)
 
 
+def _rev13_definition_row(key: str) -> dict:
+    """The fixture definition, taken from the GOVERNED Rev1.3 catalog.
+
+    S4-P1 widened pool_definition to the Rev1.3 field set and renamed
+    block_reason to blocked_reason, so the hand-written Rev1.0 literal this
+    replaced no longer constructs a valid row. Reading the real catalog instead
+    of re-typing a literal means this fixture cannot drift from the artifact the
+    seeder uses."""
+    from betting.pool_catalog import load_catalog
+
+    spec = load_catalog().by_key(key)
+    return {
+        "key": spec.key, "catalog_number": spec.catalog_number,
+        "display_name": spec.display_name, "category": spec.category,
+        "scope": spec.scope, "mechanic": spec.mechanic,
+        "evaluator_family": spec.evaluator_family,
+        "evaluator_shape": spec.evaluator_shape,
+        "metric_kind": spec.metric_kind, "direction": spec.direction,
+        "metric_expression": spec.metric_expression,
+        "governed_definition": spec.governed_definition,
+        "threshold_condition": spec.threshold_condition,
+        "predicate": spec.predicate,
+        "predicate_quantifier": spec.predicate_quantifier,
+        "threshold_configurable": spec.threshold_configurable,
+        "threshold_default": spec.threshold_default,
+        "required_stats": list(spec.required_stats) or None,
+        "required_stats_resolved": spec.required_stats_resolved,
+        "required_stats_unresolved_reason":
+            spec.required_stats_unresolved_reason,
+        "source_mapping_complete": spec.source_mapping_complete,
+        "unmapped_required_stats": list(spec.unmapped_required_stats) or None,
+        "starter_slot_rule": spec.starter_slot_rule,
+        "slot_filter": list(spec.slot_filter) or None,
+        "slot_exclusions": list(spec.slot_exclusions) or None,
+        "self_pick_rule": spec.self_pick_rule,
+        "anti_tanking_review": spec.anti_tanking_review,
+        "data_dependency": spec.data_dependency,
+        "dependency_state": spec.dependency_state,
+        "blocked_reason": spec.blocked_reason,
+        "product_complete": spec.product_complete,
+        "definition_runtime_eligible": spec.definition_runtime_eligible,
+        "definition_block_reason": spec.definition_block_reason,
+        "regular_season_eligible": spec.regular_season_eligible,
+        "postseason_eligible": spec.postseason_eligible,
+        "rollover_eligible": spec.rollover_eligible,
+        "tie_rule": spec.tie_rule,
+        "aggregate_over_aggregate_required":
+            spec.aggregate_over_aggregate_required,
+        "zero_denominator_guard": spec.zero_denominator_guard,
+    }
+
+
+def _insert_definition(conn, key: str) -> None:
+    """Insert one governed definition row through a raw connection.
+
+    Used where the test drives a bare Connection rather than a Session — the
+    values still come from the Rev1.3 catalog, so this cannot drift from the
+    seeder."""
+    from sqlalchemy import text as _text
+
+    row = _rev13_definition_row(key)
+    import json as _json
+
+    for json_column in ("required_stats", "unmapped_required_stats",
+                        "slot_filter", "slot_exclusions"):
+        if row[json_column] is not None:
+            row[json_column] = _json.dumps(row[json_column])
+
+    columns = ", ".join(row)
+    binds = ", ".join(f":{c}" for c in row)
+    conn.execute(
+        _text(f"INSERT INTO pool_definition ({columns}) VALUES ({binds})"), row)
+
+
 def main(tdb) -> None:
     from sqlalchemy import (
         BigInteger, Boolean, CheckConstraint, Column, DateTime, Index, Integer,
@@ -76,6 +150,9 @@ def main(tdb) -> None:
     from db.schema import Base, SessionLocal, engine, League, PoolDefinition
     from db.migrations.migrate_pool_rotation_tables import (
         upgrade, _PARTIAL_PREDICATE,
+    )
+    from db.migrations.migrate_s4_common_pool_engine import (
+        upgrade as s4_upgrade,
     )
 
     PUBLIC_COUNT = ("SELECT count(*) FROM information_schema.tables "
@@ -94,19 +171,7 @@ def main(tdb) -> None:
         db.commit()
         LEAGUE_ID = lg.id
     with SessionLocal() as db:
-        db.add(PoolDefinition(
-            key=DKEY, catalog_number=13, display_name="Most Total Touchdowns",
-            category="Marquee Counting Stats", scope="TEAM", mechanic="PREDICTION",
-            evaluator_family="RANK_EXTREMUM", metric_kind="SIMPLE_AGG",
-            direction="MAX", metric_expression="sum(total_touchdowns)",
-            threshold_condition=None, threshold_configurable=False,
-            self_pick_rule="ALLOWED", anti_tanking_review="REVIEWED_ALLOWED",
-            data_dependency="yahoo_weekly_player_totals",
-            dependency_state="ENABLED", block_reason=None,
-            regular_season_eligible=True, postseason_eligible=None,
-            rollover_eligible=False, tie_rule="EVEN_SPLIT",
-            aggregate_over_aggregate_required=False, zero_denominator_guard=False,
-        ))
+        db.add(PoolDefinition(**_rev13_definition_row(DKEY)))
         db.commit()
 
     # ── generic 4-probe driver, reused by every variant ──────────────────────
@@ -185,15 +250,13 @@ def main(tdb) -> None:
         with sq.connect() as c:
             c.execute(text("INSERT INTO leagues (id, season, name, projection_source, "
                            "buyin_enforcement_active) VALUES (1, 2026, 'x', 'fantasypros', 0)"))
-            c.execute(text(
-                "INSERT INTO pool_definition (key, catalog_number, display_name, category, "
-                "scope, mechanic, evaluator_family, metric_kind, threshold_configurable, "
-                "self_pick_rule, anti_tanking_review, data_dependency, dependency_state, "
-                "regular_season_eligible, rollover_eligible, tie_rule, "
-                "aggregate_over_aggregate_required, zero_denominator_guard) VALUES "
-                f"('{DKEY}', 13, 'x', 'x', 'TEAM', 'PREDICTION', 'RANK_EXTREMUM', "
-                "'SIMPLE_AGG', 0, 'ALLOWED', 'REVIEWED_ALLOWED', 'y', 'ENABLED', 1, 0, "
-                "'EVEN_SPLIT', 0, 0)"))
+            # The FK parent for the pool_instance probes below. Built from the
+            # governed Rev1.3 catalog rather than a hand-written column list:
+            # S4-P1 added seven NOT NULL columns to pool_definition, and a
+            # literal INSERT here would have to be re-typed every time the
+            # governed field set moves. Only the FK target matters to this
+            # test; which columns carry it does not.
+            _insert_definition(c, DKEY)
             c.commit()
             rs = probe(c, lambda r: PoolInstance.__table__.insert().values(**r),
                        league_id=1, needs_fk_rows=False)
@@ -287,24 +350,21 @@ def main(tdb) -> None:
         # ================================================================
         print("\n-- TEST B: real migration upgrade(engine) --")
         with engine.begin() as c:
-            for t in ("pool_rotation_cycle", "pool_instance", "pool_definition"):
+            for t in ("pool_claim", "pool_economic_event",
+                      "pool_league_activation", "pool_rotation_cycle",
+                      "pool_instance", "pool_definition"):
                 c.execute(text(f"DROP TABLE IF EXISTS {t} CASCADE"))
 
         upgrade(engine)          # <- the real production DDL, not a copy
+        # S4-P1 extends that Rev1.0 schema rather than replacing it, and
+        # production applies the two in this order. Running only the first
+        # would leave the ORM and the migration describing different tables,
+        # which is the two-disagreeing-schema-sources defect this file exists
+        # to catch.
+        s4_upgrade(engine)
 
         with SessionLocal() as db:
-            db.add(PoolDefinition(
-                key=DKEY, catalog_number=13, display_name="Most Total Touchdowns",
-                category="Marquee Counting Stats", scope="TEAM", mechanic="PREDICTION",
-                evaluator_family="RANK_EXTREMUM", metric_kind="SIMPLE_AGG",
-                direction="MAX", metric_expression="sum(total_touchdowns)",
-                threshold_configurable=False, self_pick_rule="ALLOWED",
-                anti_tanking_review="REVIEWED_ALLOWED",
-                data_dependency="yahoo_weekly_player_totals",
-                dependency_state="ENABLED", regular_season_eligible=True,
-                rollover_eligible=False, tie_rule="EVEN_SPLIT",
-                aggregate_over_aggregate_required=False, zero_denominator_guard=False,
-            ))
+            db.add(PoolDefinition(**_rev13_definition_row(DKEY)))
             db.commit()
 
         with engine.connect() as c:
@@ -413,17 +473,40 @@ def main(tdb) -> None:
             "definition_key", "slot", "pot_cents", "rollover_cents",
             "origin_instance_id", "settled", "settled_at",
         ]
+        # S4-P1 additions, enumerated rather than folded into C2_FIELDS so the
+        # governed baseline stays visible and any FURTHER unmanaged growth still
+        # fails this assertion.
+        #
+        # Authority: POR §6.2's behaviour table distinguishes three reportable
+        # end states — "Unsettled", "Settled" and "Settled, distributed" — and
+        # binds that "no surface may report the pot as settled, completed, or
+        # distributed" on a fail-closed classification. `settled` alone cannot
+        # carry that three-way distinction, so the classification and the
+        # distributed amount are recorded on the row, in the same transaction as
+        # the posting they describe. Scope §0: "Where the two disagree, the POR
+        # governs and this document is wrong" — and §C2 is headed "Minimal
+        # design", not an exhaustive prohibition.
+        S4P1_FIELDS = ["settlement_classification", "distributed_cents"]
+        EXPECTED = C2_FIELDS + S4P1_FIELDS
+
         model_cols = [c.name for c in PoolInstance.__table__.columns]
         live_cols = [c["name"] for c in inspect(engine).get_columns("pool_instance")]
-        _assert("24: pool_instance carries exactly §C2's 13 fields in BOTH schema "
-                "sources (ORM model and the live migration-created table)",
-                sorted(model_cols) == sorted(C2_FIELDS)
-                and sorted(live_cols) == sorted(C2_FIELDS),
+        _assert("24: pool_instance carries exactly §C2's 13 fields plus the 2 "
+                "governed S4-P1 additions, in BOTH schema sources (ORM model "
+                "and the live migration-created table)",
+                sorted(model_cols) == sorted(EXPECTED)
+                and sorted(live_cols) == sorted(EXPECTED),
                 detail=f"model={len(model_cols)} cols, live={len(live_cols)} cols, "
-                       f"C2={len(C2_FIELDS)}; "
-                       f"model-only={sorted(set(model_cols) - set(C2_FIELDS))} "
-                       f"live-only={sorted(set(live_cols) - set(C2_FIELDS))} "
-                       f"missing={sorted(set(C2_FIELDS) - set(model_cols))}")
+                       f"expected={len(EXPECTED)} (C2 {len(C2_FIELDS)} + S4-P1 "
+                       f"{len(S4P1_FIELDS)}); "
+                       f"model-only={sorted(set(model_cols) - set(EXPECTED))} "
+                       f"live-only={sorted(set(live_cols) - set(EXPECTED))} "
+                       f"missing={sorted(set(EXPECTED) - set(model_cols))}")
+        _assert("24a: the two schema sources agree with each other exactly "
+                "(the drift this assertion exists to catch)",
+                sorted(model_cols) == sorted(live_cols),
+                detail=f"model-only={sorted(set(model_cols) - set(live_cols))} "
+                       f"live-only={sorted(set(live_cols) - set(model_cols))}")
 
     finally:
         # Guaranteed teardown of every control table this file created.
