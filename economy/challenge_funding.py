@@ -461,6 +461,7 @@ def _reverse(
     amount_cents: int,
     event: ProtocolEvent,
     door: str,
+    account: Optional[str] = None,
 ) -> list[ChallengeFundingLeg]:
     """§11 — return `amount_cents` from challenge escrow to its ORIGINAL sources
     by replaying the funding legs backwards.
@@ -478,7 +479,14 @@ def _reverse(
     if amount_cents <= 0:
         return []
 
-    account = challenge_escrow_account(challenge.id)
+    # P3-D2: `account` selects WHICH escrow account is being reversed out of.
+    # It defaults to the pooled pre-acceptance account, so every Locked and
+    # pre-Handshake caller behaves exactly as before. The Dynamic Final-Lock
+    # refund passes the per-side Derived account (Rev 9 §7.1), which is the only
+    # reason the parameter exists — the algorithm itself is unchanged, because
+    # source-faithful strict-reverse-order reversal is the same act whichever
+    # escrow account holds the money.
+    account = account or challenge_escrow_account(challenge.id)
     fund_legs = (
         db.query(ChallengeFundingLeg)
         .filter(ChallengeFundingLeg.challenge_id == challenge.id,
@@ -1252,6 +1260,22 @@ def accept_funded_challenge(
         return closed
     prior     = challenge.response_status
     proposal  = _active_proposal(db, challenge)
+
+    # P3-D2 — MODE GUARD, AHEAD OF EVERY WRITE. Spec 1's accept_locked_proposal
+    # already refuses a Dynamic challenge, but it runs at step 9, after the
+    # true-up, the Bet rows and the escrow migration. Everything sits in one
+    # transaction so nothing incorrect could ever commit, yet a caller that
+    # pointed the Locked path at a Dynamic challenge would do a transaction's
+    # worth of work and surface whichever constraint it tripped first rather
+    # than the mode mismatch that actually caused it. Refusing here makes the
+    # boundary between the two modes explicit and the error honest.
+    if challenge.challenge_mode != spec1.MODE_LOCKED:
+        raise spec1.UnsupportedModeError(
+            f"Challenge {challenge_id} is mode {challenge.challenge_mode!r}. "
+            f"Locked acceptance handles only {spec1.MODE_LOCKED!r}; the Dynamic "
+            f"Handshake is economy/dynamic_challenge.py's."
+        )
+
     anchor    = anchor_team_id(challenge, proposal)
     derived   = derived_team_id(challenge, proposal)
     lock_funding_scopes(db, anchor, derived)

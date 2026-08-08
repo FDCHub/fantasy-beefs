@@ -658,6 +658,83 @@ def counter_challenge_proposal(
     )
 
 
+def accept_dynamic_proposal(
+    *,
+    challenge_id: int,
+    actor_team_id: int,
+    db: Session,
+    now: Optional[datetime] = None,
+) -> TransitionResult:
+    """§7.3's Dynamic branch — the Handshake's negotiation half.
+
+    THIS FILLS THE SEAM §7.3 NAMED AND LEFT OPEN: "if challenge_mode ==
+    'dynamic': <Handshake — Spec 3 boundary>". Until now the boundary was a
+    refusal in accept_locked_proposal; this is the branch that boundary was
+    reserved for, and it is deliberately a separate function rather than a mode
+    flag on the Locked one, so no Locked caller can reach Dynamic behaviour by
+    passing an argument.
+
+    IDENTICAL TO THE LOCKED TRANSITION IN EVERYTHING THAT IS NEGOTIATION. Same
+    actor rules (§8 — the recipient accepts from `offered`, the original issuer
+    from `countered`), same deadline enforcement, same first-valid-commit
+    semantics, same immutable-proposal selection with NO reprice. What differs is
+    downstream and belongs to Spec 3's money half: a Locked acceptance yields
+    Pending Bet rows immediately, while a Dynamic acceptance funds both ceilings
+    and leaves the wager awaiting Final Lock (§4).
+
+    NOTHING ECONOMIC HAPPENS HERE, and this function still never commits (the
+    Package 2A G3 gate). The ceilings, the model freeze, the per-side escrow and
+    the Handshake-exit assertion are all economy/dynamic_challenge.py's, inside
+    the single transaction that wraps this call.
+    """
+    challenge = _lock_challenge(db, challenge_id)
+
+    if challenge.response_status in NEGOTIATION_TERMINAL:
+        return _closed(challenge, f"already {challenge.response_status}")
+    if challenge.response_status == ACCEPTED:
+        return _closed(challenge, "already accepted")
+
+    if challenge.challenge_mode != MODE_DYNAMIC:
+        raise UnsupportedModeError(
+            f"Challenge {challenge_id} is mode {challenge.challenge_mode!r}; "
+            f"accept_dynamic_proposal handles only {MODE_DYNAMIC!r}. Locked "
+            f"acceptance is accept_locked_proposal()."
+        )
+
+    if challenge.response_status == OFFERED:
+        _require_actor(actor_team_id, challenge.challenged_team_id, "accept", OFFERED)
+    else:                                    # COUNTERED
+        _require_actor(actor_team_id, challenge.challenger_team_id, "accept", COUNTERED)
+
+    active = _active_proposal(db, challenge)
+    if active is None:
+        raise InvalidTransitionError(
+            f"Challenge {challenge_id} has no active proposal to accept.")
+
+    moment = _now(now)
+    if moment >= effective_deadline(active.created_at, active.proposal_lock_at):
+        raise DeadlinePassedError(
+            f"The active proposal's deadline has passed; challenge {challenge_id} "
+            f"can no longer be accepted."
+        )
+
+    challenge.accepted_proposal_id = active.id
+    challenge.response_status      = ACCEPTED
+    challenge.updated_at           = moment
+    db.flush()
+
+    return TransitionResult(
+        challenge_id         = challenge.id,
+        response_status      = ACCEPTED,
+        active_proposal_id   = active.id,
+        accepted_proposal_id = active.id,
+        version_number       = active.version_number,
+        changed              = True,
+        replayed             = False,
+        detail               = "accepted (dynamic handshake)",
+    )
+
+
 def challenge_active_version(db: Session, challenge: BeefChallenge) -> Optional[int]:
     """The version_number of the challenge's active proposal, read under
     whatever lock the caller already holds (§9 step 4)."""

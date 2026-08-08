@@ -125,6 +125,15 @@ def main(tdb) -> None:
         """Turn the model-built schema into a pre-Group-1 shape. TEST SETUP
         ONLY — the migration under test drops nothing."""
         _exec(
+            # P3-D2 UPDATE. challenge_final_lock_claims and challenge_final_locks
+            # carry FKs into protocol_events, so protocol_events cannot be
+            # dropped while they exist. Dropping them here is not a workaround —
+            # it is the faithful simulation: a genuine pre-Group-1 database
+            # predates both tables by two packages, so a devolved schema must not
+            # contain them either. Claims first: it references the final-lock
+            # table.
+            "DROP TABLE IF EXISTS challenge_final_lock_claims",
+            "DROP TABLE IF EXISTS challenge_final_locks",
             f"DROP TABLE IF EXISTS {T_FUNDING_LEG}",
             f"DROP TABLE IF EXISTS {T_POSTING_BATCH}",
             f"DROP TABLE IF EXISTS {T_PROTOCOL_EVENT}",
@@ -163,8 +172,16 @@ def main(tdb) -> None:
     # ══════════════════════════════════════════════════════════════════════
     print("\nM-ref  capture the clean-install truth from the models")
     _rebuild()
+    # P3-D2 UPDATE. `_devolve()` also drops challenge_final_locks and
+    # challenge_final_lock_claims, because they carry FKs into protocol_events
+    # and a genuine pre-Group-1 database predates them. The GROUP 1 MIGRATION
+    # UNDER TEST DOES NOT RECREATE THEM, and must not — restoring a later
+    # package's tables is not its job. So the clean-install table reference used
+    # for the end-state comparison excludes them; every other table is still
+    # compared exactly, and a Group 1 table going missing is still a failure.
+    P3D2_TABLES = {"challenge_final_locks", "challenge_final_lock_claims"}
     REF = {
-        "tables":       _tables(),
+        "tables":       _tables() - P3D2_TABLES,
         "pe_uniques":   _uniques(T_PROTOCOL_EVENT),
         "pe_indexes":   _indexes(T_PROTOCOL_EVENT),
         "pe_cols":      _cols(T_PROTOCOL_EVENT),
@@ -326,7 +343,7 @@ def main(tdb) -> None:
             == {T_PROTOCOL_EVENT, T_POSTING_BATCH, T_FUNDING_LEG},
             str(rep13["tables_created"]))
     _assert("M13 and reaches the clean-install end state",
-            _cols(T_LEDGER) == REF["ledger_cols"] and _tables() == REF["tables"])
+            _cols(T_LEDGER) == REF["ledger_cols"] and (_tables() - P3D2_TABLES) == REF["tables"])
 
     # ══════════════════════════════════════════════════════════════════════
     # M11 — unexpected schema fails closed
@@ -430,7 +447,7 @@ def main(tdb) -> None:
             == {T_PROTOCOL_EVENT, T_POSTING_BATCH, T_FUNDING_LEG},
             str(rep_after["tables_created"]))
     _assert("M13 and reaches the clean-install end state exactly",
-            _tables() == REF["tables"] and _cols(T_LEDGER) == REF["ledger_cols"]
+            (_tables() - P3D2_TABLES) == REF["tables"] and _cols(T_LEDGER) == REF["ledger_cols"]
             and _checks(T_FUNDING_LEG) == REF["leg_checks"])
 
     # ══════════════════════════════════════════════════════════════════════

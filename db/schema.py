@@ -418,6 +418,31 @@ class BeefChallenge(Base):
     revived_from_challenge_id  = Column(Integer,  ForeignKey("beef_challenges.id", name="fk_beef_challenge_revived_from"), nullable=True)  # audit lineage (§8)
     updated_at                 = Column(DateTime, nullable=True)
 
+    # ── SIMULATION ENGINE Rev 9 §5 — Dynamic Handshake freeze ──
+    # Written once, atomically, by the Dynamic Handshake; never by Locked, and
+    # never updated afterwards. All nullable so every Locked and legacy row is
+    # unaffected.
+    #
+    # THE CEILINGS LIVE ON THE CHALLENGE ROW BECAUSE THE HANDSHAKE-EXIT AND
+    # FINAL-LOCK GUARDS REQUIRE TWO INDEPENDENT READS (§2 guards 2 and 3): the
+    # escrow balance comes from the ledger, the ceiling from here. Deriving the
+    # ceiling from the same provenance that produced the balance would make the
+    # comparison circular and unable to catch an inconsistent true-up.
+    #
+    # `dynamic_issuer_ceiling_cents` IS the accepted Anchor (§2 guard 3a). It is
+    # recorded rather than inferred so guard 3a can assert the equality instead
+    # of assuming it — a challenge carrying issuer_ceiling 6000 against anchor
+    # 5000 would otherwise satisfy strict equality at escrow 6000 and produce a
+    # 1000-cent issuer refund, which is exactly the state OVERSHOOT-B outlaws.
+    dynamic_issuer_ceiling_cents   = Column(Integer,  nullable=True)
+    dynamic_opponent_ceiling_cents = Column(Integer,  nullable=True)
+    # MODEL-A: the frozen model identity. The refresh and Final Lock both resolve
+    # THIS id, never ACTIVE_MODEL_VERSION_ID. The hash detects an edited registry
+    # entry; it is not a lookup key and never reconstructs configuration.
+    dynamic_model_version_id       = Column(String,   nullable=True)
+    dynamic_model_config_hash      = Column(String,   nullable=True)
+    dynamic_handshake_at           = Column(DateTime, nullable=True)
+
     challenger_team  = relationship("Team", foreign_keys=[challenger_team_id])
     challenged_team  = relationship("Team", foreign_keys=[challenged_team_id])
     player           = relationship("Player", foreign_keys=[player_id])
@@ -2064,6 +2089,206 @@ class ChallengeFundingLeg(Base):
                                   foreign_keys=[posting_batch_id])
     protocol_event = relationship("ProtocolEvent",
                                   foreign_keys=[protocol_event_id])
+
+
+class ChallengeFinalLock(Base):
+    """Rev 9 §7.3 FINALSTATE-A — the immutable frozen Final-Lock result.
+
+    ONE PER CHALLENGE, STRUCTURALLY. `UNIQUE(challenge_id)` makes that a
+    constraint rather than a convention, so a second Final Lock for one challenge
+    is unrepresentable even if every application guard were bypassed.
+
+    THIS IS THE *RESULT*; ChallengeFinalLockClaim IS THE *EXECUTION RIGHT*.
+    Separate records with separate lifetimes: a claim may be reclaimed and
+    retried several times, but at most one result is ever written.
+
+    NO NEW `BeefChallenge.response_status` VALUE ACCOMPANIES THIS (§7.3).
+    `ck_beef_response_status` is a closed six-value CHECK that Spec 1 §4
+    partitions into open / negotiation-terminal / accepted, and every lifecycle
+    path branches on that partition; a seventh member forces a partition question
+    with no good answer. Authoritative completion is exactly two facts: this row
+    exists, and the governing claim is 'completed'. A status value would be a
+    third representation of the same thing.
+
+    Insert-only. Never updated after creation.
+    """
+    __tablename__ = "challenge_final_locks"
+    __table_args__ = (
+        UniqueConstraint("challenge_id", name="uq_challenge_final_lock_challenge"),
+        # Exposure never grows (§0): each side's final is bounded by its ceiling,
+        # and the derived side additionally never exceeds its raw derivation.
+        CheckConstraint(
+            "anchor_cents >= 0 AND derived_final_cents >= 0 "
+            "AND derived_raw_cents >= 0 AND derived_final_cents <= derived_raw_cents",
+            name="ck_challenge_final_lock_amounts",
+        ),
+        Index("ix_challenge_final_lock_challenge", "challenge_id"),
+    )
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    challenge_id = Column(Integer,
+                          ForeignKey("beef_challenges.id",
+                                     name="fk_challenge_final_lock_challenge"),
+                          nullable=False)
+    final_locked_at = Column(DateTime, nullable=False,
+                             default=lambda: datetime.now(timezone.utc))
+
+    # ── Model provenance — WHAT ACTUALLY EXECUTED ──
+    # Written from the config the Final-Lock run actually resolved and used, then
+    # asserted equal to the challenge's Handshake-frozen identity. Copying the
+    # promised id across would record an intention rather than an observation,
+    # and the whole point of the hash is to catch the case where those differ.
+    executed_model_version_id  = Column(String, nullable=False)
+    executed_model_config_hash = Column(String, nullable=False)
+    # The simulation count the executed config actually used. Recorded because
+    # "one official simulation under the frozen model" is a claim the audit
+    # record should be able to evidence, not merely assert — this is the
+    # executed config's n_sims, so a record whose count disagrees with the
+    # resolved version's is self-evidently inconsistent.
+    simulations                = Column(Integer, nullable=False, default=0)
+    # The projection dataset actually read AT FINAL LOCK. Deliberately separate
+    # from the model identity: the model is frozen, the projections are live, and
+    # recording both is what makes the run reproducible after the fact.
+    projection_source_id       = Column(String,   nullable=True)
+    projection_dataset_version = Column(String,   nullable=True)
+    projection_captured_at     = Column(DateTime, nullable=True)
+
+    # ── Frozen official probabilities and odds ──
+    p_issuer_final    = Column(Float,   nullable=False)
+    p_opponent_final  = Column(Float,   nullable=False)
+    issuer_moneyline  = Column(Integer, nullable=True)
+    opponent_moneyline = Column(Integer, nullable=True)
+
+    # ── Frozen money, INTEGER CENTS (§6) ──
+    anchor_cents        = Column(Integer, nullable=False)  # issuer final == Anchor
+    derived_raw_cents   = Column(Integer, nullable=False)  # pre-cap, for audit
+    derived_final_cents = Column(Integer, nullable=False)  # post-cap
+    ceiling_applied     = Column(Boolean, nullable=False, default=False)
+    derived_refund_cents      = Column(Integer, nullable=False, default=0)
+    final_funded_escrow_cents = Column(Integer, nullable=False)
+
+    # ── Frozen market terms / covered entities ──
+    wager_type   = Column(String, nullable=True)
+    line         = Column(Float,  nullable=True)
+    side         = Column(String, nullable=True)
+    # PLAIN FKs, NOT use_alter. The beef_challenges<->bets pair needs use_alter
+    # because it is a genuine cycle; this table only points AT bets and nothing
+    # points back, so there is no cycle to break. That matters for more than
+    # tidiness: `Table.create(bind=conn)` does not emit use_alter constraints —
+    # they are added by create_all()'s separate ALTER pass — so a use_alter FK
+    # here would exist on a clean install and be silently absent on the migration
+    # upgrade path, leaving the two schemas subtly different.
+    anchor_bet_id  = Column(Integer, ForeignKey("bets.id",
+                                                name="fk_final_lock_anchor_bet"),
+                            nullable=True)
+    derived_bet_id = Column(Integer, ForeignKey("bets.id",
+                                                name="fk_final_lock_derived_bet"),
+                            nullable=True)
+
+    # ── Governing event linkage ──
+    protocol_event_id = Column(Integer,
+                               ForeignKey("protocol_events.id",
+                                          name="fk_challenge_final_lock_event"),
+                               nullable=False)
+
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+
+    challenge      = relationship("BeefChallenge", foreign_keys=[challenge_id])
+    protocol_event = relationship("ProtocolEvent", foreign_keys=[protocol_event_id])
+
+
+class ChallengeFinalLockClaim(Base):
+    """Rev 9 §5.2 — the durable Final-Lock EXECUTION RIGHT.
+
+    `UNIQUE(challenge_id)` IS THE MUTEX, and it is the whole reason this table
+    exists. `ProtocolEvent.UNIQUE(event_id)` cannot serve: two workers presenting
+    DIFFERENT event UUIDs for the SAME challenge both satisfy event-id
+    uniqueness, and absent a challenge-scoped claim both would proceed to
+    simulate, adjust and refund (§5.8). The key is `challenge_id` ALONE on a
+    dedicated table rather than `(challenge_id, kind)` on a shared one: a kind
+    column would weaken the statement from "one Final-Lock execution per
+    challenge, forever" to "one per kind", and would silently admit a second row
+    the day a second kind appeared.
+
+    THREE STATES, NOT FOUR (§5.3). `in_progress` is deliberately absent because
+    it is unobservable under a two-phase commit: to be read it must be committed,
+    but Phase 2 is one transaction, so writing it at the start rolls back with
+    everything else on failure and is overwritten by 'completed' on success.
+    Retaining an unreachable member in a money-path CHECK invites a branch that
+    can never execute.
+
+    HALF-COMPLETION IS UNREPRESENTABLE. The two biconditional CHECKs bind
+    'completed' to both `completed_at` and `final_lock_id` in the database, not
+    in application convention, so a claim cannot claim success without pointing
+    at the result that justifies it.
+    """
+    __tablename__ = "challenge_final_lock_claims"
+    __table_args__ = (
+        # THE MUTEX (§5.2). Named exactly as the accepted review specifies.
+        UniqueConstraint("challenge_id",
+                         name="uq_challenge_final_lock_claim_challenge"),
+        CheckConstraint(
+            "status IN ('claimed','completed','failed')",
+            name="ck_challenge_final_lock_claim_status",
+        ),
+        # §5.3 — biconditionals, so neither half can drift from the other.
+        CheckConstraint(
+            "(status = 'completed') = (completed_at IS NOT NULL)",
+            name="ck_challenge_final_lock_claim_completed_at",
+        ),
+        CheckConstraint(
+            "(status = 'completed') = (final_lock_id IS NOT NULL)",
+            name="ck_challenge_final_lock_claim_final_lock",
+        ),
+        CheckConstraint("attempt_count >= 1",
+                        name="ck_challenge_final_lock_claim_attempts"),
+        Index("ix_challenge_final_lock_claim_status", "status"),
+    )
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    challenge_id = Column(Integer,
+                          ForeignKey("beef_challenges.id",
+                                     name="fk_challenge_final_lock_claim_challenge"),
+                          nullable=False)
+    status       = Column(String, nullable=False, default="claimed")
+
+    # Ownership. `claimed_by` is the worker identity currently holding execution.
+    claimed_by   = Column(String,   nullable=False)
+    claimed_at   = Column(DateTime, nullable=False)
+    # Staleness is DATA, not a hardcoded guess evaluated at read time (§5.4).
+    # MUST be refreshed on reclaim — a reclaim inheriting an expired timestamp
+    # hands the new owner an already-stale claim, and a third worker could take
+    # it out from underneath them while they run (§5.2).
+    claim_expires_at = Column(DateTime, nullable=False)
+
+    attempt_count       = Column(Integer,  nullable=False, default=1)
+    previous_claimed_by = Column(String,   nullable=True)
+    last_reclaimed_at   = Column(DateTime, nullable=True)
+    # Set with status='failed'; cleared on reclaim. `failed` is an ATTEMPT
+    # outcome, not a challenge outcome (§5.3).
+    failure_reason      = Column(String,   nullable=True)
+
+    completed_at  = Column(DateTime, nullable=True)
+    final_lock_id = Column(Integer,
+                           ForeignKey("challenge_final_locks.id",
+                                      name="fk_challenge_final_lock_claim_result"),
+                           nullable=True)
+    # Written by Phase 2 completion ONLY — never at acquisition or reclaim
+    # (§5.2). It records which DELIVERY performed the execution; it is not the
+    # mutex.
+    protocol_event_id = Column(Integer,
+                               ForeignKey("protocol_events.id",
+                                          name="fk_challenge_final_lock_claim_event"),
+                               nullable=True)
+
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=True)
+
+    challenge      = relationship("BeefChallenge",      foreign_keys=[challenge_id])
+    final_lock     = relationship("ChallengeFinalLock", foreign_keys=[final_lock_id])
+    protocol_event = relationship("ProtocolEvent",      foreign_keys=[protocol_event_id])
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

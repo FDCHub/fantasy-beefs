@@ -26,13 +26,15 @@ from db.schema import Bet, Matchup, Player, Projection, Roster, Transaction, Wal
 from betting.exceptions import NotFoundError, BetValidationError
 from wallet.wallet_manager import validate_bet_amount
 from odds.odds_engine_headless import (
-    N_SIMS,
     PlayerProj,
-    ScoringSettings,
-    HALF_PPR,
-    INJURY_MULTIPLIERS,
     simulate_scores,
 )
+# P3-D2 / MODEL-A — pinned to the v1 config, a verbatim capture of the constants
+# this module already priced against. N_SIMS, ScoringSettings and HALF_PPR were
+# imported but never used and are dropped; INJURY_MULTIPLIERS WAS used, by
+# _inj_adjusted below, and is now read from the config so that every
+# probability-affecting value in this module comes from one versioned source.
+from odds.model_registry import MODEL_V1 as LEGACY_MODEL_CONFIG
 from ledger.ledger import (
     post as ledger_post,
     _dollars_to_cents,
@@ -202,7 +204,8 @@ def _position_player(team_id: int, position: str, week: int, db: Session) -> tup
 
 
 def _inj_adjusted(s: PlayerProj) -> float:
-    return s.projected_points * INJURY_MULTIPLIERS.get(s.injury_status or "", 1.0)
+    """The injury STATUS is a live input; the multiplier TABLE is model config."""
+    return s.projected_points * LEGACY_MODEL_CONFIG.injury_multiplier(s.injury_status)
 
 
 # ── Bet type functions ────────────────────────────────────────────────────────
@@ -235,7 +238,7 @@ def place_straight_bet(
     for _s in _a_slots:
         _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
         away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
-    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week)
+    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week, model_config=LEGACY_MODEL_CONFIG)
     home_win_prob = float((home_scores > away_scores).mean())
     win_prob = home_win_prob if picked_team_id == matchup.home_team_id else 1 - home_win_prob
 
@@ -288,7 +291,7 @@ def place_spread_bet(
     for _s in _a_slots:
         _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
         away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
-    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week)
+    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week, model_config=LEGACY_MODEL_CONFIG)
 
     if picked_team_id == matchup.home_team_id:
         covers = home_scores - away_scores > spread
@@ -344,7 +347,7 @@ def place_over_under(
     for _s in _a_slots:
         _p = db.query(Projection).filter_by(player_id=_s.player_id, week=week, season=SEASON, source=SOURCE).first()
         away_starters.append(PlayerProj(player_id=_s.player_id, name=_s.player.name, position=_s.player.position, projected_points=_p.projected_points if _p else 0.0, injury_status=_p.injury_status if _p else None))
-    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week)
+    home_scores, away_scores = simulate_scores(matchup.home_team_id, matchup.away_team_id, home_starters, away_starters, week, model_config=LEGACY_MODEL_CONFIG)
     combined = home_scores + away_scores
 
     win_prob = float((combined > total_line).mean()) if pick == "over" \

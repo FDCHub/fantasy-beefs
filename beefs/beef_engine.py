@@ -43,14 +43,26 @@ from db.schema import (
     Transaction, Wallet, Team,
 )
 from odds.odds_engine_headless import (
-    N_SIMS,
     PlayerProj,
-    HALF_PPR,
-    INJURY_MULTIPLIERS,
     simulate_player_scores,
     simulate_scores,
     _prob_to_american,
 )
+# P3-D2 / MODEL-A — the legacy + Locked pricing path is explicitly pinned to the
+# v1 model config, which is a verbatim capture of the constants this module was
+# already pricing against (N_SIMS 10_000, STD_PCT 0.20, MIN_STD 0.5, HALF_PPR,
+# the injury table). The engine no longer carries probability-affecting module
+# constants, so the config must be passed; naming it here rather than resolving
+# the ACTIVE version keeps this path pinned even if a later sim-v2 is minted.
+#
+# Locked does not need the registry indirection Dynamic depends on: Locked
+# freezes its odds into the proposal at creation and never re-prices, so there
+# is no second run that could drift. Dynamic is the mode that re-simulates at
+# Final Lock, which is why it freezes a version id and resolves it later.
+#
+# N_SIMS, HALF_PPR and INJURY_MULTIPLIERS were imported here but never used —
+# dropped rather than re-pointed.
+from odds.model_registry import MODEL_V1 as LEGACY_MODEL_CONFIG
 
 N_START           = 9
 from config import CURRENT_SEASON as SEASON
@@ -317,6 +329,7 @@ def _compute_odds_from_inputs(
                 sim_home_id, sim_away_id,
                 sim_home_starters, sim_away_starters,
                 week, matchup_id=inputs.shared_matchup_id,
+                model_config=LEGACY_MODEL_CONFIG,
             )
             # Map home/away back to challenger/challenged before computing p_ch
             ch_scores = raw_home if inputs.challenger_is_home else raw_away
@@ -325,6 +338,7 @@ def _compute_odds_from_inputs(
             ch_scores, cd_scores = simulate_scores(
                 inputs.challenger_team_id, inputs.challenged_team_id,
                 inputs.ch_starters, inputs.cd_starters, week,
+                model_config=LEGACY_MODEL_CONFIG,
             )
         if bet_type == "straight":
             p_ch = float((ch_scores > cd_scores).mean())
@@ -338,7 +352,8 @@ def _compute_odds_from_inputs(
                 p_ch = float((combined < (line or 0.0)).mean())
 
     elif bet_type == "prop":
-        scores = simulate_player_scores(inputs.prop_projected, inputs.prop_player_id, week)
+        scores = simulate_player_scores(inputs.prop_projected, inputs.prop_player_id, week,
+                                        model_config=LEGACY_MODEL_CONFIG)
         if side == "over":
             p_ch = float((scores > (line or 0.0)).mean())
         else:

@@ -875,13 +875,18 @@ for py in REPO.rglob("*.py"):
     importers.append(py.relative_to(REPO).as_posix())
 # P1-L4 UPDATE. economy/challenge_funding.py joined this list when P1-L4 landed:
 # the Spec 2 money layer is a legitimate FOURTH consumer of the mutex, and its
-# use of it is exactly what P1-L7 was built to serve. The assertion still pins
-# the surface to a known, enumerated set — a fifth, unreviewed consumer appearing
-# here is still a failure.
+# use of it is exactly what P1-L7 was built to serve.
+#
+# P3-D2 UPDATE. economy/dynamic_challenge.py is the FIFTH, and is legitimate for
+# the same reason: the Dynamic Handshake funds two sides and the Final-Lock
+# Phase 2 refunds one, so both take the funding-scope mutex, and both take it
+# AFTER the challenge row lock — the rank L7-9 pins. It is enumerated here rather
+# than allowed by pattern, so a sixth unreviewed consumer is still a failure.
 check("L7-10: the production surface is exactly the primitive plus its known "
       "consumer modules",
       sorted(importers) == ["beefs/beef_engine.py", "betting/bet_engine.py",
                             "economy/challenge_funding.py",
+                            "economy/dynamic_challenge.py",
                             "ledger/ledger.py"], str(sorted(importers)))
 
 
