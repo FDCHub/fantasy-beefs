@@ -16,6 +16,8 @@ be true.
     decline  → exact reverse-leg refund
     cancel   → exact reverse-leg refund
     expire   → fail-closed reconciliation, then exact reverse-leg refund
+    revive   → a fresh funded issue of a terminal challenge (Spec 1 §8), through
+               the SAME funding algorithm as issue
 
 THE SOFT RESERVATION IS GONE FROM THIS PATH. `_challenge_reserved` is never
 imported here and never consulted. Once issue posts real escrow, the wallet's
@@ -647,6 +649,34 @@ def issue_funded_challenge(
         schedule_source_ref = schedule_source_ref,
         now                 = now,
     )
+    return _fund_issued_challenge(
+        db, event_id=event_id, transition=transition,
+        issuer_team_id=challenger_team_id, anchor_cents=anchor_cents,
+        detail="issued with escrow",
+    )
+
+
+def _fund_issued_challenge(
+    db: Session,
+    *,
+    event_id: uuid.UUID,
+    transition: spec1.TransitionResult,
+    issuer_team_id: int,
+    anchor_cents: int,
+    detail: str,
+) -> FundingResult:
+    """Steps 4-5 of §9, shared by EVERY funded issue.
+
+    Both `issue_funded_challenge` and `revive_funded_challenge` land here, which
+    is the point: a revive is a fresh issue (Spec 1 §8), so it must escrow
+    through the SAME algorithm — one source split, one provenance shape, one
+    event contract, one commit. A second funding path would be a second thing to
+    keep correct.
+
+    The caller owns everything above this line: the idempotency check, the lock
+    order, the under-lock capacity decision and the Spec 1 transition. This owns
+    the posting and the commit.
+    """
     challenge = db.query(BeefChallenge).filter(
         BeefChallenge.id == transition.challenge_id).one()
 
@@ -655,13 +685,13 @@ def issue_funded_challenge(
         event_id       = event_id,
         event_type     = "challenge_issue",
         challenge      = challenge,
-        actor_identity = str(challenger_team_id),
+        actor_identity = str(issuer_team_id),
         proposal_id    = transition.active_proposal_id,
         prior_state    = None,
     )
 
-    # 4 — real money into the challenge's own escrow account.
-    _fund(db, challenge=challenge, team_id=challenger_team_id,
+    # Real money into the challenge's own escrow account, min-first.
+    _fund(db, challenge=challenge, team_id=issuer_team_id,
           required_cents=anchor_cents,
           destination=challenge_escrow_account(challenge.id),
           event=event, door=DOOR_ISSUED)
@@ -679,7 +709,95 @@ def issue_funded_challenge(
         result_code       = RESULT_OK,
         escrow_cents      = anchor_cents,
         replayed          = False,
-        detail            = "issued with escrow",
+        detail            = detail,
+    )
+
+
+# ── §8/§9 Funded revive (Spec 1 §8 — a revive IS an issue) ────────────────────
+
+def revive_funded_challenge(
+    *,
+    event_id: uuid.UUID,
+    challenge_id: int,
+    actor_team_id: int,
+    terms: spec1.ProposalTerms,
+    db: Session,
+    proposal_lock_at: Optional[datetime] = None,
+    schedule_source_ref: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> FundingResult:
+    """Revive a negotiation-terminal challenge as a NEW funded challenge.
+
+    SPEC 1 §8 RULES THIS IS NOT A LIFECYCLE EDGE: "Revive is a fresh
+    issue_challenge()." So it is not a new economic act needing new accounting —
+    it is an issue, and it escrows exactly like one. That is why this posts
+    through _fund_issued_challenge() and why the protocol event is
+    `challenge_issue` rather than a seventh verb: the six-verb vocabulary
+    (db.schema.CHALLENGE_EVENT_TYPES) stays closed, and the revive relationship
+    is already recorded structurally on the new row's
+    `revived_from_challenge_id`.
+
+    WHAT THIS CLOSES. spec1.revive_challenge() creates a new challenge and
+    proposal but posts nothing and never commits (Package 2A's G3 gate).
+    Before P1-L4A there was no funded wrapper, so the only way to commit a
+    revived challenge was for a caller to commit Spec 1's half alone — which is
+    precisely the escrow-less challenge Spec 2 §14 and Spec 1 §10 forbid. A
+    revived new-model challenge is now uncreatable without real Anchor escrow,
+    because this is the only path that commits one.
+
+    LOCK ORDER (§8). The OLD challenge row FIRST, then the issuer's Wallet
+    scope. That rank is not optional: spec1.revive_challenge() takes the old
+    challenge's row lock itself, so locking the Wallet first would build the
+    Wallet→Challenge inversion P1-L7 exists to prevent. The NEW challenge needs
+    no lock — it does not exist outside this uncommitted transaction.
+
+    THE ANCHOR IS THE ORIGINAL ISSUER (A4), read from the OLD challenge's
+    challenger, not from the actor. Spec 1 separately refuses any actor who is
+    not that team, so the capacity checked here is always the team that will
+    actually owe the Anchor.
+    """
+    existing = _find_event(db, event_id)
+    if existing is not None:
+        return _replayed(db, existing)
+
+    anchor_cents = terms.anchor_stake_cents
+    if anchor_cents is None or anchor_cents <= 0:
+        raise MissingProposalError(
+            "terms.anchor_stake_cents must be a positive integer number of cents.")
+
+    # 1 — the OLD challenge row first, then wallets. Never inverted.
+    old    = _lock_challenge(db, challenge_id)
+    issuer = old.challenger_team_id
+    lock_funding_scopes(db, issuer)
+
+    # 2 — authoritative capacity under the lock, on the ORIGINAL issuer.
+    capacity = available_cents(db, issuer, old.week)
+    if capacity < anchor_cents:
+        raise InsufficientFundingCapacityError(
+            f"Team {issuer} cannot fund a {anchor_cents}-cent Anchor to revive "
+            f"challenge {challenge_id}: {capacity} cents available (min + "
+            f"wallet). No challenge was revived and nothing was posted."
+        )
+
+    # 3 — Spec 1 validates that the source is negotiation-terminal and that the
+    # actor is the original issuer, then creates an entirely new challenge +
+    # proposal + both-sides starters. The old row is read for identity only and
+    # is never written.
+    transition = spec1.revive_challenge(
+        challenge_id        = challenge_id,
+        actor_team_id       = actor_team_id,
+        terms               = terms,
+        db                  = db,
+        proposal_lock_at    = proposal_lock_at,
+        schedule_source_ref = schedule_source_ref,
+        now                 = now,
+    )
+
+    # 4/5 — the SAME funding algorithm every other issue uses.
+    return _fund_issued_challenge(
+        db, event_id=event_id, transition=transition,
+        issuer_team_id=issuer, anchor_cents=anchor_cents,
+        detail=f"revived from challenge {challenge_id} with escrow",
     )
 
 
@@ -972,19 +1090,112 @@ def _find_matchup(db: Session, team_id: int, week: int) -> Matchup:
     return matchup
 
 
-def _create_bet(db: Session, *, challenge: BeefChallenge, team_id: int,
-                stake_cents: int, odds: Optional[float]) -> Bet:
-    """One side's Bet row. Bet.amount is the LEGACY FLOAT MIRROR, written from
-    the authoritative cents (§6) and never the other way round."""
-    wallet = db.query(Wallet).filter(Wallet.team_id == team_id).one()
+def _opposite_side(side: Optional[str]) -> Optional[str]:
+    """The complementary Over/Under position. None stays None."""
+    if side == "over":
+        return "under"
+    if side == "under":
+        return "over"
+    return side
+
+
+def _accepted_side_terms(
+    challenge: BeefChallenge,
+    proposal: BeefProposal,
+    team_id: int,
+) -> tuple[Optional[int], Optional[float], Optional[str]]:
+    """(picked_team_id, line, side) for ONE side's Bet row, resolved from the
+    ACCEPTED FROZEN PROPOSAL.
+
+    P1-L4A — TWO SEPARATE CORRECTIONS LIVE HERE, AND BOTH ARE LOAD-BEARING.
+
+    (1) THE AUTHORITY IS THE PROPOSAL, NOT THE CHALLENGE CONTAINER. `line`,
+        `side` and `player_id` are Spec 1 §3.2 "frozen resolved market terms" and
+        are owned by the proposal VERSION. BeefChallenge.line/.side are legacy
+        NOT NULL mirror columns written exactly once at issue from version 1
+        (proposal_lifecycle.py, "the new model never reads them"), and a Refresh
+        & Relock counter never updates them — a counter recomputes the
+        lineup-derived quote, and for a Spread the line IS that quote. Reading
+        the container after a counter therefore builds Bet rows on version 1's
+        stale line while the parties accepted version 2's, and settlement
+        (_eval_beef) evaluates `margin > bet.line` against terms nobody agreed
+        to. The container keeps only what is genuinely challenge-immutable:
+        `wager_type` (§5 — "the wager class lives once, on the challenge"), the
+        participants and the week.
+
+    (2) THE TWO SIDES ARE COMPLEMENTARY POSITIONS, NOT TWO COPIES OF ONE. A
+        proposal freezes ONE market position; the two Bet rows are the two sides
+        OF it, so the second row must be mirrored. Settlement evaluates whichever
+        row it reaches first and infers the other as the complement
+        (settlement_engine.py:551-593), so unmirrored rows make the outcome
+        depend on iteration order:
+
+            Spread, accepted line 3.0, actual margin +1.0
+              anchor row   : 1.0 > 3.0  → lost   → winner = derived   ✔
+              derived row  : -1.0 > 3.0 → lost   → winner = anchor    ✘ contradiction
+
+        Negating the Derived side's line makes the second read -1.0 > -3.0 → won,
+        which agrees with the first. Over/Under is the same shape with the side
+        flipped instead of the line negated. This mirrors the legacy path's
+        _challenger_side_params/_challenged_side_params semantics exactly, but
+        sourced from the accepted proposal rather than the container — the
+        legacy engine is deliberately NOT imported (the fence forbids that edge).
+
+    Roles map through the CHALLENGE PARTICIPANTS, not through Anchor/Derived,
+    because _eval_beef resolves the opponent by comparing picked_team_id against
+    challenger_team_id/challenged_team_id. The Anchor is always the original
+    issuer (A4), so the two happen to coincide; keying on the participant is what
+    settlement actually reads.
+    """
+    wager_type   = challenge.wager_type or challenge.bet_type
+    is_challenger = (team_id == challenge.challenger_team_id)
+
+    if wager_type == "straight":
+        # Moneyline. No line, no side — the pick alone carries the position.
+        return team_id, None, None
+
+    if wager_type == "spread":
+        line = proposal.line or 0.0
+        # The challenged party wins if the challenger fails to cover, so their
+        # effective line is the negation.
+        return team_id, (line if is_challenger else -line), None
+
+    # over_under — no pick (the schema's picked_team_id is null for o/u); the
+    # two sides differ by taking opposite ends of the SAME frozen total.
+    return (None,
+            proposal.line,
+            proposal.side if is_challenger else _opposite_side(proposal.side))
+
+
+def _create_bet(db: Session, *, challenge: BeefChallenge, proposal: BeefProposal,
+                team_id: int, stake_cents: int, odds: Optional[float]) -> Bet:
+    """One side's Bet row, built from the ACCEPTED FROZEN PROPOSAL.
+
+    FIELD AUTHORITY, verified against Spec 1 rather than copied:
+      bet_type        ← challenge.wager_type   (§3.1/§5 immutable wager class)
+      matchup / week  ← challenge.week         (§3.1 immutable)
+      picked_team_id  ← participant identity   (§3.1 fixed at creation)
+      line, side      ← ACCEPTED PROPOSAL      (§3.2 frozen resolved terms)
+      player_id       ← ACCEPTED PROPOSAL      (§3.2 frozen resolved terms)
+      odds            ← ACCEPTED PROPOSAL      (§3.2 pricing provenance)
+      amount          ← authoritative cents    (§6 legacy float mirror only)
+
+    The challenge's own legacy line/side/player_id mirrors are NOT read here and
+    are NOT written to match. §3.2 makes the proposal the authority; rewriting
+    the container to agree would create a second, divergeable copy of a value
+    that already has one home.
+    """
+    wallet  = db.query(Wallet).filter(Wallet.team_id == team_id).one()
     matchup = _find_matchup(db, team_id, challenge.week)
+    picked_team_id, line, side = _accepted_side_terms(challenge, proposal, team_id)
     bet = Bet(
         matchup_id        = matchup.id,
         wallet_id         = wallet.id,
-        picked_team_id    = team_id,
+        picked_team_id    = picked_team_id,
+        player_id         = proposal.player_id,
         bet_type          = challenge.wager_type or challenge.bet_type,
-        line              = challenge.line,
-        side              = challenge.side,
+        line              = line,
+        side              = side,
         description       = f"Beef challenge {challenge.id}",
         amount            = stake_cents / 100.0,
         odds              = odds or 1.909,
@@ -1112,11 +1323,14 @@ def accept_funded_challenge(
         _reverse(db, challenge=challenge, amount_cents=actual - anchor_target,
                  event=event, door=DOOR_RELEASED)
 
-    # 6 — Bet rows.
-    anchor_bet  = _create_bet(db, challenge=challenge, team_id=anchor,
-                              stake_cents=anchor_target, odds=proposal.anchor_odds)
-    derived_bet = _create_bet(db, challenge=challenge, team_id=derived,
-                              stake_cents=derived_needed, odds=proposal.derived_odds)
+    # 6 — Bet rows, built from THIS proposal — the one being accepted, which
+    # after a counter is version 2, not the version 1 the container mirrors.
+    anchor_bet  = _create_bet(db, challenge=challenge, proposal=proposal,
+                              team_id=anchor, stake_cents=anchor_target,
+                              odds=proposal.anchor_odds)
+    derived_bet = _create_bet(db, challenge=challenge, proposal=proposal,
+                              team_id=derived, stake_cents=derived_needed,
+                              odds=proposal.derived_odds)
 
     # 7 — migrate the reconciled Anchor escrow into the Anchor Bet's escrow.
     ledger_post(
