@@ -1,0 +1,55 @@
+.venv/
+
+secrets/
+
+# database — never commit or deploy the local SQLite file
+db/fantasy.db
+*.db
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# credential rotation output — contains a live DB password, never commit
+rotate_db_password_output.txt
+
+# Claude Code local permission settings - machine-specific, may contain credentials
+.claude/settings.local.json
+
+# DB snapshots - not source, already synced via OneDrive
+backups/
+
+# Loose planning docs at repo root — keep them local, never track.
+# Root-anchored (leading slash): tools/ and any subfolder are unaffected.
+/FantasyBeefs_*_Update_*.md
+/OPUS_REVIEW_HANDOFF*.md
+
+# Current plan/handoff docs — live only in the Claude project panel, never
+# tracked here. Exact names, not globs, since future versioned files
+# (v8, v49, etc.) should be a deliberate decision each time, not auto-caught.
+/FantasyBeefs_MasterPlan_BAB_Reconciled_v7_APPENDICES_ONLY.md
+/FantasyBeefs_New_Thread_Handoff_v48.md
+/FantasyBeefs_v48_NextThread_Opener.md
+/FantasyBeefs_MasterPlan_v8_LaunchPath.md
+fr712_diff.patch
+per_bet_lock_diff.txt
+per_bet_lock_final_diff.txt
+week1_probe.txt
+green_*.txt
+red_*.txt
+red2_*.txt
+step6b_run.txt
+.env
+.env.*
+!.env.example
+
+# Repo archives are not source: snapshot zips of the working tree, never tracked files.
+*.zip
+
+# Findings-register deltas, absorbed into vol. II Section 22 at 65b4e2c.
+# Exact names, not a glob: a pending delta must stay visible in git status,
+# which is how FR-DOC-DELTA-1 was found. Each future delta is a deliberate
+# decision, matching the exact-name convention on lines 28-30. See vol. II 23.2.
+/spec/FantasyBeefs_Findings_Register_Delta_2026-07-30.md
+/spec/FantasyBeefs_Findings_Register_Delta_2026-07-31.md

@@ -1,0 +1,1227 @@
+{
+  "artifact": "pool_stat_vocabulary_rev1_0.json",
+  "revision": "1.0",
+  "status": "Product of Record",
+  "governing_spec": "spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_3.md",
+  "catalog_mapped": "spec/pool_catalog_rev1_3.json",
+  "authored": "2026-08-01",
+  "blocker": "A fresh OAuth Authorization Code grant completed successfully, but the new token received the identical refusal at game/461/metadata. The stored user grant is not the cause. The existing Yahoo application is not currently authorized to access the Fantasy Sports API. Approval through Yahoo's current access program is the only identified remediation path, although Yahoo has not formally confirmed the cause.",
+  "notes": [
+    "REV1.3 CORRECTION PASS, 2026-08-01. This file supersedes the pre-correction copy (SHA-256 BD1AE32129F1173CE6CA5A65C4F7237CA107B5BE6B702F13C1D802AFD247CB5F). It records the retirement of catalog #97 and #98 and the resulting removal of made_field_goal_distance as an active catalog dependency. The governed meaning of kicking_points is unchanged. Revision stays 1.0; this file was DRAFT at the time of that correction pass. Nothing here authorizes implementation, migration, deployment or any production-data change.",
+    "ADOPTION PRECONDITIONS CLEARED 2026-08-02. CATALOG MAPPING: verified complete by census against pool_catalog_rev1_3.json. All 24 distinct required_stats operands across the 80 active definitions resolve to canonical vocabulary entries; zero unresolved; zero require alias resolution. The 13 source-incomplete enabled definitions are mapped but source-unavailable, blocked only on Yahoo stat_categories access for pass_attempts, completions and opportunities, and all 13 carry definition_runtime_eligible false. BOUNDED INDEPENDENT REVIEW: completed 2026-08-02 against hash-verified inputs with criteria fixed before inspection, covering schema integrity, operand resolution, representability, source-completeness classification, unsupported-entry dependents, kicker-ruling consistency and cross-artifact contradictions. Two findings returned for owner ruling. V-1, superseded kicker names persisting as internal catalog keys, adopted as-is; keys are stable identifiers and the POR wording is to be narrowed in a future substantive revision. V-2, two canonical operands absent from catalog_operand_coverage, repaired in this commit by adding REPRESENTED_DIRECT rows for player_fantasy_points and total_touchdown_credits and adjusting six affected count values; catalog_operand_coverage REPRESENTED_DIRECT rows now equal the catalog required_stats set exactly. ADOPTED as Revision 1.0 Product of Record, governed by spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_3.md. Adoption does not authorize implementation, migration, seeding, deployment or any production-data change.",
+    "No entry asserts that a documented Yahoo field is currently accessible to this application. DOCUMENTED_NOT_LIVE_VERIFIED means Yahoo documents the field and this application cannot presently read it.",
+    "RUNTIME AVAILABILITY versus SEMANTIC MISSING BEHAVIOR are distinct and are carried in separate fields. missing_value_behavior is the governed product rule. source_population_verification tracks whether the source is readable and populated. They are never conflated.",
+    "Yahoo stat IDs are taken from the league stat_categories sample published in the Yahoo Fantasy Sports API documentation, accessed 2026-08-01. That sample enumerates one league's ENABLED categories. League-specific enabled-stat behavior for league 461.l.488800 remains UNMEASURED.",
+    "SOURCE LIMITATION: exact made-field-goal distance is unsupported by the Yahoo Fantasy stat feed. Bracket counters 19-23 do not authorize deriving exact distance.",
+    "SOURCE LIMITATION: return-touchdown categories are partially collapsed. Stat 49 combines kickoff and punt returns. Stat 35 combines D/ST touchdown types. Stat 15 is a single offensive return-TD counter. No blocked-kick return touchdown category is exposed.",
+    "SOURCE LIMITATION: targets exist as Yahoo stat ID 78 but are documented is_only_display_stat=1.",
+    "POOL STATUS: #46 remains BLOCKED. The owner-approved all-touchdown-category formula cannot be represented by Yahoo's documented category granularity.",
+    "POOL STATUS: #97 and #98 are RETIRED, not blocked. Owner ruling 2026-08-01 retired #97 in favor of #18 Highest Scoring Kicker and #98 in favor of #77 Highest Scoring Kicker Matchup, both of which settle on actual Yahoo fantasy football points via kicking_points. No active catalog definition depends on made_field_goal_distance, and the unsupported distance operand blocks no active Pool. Numbers 97 and 98 are reserved permanently.",
+    "No Pool has been redefined to fit the source. Redefinition requires owner approval.",
+    "TOUCHDOWN SEMANTICS: total_touchdown_credits counts FANTASY TOUCHDOWN CREDITS, not unique NFL scoring plays. A QB-to-receiver touchdown between two starters on the same fantasy team yields two credits. Owner ruling Q-VOCAB-1, intentional and governed.",
+    "The global starter-slot rule governs every entry unless a definition expressly requires otherwise. Yahoo documents that credit accrues only to players in the starting lineup.",
+    "Catalog Rev1.3 retired #8-#12 under the catalog completeness principle. Their operands (passing_yards, rushing_yards, receiving_yards, scrimmage_yards, total_touchdown_credits) remain in use by other active definitions, so vocabulary coverage is unchanged.",
+    "KICKER SCORING BASIS: catalog #18 was renamed Highest Scoring Kicker and #77 was renamed Highest Scoring Kicker Matchup by owner ruling 2026-08-01. Both consume kicking_points and settle on actual Yahoo fantasy football points scored by the active starting kicker or kickers under the league's governing Yahoo scoring settings. The governed meaning, source_field, aggregation semantics and missing_value_behavior of kicking_points are UNCHANGED by that rename.",
+    "CATALOG OPERAND COVERAGE IS UNCHANGED by the #97/#98 retirement. made_field_goal_distance was never an entry in catalog_operand_coverage: that inventory is keyed to the source-artifact operand names of FR-6_1_CATALOG_CLASSIFICATION.md, and the distance operand entered only through the Rev1.3-authored #97 and #98, which never reached the active catalog. catalog_operands_total remains 31 and every subordinate coverage count is unchanged. The 24 distinct required_stats of the 80 active definitions all resolve to canonical vocabulary keys."
+  ],
+  "enumerations": {
+    "source_family": [
+      "YAHOO_WEEKLY_PLAYER_STATS",
+      "FANTASY_POINTS",
+      "LEAGUE_MATCHUP",
+      "DERIVED",
+      "UNSUPPORTED"
+    ],
+    "unit": [
+      "COUNT",
+      "YARDS",
+      "POINTS"
+    ],
+    "aggregation_semantics": [
+      "SUM_OVER_STARTING_LINEUP",
+      "AGGREGATE_OVER_AGGREGATE",
+      "MATCHUP_LEVEL"
+    ],
+    "starter_slot_applicability": [
+      "STARTERS_ONLY",
+      "STARTING_KICKER_ONLY",
+      "STARTING_DST_ONLY",
+      "NOT_APPLICABLE"
+    ],
+    "missing_value_behavior": [
+      "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "UNEVALUABLE_IF_MISSING",
+      "UNEVALUABLE_IF_ANY_INPUT_MISSING"
+    ],
+    "runtime_verification_status": [
+      "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "LOCALLY_CARRIED",
+      "DERIVED_GOVERNED",
+      "UNSUPPORTED_BY_YAHOO_FANTASY_FEED",
+      "UNMAPPED_PENDING_GAME_STAT_CATEGORIES"
+    ],
+    "source_population_verification": [
+      "PENDING_APP_AUTHORIZATION",
+      "PENDING_LOCAL_MEASUREMENT",
+      "NOT_AVAILABLE",
+      "NOT_APPLICABLE"
+    ],
+    "evidence_method": [
+      "YAHOO_DOCUMENTATION",
+      "OWNER_RULING",
+      "LOCAL_CODE_INSPECTION"
+    ]
+  },
+  "open_owner_questions": [],
+  "resolved_owner_rulings": [
+    {
+      "id": "Q-VOCAB-1",
+      "subject": "total_touchdown_credits",
+      "resolved": "2026-08-01",
+      "ruling": "Adopt fantasy touchdown credits. total_touchdown_credits = passing_td + rushing_td + receiving_td. A touchdown pass from a starting QB to a starting receiver on the same fantasy team counts as two credits, one passing and one receiving. Intentional. The canonical concept is renamed from total_touchdowns to total_touchdown_credits. Aliases are preserved only for catalog migration. This must not be described as a count of unique NFL scoring plays.",
+      "affects": [
+        "#13 Most Total Touchdowns",
+        "#19 Most Total Scoring Events",
+        "#40 Highest TDs per Touch",
+        "#73 Highest Combined Offensive TDs"
+      ],
+      "catalog_migration_required": "Catalog operands 'total_touchdowns', 'touchdowns' and 'offensive_td' resolve to canonical total_touchdown_credits in Rev1.3."
+    }
+  ],
+  "unresolved_pending_yahoo_access": [
+    {
+      "item": "pass_attempts stat ID",
+      "blocks": "authoritative source mapping for pass_attempts and, transitively, opportunities",
+      "resolves_from": "/fantasy/v2/game/nfl/stat_categories"
+    },
+    {
+      "item": "completions stat ID",
+      "blocks": "authoritative source mapping for completions",
+      "resolves_from": "/fantasy/v2/game/nfl/stat_categories"
+    },
+    {
+      "item": "live missing-versus-zero behavior",
+      "blocks": "governed missing_value_behavior for every YAHOO_WEEKLY_PLAYER_STATS entry; keystone unknown for FR-POOL-EVAL-COVERAGE-1",
+      "resolves_from": "bounded weekly player-stat response measurement"
+    },
+    {
+      "item": "league-specific enabled-stat behavior",
+      "blocks": "confirmation that league 461.l.488800 enables each required category",
+      "resolves_from": "league settings stat_categories for the governed league"
+    }
+  ],
+  "unresolved_does_not_block": "These four items do not block catalog or product authoring. Affected definitions carry explicit source_mapping and dependency_state values and are marked honestly.",
+  "counts": {
+    "stats_total": 36,
+    "by_source_family": {
+      "DERIVED": 6,
+      "FANTASY_POINTS": 2,
+      "LEAGUE_MATCHUP": 2,
+      "UNSUPPORTED": 1,
+      "YAHOO_WEEKLY_PLAYER_STATS": 25
+    },
+    "by_runtime_verification_status": {
+      "DERIVED_GOVERNED": 6,
+      "DOCUMENTED_NOT_LIVE_VERIFIED": 23,
+      "LOCALLY_CARRIED": 4,
+      "UNMAPPED_PENDING_GAME_STAT_CATEGORIES": 2,
+      "UNSUPPORTED_BY_YAHOO_FANTASY_FEED": 1
+    },
+    "catalog_operands_total": 33,
+    "operands_represented": 30,
+    "operands_with_authoritative_source_mapping": 27,
+    "operands_represented_but_source_unmapped": 3,
+    "operands_pending_owner_ruling": 0,
+    "operands_source_unsupported": 0,
+    "operands_retired": 3,
+    "operands_absent_from_vocabulary": 0,
+    "by_representation": {
+      "REPRESENTED_DIRECT": 24,
+      "REPRESENTED_VIA_ALIAS": 6,
+      "RETIRED": 3
+    },
+    "by_source_mapping": {
+      "AUTHORITATIVE_LOCAL_FIELD": 4,
+      "AUTHORITATIVE_YAHOO_STAT_ID": 13,
+      "DERIVED_FROM_AUTHORITATIVE": 10,
+      "NOT_APPLICABLE": 3,
+      "SOURCE_UNMAPPED": 2,
+      "SOURCE_UNMAPPED_TRANSITIVE": 1
+    },
+    "source_unmapped_operand_names": [
+      "completions",
+      "opportunities",
+      "pass_attempts"
+    ],
+    "_coverage_unchanged_note": "The #97/#98 retirement removed made_field_goal_distance from catalog required_stats. That operand was never an entry in catalog_operand_coverage, so every coverage count below is unchanged and was re-verified against the corrected catalog on 2026-08-01. Two canonical operands were subsequently found absent from that verification and were added on 2026-08-02; see the adoption note."
+  },
+  "stats": [
+    {
+      "canonical_name": "passing_yards",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 4,
+      "source_field": null,
+      "yahoo_display_name": "Pass Yds",
+      "yahoo_position_type": "O",
+      "unit": "YARDS",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 4 'Pass Yds'."
+      }
+    },
+    {
+      "canonical_name": "passing_td",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 5,
+      "source_field": null,
+      "yahoo_display_name": "Pass TD",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 5 'Pass TD'."
+      }
+    },
+    {
+      "canonical_name": "interceptions_thrown",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 6,
+      "source_field": null,
+      "yahoo_display_name": "Int",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 6 'Int', position_type O. Offensive interceptions thrown. Distinct from stat 33 'Int' (DT), a defensive interception recorded by a D/ST."
+      }
+    },
+    {
+      "canonical_name": "rush_attempts",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 8,
+      "source_field": null,
+      "yahoo_display_name": "Rush Att",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 8 'Rush Att'. Documented is_only_display_stat=1: enabled for display, not scoring."
+      }
+    },
+    {
+      "canonical_name": "rushing_yards",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 9,
+      "source_field": null,
+      "yahoo_display_name": "Rush Yds",
+      "yahoo_position_type": "O",
+      "unit": "YARDS",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 9 'Rush Yds'."
+      }
+    },
+    {
+      "canonical_name": "rushing_td",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 10,
+      "source_field": null,
+      "yahoo_display_name": "Rush TD",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 10 'Rush TD'."
+      }
+    },
+    {
+      "canonical_name": "receptions",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 11,
+      "source_field": null,
+      "yahoo_display_name": "Rec",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 11 'Rec'."
+      }
+    },
+    {
+      "canonical_name": "receiving_yards",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 12,
+      "source_field": null,
+      "yahoo_display_name": "Rec Yds",
+      "yahoo_position_type": "O",
+      "unit": "YARDS",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 12 'Rec Yds'."
+      }
+    },
+    {
+      "canonical_name": "receiving_td",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 13,
+      "source_field": null,
+      "yahoo_display_name": "Rec TD",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 13 'Rec TD'."
+      }
+    },
+    {
+      "canonical_name": "two_point_conversions",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 16,
+      "source_field": null,
+      "yahoo_display_name": "2-PT",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 16 '2-PT'."
+      }
+    },
+    {
+      "canonical_name": "fumbles_lost",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 18,
+      "source_field": null,
+      "yahoo_display_name": "Fum Lost",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 18 'Fum Lost'."
+      }
+    },
+    {
+      "canonical_name": "extra_points_made",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 29,
+      "source_field": null,
+      "yahoo_display_name": "PAT Made",
+      "yahoo_position_type": "K",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [
+        "extra_points"
+      ],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 29 'PAT Made'."
+      }
+    },
+    {
+      "canonical_name": "targets",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 78,
+      "source_field": null,
+      "yahoo_display_name": "Targets",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 78 'Targets'. Documented is_only_display_stat=1. Referenced by no catalog operand. Recorded because R4 required establishing availability."
+      }
+    },
+    {
+      "canonical_name": "pass_attempts",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "UNMAPPED_PENDING_GAME_STAT_CATEGORIES",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "NOT present in the league stat_categories sample published in the Yahoo Fantasy Sports API documentation. That sample enumerates one league's ENABLED categories, not the full NFL game stat list. Neither passing attempts nor completions is a scoring category in that league, so neither appears. The authoritative full list is /fantasy/v2/game/nfl/stat_categories, which this application cannot presently read. A stat_id must NOT be assumed."
+      }
+    },
+    {
+      "canonical_name": "completions",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "UNMAPPED_PENDING_GAME_STAT_CATEGORIES",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "NOT present in the league stat_categories sample published in the Yahoo Fantasy Sports API documentation. That sample enumerates one league's ENABLED categories, not the full NFL game stat list. Neither passing attempts nor completions is a scoring category in that league, so neither appears. The authoritative full list is /fantasy/v2/game/nfl/stat_categories, which this application cannot presently read. A stat_id must NOT be assumed."
+      }
+    },
+    {
+      "canonical_name": "field_goals_made_0_19",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 19,
+      "source_field": null,
+      "yahoo_display_name": "FG 0-19",
+      "yahoo_position_type": "K",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 19 'FG 0-19'. A COUNT of made field goals in the 0-19 yard bracket. Carries no distance value."
+      }
+    },
+    {
+      "canonical_name": "field_goals_made_20_29",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 20,
+      "source_field": null,
+      "yahoo_display_name": "FG 20-29",
+      "yahoo_position_type": "K",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 20 'FG 20-29'. A COUNT of made field goals in the 20-29 yard bracket. Carries no distance value."
+      }
+    },
+    {
+      "canonical_name": "field_goals_made_30_39",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 21,
+      "source_field": null,
+      "yahoo_display_name": "FG 30-39",
+      "yahoo_position_type": "K",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 21 'FG 30-39'. A COUNT of made field goals in the 30-39 yard bracket. Carries no distance value."
+      }
+    },
+    {
+      "canonical_name": "field_goals_made_40_49",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 22,
+      "source_field": null,
+      "yahoo_display_name": "FG 40-49",
+      "yahoo_position_type": "K",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 22 'FG 40-49'. A COUNT of made field goals in the 40-49 yard bracket. Carries no distance value."
+      }
+    },
+    {
+      "canonical_name": "field_goals_made_50_plus",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 23,
+      "source_field": null,
+      "yahoo_display_name": "FG 50+",
+      "yahoo_position_type": "K",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 23 'FG 50+'. A COUNT of made field goals in the 50+ yard bracket. Carries no distance value."
+      }
+    },
+    {
+      "canonical_name": "return_td_offensive",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 15,
+      "source_field": null,
+      "yahoo_display_name": "Ret TD",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 15 'Ret TD', position_type O. COLLAPSED: a single return-touchdown counter for offensive players. Kickoff and punt returns are not distinguished."
+      }
+    },
+    {
+      "canonical_name": "offensive_fumble_return_td",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 57,
+      "source_field": null,
+      "yahoo_display_name": "Fum Ret TD",
+      "yahoo_position_type": "O",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 57. Documented is_excluded_from_display=1."
+      }
+    },
+    {
+      "canonical_name": "dst_touchdown",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 35,
+      "source_field": null,
+      "yahoo_display_name": "TD",
+      "yahoo_position_type": "DT",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_DST_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 35 'TD', position_type DT. COLLAPSED: a single D/ST touchdown counter. Interception-return and fumble-return touchdowns are not distinguished."
+      }
+    },
+    {
+      "canonical_name": "dst_kickoff_punt_return_td",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 49,
+      "source_field": null,
+      "yahoo_display_name": "Ret TD",
+      "yahoo_position_type": "DT",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_DST_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 49 'Kickoff and Punt Return Touchdowns'. COLLAPSED BY NAME: kickoff-return and punt-return touchdowns share one counter and cannot be separated."
+      }
+    },
+    {
+      "canonical_name": "dst_block_kick",
+      "source_family": "YAHOO_WEEKLY_PLAYER_STATS",
+      "yahoo_stat_id": 37,
+      "source_field": null,
+      "yahoo_display_name": "Blk Kick",
+      "yahoo_position_type": "DT",
+      "unit": "COUNT",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_DST_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "LIVE_MEASUREMENT_PENDING_APP_AUTHORIZATION",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "DOCUMENTED_NOT_LIVE_VERIFIED",
+      "source_population_verification": "PENDING_APP_AUTHORIZATION",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo NFL stat category 37 'Block Kick'. Counts the BLOCK, not a blocked-kick return touchdown. No blocked-kick-return TD category is exposed."
+      }
+    },
+    {
+      "canonical_name": "touches",
+      "source_family": "DERIVED",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "COUNT",
+      "aggregation_semantics": "AGGREGATE_OVER_AGGREGATE",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_ANY_INPUT_MISSING",
+      "aliases": [],
+      "derived_formula": "rush_attempts + receptions",
+      "runtime_verification_status": "DERIVED_GOVERNED",
+      "source_population_verification": "NOT_APPLICABLE",
+      "evidence": {
+        "method": "OWNER_RULING",
+        "source": "Owner deterministic-formula rulings, 2026-08-01",
+        "accessed": "2026-08-01",
+        "note": "Owner ruling: touches = rush_attempts + receptions."
+      }
+    },
+    {
+      "canonical_name": "opportunities",
+      "source_family": "DERIVED",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "COUNT",
+      "aggregation_semantics": "AGGREGATE_OVER_AGGREGATE",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_ANY_INPUT_MISSING",
+      "aliases": [
+        "offensive_opportunities"
+      ],
+      "derived_formula": "pass_attempts + rush_attempts",
+      "runtime_verification_status": "DERIVED_GOVERNED",
+      "source_population_verification": "NOT_APPLICABLE",
+      "evidence": {
+        "method": "OWNER_RULING",
+        "source": "Owner deterministic-formula rulings, 2026-08-01",
+        "accessed": "2026-08-01",
+        "note": "Owner ruling on #32, #49, #75, #79: offensive_opportunities = pass_attempts + rush_attempts. Supersedes the earlier proposal that included receptions or targets. Resolves R4. TRANSITIVELY SOURCE-UNMAPPED: pass_attempts has no authoritative Yahoo stat_id."
+      }
+    },
+    {
+      "canonical_name": "offensive_yards",
+      "source_family": "DERIVED",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "YARDS",
+      "aggregation_semantics": "AGGREGATE_OVER_AGGREGATE",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_ANY_INPUT_MISSING",
+      "aliases": [],
+      "derived_formula": "passing_yards + rushing_yards",
+      "runtime_verification_status": "DERIVED_GOVERNED",
+      "source_population_verification": "NOT_APPLICABLE",
+      "evidence": {
+        "method": "OWNER_RULING",
+        "source": "Owner deterministic-formula rulings, 2026-08-01",
+        "accessed": "2026-08-01",
+        "note": "Owner ruling: receiving yards excluded. Including both passing and receiving yards would double-count completed-pass yardage. Resolves R1."
+      }
+    },
+    {
+      "canonical_name": "scrimmage_yards",
+      "source_family": "DERIVED",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "YARDS",
+      "aggregation_semantics": "AGGREGATE_OVER_AGGREGATE",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_ANY_INPUT_MISSING",
+      "aliases": [
+        "yards"
+      ],
+      "derived_formula": "rushing_yards + receiving_yards",
+      "runtime_verification_status": "DERIVED_GOVERNED",
+      "source_population_verification": "NOT_APPLICABLE",
+      "evidence": {
+        "method": "OWNER_RULING",
+        "source": "Owner deterministic-formula rulings, 2026-08-01",
+        "accessed": "2026-08-01",
+        "note": "Owner ruling: excludes passing, kickoff-return, punt-return, interception-return and fumble-return yards. Resolves R2. Bare 'yards' in yards-per-touch definitions means scrimmage_yards, resolving R3."
+      }
+    },
+    {
+      "canonical_name": "total_touchdown_credits",
+      "source_family": "DERIVED",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "COUNT",
+      "aggregation_semantics": "AGGREGATE_OVER_AGGREGATE",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_ANY_INPUT_MISSING",
+      "aliases": [
+        "touchdowns",
+        "offensive_td",
+        "total_touchdowns"
+      ],
+      "derived_formula": "passing_td + rushing_td + receiving_td",
+      "runtime_verification_status": "DERIVED_GOVERNED",
+      "source_population_verification": "NOT_APPLICABLE",
+      "evidence": {
+        "method": "OWNER_RULING",
+        "source": "Owner deterministic-formula rulings, 2026-08-01",
+        "accessed": "2026-08-01",
+        "note": "Owner ruling Q-VOCAB-1, 2026-08-01: ADOPTED as FANTASY TOUCHDOWN CREDITS. A touchdown pass from a starting quarterback to a starting receiver on the same fantasy team counts as TWO credits - one passing touchdown credit and one receiving touchdown credit. This double-credit behavior is INTENTIONAL and governed. This quantity is NOT a count of unique NFL scoring plays and must never be described as one. Renamed from total_touchdowns; that name is retained as a catalog-migration alias only."
+      },
+      "counts_unique_nfl_scoring_plays": false,
+      "double_credit_intentional": true
+    },
+    {
+      "canonical_name": "field_goals_made",
+      "source_family": "DERIVED",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "COUNT",
+      "aggregation_semantics": "AGGREGATE_OVER_AGGREGATE",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_ANY_INPUT_MISSING",
+      "aliases": [
+        "field_goals"
+      ],
+      "derived_formula": "field_goals_made_0_19 + field_goals_made_20_29 + field_goals_made_30_39 + field_goals_made_40_49 + field_goals_made_50_plus",
+      "runtime_verification_status": "DERIVED_GOVERNED",
+      "source_population_verification": "NOT_APPLICABLE",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo exposes no single made-field-goal counter. The total is the sum of the five documented bracket counters (19-23). The derivation yields a COUNT only; it does not yield distance. GRAMMAR CONSTRAINT: five inputs exceed the closed evaluator grammar's three-operand operand_list limit, so this derivation MUST be normalized upstream and supplied as a single canonical operand. It is NOT presently executable as a catalog expression."
+      },
+      "grammar_executable_as_catalog_expression": false,
+      "normalization_required": "PRE_EVALUATOR_NORMALIZATION"
+    },
+    {
+      "canonical_name": "player_fantasy_points",
+      "source_family": "FANTASY_POINTS",
+      "yahoo_stat_id": null,
+      "source_field": "Projection.actual_points",
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "POINTS",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTERS_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_MISSING",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "LOCALLY_CARRIED",
+      "source_population_verification": "PENDING_LOCAL_MEASUREMENT",
+      "evidence": {
+        "method": "LOCAL_CODE_INSPECTION",
+        "source": "db/schema.py:260 class Projection; db/schema.py:75 class LeagueScoring",
+        "accessed": "2026-08-01",
+        "note": "Projection carries actual_points per player per week. LeagueScoring carries scoring modifiers. Yahoo publishes stat_modifiers in league settings. Semantic missing behavior is governed: an absent value is unevaluable, never zero. Whether the column is POPULATED for any completed week is tracked separately."
+      }
+    },
+    {
+      "canonical_name": "kicking_points",
+      "source_family": "FANTASY_POINTS",
+      "yahoo_stat_id": null,
+      "source_field": "Projection.actual_points",
+      "yahoo_display_name": null,
+      "yahoo_position_type": "K",
+      "unit": "POINTS",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_MISSING",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "LOCALLY_CARRIED",
+      "source_population_verification": "PENDING_LOCAL_MEASUREMENT",
+      "evidence": {
+        "method": "OWNER_RULING",
+        "source": "Owner ruling on #18 and #77, 2026-08-01",
+        "accessed": "2026-08-01",
+        "note": "Actual fantasy points scored by the active starting kicker under the league's governing Yahoo scoring settings. NOT derived from 3xFG + 1xXP: Yahoo scores field goals by distance bracket (documented modifiers 3/3/3/4/5). Resolves R5."
+      }
+    },
+    {
+      "canonical_name": "matchup_home_score",
+      "source_family": "LEAGUE_MATCHUP",
+      "yahoo_stat_id": null,
+      "source_field": "Matchup.home_score",
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "POINTS",
+      "aggregation_semantics": "MATCHUP_LEVEL",
+      "starter_slot_applicability": "NOT_APPLICABLE",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_MISSING",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "LOCALLY_CARRIED",
+      "source_population_verification": "PENDING_LOCAL_MEASUREMENT",
+      "evidence": {
+        "method": "LOCAL_CODE_INSPECTION",
+        "source": "db/schema.py:167 class Matchup",
+        "accessed": "2026-08-01",
+        "note": "Team-level fantasy point total, not a per-player stat. Used only by catalog #76, which in Rev1.3 carries data_dependency 'league_matchup_scores' and evaluator_shape MATCHUP_SCORE_SUM. Semantic missing behavior is governed: an absent score is unevaluable, never zero. Upstream population is tracked separately."
+      }
+    },
+    {
+      "canonical_name": "matchup_away_score",
+      "source_family": "LEAGUE_MATCHUP",
+      "yahoo_stat_id": null,
+      "source_field": "Matchup.away_score",
+      "yahoo_display_name": null,
+      "yahoo_position_type": null,
+      "unit": "POINTS",
+      "aggregation_semantics": "MATCHUP_LEVEL",
+      "starter_slot_applicability": "NOT_APPLICABLE",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_MISSING",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "LOCALLY_CARRIED",
+      "source_population_verification": "PENDING_LOCAL_MEASUREMENT",
+      "evidence": {
+        "method": "LOCAL_CODE_INSPECTION",
+        "source": "db/schema.py:167 class Matchup",
+        "accessed": "2026-08-01",
+        "note": "Team-level fantasy point total, not a per-player stat. Used only by catalog #76, which in Rev1.3 carries data_dependency 'league_matchup_scores' and evaluator_shape MATCHUP_SCORE_SUM. Semantic missing behavior is governed: an absent score is unevaluable, never zero. Upstream population is tracked separately."
+      }
+    },
+    {
+      "canonical_name": "made_field_goal_distance",
+      "source_family": "UNSUPPORTED",
+      "yahoo_stat_id": null,
+      "source_field": null,
+      "yahoo_display_name": null,
+      "yahoo_position_type": "K",
+      "unit": "YARDS",
+      "aggregation_semantics": "SUM_OVER_STARTING_LINEUP",
+      "starter_slot_applicability": "STARTING_KICKER_ONLY",
+      "explicit_zero_is_valid": true,
+      "missing_value_behavior": "UNEVALUABLE_IF_MISSING",
+      "aliases": [],
+      "derived_formula": null,
+      "runtime_verification_status": "UNSUPPORTED_BY_YAHOO_FANTASY_FEED",
+      "source_population_verification": "NOT_AVAILABLE",
+      "evidence": {
+        "method": "YAHOO_DOCUMENTATION",
+        "source": "https://sports.yahoo.com/developer/docs",
+        "accessed": "2026-08-01",
+        "note": "Yahoo exposes made field goals ONLY as bracket counters (19: 0-19, 20: 20-29, 21: 30-39, 22: 40-49, 23: 50+). No documented stat category carries the official distance of a made kick. Bracket counters do NOT authorize deriving exact distance. RETAINED AS UNSUPPORTED HISTORICAL AND SOURCE DOCUMENTATION ONLY. Its former dependents, catalog #97 and #98, were retired by owner ruling 2026-08-01 in favor of #18 Highest Scoring Kicker and #77 Highest Scoring Kicker Matchup, which settle on actual Yahoo fantasy points via kicking_points. This operand is not required by any active catalog definition and blocks no active Pool."
+      },
+      "catalog_dependency_status": "NO_ACTIVE_CATALOG_DEPENDENCY",
+      "retained_as": "UNSUPPORTED_HISTORICAL_SOURCE_DOCUMENTATION",
+      "blocks_active_pools": false
+    }
+  ],
+  "retired_operands": [
+    {
+      "operand": "passing_production",
+      "catalog_number": 50,
+      "disposition": "RETIRED_AS_DUPLICATE",
+      "note": "Owner final ruling, 2026-08-01: #50, #51 and #52 are RETIRED as duplicates of #20 Most Passing Yards, #21 Most Rushing Yards and #22 Most Receiving Yards following adoption of the global starter-slot rule. Because that rule makes starters-only counting universal, a 'Starting-Lineup' variant computes the identical value as its base definition. These are NOT merely redefined. The '*_production' identifiers appear in no governed expression."
+    },
+    {
+      "operand": "rushing_production",
+      "catalog_number": 51,
+      "disposition": "RETIRED_AS_DUPLICATE",
+      "note": "Owner final ruling, 2026-08-01: #50, #51 and #52 are RETIRED as duplicates of #20 Most Passing Yards, #21 Most Rushing Yards and #22 Most Receiving Yards following adoption of the global starter-slot rule. Because that rule makes starters-only counting universal, a 'Starting-Lineup' variant computes the identical value as its base definition. These are NOT merely redefined. The '*_production' identifiers appear in no governed expression."
+    },
+    {
+      "operand": "receiving_production",
+      "catalog_number": 52,
+      "disposition": "RETIRED_AS_DUPLICATE",
+      "note": "Owner final ruling, 2026-08-01: #50, #51 and #52 are RETIRED as duplicates of #20 Most Passing Yards, #21 Most Rushing Yards and #22 Most Receiving Yards following adoption of the global starter-slot rule. Because that rule makes starters-only counting universal, a 'Starting-Lineup' variant computes the identical value as its base definition. These are NOT merely redefined. The '*_production' identifiers appear in no governed expression."
+    }
+  ],
+  "catalog_operand_coverage": [
+    {
+      "operand": "completions",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "completions",
+      "source_mapping": "SOURCE_UNMAPPED"
+    },
+    {
+      "operand": "extra_points",
+      "representation": "REPRESENTED_VIA_ALIAS",
+      "canonical_name": "extra_points_made",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "extra_points_made",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "extra_points_made",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "field_goals",
+      "representation": "REPRESENTED_VIA_ALIAS",
+      "canonical_name": "field_goals_made",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "field_goals_made",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "field_goals_made",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "fumbles_lost",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "fumbles_lost",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "interceptions_thrown",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "interceptions_thrown",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "kicking_points",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "kicking_points",
+      "source_mapping": "AUTHORITATIVE_LOCAL_FIELD"
+    },
+    {
+      "operand": "matchup_away_score",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "matchup_away_score",
+      "source_mapping": "AUTHORITATIVE_LOCAL_FIELD"
+    },
+    {
+      "operand": "matchup_home_score",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "matchup_home_score",
+      "source_mapping": "AUTHORITATIVE_LOCAL_FIELD"
+    },
+    {
+      "operand": "offensive_td",
+      "representation": "REPRESENTED_VIA_ALIAS",
+      "canonical_name": "total_touchdown_credits",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "offensive_yards",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "offensive_yards",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "opportunities",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "opportunities",
+      "source_mapping": "SOURCE_UNMAPPED_TRANSITIVE"
+    },
+    {
+      "operand": "pass_attempts",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "pass_attempts",
+      "source_mapping": "SOURCE_UNMAPPED"
+    },
+    {
+      "operand": "passing_production",
+      "representation": "RETIRED",
+      "canonical_name": null,
+      "source_mapping": "NOT_APPLICABLE"
+    },
+    {
+      "operand": "passing_td",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "passing_td",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "passing_yards",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "passing_yards",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "player_fantasy_points",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "player_fantasy_points",
+      "source_mapping": "AUTHORITATIVE_LOCAL_FIELD"
+    },
+    {
+      "operand": "receiving_production",
+      "representation": "RETIRED",
+      "canonical_name": null,
+      "source_mapping": "NOT_APPLICABLE"
+    },
+    {
+      "operand": "receiving_td",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "receiving_td",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "receiving_yards",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "receiving_yards",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "receptions",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "receptions",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "rush_attempts",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "rush_attempts",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "rushing_production",
+      "representation": "RETIRED",
+      "canonical_name": null,
+      "source_mapping": "NOT_APPLICABLE"
+    },
+    {
+      "operand": "rushing_td",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "rushing_td",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "rushing_yards",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "rushing_yards",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "scrimmage_yards",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "scrimmage_yards",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "total_touchdown_credits",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "total_touchdown_credits",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "total_touchdowns",
+      "representation": "REPRESENTED_VIA_ALIAS",
+      "canonical_name": "total_touchdown_credits",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "touchdowns",
+      "representation": "REPRESENTED_VIA_ALIAS",
+      "canonical_name": "total_touchdown_credits",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "touches",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "touches",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    },
+    {
+      "operand": "two_point_conversions",
+      "representation": "REPRESENTED_DIRECT",
+      "canonical_name": "two_point_conversions",
+      "source_mapping": "AUTHORITATIVE_YAHOO_STAT_ID"
+    },
+    {
+      "operand": "yards",
+      "representation": "REPRESENTED_VIA_ALIAS",
+      "canonical_name": "scrimmage_yards",
+      "source_mapping": "DERIVED_FROM_AUTHORITATIVE"
+    }
+  ]
+}

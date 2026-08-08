@@ -1,0 +1,24 @@
+# Never ship database backups or scratch/debug artifacts to production
+backup_final.sql
+*.sql
+build_log_full.txt
+check_drift.py
+check_phi_week16.py
+check_treasury.py
+per_bet_lock_diff.txt
+per_bet_lock_final_diff.txt
+week1_probe.txt
+data/ingestion/probe_week1_events.py
+
+# ── FR-REPO-1: docs / specs / archives / incoming drafts / scratch (not runtime) ──
+# Specific patterns only: NO *.txt (would exclude requirements.txt and break the
+# build) and NO *.html (would exclude the served tools/*.html UI).
+*.md
+_incoming/
+spec/
+archive/
+Architecture_Diagram_v12.html
+green_*.txt
+red_*.txt
+red2_*.txt
+step6b_run.txt
