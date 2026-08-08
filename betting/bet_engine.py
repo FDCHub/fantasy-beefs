@@ -33,7 +33,12 @@ from odds.odds_engine_headless import (
     INJURY_MULTIPLIERS,
     simulate_scores,
 )
-from ledger.ledger import post as ledger_post, _dollars_to_cents, _balance_of_in_session
+from ledger.ledger import (
+    post as ledger_post,
+    _dollars_to_cents,
+    _balance_of_in_session,
+    lock_funding_scopes,
+)
 
 from config import CURRENT_SEASON as SEASON
 SOURCE = "fantasypros"
@@ -111,6 +116,17 @@ def _place_bet(
     # entry points (place_straight_bet/spread/over_under/prop). Return value
     # discarded (validation only); the ValueError propagates.
     _dollars_to_cents(amount)
+    # P1-L7: take this funding scope's Wallet-row mutex BEFORE the capacity read
+    # below. Single scope — this path debits exactly one wallet — so ordering is
+    # trivially deterministic, but it goes through the shared primitive anyway so
+    # there is one lock discipline in the tree rather than two.
+    #
+    # The lock is held from here to this function's own db.commit() below, which
+    # is what closes the race: without it, two concurrent stakes each read the
+    # pre-debit balance, each pass validate_bet_amount(), and both post. P1-L6
+    # event identity does NOT cover this — these are two DISTINCT bets, not one
+    # bet delivered twice, so there is no repeated event id to de-duplicate.
+    lock_funding_scopes(db, wallet.team_id)
     # P1-L3B: the capacity input is the AUTHORITATIVE integer-cent ledger balance
     # for wallet:{team_id}, read inside this same session/transaction — never the
     # float Wallet.balance mirror. Plain wallet balance is the correct account

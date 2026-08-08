@@ -17,6 +17,14 @@ Public API:
     posting_id = post([("wallet:t7", -500), ("escrow:42", 500)], door="wager_placed")
     balance_of("wallet:t7")   -> int (cents)
     trial_balance()           -> int (cents, must always be 0)
+
+    from ledger.ledger import lock_funding_scopes          # P1-L7
+    lock_funding_scopes(db, 7, 3)   -> [3, 7]  (ascending; held to db's commit)
+
+P1-L7 note: a balance is an aggregate and cannot be locked. The serialization
+mutex for a team-season funding scope is the EXISTENCE of that scope's `wallets`
+row, taken FOR UPDATE by lock_funding_scopes() before the balance read that
+precedes a posting. See that function for grain, ordering, and fail-closed rules.
 """
 
 from __future__ import annotations
@@ -135,6 +143,26 @@ class AlreadySettledError(ValueError):
     balance is already 0 — that bet has already been settled once."""
 
 
+class WalletMutexMissingError(ValueError):
+    """P1-L7 — raised when the Wallet row serving as a funding scope's
+    serialization mutex does not exist, so no row could be locked.
+
+    FAIL-CLOSED, AND THAT IS THE WHOLE POINT. Wallet-row EXISTENCE is the mutex
+    (see lock_funding_scopes below). A `SELECT … FOR UPDATE` matching zero rows
+    is not an error in SQL — it succeeds and locks nothing. Were that allowed to
+    pass, the caller would proceed to read a balance and post money believing it
+    held a mutex it never acquired, and the serialization guarantee would vanish
+    silently on exactly the scope that lacked a row. Refusing here converts an
+    absent mutex from a silent hole into a loud refusal.
+
+    Subclasses ValueError deliberately. beefs/beef_engine.issue_challenge already
+    raises a plain ValueError for this same condition ("No wallet found for team
+    N") and API routes map ValueError to a 4xx; a bare RuntimeError here would
+    turn an already-handled condition into a 500. P1-L7 changes no user-visible
+    behaviour except removing races, so the exception family is preserved.
+    """
+
+
 def create_ledger_table() -> None:
     """Create ledger_entries if it doesn't exist yet. Additive, safe to call
     repeatedly — does not touch or inspect any other table."""
@@ -168,6 +196,94 @@ def balance_of(account: str) -> int:
     """
     with SessionLocal() as db:
         return _balance_of_in_session(db, account)
+
+
+def lock_funding_scopes(db: Session, *team_ids: int) -> list[int]:
+    """P1-L7 — acquire the Wallet-row mutex for one or more team-season funding
+    scopes, inside the CALLER's transaction, in ascending team_id order.
+
+    THE MUTEX IS THE ROW'S EXISTENCE, NOT ITS VALUE (Foundation Correction Plan
+    §4, OPR-5). Ledger balances are aggregates — SUM(amount_cents) over
+    ledger_entries — and an aggregate is not a lockable object. There is nothing
+    for `FOR UPDATE` to hold. So the funding scope borrows a lockable proxy: the
+    one `wallets` row that scope owns. `Wallet.balance` is NOT consulted here and
+    is NOT authoritative for anything (P1-L2/P1-L3B made it a display mirror);
+    this function neither reads nor writes it. The row is used purely as a named
+    object two transactions can contend for.
+
+    GRAIN. `wallets.team_id` is UNIQUE NOT NULL, so there is at most one row per
+    team. A Team belongs to exactly one League (`teams.league_id`) and a League
+    carries exactly one `season`, so a team_id already encodes (team, season) —
+    the row grain and the team-season funding scope coincide exactly. §4's
+    requirement is "at least as coarse as the funding scope"; equal satisfies it,
+    with no over-serialization to spend.
+
+    EXISTENCE IS FAIL-CLOSED, NOT ASSUMED. `UNIQUE(team_id)` guarantees the "at
+    most one" half structurally. The "at least one" half has no schema
+    constraint — Wallet rows are created by the seed paths, and a Team with no
+    Wallet is representable. A `SELECT … FOR UPDATE` matching no row locks
+    nothing and raises nothing, which would let a caller believe it was
+    serialized when it was not. Missing row therefore raises
+    WalletMutexMissingError and the caller's transaction never reaches its
+    balance read. That is the smallest correction that makes the mutex
+    un-silenceable without a schema redesign; a structural existence constraint
+    (deferred FK teams→wallets, or a trigger) is a migration and belongs to
+    whichever package next reshapes these tables, not to a behavioural fix.
+
+    LOCK ORDER — ASCENDING team_id, ALWAYS. team_ids are de-duplicated and
+    sorted, so the acquisition order is a property of the SET of scopes, never of
+    the caller's argument order, and never of a challenger/challenged or
+    proposer/recipient role. Two transactions locking {7, 3} and {3, 7} both take
+    3 then 7 and queue; they cannot hold one lock each and wait on the other.
+    Passing the ids in "wrong" order is therefore not a bug a caller can commit —
+    the primitive owns the ordering, which is why it is one shared function
+    rather than duplicated `.with_for_update()` calls at each site.
+
+    RANK RELATIVE TO OTHER LOCKS. Where a path also locks a BeefChallenge row
+    (beefs/proposal_lifecycle._lock_challenge, and the future P1-L4 orchestrator
+    per SPEC 2 §8), the challenge row is taken FIRST and wallets after. No
+    current path takes a Wallet lock before a challenge lock, so no inversion
+    exists to inherit; P1-L4 must preserve that rank.
+
+    TRANSACTION-LOCAL BY CONSTRUCTION. The lock lives on `db`'s transaction and
+    is released by that transaction's commit or rollback — there is no unlock
+    call and this function never commits, flushes, or rolls back. The caller must
+    therefore hold `db` open through the balance read AND the posting the lock
+    protects; a caller that commits between them has released the mutex and is
+    back to the unprotected read-then-post race this exists to close.
+
+    `.with_for_update()` renders `FOR UPDATE` on Postgres and is a documented
+    no-op on SQLite (its dialect emits no FOR UPDATE clause), which is why the
+    ORM construct is used rather than raw SQL — the same reason every existing
+    lock site in this tree uses it. Real row-lock behaviour is therefore only
+    provable on Postgres, and the P1-L7 concurrency suite is Postgres-only.
+
+    `populate_existing()` is load-bearing for the same reason recorded in
+    proposal_lifecycle._lock_challenge: without it, a Wallet already in this
+    session's identity map is returned from cache, and a read "under the lock"
+    could be a snapshot taken before the lock was granted.
+
+    Returns the ascending team_id list actually locked — the acquisition order,
+    for callers and tests that need to assert it.
+    """
+    from db.schema import Wallet
+
+    ordered = sorted({int(team_id) for team_id in team_ids})
+    for team_id in ordered:
+        row = (
+            db.query(Wallet)
+            .filter(Wallet.team_id == team_id)
+            .with_for_update()
+            .populate_existing()
+            .first()
+        )
+        if row is None:
+            raise WalletMutexMissingError(
+                f"No Wallet row exists for team {team_id}, so the funding-scope "
+                f"mutex for wallet:{team_id} could not be acquired. Refusing to "
+                f"read a balance or post money unserialized. Nothing was written."
+            )
+    return ordered
 
 
 def _to_cents(amount: float) -> int:

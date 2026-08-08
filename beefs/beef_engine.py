@@ -67,7 +67,12 @@ from feed.league_feed import (
     log_challenge_declined,
     log_challenge_expired,
 )
-from ledger.ledger import post as ledger_post, _balance_of_in_session, _dollars_to_cents
+from ledger.ledger import (
+    post as ledger_post,
+    _balance_of_in_session,
+    _dollars_to_cents,
+    lock_funding_scopes,
+)
 
 CHALLENGE_TTL_HOURS = 24
 
@@ -730,6 +735,22 @@ def issue_challenge(
     if amount < MIN_BET:
         raise ValueError(f"Amount ${amount:.2f} is below the minimum ${MIN_BET:.2f}")
 
+    # P1-L7: take the challenger's Wallet-row mutex before the capacity read
+    # below, held to this function's db.commit(). Issue posts no money today —
+    # the stake is soft-reserved through _challenge_reserved — but the read it
+    # gates is still balance-sensitive: two concurrent issues by one team each
+    # see the same ledger balance and the same (not-yet-committed) reservation
+    # set, so both pass and the team ends up reserved beyond its balance. This is
+    # the "two racing issues by one team cannot both pass the funds check"
+    # obligation in Foundation Correction Plan §4.
+    #
+    # Ordered ahead of the wallet lookup so the mutex is the first statement of
+    # the money-sensitive section. The lookup below is retained: it feeds
+    # challenger_wallet to the rest of the function, and its ValueError is the
+    # pre-existing message for a missing row (lock_funding_scopes raises its own
+    # WalletMutexMissingError, a ValueError subclass, first — same exception
+    # family, so callers and routes are unaffected).
+    lock_funding_scopes(db, challenger_team_id)
     challenger_wallet = db.query(Wallet).filter(Wallet.team_id == challenger_team_id).first()
     if not challenger_wallet:
         raise ValueError(f"No wallet found for team {challenger_team_id}")
@@ -890,6 +911,24 @@ def respond_to_challenge(
     if db.get_bind().dialect.name != "sqlite":
         db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
 
+    # P1-L7: the two-Wallet mutex for this accept, held from here to the single
+    # db.commit() at the end of the accept. THE LOCK IS THE CONTROL, NOT THE
+    # ISOLATION LEVEL — the REPEATABLE READ above is set after the transaction
+    # has already autobegun (Foundation Correction Plan §4, SPEC 2 §2), so it is
+    # not reliable and P1-L7 does not lean on it.
+    #
+    # Deliberately placed HERE and not at the top of the function: the expiry,
+    # kickoff-lock and decline branches above each commit and return, and a lock
+    # taken before them would be released by their commits — a mutex that ends
+    # before the balance read it protects is not a mutex. Everything from this
+    # line to the commit runs with no intervening commit or rollback.
+    #
+    # Both wallets, one call: the primitive sorts ascending team_id, so an accept
+    # of A-challenges-B and a concurrent accept of B-challenges-A acquire in the
+    # same order and queue instead of deadlocking. The challenger/challenged role
+    # never reaches the ordering.
+    lock_funding_scopes(db, challenge.challenger_team_id, challenge.challenged_team_id)
+
     # ── Accept: determine effective stake ────────────────────────────────────
     is_counter       = challenge.countered_amount is not None
     effective_amount = challenge.countered_amount if is_counter else challenge.amount
@@ -1018,6 +1057,15 @@ def counter_challenge(
             f"this challenge can no longer be countered"
         )
 
+    # P1-L7: the countering team's Wallet-row mutex, held to db.commit() below.
+    # A counter posts no money, but it writes a reservation-bearing state
+    # (status 'countered' + countered_amount) that _challenge_reserved() counts
+    # against this same scope, and it decides to write it from a balance read.
+    # Two concurrent counters by one team — or a counter racing that team's own
+    # issue — would otherwise both read the pre-reservation balance and both
+    # pass. Single scope: the countering team is the only one committing capacity
+    # here; the challenger's exposure is unchanged by a counter.
+    lock_funding_scopes(db, challenge.challenged_team_id)
     # Check CHALLENGED team's available balance for countered_amount.
     # They're the ones proposing this stake — verify they can actually cover it.
     cd_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
