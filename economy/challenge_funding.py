@@ -64,6 +64,7 @@ from db.schema import (
     ProtocolEvent,
     Wallet,
 )
+from economy.spend_sourcing import plan_spend_split
 from ledger.ledger import (
     InsufficientFundsError,
     _balance_of_in_session,
@@ -340,34 +341,15 @@ def _replayed(db: Session, event: ProtocolEvent) -> FundingResult:
 
 def plan_source_split(db: Session, team_id: int, week: int,
                       required_cents: int) -> list[tuple[str, int]]:
-    """§4 — split `required_cents` across this team's sources, MIN FIRST then
-    wallet, and return the legs IN THE ORDER THEY WILL BE FUNDED.
+    """§4 — split `required_cents` MIN FIRST then wallet, in funding order.
 
-        1. min_available = balance(min:{team}:{week})   (zero if absent)
-        2. min_leg    = min(min_available, required)
-        3. wallet_leg = required − min_leg
-
-    Both legs are optional: min-only, wallet-only and mixed are all valid shapes,
-    and a zero-amount leg is never recorded (the schema CHECK forbids it, and a
-    leg that moved nothing is not history). The single escrow credit always
-    equals the total, so the posting sums to zero by construction.
-
-    ORDER IS THE PRODUCT, not just the amounts. §11 refunds by replaying this
-    sequence backwards, so "min first" is recorded as position, not inferred
-    later from which account happens to hold what.
+    DELEGATES to economy.spend_sourcing.plan_spend_split, which is now the ONE
+    implementation of this order (S5-P1 §3). The behaviour is unchanged and this
+    name is retained because §11's refund replay and the P1-L4 provenance
+    assertions are written against it; what changed is that the Pool weekly
+    contribution now calls the same code instead of debiting wallet directly.
     """
-    if required_cents <= 0:
-        return []
-    min_available = max(0, _balance_of_in_session(db, min_account(team_id, week)))
-    min_leg    = min(min_available, required_cents)
-    wallet_leg = required_cents - min_leg
-
-    legs: list[tuple[str, int]] = []
-    if min_leg > 0:
-        legs.append((min_account(team_id, week), min_leg))
-    if wallet_leg > 0:
-        legs.append((wallet_account(team_id), wallet_leg))
-    return legs
+    return plan_spend_split(db, team_id, week, required_cents)
 
 
 def _fund(

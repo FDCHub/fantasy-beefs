@@ -525,11 +525,11 @@ def main(tdb) -> None:
         35000: {0: 0, 5000: 17500, 10000: 35000, 15000: 52500, 20000: 70000},
     }
     mismatches = []
-    for wallet_cents, row_ in SPEC_TABLE.items():
+    for min_reserve_cents, row_ in SPEC_TABLE.items():
         for bps, expected in row_.items():
-            got = compute_cap_cents(wallet_cents, bps)
+            got = compute_cap_cents(min_reserve_cents, bps)
             if got != expected:
-                mismatches.append((wallet_cents, bps, got, expected))
+                mismatches.append((min_reserve_cents, bps, got, expected))
     _assert("A8 all 25 combinations match the specification table exactly",
             mismatches == [], str(mismatches))
     _assert("A8 every result is a plain integer number of cents",
@@ -545,13 +545,13 @@ def main(tdb) -> None:
     # The multiplier must be one of the five certified values — both CHECK
     # constraints enforce that and a raw UPDATE cannot violate them — so the
     # corruption has to come from the anchor. 5000 bps is chosen deliberately:
-    # under 10000 bps every anchor divides exactly (wallet_cents * 10000 is
-    # always a multiple of 10000), so no corruption of wallet_cents alone could
+    # under 10000 bps every anchor divides exactly (min_reserve_cents * 10000 is
+    # always a multiple of 10000), so no corruption of min_reserve_cents alone could
     # ever produce a remainder and the assertion would be untestable.
     fx15 = Fixture("s15", multiplier_bps=5000)
     req15 = _open_request(fx15, 5.00)
     with SessionLocal() as db:
-        db.execute(text("UPDATE season_allocation SET wallet_cents = 1 "
+        db.execute(text("UPDATE season_allocation SET min_reserve_cents = 1 "
                         "WHERE league_id = :l AND team_id = :t AND season = :s"),
                    {"l": fx15.league_id, "t": fx15.team_id, "s": SEASON})
         db.commit()
@@ -872,7 +872,11 @@ def main(tdb) -> None:
             f"issued={sum(issued_per_team.values())} "
             f"issuance_leg_delta={after[f'bab_issuance:{fxa.league_id}:{SEASON}'] - protected_before.get(f'bab_issuance:{fxa.league_id}:{SEASON}', 0)}")
 
-    untouched_prefixes = ("reserve:", "championship", "skunk", "escrow:", "world")
+    # S5-P1 added season_issuance: — the season-OPENING issuance account. Top-Off
+    # must not touch it, and asserting so here is what proves the two issuance
+    # namespaces stay separate at runtime rather than only by naming.
+    untouched_prefixes = ("reserve:", "championship", "skunk", "escrow:",
+                          "world", "season_issuance:")
     moved = []
     for account, value in after.items():
         if account.startswith(untouched_prefixes) or account in untouched_prefixes:
@@ -882,8 +886,12 @@ def main(tdb) -> None:
             "by every top-off posting", moved == [], str(moved))
     _assert("A9 precondition: those accounts really were populated before "
             "(so the check is not vacuous)",
+            # S5-R2 moved the opening allocation off `world` and onto
+            # season_issuance:, so `world` is no longer populated by activation.
+            # The vacuity guard now keys on the account that IS populated —
+            # otherwise this check would pass while proving nothing.
             any(a.startswith("reserve:") for a in protected_before)
-            and "world" in protected_before,
+            and any(a.startswith("season_issuance:") for a in protected_before),
             str(sorted(protected_before)))
 
     for tid in fxa.team_ids:

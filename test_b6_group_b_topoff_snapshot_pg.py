@@ -158,6 +158,17 @@ def main(tdb) -> None:
             db.query(League).filter(League.id == league_id).one().topoff_cap_multiplier_bps = bps
             db.commit()
 
+    def _season_issuance_total() -> int:
+        """Summed across the season_issuance:* namespace — see the identical
+        helper in test_season_allocation_pg.py for why a namespace total is the
+        right probe for a league-agnostic snapshot."""
+        from sqlalchemy import text as _text
+        with SessionLocal() as _db:
+            total = _db.execute(_text(
+                "SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+                "WHERE account LIKE 'season_issuance:%'")).scalar()
+        return int(total or 0)
+
     def snapshot(team_ids: list[int]) -> dict:
         """Committed-state probe. Everything a delta needs, plus the config
         row count — the value this suite exists to police."""
@@ -167,7 +178,11 @@ def main(tdb) -> None:
             cfgs    = db.query(LeagueSeasonTopoffConfig).count()
         return {
             "world":   balance_of("world"),
+            # S5-R2: the opening allocation now sources from season_issuance:
+            # and credits min_reserve:, leaving world and Wallet untouched.
+            "issuance": _season_issuance_total(),
             "wallet":  {t: balance_of(f"wallet:{t}") for t in team_ids},
+            "min_reserve": {t: balance_of(f"min_reserve:{t}") for t in team_ids},
             "reserve": {t: balance_of(f"reserve:{t}") for t in team_ids},
             "trial":   trial_balance(),
             "rows":    rows,
@@ -178,7 +193,10 @@ def main(tdb) -> None:
     def deltas(before: dict, after: dict, team_ids: list[int]) -> dict:
         return {
             "world":   after["world"] - before["world"],
+            "issuance": after["issuance"] - before["issuance"],
             "wallet":  {t: after["wallet"][t] - before["wallet"][t] for t in team_ids},
+            "min_reserve": {t: after["min_reserve"][t] - before["min_reserve"][t]
+                            for t in team_ids},
             "reserve": {t: after["reserve"][t] - before["reserve"][t] for t in team_ids},
             "trial":   after["trial"] - before["trial"],
             "rows":    after["rows"] - before["rows"],
@@ -671,10 +689,14 @@ def main(tdb) -> None:
                 d_r["rows"] == TEAM_COUNT, f"delta={d_r['rows']}")
         _assert(f"(l2 r{rnd}) no duplicate ledger posting — three entries per team",
                 d_r["entries"] == 3 * TEAM_COUNT, f"delta={d_r['entries']}")
-        _assert(f"(l2 r{rnd}) wallet credited exactly once per team",
-                all(d_r["wallet"][t] == stop.wallet_cents for t in teams_r), str(d_r["wallet"]))
-        _assert(f"(l2 r{rnd}) world debited exactly once per team",
-                d_r["world"] == -(stop.buyin_cents * TEAM_COUNT), f"delta={d_r['world']}")
+        _assert(f"(l2 r{rnd}) min_reserve credited exactly once per team",
+                all(d_r["min_reserve"][t] == stop.min_reserve_cents
+                    for t in teams_r), str(d_r["min_reserve"]))
+        _assert(f"(l2 r{rnd}) wallet stayed at zero throughout the race (S5-R2)",
+                all(d_r["wallet"][t] == 0 for t in teams_r), str(d_r["wallet"]))
+        _assert(f"(l2 r{rnd}) season_issuance debited exactly once per team",
+                d_r["issuance"] == -(stop.buyin_cents * TEAM_COUNT),
+                f"delta={d_r['issuance']}")
         _assert(f"(l2 r{rnd}) trial_balance() is exactly 0 after the race",
                 after_r["trial"] == 0, f"got {after_r['trial']}")
 
@@ -694,7 +716,7 @@ def main(tdb) -> None:
     _assert("(m/S6) SeasonAllocation carries NO multiplier column of any name",
             offending == [], f"offending columns: {offending}")
     _assert("(m/S6) SeasonAllocation still carries its three snapshot columns",
-            {"buyin_cents", "wallet_cents", "reserve_cents"} <= alloc_cols,
+            {"buyin_cents", "min_reserve_cents", "reserve_cents"} <= alloc_cols,
             str(sorted(alloc_cols)))
 
     # S6 — every team in a league derives from ONE config row.

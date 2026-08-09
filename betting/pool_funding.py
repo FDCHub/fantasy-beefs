@@ -42,6 +42,7 @@ from sqlalchemy import text
 
 from betting.pool_season_boundary import phase_for_week
 from betting.pool_slate import build_and_persist_slate
+from economy.spend_sourcing import plan_spend_split
 from ledger.ledger import lock_funding_scopes, post as ledger_post
 
 #: POR §6.1 — bounded 100 <= x <= 500, default 100.
@@ -280,7 +281,25 @@ def collect_weekly_entries(db, *, league_id: int, week: int,
     # refuses the whole week if any single wallet is short. That is what makes
     # "no partially funded week" a property of the ledger rather than a promise
     # this function makes.
-    legs = [(f"wallet:{team.id}", -entry_cents) for team in teams]
+    # S5-P1 §3 — the Pool weekly contribution sources through the SHARED
+    # min-first splitter, exactly as Versus funding does. Before this it debited
+    # wallet directly, which meant a GM's released Weekly Minimum sat unspent
+    # while their Wallet paid the Pool — the two engines disagreeing about the
+    # same GM's money in the same week.
+    #
+    # One posting still, with every GM's legs in it: the funded-balance guard
+    # therefore refuses the WHOLE week if any single GM cannot cover the entry,
+    # which is what keeps "no partially funded week" a ledger property.
+    legs: list[tuple[str, int]] = []
+    for team in teams:
+        split = plan_spend_split(db, team.id, week, entry_cents)
+        funded = sum(amount for _, amount in split)
+        if funded != entry_cents:
+            raise PoolFundingError(
+                REASON_NO_WALLET,
+                f"team {team.id} can source only {funded} of {entry_cents} "
+                f"cents for the week {week} Pool contribution. Nothing posted.")
+        legs.extend((account, -amount) for account, amount in split)
     legs.append((f"pool:{league_id}", total_cents))
     collection_posting = ledger_post(legs, door=DOOR_WEEKLY_COLLECTION,
                                      session=db)

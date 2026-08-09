@@ -1348,7 +1348,7 @@ class SeasonAllocationOut(BaseModel):
     season:            int
     team_ids:          list[int]
     buyin_cents:       int
-    wallet_cents:      int
+    min_reserve_cents:      int
     reserve_cents:     int
     total_buyin_cents: int
     created:           bool
@@ -1598,7 +1598,7 @@ def league_activate_season_allocation(
         season            = result.season,
         team_ids          = list(result.team_ids),
         buyin_cents       = result.buyin_cents,
-        wallet_cents      = result.wallet_cents,
+        min_reserve_cents      = result.min_reserve_cents,
         reserve_cents     = result.reserve_cents,
         total_buyin_cents = result.total_buyin_cents,
         created           = result.created,

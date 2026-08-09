@@ -13,7 +13,7 @@ nothing, and this file asserts nothing about settlement.
 
 A NOTE ON THE TEST MATRIX, STATED ACCURATELY
   ECONOMY_STOPS DOES NOT DEFINE PAYOUT SPLITS. Each EconomyStop carries only
-  weekly_min_cents, wallet_cents, buyin_cents and reserve_cents — there is no
+  weekly_min_cents, min_reserve_cents, buyin_cents and reserve_cents — there is no
   split field on it. The only payout splits present in the codebase are
   DEFAULT_PAYOUT_SPLIT = [60, 30, 10] in reports/standings.py and the
   LeagueTreasury.payout_split_json column, whose schema default is the same

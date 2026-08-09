@@ -128,6 +128,14 @@ print("\nItem 3: activate_season_allocation() is the sole production writer of a
 
 
 def _is_reserve_account(node) -> bool:
+    """Whether this leg's account expression names a reserve:{...} account.
+
+    THREE SPELLINGS, because S5-P1 moved the account names into
+    economy.economy_events and the call sites now use the helper. A literal-only
+    matcher would have reported ZERO writers and passed the "exactly one" check
+    only by accident of counting — which is why the assertion below also
+    requires the site to be activate_season_allocation by name.
+    """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value.startswith("reserve:")
     if isinstance(node, ast.JoinedStr):
@@ -135,6 +143,10 @@ def _is_reserve_account(node) -> bool:
         return (isinstance(first, ast.Constant)
                 and isinstance(first.value, str)
                 and first.value.startswith("reserve:"))
+    if isinstance(node, ast.Call):
+        fn = node.func
+        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+        return name == "reserve_account"
     return False
 
 
@@ -195,6 +207,7 @@ _assert("first activation returned one posting id per team",
 _before = {
     "world": balance_of("world"),
     **{f"wallet:{t}": balance_of(f"wallet:{t}") for t in team_ids},
+    **{f"min_reserve:{t}": balance_of(f"min_reserve:{t}") for t in team_ids},
     **{f"reserve:{t}": balance_of(f"reserve:{t}") for t in team_ids},
 }
 
@@ -207,8 +220,12 @@ _assert("replay returned created=False", replay.created is False, f"created={rep
 _assert("replay posted nothing (posting_ids empty)", replay.posting_ids == (), f"got {replay.posting_ids}")
 _assert("replay moved NO money — every balance byte-identical",
         _after == _before, f"before={_before} after={_after}")
-_assert("wallet credited exactly once per team",
-        all(_after[f"wallet:{t}"] == first.wallet_cents for t in team_ids),
+_assert("min_reserve credited exactly once per team (S5-R2)",
+        all(_after[f"min_reserve:{t}"] == first.min_reserve_cents
+            for t in team_ids),
+        f"got {[_after[f'min_reserve:{t}'] for t in team_ids]}")
+_assert("Wallet received nothing from activation (S5-R2)",
+        all(_after[f"wallet:{t}"] == 0 for t in team_ids),
         f"got {[_after[f'wallet:{t}'] for t in team_ids]}")
 _assert("reserve credited exactly once per team",
         all(_after[f"reserve:{t}"] == first.reserve_cents for t in team_ids),

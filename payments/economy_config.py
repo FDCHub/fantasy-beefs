@@ -10,8 +10,8 @@ Each stop satisfies three exact invariants (checked by validate_stop(),
 and enforced against every stop below at import time — a mistyped
 constant fails loudly at process startup, not silently at request time):
 
-  1. wallet_cents + reserve_cents == buyin_cents
-  2. wallet_cents == weekly_min_cents * 14
+  1. min_reserve_cents + reserve_cents == buyin_cents
+  2. min_reserve_cents == weekly_min_cents * 14
   3. reserve_cents * 11 == buyin_cents * 4
      (the tight ratio invariant — not a 33-40% band check, which
      would pass a mistyped stop this exact check catches)
@@ -33,17 +33,17 @@ from db.schema import League
 @dataclass(frozen=True)
 class EconomyStop:
     weekly_min_cents: int
-    wallet_cents:     int
+    min_reserve_cents:     int
     buyin_cents:      int
     reserve_cents:    int
 
 
 ECONOMY_STOPS: tuple[EconomyStop, ...] = (
-    EconomyStop(weekly_min_cents=500,  wallet_cents=7000,  buyin_cents=11000, reserve_cents=4000),
-    EconomyStop(weekly_min_cents=1000, wallet_cents=14000, buyin_cents=22000, reserve_cents=8000),
-    EconomyStop(weekly_min_cents=1500, wallet_cents=21000, buyin_cents=33000, reserve_cents=12000),
-    EconomyStop(weekly_min_cents=2000, wallet_cents=28000, buyin_cents=44000, reserve_cents=16000),
-    EconomyStop(weekly_min_cents=2500, wallet_cents=35000, buyin_cents=55000, reserve_cents=20000),
+    EconomyStop(weekly_min_cents=500,  min_reserve_cents=7000,  buyin_cents=11000, reserve_cents=4000),
+    EconomyStop(weekly_min_cents=1000, min_reserve_cents=14000, buyin_cents=22000, reserve_cents=8000),
+    EconomyStop(weekly_min_cents=1500, min_reserve_cents=21000, buyin_cents=33000, reserve_cents=12000),
+    EconomyStop(weekly_min_cents=2000, min_reserve_cents=28000, buyin_cents=44000, reserve_cents=16000),
+    EconomyStop(weekly_min_cents=2500, min_reserve_cents=35000, buyin_cents=55000, reserve_cents=20000),
 )
 
 DEFAULT_STOP = ECONOMY_STOPS[1]  # weekly_min_cents=1000 ($10/week, $220 buy-in)
@@ -53,14 +53,14 @@ def validate_stop(stop: EconomyStop) -> None:
     """Raises ValueError if `stop` violates any of the three exact invariants,
     or isn't one of the five certified stops at all (no freeform stop, no
     interpolation between stops)."""
-    if stop.wallet_cents + stop.reserve_cents != stop.buyin_cents:
+    if stop.min_reserve_cents + stop.reserve_cents != stop.buyin_cents:
         raise ValueError(
-            f"Stop {stop!r}: wallet_cents + reserve_cents "
-            f"({stop.wallet_cents} + {stop.reserve_cents}) != buyin_cents ({stop.buyin_cents})"
+            f"Stop {stop!r}: min_reserve_cents + reserve_cents "
+            f"({stop.min_reserve_cents} + {stop.reserve_cents}) != buyin_cents ({stop.buyin_cents})"
         )
-    if stop.wallet_cents != stop.weekly_min_cents * 14:
+    if stop.min_reserve_cents != stop.weekly_min_cents * 14:
         raise ValueError(
-            f"Stop {stop!r}: wallet_cents ({stop.wallet_cents}) != "
+            f"Stop {stop!r}: min_reserve_cents ({stop.min_reserve_cents}) != "
             f"weekly_min_cents * 14 ({stop.weekly_min_cents * 14})"
         )
     if stop.reserve_cents * 11 != stop.buyin_cents * 4:

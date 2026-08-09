@@ -62,6 +62,57 @@ from db.schema import engine, SessionLocal
 #   ("bab_issuance:{league_id}:{season}", -T), ("wallet:{team_id}", +T).
 APPROVED_BAB_TOPOFF_DOOR = "approved_bab_topoff"
 
+# ── S5-P1 canonical season-opening issuance door ──────────────────────────────
+#
+# A SECOND door-bound exemption, over a SEPARATE account namespace. Owner
+# ruling, S5-P1: the season-opening allocation advances Credits from
+# `season_issuance:{league_id}:{season}`, never from `bab_issuance:*`.
+#
+# WHY A SEPARATE NAMESPACE RATHER THAN BROADENING THE TOP-OFF ONE. B6 fixed that
+# exemption to ONE door and proved it BY NAME: assertion (e) of
+# test_b6_group_a_ledger_pg.py enumerates "season_allocation" as a door that
+# must NOT be exempt on bab_issuance:*, and asserts it raises, writes nothing and
+# leaves the issuance balance untouched. Broadening the Top-Off exemption would
+# have required deleting an accepted assertion. A distinct namespace leaves
+# every one of those assertions true and unmodified — the paragraph above still
+# holds verbatim, including "an opening-allocation door".
+#
+# The two sources stay independently derivable from posted ledger state, which
+# is what lets S5-P2/P3's Current Settle count the two obligations separately:
+#     season_issuance:{league_id}:{season}   season-opening advance
+#     bab_issuance:{league_id}:{season}      approved Top-Off issuance
+#
+# THE EXEMPTION IS DOOR-BOUND, NOT PREFIX-BOUND — the same rule B6 established,
+# and the reason there is no generic "any issuance-looking account" branch. Under
+# any other door a season_issuance:* debit stays fully guarded and MUST fail.
+# This door is limited to the season-opening allocation. It is NOT a generic
+# mint, a Top-Off source, a correction door, a refund door, or a waiver door.
+# Its only legal posting shape is the three legs
+#   ("season_issuance:{league_id}:{season}", -B),
+#   ("min_reserve:{team_id}", +M), ("reserve:{team_id}", +R)   with M + R == B.
+SEASON_ALLOCATION_DOOR = "season_allocation"
+
+#: (door, account prefix) pairs that may debit from a zero balance. Kept as an
+#: explicit table so adding a third issuance source is a visible, reviewable
+#: edit rather than a condition quietly appended to a chain of `or`s. A prefix
+#: appearing here grants nothing on its own — the DOOR must match too.
+_ISSUANCE_EXEMPTIONS: tuple[tuple[str, str], ...] = (
+    (APPROVED_BAB_TOPOFF_DOOR, "bab_issuance:"),
+    (SEASON_ALLOCATION_DOOR,   "season_issuance:"),
+)
+
+
+def _is_exempt_issuance(door: str, account: str) -> bool:
+    """Whether this (door, account) pair is a governed issuance exemption.
+
+    Both halves must match one row of the table. A `season_issuance:*` debit
+    under the Top-Off door, or a `bab_issuance:*` debit under the allocation
+    door, matches nothing and stays fully guarded — which is the property the
+    discriminating tests assert in both directions."""
+    return any(door == exempt_door and account.startswith(prefix)
+               for exempt_door, prefix in _ISSUANCE_EXEMPTIONS)
+
+
 # Separate declarative base from db.schema's — this table is defined here,
 # in isolation, specifically so db/schema.py (an existing, shared file)
 # never needs to be touched by this session. Base.metadata.create_all()
@@ -420,7 +471,11 @@ def _run_checks_and_write(
             # "world" and "receivable:*" behaviour is untouched above, and the
             # ten other production post() call sites pass neither this door nor
             # this prefix, so none of them changes behaviour.
-            if door == APPROVED_BAB_TOPOFF_DOOR and account.startswith("bab_issuance:"):
+            # S5-P1 widened this from one hardcoded pair to the explicit
+            # _ISSUANCE_EXEMPTIONS table. The RULE is unchanged and the Top-Off
+            # behaviour is byte-identical: both halves must match, so a prefix
+            # alone still grants nothing under any door.
+            if _is_exempt_issuance(door, account):
                 continue
 
             current = _balance_of_in_session(db, account)

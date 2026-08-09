@@ -350,7 +350,7 @@ with SessionLocal() as db:
     db.add(SeasonAllocation(league_id=lg_h1, team_id=tm_h1,
                             season=config.ALLOCATION_SEASON,
                             buyin_cents=DEFAULT_STOP.buyin_cents,
-                            wallet_cents=DEFAULT_STOP.wallet_cents,
+                            min_reserve_cents=DEFAULT_STOP.min_reserve_cents,
                             reserve_cents=DEFAULT_STOP.reserve_cents))
     u = db.query(User).filter(User.id == gm_h1).first()
     u.buy_in_paid = 0

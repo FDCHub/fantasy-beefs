@@ -169,7 +169,7 @@ def _grant_allocation(team_id: int, league_id: int) -> None:
                 team_id       = team_id,
                 season        = _config.ALLOCATION_SEASON,
                 buyin_cents   = _STOP.buyin_cents,
-                wallet_cents  = _STOP.wallet_cents,
+                min_reserve_cents  = _STOP.min_reserve_cents,
                 reserve_cents = _STOP.reserve_cents,
             ))
             db.commit()

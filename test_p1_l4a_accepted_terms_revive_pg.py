@@ -105,7 +105,7 @@ def section(title: str) -> None:
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-def seed(wallet_cents: dict[str, int], min_cents: dict[str, int] | None = None) -> dict:
+def seed(min_reserve_cents: dict[str, int], min_cents: dict[str, int] | None = None) -> dict:
     """A league, its teams and wallets, one matchup, and seeded ledger balances.
     The float Wallet.balance mirror is set DELIBERATELY WRONG so nothing here can
     pass by consulting it."""
@@ -114,17 +114,17 @@ def seed(wallet_cents: dict[str, int], min_cents: dict[str, int] | None = None) 
     with tdb.SessionLocal() as db:
         league = League(season=2025, name="P1-L4A League")
         db.add(league); db.flush()
-        for name in wallet_cents:
+        for name in min_reserve_cents:
             team = Team(league_id=league.id, team_name=name, owner=f"o-{name}",
                         email=f"{name}-{uuid.uuid4().hex[:8]}@p1l4a.test")
             db.add(team); db.flush()
             db.add(Wallet(team_id=team.id, balance=99_999.0))   # wrong on purpose
             ids[name] = team.id
-        names = list(wallet_cents)
+        names = list(min_reserve_cents)
         db.add(Matchup(league_id=league.id, week=WEEK,
                        home_team_id=ids[names[0]], away_team_id=ids[names[1]],
                        home_score=0.0, away_score=0.0))
-        for name, cents in wallet_cents.items():
+        for name, cents in min_reserve_cents.items():
             if cents:
                 ledger_post([("world", -cents), (f"wallet:{ids[name]}", cents)],
                             door="buy_in_paid", session=db)

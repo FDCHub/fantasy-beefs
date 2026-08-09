@@ -96,7 +96,7 @@ P_HS_OPP  = 0.18
 CEIL_OPP  = 21_951         # floor(100000/0.82 * 0.18)
 
 
-def seed(wallet_cents: dict[str, int], min_cents: dict[str, int] | None = None,
+def seed(min_reserve_cents: dict[str, int], min_cents: dict[str, int] | None = None,
          matchups: list[tuple[str, str]] | None = None) -> dict:
     """A league, teams, wallets, one matchup, seeded ledger balances. The float
     Wallet.balance mirror is set DELIBERATELY WRONG so nothing can pass by
@@ -106,13 +106,13 @@ def seed(wallet_cents: dict[str, int], min_cents: dict[str, int] | None = None,
     with tdb.SessionLocal() as db:
         league = League(season=2025, name="P3-D2 League")
         db.add(league); db.flush()
-        for name in wallet_cents:
+        for name in min_reserve_cents:
             team = Team(league_id=league.id, team_name=name, owner=f"o-{name}",
                         email=f"{name}-{uuid.uuid4().hex[:8]}@p3d2.test")
             db.add(team); db.flush()
             db.add(Wallet(team_id=team.id, balance=99_999.0))
             ids[name] = team.id
-        names = list(wallet_cents)
+        names = list(min_reserve_cents)
         # Default: one matchup between the first two teams. `matchups` lets a
         # fixture build a CROSS-MATCHUP league, where the challenge participants
         # are each scheduled against somebody else.
@@ -121,7 +121,7 @@ def seed(wallet_cents: dict[str, int], min_cents: dict[str, int] | None = None,
             db.add(Matchup(league_id=league.id, week=WEEK,
                            home_team_id=ids[home], away_team_id=ids[away],
                            home_score=0.0, away_score=0.0))
-        for name, cents in wallet_cents.items():
+        for name, cents in min_reserve_cents.items():
             if cents:
                 ledger_post([("world", -cents), (f"wallet:{ids[name]}", cents)],
                             door="buy_in_paid", session=db)

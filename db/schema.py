@@ -1849,6 +1849,61 @@ class PoolLegacyRolloverMigration(Base):
     league = relationship("League")
 
 
+class EconomyEvent(Base):
+    """Exactly-once identity for every Sprint 5 weekly/season economic effect.
+
+    Same pattern Sprint 4 proved on `pool_economic_event`: the row is inserted
+    in the SAME transaction as the ledger posting it describes, so a replay
+    collides at the constraint and the whole retry rolls back harmlessly. A row
+    lock supplements this; it never replaces it.
+
+    ONE DETERMINISTIC `event_key`, NOT A COMPOSITE OF NULLABLE COLUMNS. Sprint 4
+    needed two partial unique indexes because its key had two shapes and NULLs
+    are distinct in a PostgreSQL UNIQUE index — a combined constraint over a
+    nullable column is silently inert. Sprint 5 has FOUR shapes:
+
+        per-GM weekly     release, expiry, skunk obligation
+        per-league weekly weekly skunk assessment marker
+        per-GM season     opening allocation, expired-minimum reconciliation
+        per-league season skunk distribution, championship distribution
+
+    Four partial indexes, each having to name exactly the right IS NULL / IS NOT
+    NULL combination, is four chances to write one that never fires. A single
+    NOT NULL text key built by a pure function has none of that failure mode:
+    uniqueness is total, and the shape is decided in Python where it can be
+    unit-tested without a database. The descriptive columns are retained
+    alongside for querying and audit, never for uniqueness.
+
+    THE KEY IS RECOMPUTABLE FROM THE EVENT — never a timestamp, never a random
+    value, never a retry counter. See economy/economy_events.py for the
+    builders.
+    """
+    __tablename__ = "economy_event"
+    __table_args__ = (
+        UniqueConstraint("event_key", name="uq_economy_event_key"),
+        CheckConstraint("amount_cents >= 0",
+                        name="ck_economy_event_amount_nonneg"),
+        Index("ix_economy_event_league_season", "league_id", "season"),
+    )
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    event_key    = Column(String, nullable=False)
+    league_id    = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    season       = Column(Integer, nullable=False)
+    #: NULL for season-scoped events; a week number for weekly ones.
+    week         = Column(Integer, nullable=True)
+    #: NULL for league-scoped events; a team id for per-GM ones.
+    team_id      = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    event_type   = Column(String, nullable=False)
+    #: NULL when the event legitimately moved no money (a zero-assessment week).
+    posting_id   = Column(Uuid, nullable=True)
+    amount_cents = Column(BigInteger, nullable=False)
+    created_at   = Column(DateTime(timezone=True), nullable=False)
+
+    league = relationship("League")
+    team   = relationship("Team")
+
+
 # ── NFL Schedule ──────────────────────────────────────────────────────────────
 
 class NflSchedule(Base):
@@ -1947,7 +2002,12 @@ class SeasonAllocation(Base):
     # later economy-stop change cannot split one season's allocation across
     # two different stops. Same rationale as BuyInRecord's identical trio.
     buyin_cents   = Column(Integer,  nullable=False)
-    wallet_cents  = Column(Integer,  nullable=False)
+    # RENAMED from wallet_cents by S5-P1. Under owner ruling S5-R2 this
+    # allocation goes to min_reserve:{team}, NOT to the Wallet, and the old
+    # label would have gone on silently meaning Weekly Minimum Reserve. The
+    # ARITHMETIC is unchanged (140 + 80 = 220) and so is the Top-Off cap
+    # basis that reads this column; only the name now says what it holds.
+    min_reserve_cents = Column(Integer,  nullable=False)
     reserve_cents = Column(Integer,  nullable=False)
     created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

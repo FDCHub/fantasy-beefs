@@ -106,7 +106,7 @@ additional control is a mandatory non-empty decision_reason, and the frozen cap,
 posting shape and disclosure obligation are identical either way.
 
 THE CAP IS FROZEN, AND READ FROM FROZEN ROWS ONLY (§2.6, invariant 29). Approval
-reads SeasonAllocation.wallet_cents from the row-locked allocation record and
+reads SeasonAllocation.min_reserve_cents from the row-locked allocation record and
 league_season_topoff_config.topoff_cap_multiplier_bps from the single
 league-season row. Never from payments/economy_config.py. Never from
 League.topoff_cap_multiplier_bps, which is the editable pre-activation dial and
@@ -248,7 +248,7 @@ class CapState:
     """The frozen cap and its consumption for one (league, team, season), as
     computed under the allocation-row lock. Every field is integer cents except
     the multiplier, which is basis points."""
-    wallet_cents:       int
+    min_reserve_cents:       int
     multiplier_bps:     int
     cap_cents:          int
     prior_issued_cents: int
@@ -304,7 +304,7 @@ class TopOffDecisionResult:
 
 # ── Cap arithmetic (§2.7) ─────────────────────────────────────────────────────
 
-def compute_cap_cents(wallet_cents: int, multiplier_bps: int) -> int:
+def compute_cap_cents(min_reserve_cents: int, multiplier_bps: int) -> int:
     """The frozen per-GM season cap, in integer cents (§2.7).
 
     THE ANCHOR IS THE WALLET ALLOCATION — not the buy-in, not the championship
@@ -317,10 +317,10 @@ def compute_cap_cents(wallet_cents: int, multiplier_bps: int) -> int:
     so all 25 lawful combinations divide exactly. Flooring an inexact cap would
     silently invent a cap nobody certified.
     """
-    product = wallet_cents * multiplier_bps
+    product = min_reserve_cents * multiplier_bps
     if product % 10000 != 0:
         raise IntegrityAttemptAbort(
-            f"Cap arithmetic is not exact-cent: wallet_cents={wallet_cents} * "
+            f"Cap arithmetic is not exact-cent: min_reserve_cents={min_reserve_cents} * "
             f"multiplier_bps={multiplier_bps} = {product}, which is not divisible "
             f"by 10000 (remainder {product % 10000}). Refusing to floor, truncate "
             f"or round — a remainder here means the frozen snapshot is corrupt, "
@@ -402,11 +402,11 @@ def _read_cap_state(
     integrity-attempt abort and never a silent choice of one over the other.
     """
     # Step 8 — the frozen anchor, from the allocation row.
-    wallet_cents = allocation.wallet_cents
-    if wallet_cents is None or wallet_cents <= 0:
+    min_reserve_cents = allocation.min_reserve_cents
+    if min_reserve_cents is None or min_reserve_cents <= 0:
         raise IntegrityAttemptAbort(
             f"SeasonAllocation for league {league_id}, team {team_id}, season "
-            f"{season} carries wallet_cents={wallet_cents!r}, which cannot anchor "
+            f"{season} carries min_reserve_cents={min_reserve_cents!r}, which cannot anchor "
             f"a cap. Refusing to compute one."
         )
 
@@ -432,7 +432,7 @@ def _read_cap_state(
         )
 
     # Steps 10-11 — divisibility, then the cap.
-    cap_cents = compute_cap_cents(wallet_cents, frozen.topoff_cap_multiplier_bps)
+    cap_cents = compute_cap_cents(min_reserve_cents, frozen.topoff_cap_multiplier_bps)
 
     # Step 12 — both derivations, under whatever lock the caller holds.
     from_ledger   = _issued_from_ledger(db, league_id, team_id, season)
@@ -457,7 +457,7 @@ def _read_cap_state(
         )
 
     return CapState(
-        wallet_cents       = wallet_cents,
+        min_reserve_cents       = min_reserve_cents,
         multiplier_bps     = frozen.topoff_cap_multiplier_bps,
         cap_cents          = cap_cents,
         prior_issued_cents = from_ledger,
@@ -973,13 +973,13 @@ def approve_top_off(
         # below, and so any database-level failure surfaces HERE, under the locks,
         # rather than from inside commit().
         db.flush()
-        ledger_wallet_cents = _balance_of_in_session(db, f"wallet:{team_id}")
+        ledger_min_reserve_cents = _balance_of_in_session(db, f"wallet:{team_id}")
         # THE ONE CONVERSION. The ledger is authoritative and integer cents;
         # Wallet.balance is the pre-existing dollar-denominated Float mirror that
         # validate_bet_amount() and beef_engine read as dollars. Recomputed from
         # the post-state — never incremented, never from the legacy float
         # `amount`, never from this column's own prior value.
-        wallet.balance = ledger_wallet_cents / 100.0
+        wallet.balance = ledger_min_reserve_cents / 100.0
 
         # ── 17. The durable disclosure (§4.5). ──
         # event_id is the durable identity; the integer primary key is a storage

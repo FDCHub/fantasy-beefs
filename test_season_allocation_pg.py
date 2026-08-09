@@ -31,7 +31,7 @@ and (o) proves the gate's season-qualification is load-bearing.
 
 SCENARIOS (a-p):
     a  three legs sum to zero in integer cents
-    b  wallet delta == stop.wallet_cents
+    b  min_reserve delta == stop.min_reserve_cents, wallet delta == 0 (S5-R2)
     c  reserve delta == stop.reserve_cents
     d  world delta == -(stop.buyin_cents * team_count)
     e  trial_balance() == 0 before and after
@@ -148,6 +148,19 @@ def main(tdb) -> None:
             db.commit()
             return league.id, team_ids
 
+    def _season_issuance_total() -> int:
+        """Summed across the whole season_issuance:* namespace.
+
+        The snapshot is league-agnostic — it is taken before a league id is
+        known — and every scenario in this file runs against a freshly reset
+        database, so a namespace total is exactly the per-league figure without
+        the helper having to be told which league."""
+        with SessionLocal() as db:
+            total = db.execute(text(
+                "SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+                "WHERE account LIKE 'season_issuance:%'")).scalar()
+        return int(total or 0)
+
     def snapshot(team_ids: list[int]) -> dict:
         """Committed-state probe: world/wallet/reserve balances, trial
         balance, and the two row counts. Everything a delta needs."""
@@ -156,7 +169,14 @@ def main(tdb) -> None:
             entries = db.query(LedgerEntry).count()
         return {
             "world":   balance_of("world"),
+            # S5-R2 reshaped the opening allocation: the source is now the
+            # league-season issuance account and the 140 lands in min_reserve,
+            # not Wallet. Both the OLD accounts and the NEW ones are probed, so
+            # the assertions below can state positively that world and wallet
+            # are now UNTOUCHED rather than merely not checking them.
+            "issuance": _season_issuance_total(),
             "wallet":  {t: balance_of(f"wallet:{t}") for t in team_ids},
+            "min_reserve": {t: balance_of(f"min_reserve:{t}") for t in team_ids},
             "reserve": {t: balance_of(f"reserve:{t}") for t in team_ids},
             "trial":   trial_balance(),
             "rows":    rows,
@@ -166,7 +186,10 @@ def main(tdb) -> None:
     def deltas(before: dict, after: dict, team_ids: list[int]) -> dict:
         return {
             "world":   after["world"] - before["world"],
+            "issuance": after["issuance"] - before["issuance"],
             "wallet":  {t: after["wallet"][t] - before["wallet"][t] for t in team_ids},
+            "min_reserve": {t: after["min_reserve"][t] - before["min_reserve"][t]
+                            for t in team_ids},
             "reserve": {t: after["reserve"][t] - before["reserve"][t] for t in team_ids},
             "trial":   after["trial"] - before["trial"],
             "rows":    after["rows"] - before["rows"],
@@ -189,7 +212,7 @@ def main(tdb) -> None:
     print("\n(a) three legs sum to zero in integer cents")
     legs = [
         ("world", -stop.buyin_cents),
-        ("wallet:X", stop.wallet_cents),
+        ("wallet:X", stop.min_reserve_cents),
         ("reserve:X", stop.reserve_cents),
     ]
     _assert("posting has exactly three legs", len(legs) == 3)
@@ -198,8 +221,8 @@ def main(tdb) -> None:
     _assert("every leg is an int (no float cents)",
             all(isinstance(a, int) for _, a in legs))
     _assert("wallet+reserve == buyin (economy_config invariant)",
-            stop.wallet_cents + stop.reserve_cents == stop.buyin_cents,
-            f"{stop.wallet_cents}+{stop.reserve_cents} vs {stop.buyin_cents}")
+            stop.min_reserve_cents + stop.reserve_cents == stop.buyin_cents,
+            f"{stop.min_reserve_cents}+{stop.reserve_cents} vs {stop.buyin_cents}")
 
     # ── (f)(b)(c)(d)(e) fresh activation ──────────────────────────────────
     print("\n(f) no rows -> complete atomic activation; (b)(c)(d)(e) deltas")
@@ -220,15 +243,22 @@ def main(tdb) -> None:
             f"delta={d['entries']}")
     _assert("(f) one posting_id per team", len(result.posting_ids) == TEAM_COUNT)
     _assert("(f) posting_ids all distinct", len(set(result.posting_ids)) == TEAM_COUNT)
-    _assert("(b) wallet delta == stop.wallet_cents for every team",
-            all(d["wallet"][t] == stop.wallet_cents for t in team_ids),
-            f"{d['wallet']} vs {stop.wallet_cents}")
+    # S5-R2: the 140 goes to min_reserve, and Wallet receives NOTHING. Both
+    # halves are asserted — the second is what makes the superseded model
+    # unable to pass.
+    _assert("(b) min_reserve delta == stop.min_reserve_cents for every team",
+            all(d["min_reserve"][t] == stop.min_reserve_cents for t in team_ids),
+            f"{d['min_reserve']} vs {stop.min_reserve_cents}")
+    _assert("(b) wallet delta == 0 for every team (S5-R2)",
+            all(d["wallet"][t] == 0 for t in team_ids), f"{d['wallet']}")
     _assert("(c) reserve delta == stop.reserve_cents for every team",
             all(d["reserve"][t] == stop.reserve_cents for t in team_ids),
             f"{d['reserve']} vs {stop.reserve_cents}")
-    _assert("(d) world delta == -(buyin * team_count)",
-            d["world"] == -(stop.buyin_cents * TEAM_COUNT),
-            f"{d['world']} vs {-(stop.buyin_cents * TEAM_COUNT)}")
+    _assert("(d) season_issuance delta == -(buyin * team_count)",
+            d["issuance"] == -(stop.buyin_cents * TEAM_COUNT),
+            f"{d['issuance']} vs {-(stop.buyin_cents * TEAM_COUNT)}")
+    _assert("(d) world delta == 0 — the opening allocation no longer mints "
+            "from world (S5-R2)", d["world"] == 0, f"{d['world']}")
     _assert("(e) trial_balance == 0 AFTER", after["trial"] == 0, f"got {after['trial']}")
     _assert("(e) trial_balance delta == 0", d["trial"] == 0)
     _assert("result total_buyin_cents == buyin * team_count",
@@ -298,7 +328,7 @@ def main(tdb) -> None:
             .one()
         )
         row.buyin_cents   = other.buyin_cents
-        row.wallet_cents  = other.wallet_cents
+        row.min_reserve_cents  = other.min_reserve_cents
         row.reserve_cents = other.reserve_cents
         db.commit()
 
@@ -415,7 +445,7 @@ def main(tdb) -> None:
     with SessionLocal() as rb:
         real_post_k(
             [("world", -stop.buyin_cents),
-             ("wallet:rb_probe", stop.wallet_cents),
+             ("wallet:rb_probe", stop.min_reserve_cents),
              ("reserve:rb_probe", stop.reserve_cents)],
             door="season_allocation",
             session=rb,
@@ -449,7 +479,7 @@ def main(tdb) -> None:
         try:
             db.add(SeasonAllocation(
                 league_id=league_k, team_id=teams_k[0], season=config.ALLOCATION_SEASON,
-                buyin_cents=stop.buyin_cents, wallet_cents=stop.wallet_cents,
+                buyin_cents=stop.buyin_cents, min_reserve_cents=stop.min_reserve_cents,
                 reserve_cents=stop.reserve_cents,
             ))
             db.commit()
@@ -505,7 +535,7 @@ def main(tdb) -> None:
         with SessionLocal() as dba:
             dba.add(SeasonAllocation(
                 league_id=league_m1, team_id=teams_m1[0], season=config.ALLOCATION_SEASON,
-                buyin_cents=stop.buyin_cents, wallet_cents=stop.wallet_cents,
+                buyin_cents=stop.buyin_cents, min_reserve_cents=stop.min_reserve_cents,
                 reserve_cents=stop.reserve_cents,
             ))
             dba.flush()            # row exists in A's transaction, uncommitted
@@ -626,12 +656,16 @@ def main(tdb) -> None:
                 d_m["rows"] == TEAM_COUNT, f"delta={d_m['rows']}")
         _assert(f"(m2 r{rnd}) exactly three ledger entries per team — money moved once",
                 d_m["entries"] == 3 * TEAM_COUNT, f"delta={d_m['entries']}")
-        _assert(f"(m2 r{rnd}) wallet credited exactly once per team",
-                all(d_m["wallet"][t] == stop.wallet_cents for t in teams_m), str(d_m["wallet"]))
+        _assert(f"(m2 r{rnd}) min_reserve credited exactly once per team",
+                all(d_m["min_reserve"][t] == stop.min_reserve_cents for t in teams_m),
+                str(d_m["min_reserve"]))
+        _assert(f"(m2 r{rnd}) wallet stayed at zero throughout the race",
+                all(d_m["wallet"][t] == 0 for t in teams_m), str(d_m["wallet"]))
         _assert(f"(m2 r{rnd}) reserve credited exactly once per team",
                 all(d_m["reserve"][t] == stop.reserve_cents for t in teams_m), str(d_m["reserve"]))
-        _assert(f"(m2 r{rnd}) world debited exactly once per team",
-                d_m["world"] == -(stop.buyin_cents * TEAM_COUNT), f"delta={d_m['world']}")
+        _assert(f"(m2 r{rnd}) season_issuance debited exactly once per team",
+                d_m["issuance"] == -(stop.buyin_cents * TEAM_COUNT),
+                f"delta={d_m['issuance']}")
         _assert(f"(m2 r{rnd}) trial_balance still 0 after the race",
                 after_m["trial"] == 0, f"got {after_m['trial']}")
 
@@ -721,7 +755,7 @@ def main(tdb) -> None:
         db.add(SeasonAllocation(
             league_id=league_o, team_id=teams_o[0],
             season=config.CURRENT_SEASON,               # prior season ONLY
-            buyin_cents=stop.buyin_cents, wallet_cents=stop.wallet_cents,
+            buyin_cents=stop.buyin_cents, min_reserve_cents=stop.min_reserve_cents,
             reserve_cents=stop.reserve_cents,
         ))
         db.commit()
@@ -937,8 +971,8 @@ def _rows_match_stop(SessionLocal, SeasonAllocation, league_id, season, stop) ->
             .all()
         )
         return bool(rows) and all(
-            (r.buyin_cents, r.wallet_cents, r.reserve_cents)
-            == (stop.buyin_cents, stop.wallet_cents, stop.reserve_cents)
+            (r.buyin_cents, r.min_reserve_cents, r.reserve_cents)
+            == (stop.buyin_cents, stop.min_reserve_cents, stop.reserve_cents)
             for r in rows
         )
 

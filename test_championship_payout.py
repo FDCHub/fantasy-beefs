@@ -179,14 +179,25 @@ _repo_root = os.path.dirname(os.path.abspath(__file__))
 
 
 def _is_reserve_account(node) -> bool:
-    """True if the AST node builds a 'reserve:...' account string."""
+    """Whether this leg's account expression names a reserve:{...} account.
+
+    THREE SPELLINGS, because S5-P1 moved the account names into
+    economy.economy_events and the call sites now use the helper. A literal-only
+    matcher would have reported ZERO writers and passed the "exactly one" check
+    only by accident of counting — which is why the assertion below also
+    requires the site to be activate_season_allocation by name.
+    """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value.startswith("reserve:")
-    if isinstance(node, ast.JoinedStr):          # f-string
+    if isinstance(node, ast.JoinedStr):
         first = node.values[0] if node.values else None
         return (isinstance(first, ast.Constant)
                 and isinstance(first.value, str)
                 and first.value.startswith("reserve:"))
+    if isinstance(node, ast.Call):
+        fn = node.func
+        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+        return name == "reserve_account"
     return False
 
 

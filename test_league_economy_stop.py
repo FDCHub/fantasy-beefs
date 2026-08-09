@@ -89,7 +89,7 @@ _assert("get_league_economy_stop() did NOT raise despite no LeagueTreasury row",
 
 if not raised_no_treasury:
     _assert("default stop used: buyin_cents == 22000", stop1.buyin_cents == DEFAULT_STOP.buyin_cents, f"got {stop1.buyin_cents}")
-    _assert("default stop used: wallet_cents == 14000", stop1.wallet_cents == DEFAULT_STOP.wallet_cents, f"got {stop1.wallet_cents}")
+    _assert("default stop used: min_reserve_cents == 14000", stop1.min_reserve_cents == DEFAULT_STOP.min_reserve_cents, f"got {stop1.min_reserve_cents}")
     _assert("default stop used: reserve_cents == 8000", stop1.reserve_cents == DEFAULT_STOP.reserve_cents, f"got {stop1.reserve_cents}")
     _assert("default stop's weekly_min is 1000", DEFAULT_STOP.weekly_min_cents == 1000, f"got {DEFAULT_STOP.weekly_min_cents}")
 
@@ -116,10 +116,10 @@ with SessionLocal() as db:
     stop2 = get_league_economy_stop(league_id2, db)
 
 _assert("weekly_min=2000 stop: buyin_cents == 44000", stop2.buyin_cents == 44000, f"got {stop2.buyin_cents}")
-_assert("weekly_min=2000 stop: wallet_cents == 28000", stop2.wallet_cents == 28000, f"got {stop2.wallet_cents}")
+_assert("weekly_min=2000 stop: min_reserve_cents == 28000", stop2.min_reserve_cents == 28000, f"got {stop2.min_reserve_cents}")
 _assert("weekly_min=2000 stop: reserve_cents == 16000", stop2.reserve_cents == 16000, f"got {stop2.reserve_cents}")
-_assert("wallet + reserve == buyin for this stop", stop2.wallet_cents + stop2.reserve_cents == stop2.buyin_cents,
-        f"got {stop2.wallet_cents} + {stop2.reserve_cents} vs {stop2.buyin_cents}")
+_assert("wallet + reserve == buyin for this stop", stop2.min_reserve_cents + stop2.reserve_cents == stop2.buyin_cents,
+        f"got {stop2.min_reserve_cents} + {stop2.reserve_cents} vs {stop2.buyin_cents}")
 
 
 # ── ITEM 3: set_league_economy_stop() rejects a non-matching weekly_min_cents ──

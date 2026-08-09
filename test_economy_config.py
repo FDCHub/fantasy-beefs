@@ -43,18 +43,18 @@ _assert("exactly five stops defined", len(ECONOMY_STOPS) == 5, f"got {len(ECONOM
 _assert("DEFAULT_STOP is the $10/week ($22000 buy-in) stop", DEFAULT_STOP.weekly_min_cents == 1000, f"got {DEFAULT_STOP.weekly_min_cents}")
 
 
-print("\nRule 1: wallet_cents + reserve_cents == buyin_cents, for every stop")
+print("\nRule 1: min_reserve_cents + reserve_cents == buyin_cents, for every stop")
 for stop in ECONOMY_STOPS:
     _assert(
-        f"stop {stop.weekly_min_cents}: {stop.wallet_cents} + {stop.reserve_cents} == {stop.buyin_cents}",
-        stop.wallet_cents + stop.reserve_cents == stop.buyin_cents,
+        f"stop {stop.weekly_min_cents}: {stop.min_reserve_cents} + {stop.reserve_cents} == {stop.buyin_cents}",
+        stop.min_reserve_cents + stop.reserve_cents == stop.buyin_cents,
     )
 
-print("\nRule 2: wallet_cents == weekly_min_cents * 14, for every stop")
+print("\nRule 2: min_reserve_cents == weekly_min_cents * 14, for every stop")
 for stop in ECONOMY_STOPS:
     _assert(
-        f"stop {stop.weekly_min_cents}: wallet_cents == weekly_min_cents * 14",
-        stop.wallet_cents == stop.weekly_min_cents * 14,
+        f"stop {stop.weekly_min_cents}: min_reserve_cents == weekly_min_cents * 14",
+        stop.min_reserve_cents == stop.weekly_min_cents * 14,
     )
 
 print("\nRule 3: reserve_cents * 11 == buyin_cents * 4, for every stop (tight ratio, not a 33-40% band)")
@@ -70,7 +70,7 @@ for stop in ECONOMY_STOPS:
 
 # A mistyped/freeform stop (interpolated halfway between stop 1 and stop 2)
 # must fail validate_stop, and must not be findable via lookup.
-_fake_stop = EconomyStop(weekly_min_cents=750, wallet_cents=10500, buyin_cents=16500, reserve_cents=6000)
+_fake_stop = EconomyStop(weekly_min_cents=750, min_reserve_cents=10500, buyin_cents=16500, reserve_cents=6000)
 raised_fake = False
 try:
     validate_stop(_fake_stop)
@@ -82,7 +82,7 @@ _assert("find_stop_by_buyin_cents returns None for a freeform amount", find_stop
 # A stop whose numbers satisfy rules 1/2 but violates the tight rule-3 ratio
 # (this is the "not a 33-40% band check" case — reserve here is still inside
 # a loose ~33-40% band of buyin but fails the EXACT 4:11 ratio).
-_band_trap_stop = EconomyStop(weekly_min_cents=1000, wallet_cents=14000, buyin_cents=22500, reserve_cents=8500)
+_band_trap_stop = EconomyStop(weekly_min_cents=1000, min_reserve_cents=14000, buyin_cents=22500, reserve_cents=8500)
 raised_band_trap = False
 try:
     validate_stop(_band_trap_stop)

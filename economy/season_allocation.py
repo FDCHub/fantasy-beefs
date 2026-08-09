@@ -121,13 +121,15 @@ STATE MACHINE — FIVE states, evaluated inside the transaction before any write
 
 CONSERVATION
     Each posting is exactly three legs summing to zero in integer cents:
-        ("world",              -stop.buyin_cents)
-        (f"wallet:{team_id}",   stop.wallet_cents)
-        (f"reserve:{team_id}",  stop.reserve_cents)
+        ("season_issuance:{league_id}:{season}", -stop.buyin_cents)
+        (f"min_reserve:{team_id}",                stop.min_reserve_cents)
+        (f"reserve:{team_id}",                    stop.reserve_cents)
     Zero-sum is guaranteed upstream by economy_config's import-time invariant
-    wallet_cents + reserve_cents == buyin_cents; it is never recomputed or
-    rounded here. "world" is exempt from the ledger's non-negative balance
-    guard, so debiting it from zero is legal — the same structure Door 1 used.
+    min_reserve_cents + reserve_cents == buyin_cents; it is never recomputed or
+    rounded here. season_issuance:* is exempt from the ledger's non-negative
+    balance guard UNDER THIS DOOR ONLY, so debiting it from zero is legal.
+    Wallet receives no leg: S5-R2 supersedes the model that put the Weekly
+    Minimum allocation into Wallet.
 """
 
 from __future__ import annotations
@@ -144,9 +146,19 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import config
 from db.schema import League, LeagueSeasonTopoffConfig, SeasonAllocation, Team
 from payments.economy_config import EconomyStop, get_league_economy_stop
-from ledger.ledger import post as ledger_post
+from economy.economy_events import (
+    EVENT_OPENING_ALLOCATION,
+    gm_season_key,
+    season_issuance_account,
+    min_reserve_account,
+    record_event,
+    reserve_account,
+)
+from ledger.ledger import SEASON_ALLOCATION_DOOR, post as ledger_post
 
-DOOR = "season_allocation"
+#: Re-exported for callers/tests; the literal lives in ledger.ledger
+#: beside the funded-balance exemption it activates.
+DOOR = SEASON_ALLOCATION_DOOR
 
 
 # ── Errors ────────────────────────────────────────────────────────────────────
@@ -193,7 +205,7 @@ class SeasonAllocationResult:
     season:            int
     team_ids:          tuple[int, ...]
     buyin_cents:       int
-    wallet_cents:      int
+    min_reserve_cents:      int
     reserve_cents:     int
     total_buyin_cents: int
     created:           bool
@@ -212,7 +224,7 @@ def _result(
         season            = config.ALLOCATION_SEASON,
         team_ids          = team_ids,
         buyin_cents       = stop.buyin_cents,
-        wallet_cents      = stop.wallet_cents,
+        min_reserve_cents      = stop.min_reserve_cents,
         reserve_cents     = stop.reserve_cents,
         total_buyin_cents = stop.buyin_cents * len(team_ids),
         created           = created,
@@ -401,11 +413,11 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
             conflicts = [
                 (
                     row.team_id,
-                    (row.buyin_cents, row.wallet_cents, row.reserve_cents),
+                    (row.buyin_cents, row.min_reserve_cents, row.reserve_cents),
                 )
                 for row in existing
-                if (row.buyin_cents, row.wallet_cents, row.reserve_cents)
-                != (stop.buyin_cents, stop.wallet_cents, stop.reserve_cents)
+                if (row.buyin_cents, row.min_reserve_cents, row.reserve_cents)
+                != (stop.buyin_cents, stop.min_reserve_cents, stop.reserve_cents)
             ]
             if conflicts:
                 raise ConflictingAllocationError(
@@ -413,7 +425,7 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
                     f"season-{config.ALLOCATION_SEASON} allocation "
                     f"disagrees with its current economy stop. Current stop "
                     f"(buyin, wallet, reserve) = "
-                    f"({stop.buyin_cents}, {stop.wallet_cents}, {stop.reserve_cents}). "
+                    f"({stop.buyin_cents}, {stop.min_reserve_cents}, {stop.reserve_cents}). "
                     f"Stored, by team: {conflicts}. Refusing to mutate — "
                     f"reposting would split one season across two stops."
                 )
@@ -465,21 +477,60 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
                 team_id       = team_id,
                 season        = config.ALLOCATION_SEASON,
                 buyin_cents   = stop.buyin_cents,
-                wallet_cents  = stop.wallet_cents,
+                min_reserve_cents  = stop.min_reserve_cents,
                 reserve_cents = stop.reserve_cents,
             ))
             # Three legs, integer cents, summing to zero by economy_config's
             # import-time invariant. session=db keeps these entries inside THIS
             # transaction; post() does not commit on the session-provided path.
+            # S5-R2 / S5-P1 owner ruling — THE OPENING ALLOCATION SHAPE.
+            #
+            #   season_issuance:{league}:{season}  -22000
+            #   min_reserve:{team}                 +14000
+            #   reserve:{team}                      +8000
+            #   wallet:{team}                           0   (NO leg at all)
+            #
+            # WALLET GETS NO LEG, not a zero-amount one. A zero leg would be a
+            # posting that moved nothing while claiming the Wallet participated,
+            # and the obsolete model — 140 straight into Wallet — is superseded,
+            # not merely reduced. There is nothing to grandfather.
+            #
+            # THE SOURCE IS season_issuance, NEVER bab_issuance. That namespace
+            # is reserved to the canonical approved Top-Off door by an accepted
+            # B6 invariant which names this very door as one that must NOT be
+            # exempt on it. The two obligations stay separately derivable from
+            # posted state, which is what S5-P2/P3 Current Settle needs.
+            #
+            # Zero-sum holds by economy_config's import-time invariant
+            # min_reserve_cents + reserve_cents == buyin_cents; it is never
+            # recomputed or rounded here.
             posting_ids.append(ledger_post(
                 [
-                    ("world",                  -stop.buyin_cents),
-                    (f"wallet:{team_id}",       stop.wallet_cents),
-                    (f"reserve:{team_id}",      stop.reserve_cents),
+                    (season_issuance_account(league_id, config.ALLOCATION_SEASON),
+                     -stop.buyin_cents),
+                    (min_reserve_account(team_id), stop.min_reserve_cents),
+                    (reserve_account(team_id),     stop.reserve_cents),
                 ],
-                door    = DOOR,
+                door    = SEASON_ALLOCATION_DOOR,
                 session = db,
             ))
+
+            # The per-GM season obligation, recorded in THIS transaction. Its
+            # deterministic key makes a replay collide rather than double-issue;
+            # the state machine above is the primary idempotency mechanism and
+            # this is the structural backstop that also covers a caller reaching
+            # the create branch by some path the state read did not cover.
+            record_event(
+                db,
+                event_key = gm_season_key(EVENT_OPENING_ALLOCATION, league_id,
+                                          config.ALLOCATION_SEASON, team_id),
+                league_id = league_id,
+                season    = config.ALLOCATION_SEASON,
+                team_id   = team_id,
+                event_type= EVENT_OPENING_ALLOCATION,
+                amount_cents = stop.buyin_cents,
+                posting_id   = posting_ids[-1],
+            )
 
         # Force the INSERTs (and therefore both final race guards,
         # uq_lstc_league_season and uq_season_allocation_league_team_season) to

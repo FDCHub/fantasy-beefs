@@ -166,7 +166,7 @@ def main(tdb) -> None:
             trial_balance() == 0, f"got {trial_balance()}")
 
     # 1 cent, a mid-range amount, and a full-cap-sized amount. The frozen
-    # default stop's wallet_cents is 14 000, so 14 000 is a realistic ceiling.
+    # default stop's min_reserve_cents is 14 000, so 14 000 is a realistic ceiling.
     for label, T, team_id in (("1 cent", 1, 901), ("mid", 5_000, 902), ("full cap", 14_000, 903)):
         league_id = 9001
         pid = top_off(league_id, team_id, T, SEASON)
@@ -391,9 +391,16 @@ def main(tdb) -> None:
             f"leg counts={[len(legs_of(p)) for p in result.posting_ids]}")
     _assert("(h) each activation posting still balances to zero",
             all(sum(a for _, a in legs_of(p)) == 0 for p in result.posting_ids))
-    _assert("(h) activation wallet credit is unchanged by the guard edit",
-            balance_of(f"wallet:{alloc_team_ids[0]}") == stop.wallet_cents,
-            f"expected {stop.wallet_cents}, got {balance_of(f'wallet:{alloc_team_ids[0]}')}")
+    # S5-R2 reshaped where activation puts the money: the 140 now credits
+    # min_reserve: and Wallet receives nothing. Both halves are asserted, so the
+    # superseded wallet-funded model cannot pass this check either.
+    _assert("(h) activation min_reserve credit is unchanged by the guard edit",
+            balance_of(f"min_reserve:{alloc_team_ids[0]}") == stop.min_reserve_cents,
+            f"expected {stop.min_reserve_cents}, got "
+            f"{balance_of(f'min_reserve:{alloc_team_ids[0]}')}")
+    _assert("(h) activation credits no Wallet (S5-R2)",
+            balance_of(f"wallet:{alloc_team_ids[0]}") == 0,
+            f"got {balance_of(f'wallet:{alloc_team_ids[0]}')}")
     _assert("(h) trial_balance() still exactly 0 after a real activation",
             trial_balance() == 0, f"got {trial_balance()}")
 
