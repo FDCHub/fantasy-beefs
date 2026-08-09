@@ -601,9 +601,35 @@ def c7_immutability(evidence, tdb):
     evidence.append("assert_never_retracted refuses any non-NULL -> NULL "
                     "transition")
 
-    # THE SOLE-WRITER CLAIM, checked mechanically across the whole repository.
-    writer_pattern = re.compile(r"\.finalized_at\s*=(?!=)")
-    offenders: list[str] = []
+    # ── THE SOLE-WRITER CLAIM, CHECKED MECHANICALLY (Opus control hardening) ──
+    #
+    # The original scan looked for `.finalized_at =` only. Opus correctly noted
+    # that it would not have caught the Blocker-1 defect at all: the legacy
+    # Tuesday upsert rewrote home_score, away_score and winner_team_id of an
+    # already-final row through RAW SQL, and a Python-assignment regex over one
+    # field name sees neither the fields nor the SQL.
+    #
+    # This scan now covers all FOUR load-bearing Matchup fields and BOTH shapes:
+    #   * ORM assignment            `row.home_score = ...`
+    #   * raw SQL DML on matchups   INSERT INTO / UPDATE / DELETE FROM matchups
+    #     including inside text(\"\"\"...\"\"\") blocks, which is exactly how the
+    #     blocker was written.
+    #
+    # Docstrings are excluded from the SQL sweep via the AST, so a module that
+    # DESCRIBES the old statement — as the corrected tuesday_sync now does —
+    # is not mistaken for one that executes it. That distinction is the whole
+    # reason the check is AST-based rather than another regex.
+    import ast as _ast
+
+    LOAD_BEARING = ("finalized_at", "home_score", "away_score", "winner_team_id")
+    orm_pattern = re.compile(
+        r"\.(" + "|".join(LOAD_BEARING) + r")\s*=(?!=)")
+    sql_pattern = re.compile(
+        r"\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+matchups\b", re.IGNORECASE)
+
+    orm_offenders: list[str] = []
+    sql_offenders: list[str] = []
+
     for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
         dirnames[:] = [d for d in dirnames
                        if d not in (".git", "__pycache__", ".idea", "node_modules")]
@@ -612,31 +638,86 @@ def c7_immutability(evidence, tdb):
                 continue
             path = os.path.join(dirpath, filename)
             rel = os.path.relpath(path, REPO_ROOT).replace("\\", "/")
-            with open(path, encoding="utf-8", errors="replace") as handle:
-                for lineno, line in enumerate(handle, 1):
-                    if writer_pattern.search(line) and not line.strip().startswith("#"):
-                        offenders.append(f"{rel}:{lineno}")
+            source = open(path, encoding="utf-8", errors="replace").read()
 
-    allowed_prefixes = (
-        "providers/yahoo/finality.py",       # THE writer
-        "providers/certify/run.py",          # this file's Fake row
+            for lineno, line in enumerate(source.split("\n"), 1):
+                if orm_pattern.search(line) and not line.strip().startswith("#"):
+                    orm_offenders.append(f"{rel}:{lineno}")
+
+            # Raw SQL, via the AST so docstrings are not counted as executable.
+            try:
+                tree = _ast.parse(source)
+            except SyntaxError:
+                continue
+            docstring_ids = set()
+            for parent in _ast.walk(tree):
+                if isinstance(parent, (_ast.Module, _ast.FunctionDef,
+                                       _ast.AsyncFunctionDef, _ast.ClassDef)):
+                    body = getattr(parent, "body", None)
+                    if (body and isinstance(body[0], _ast.Expr)
+                            and isinstance(body[0].value, _ast.Constant)
+                            and isinstance(body[0].value.value, str)):
+                        docstring_ids.add(id(body[0].value))
+            for sub in _ast.walk(tree):
+                if (isinstance(sub, _ast.Constant)
+                        and isinstance(sub.value, str)
+                        and id(sub) not in docstring_ids
+                        and sql_pattern.search(sub.value)):
+                    sql_offenders.append(f"{rel}:{sub.lineno}")
+
+    # Any file may also be a .sql file; there are none today, but the scan says
+    # so rather than assuming it.
+    sql_files = [os.path.relpath(os.path.join(dp, f), REPO_ROOT)
+                 for dp, dn, fn in os.walk(REPO_ROOT)
+                 if ".git" not in dp
+                 for f in fn if f.endswith(".sql")]
+
+    allowed_orm = (
+        "providers/yahoo/finality.py",   # THE finality writer
+        "providers/yahoo/persist.py",    # THE score/winner writer, guarded
+        "providers/certify/run.py",      # this file's Fake row
     )
-    # Test fixtures legitimately stamp finality when constructing a scenario;
-    # they are not production writers and are listed rather than hidden.
-    fixture_writers = [o for o in offenders
-                       if o.startswith("test_") or "/test_" in o
-                       or o.startswith("test_support")]
-    production_writers = [o for o in offenders
-                          if o not in fixture_writers
-                          and not o.startswith(allowed_prefixes)]
-    require(not production_writers,
-            f"finalized_at is assigned outside providers/yahoo/finality.py: "
-            f"{production_writers}")
+    allowed_sql = (
+        "db/migrations/",                # schema migrations, not ingestion
+        "migrations/",
+        "providers/certify/run.py",
+    )
+
+    def _is_fixture(entry: str) -> bool:
+        name = entry.split(":")[0]
+        return (name.startswith("test_") or "/test_" in name
+                or name.startswith("test_support"))
+
+    orm_production = [o for o in orm_offenders
+                      if not _is_fixture(o) and not o.startswith(allowed_orm)]
+    sql_production = [o for o in sql_offenders
+                      if not _is_fixture(o) and not o.startswith(allowed_sql)]
+
+    require(not orm_production,
+            f"load-bearing Matchup fields are assigned outside the guarded "
+            f"provider writers: {orm_production}")
+    require(not sql_production,
+            f"raw SQL mutates `matchups` outside the guarded provider writers "
+            f"and migrations: {sql_production}. This is the exact shape of the "
+            f"Blocker-1 defect (an ON CONFLICT DO UPDATE that rewrote a final "
+            f"result).")
+    require(not sql_files,
+            f".sql files exist and were not scanned: {sql_files}")
+
+    orm_fixtures = [o for o in orm_offenders if _is_fixture(o)]
     evidence.append(
-        f"repository-wide scan: finalized_at is assigned in exactly one "
-        f"production module (providers/yahoo/finality.py); "
-        f"{len(fixture_writers)} test-fixture assignment(s) are permitted and "
-        f"listed: {fixture_writers}")
+        f"repository-wide scan covers {len(LOAD_BEARING)} load-bearing fields "
+        f"{list(LOAD_BEARING)} in BOTH shapes (ORM assignment and raw SQL DML "
+        f"on `matchups`, docstrings excluded via AST)")
+    evidence.append(
+        f"ORM assignments: 0 unauthorized production writers; permitted "
+        f"writers are {list(allowed_orm)}; {len(orm_fixtures)} test-fixture "
+        f"assignment(s) listed, not hidden")
+    evidence.append(
+        f"raw SQL DML on `matchups`: {len(sql_offenders)} executable "
+        f"occurrence(s) repo-wide, 0 outside migrations and the guarded "
+        f"gateway — the legacy Tuesday ON CONFLICT DO UPDATE is gone")
+    evidence.append(f".sql files in repository: {len(sql_files)} (none to scan)")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

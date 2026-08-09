@@ -350,6 +350,18 @@ WEEK1_CONTRADICTED = [
          is_tied=1),
 ]
 
+#: Week 1 WINNER FLIPPED — identical pairings, identical SCORES, a DIFFERENT
+#: declared winner. Its own scenario because a winner contradiction must fail
+#: closed on its own merits: a fixture that also changed the score would let a
+#: score-only guard pass the test while leaving winner_team_id rewritable, which
+#: is the narrower half of Opus blocker 1.
+WEEK1_WINNER_FLIPPED = [
+    dict(team_a=1, team_b=2, points_a=112.5, points_b=98.25, winner=2),
+    dict(team_a=3, team_b=4, points_a=87.0, points_b=131.75, winner=4),
+    dict(team_a=5, team_b=6, points_a=104.4, points_b=104.4, winner=None,
+         is_tied=1),
+]
+
 #: Week 2 — the §7 truth table, one row per case.
 WEEK2 = [
     # final 0-0 -> finalized_at MUST be set. The case a score-based reading
@@ -435,6 +447,11 @@ def main() -> None:
     emit("yahoo_scoreboard_w1_contradicted", "scoreboard",
          build_week(1, WEEK1_CONTRADICTED), week=1,
          notes="C-8: same final matchups, matchup 1 reports a different score")
+    emit("yahoo_scoreboard_w1_winner_flipped", "scoreboard",
+         build_week(1, WEEK1_WINNER_FLIPPED), week=1,
+         notes="Opus blocker 1: identical SCORES, contradictory declared "
+               "winner — proves winner_team_id is protected independently of "
+               "the score")
     emit("yahoo_scoreboard_w2", "scoreboard", build_week(2, WEEK2), week=2,
          notes="C-6 truth table: final 0-0, midevent with scores, preevent")
     emit("yahoo_scoreboard_w3", "scoreboard", build_week(3, WEEK3), week=3,

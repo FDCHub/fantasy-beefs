@@ -1,0 +1,23 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "scoreboard",
+  "fixture_id": "yahoo_scoreboard_w1_winner_flipped",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "461.l.488800",
+  "notes": "Opus blocker 1: identical SCORES, contradictory declared winner \u2014 proves winner_team_id is protected independently of the score",
+  "payload_sha256": "a718438ad121f1c9ba0957e333c4c5dc033db1519aa229c32613987703bdb713",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [
+    "$.fantasy_content.league[1].scoreboard.0.matchups.0.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.0.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.1.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.1.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.2.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.2.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted"
+  ],
+  "season": 2025,
+  "week": 1
+}

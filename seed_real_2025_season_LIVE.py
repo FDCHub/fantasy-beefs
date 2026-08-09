@@ -546,10 +546,28 @@ def _seed_to_db(
     Returns a counts dict for the post-seed summary.
     """
     # ── League ────────────────────────────────────────────────────────────────
+    #
+    # PROVIDER IDENTITY IS WRITTEN AT CREATION (S6-R1 / Opus blocker 2).
+    #
+    # This seeder is the ORIGINAL SOURCE of the email identity smuggle: it wrote
+    # 'yahoo-team-{n}@fantasy-beefs.local' and db/team_resolver.py parsed the
+    # ordinal back out, which is how a manager email became load-bearing
+    # provider identity. The blocker correction made that resolver fail closed,
+    # so a league seeded WITHOUT provider identity would now be unresolvable by
+    # every live ingestion path — correctly fail-closed, but also useless.
+    #
+    # Writing the compound provider keys here keeps the seeder functional while
+    # making the PROVIDER KEY, not the email, the authoritative record. The
+    # email is still written because Team.email is NOT NULL and is ordinary
+    # contact data; nothing resolves identity from it any more.
+    _league_key = f"{GAME_ID}.l.{LEAGUE_ID}"
+
     league = League(
-        season           = scoring.season,
-        name             = scoring.league_name,
-        projection_source= "fantasypros",
+        season              = scoring.season,
+        name                = scoring.league_name,
+        projection_source   = "fantasypros",
+        provider            = "yahoo",
+        provider_league_key = _league_key,
     )
     session.add(league)
     session.flush()
@@ -580,7 +598,14 @@ def _seed_to_db(
             league_id = league.id,
             team_name = dt.team_name,
             owner     = dt.owner,
+            # Contact data. NOT identity (S6-R1) — see the League comment above.
             email     = dt.email,
+            # THE AUTHORITATIVE RECORD. The compound key carries the game and
+            # league segments, so it stays collision-safe across seasons and
+            # leagues in a way the bare ordinal never was.
+            provider            = "yahoo",
+            provider_team_key   = f"{_league_key}.t.{dt.yahoo_team_id}",
+            provider_team_id    = dt.yahoo_team_id,
         )
         session.add(team)
         session.flush()
@@ -621,6 +646,22 @@ def _seed_to_db(
         winner_team_id = (
             team_map[dm.winner_id].id if dm.winner_id is not None else None
         )
+        # finalized_at IS DELIBERATELY NOT SET, AND THAT IS THE SAFE READING.
+        #
+        # This seeder does not carry Yahoo's matchup status — DryMatchup holds
+        # scores and a winner, nothing about whether the event is over — so it
+        # has no affirmative provider final signal to map. §7 permits finality
+        # to be set ONLY from such a signal, and forbids inferring it from a
+        # score, a non-null score, a 0-0, or row presence. Leaving it NULL means
+        # these rows are NOT economically final, so no money path can act on
+        # them until a gateway refresh declares the week final through the
+        # accepted mapping.
+        #
+        # provider_matchup_key is likewise left NULL: the derived key belongs to
+        # the gateway, and the first gateway refresh ADOPTS these rows into
+        # provider identity via the unordered-pair lookup in
+        # providers/yahoo/persist.py::_find_matchup rather than inserting beside
+        # them.
         session.add(Matchup(
             league_id      = league.id,
             week           = dm.week,

@@ -290,39 +290,56 @@ def _assert_slate_fresh(
 
 # ── Step 0: Refresh matchup scores from Yahoo ────────────────────────────────
 
+def _provider_league_key(league_id: int, db: Session) -> str:
+    """The league's persisted provider identity, or a loud refusal.
+
+    S6-R1 / Opus blocker 2: every live Yahoo ingestion step starts here, so a
+    league that has never been bound to a provider key cannot be ingested at
+    all. That is the fail-closed reading — the alternative is guessing the
+    league from an environment variable, which is how the old path ended up
+    trusting YAHOO_LEAGUE_ID over persisted state.
+    """
+    from db.schema import League
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise ValueError(f"league {league_id} not found")
+    if not league.provider_league_key:
+        raise ValueError(
+            f"league {league_id} carries no provider_league_key. Live Yahoo "
+            f"ingestion resolves identity from persisted provider keys only "
+            f"(S6-R1); bind the league with "
+            f"providers.yahoo.identity.bind_league_identity first. Refusing to "
+            f"fall back to the YAHOO_LEAGUE_ID environment variable, which is "
+            f"not identity.")
+    return league.provider_league_key
+
+
 def _build_yahoo_query(yahoo_league_id: str):
     """
     Build an authenticated yfpy YahooFantasySportsQuery.
 
-    Credential loading (in priority order):
-      1. YAHOO_PRIVATE_JSON env var (full JSON string) + YAHOO_CONSUMER_SECRET
-         env var — the expected path on Railway where secrets/ is not deployed.
-      2. secrets/private.json + secrets/yahoo_oauth.json — local dev fallback.
+    CREDENTIALS COME FROM THE GATEWAY'S SINGLE LOADER (§3). This function used
+    to read YAHOO_PRIVATE_JSON / secrets/*.json itself, which made it the third
+    independent credential path in the repository. It now delegates to
+    `providers.yahoo.transport.load_credentials`, so there is exactly one place
+    a Yahoo token is read and exactly one place it can leak from.
 
-    yfpy gotchas preserved:
-      - game_id=461 passed into the constructor (not just game_code).
-      - consumer_secret merged into the token dict before the constructor call.
+    The yfpy gotchas are preserved verbatim:
+      - game_id=461 passed into the constructor (not just game_code);
+      - consumer_secret merged into the token dict before the constructor call
+        (load_credentials does this).
     """
     from yfpy.query import YahooFantasySportsQuery
 
-    private_env = os.getenv("YAHOO_PRIVATE_JSON", "")
-    secret_env  = os.getenv("YAHOO_CONSUMER_SECRET", "")
+    from providers.yahoo.transport import DEFAULT_GAME_ID, load_credentials
 
-    if private_env and secret_env:
-        token = json.loads(private_env)
-        token["consumer_secret"] = secret_env
-    else:
-        root = os.path.join(os.path.dirname(__file__), "..")
-        with open(os.path.join(root, "secrets", "private.json")) as f:
-            token = json.load(f)
-        with open(os.path.join(root, "secrets", "yahoo_oauth.json")) as f:
-            creds = json.load(f)
-        token["consumer_secret"] = creds["consumer_secret"]
+    token = load_credentials()
 
     return YahooFantasySportsQuery(
         league_id=yahoo_league_id,
         game_code="nfl",
-        game_id=461,
+        game_id=DEFAULT_GAME_ID,
         yahoo_access_token_json=token,
         browser_callback=False,
     )
@@ -332,24 +349,66 @@ def _step_refresh_scores(
     league_id: int,
     week: int,
     db: Session,
+    *,
+    transport=None,
 ) -> tuple[StepResult, RefreshResult]:
     """
-    Step 0 — pull the live Yahoo scoreboard for the given week and upsert
-    matchup scores into the matchups table.
+    Step 0 — pull the live Yahoo scoreboard and persist it THROUGH THE SPRINT 6
+    PROVIDER GATEWAY.
 
-    Returns (StepResult, RefreshResult).  RefreshResult.settleable is True only
-    when all matchups are final, the Yahoo return covers the full DB slate with
-    set-exact identity (not just count equality), every team ID resolved, and
-    the upsert committed — including refreshed_at = NOW() on every row.
+    OPUS BLOCKER 1 AND 2 ARE BOTH CLOSED HERE. What this function used to do was
+    issue a raw
 
-    Translation precedes the slate check because set containment requires
-    DB IDs, and those only exist after the TeamResolver runs.
+        INSERT INTO matchups ... ON CONFLICT (league_id, week, home_team_id)
+        DO UPDATE SET home_score     = EXCLUDED.home_score,
+                      away_score     = EXCLUDED.away_score,
+                      winner_team_id = EXCLUDED.winner_team_id,
+                      refreshed_at   = NOW()
+
+    with no regard for `finalized_at`. That is a silent rewrite of an
+    economically final result, which S6-R3 forbids outright: a provider that
+    later disagrees about a settled game must be REFUSED and RECORDED, never
+    applied. It also resolved teams through the `teams.email` bridge, which
+    S6-R1 forbids as authoritative identity.
+
+    Both are now closed structurally rather than patched. This function no
+    longer writes a matchup at all. It normalizes the payload into provider DTOs
+    and hands them to `providers.yahoo.persist.refresh_league_week` — the same
+    writer the certified gateway uses — which brings every protection Opus
+    accepted:
+
+      * provider-stable identity resolution, fail-closed on unknown, ambiguous
+        and conflicting keys (S6-R1) — no email, no name, no payload order;
+      * canonical matchup orientation and the derived mirror-stable key (§5);
+      * the sole finality mapping, so `finalized_at` is set ONLY from an
+        affirmative provider final signal (§7);
+      * post-final contradiction handling — stored state untouched, a
+        deterministic ProviderConflict recorded, and a named refusal (S6-R3);
+      * the §6 ingestion horizon.
+
+    `transport` is injectable so the PostgreSQL blocker regressions can drive
+    THIS EXACT PRODUCTION FUNCTION offline against the recorded corpus. When it
+    is None a live Yahoo transport is constructed, which is the production path.
+    Injecting a transport changes where the bytes come from and nothing else —
+    the identity, finality, conflict and persistence code below is the same in
+    both cases, which is what makes the offline regression meaningful rather
+    than a test of a parallel path.
+
+    Returns (StepResult, RefreshResult). `settleable` is True only when the
+    gateway persisted the week without conflict, the DB slate matches the
+    provider's slate set-exactly, and EVERY matchup in the week is economically
+    final by `finalized_at` — not by a status string held in memory.
     """
-    from db.team_resolver import build_team_resolver, TeamResolverError
-    from sqlalchemy import text
-    from yahoo_scoreboard import fetch_week_scoreboard
+    from betting.finality_gate import week_finality
+    from providers.errors import (
+        ProviderConflictError,
+        ProviderError,
+        ProviderIdentityError,
+    )
+    from providers.yahoo import normalize, parse
+    from providers.yahoo.identity import build_team_identity_resolver
+    from providers.yahoo.persist import refresh_league_week
 
-    yahoo_league_id = os.getenv("YAHOO_LEAGUE_ID", "488800")
     t0 = time.monotonic()
 
     def _not_fresh(
@@ -357,123 +416,139 @@ def _step_refresh_scores(
     ) -> tuple[StepResult, RefreshResult]:
         ms = int((time.monotonic() - t0) * 1000)
         return (
-            StepResult("refresh_scores", False, reason, {"settleable": False}, error, ms),
+            StepResult("refresh_scores", False, reason, {"settleable": False},
+                       error, ms),
             RefreshResult(settleable=False, week=week, reason=reason),
         )
 
-    # ── Build team resolver (one DB round-trip) ───────────────────────────────
+    # ── Provider identity, from persisted state ──────────────────────────────
     try:
-        resolver = build_team_resolver(db, league_id)
-    except TeamResolverError as exc:
-        return _not_fresh(f"week {week}: team resolver failed — {exc}", str(exc))
-    except Exception as exc:
-        return _not_fresh(f"week {week}: unexpected resolver error — {exc}", str(exc))
+        league_key = _provider_league_key(league_id, db)
+    except ValueError as exc:
+        return _not_fresh(f"week {week}: {exc}", str(exc))
 
-    # ── Fetch live scoreboard from Yahoo ─────────────────────────────────────
+    # ── Transport ────────────────────────────────────────────────────────────
+    if transport is None:
+        try:
+            from providers.yahoo.transport import YahooLiveTransport
+
+            transport = YahooLiveTransport()
+        except Exception as exc:  # noqa: BLE001
+            return _not_fresh(
+                f"week {week}: Yahoo transport unavailable — "
+                f"{type(exc).__name__}: {exc}", str(exc))
+
+    # ── Fetch, parse, normalize ──────────────────────────────────────────────
     try:
-        query      = _build_yahoo_query(yahoo_league_id)
-        scoreboard = fetch_week_scoreboard(query, week)
-    except Exception as exc:
+        league_dto = normalize.normalize_league(
+            parse.parse_league(transport.fetch_league(league_key)))
+        teams_dto = tuple(
+            normalize.normalize_team(t)
+            for t in parse.parse_teams(transport.fetch_teams(league_key)))
+        matchups_dto = normalize.normalize_scoreboard(
+            parse.parse_scoreboard(transport.fetch_scoreboard(league_key, week)),
+            week=week)
+    except ProviderError as exc:
+        return _not_fresh(
+            f"week {week}: provider fetch/parse refused — "
+            f"{type(exc).__name__}: {exc}", str(exc))
+    except Exception as exc:  # noqa: BLE001
         return _not_fresh(
             f"week {week}: Yahoo fetch failed — {type(exc).__name__}: {exc}",
-            str(exc),
-        )
+            str(exc))
 
-    if scoreboard is None:
-        return _not_fresh(f"week {week}: season-over anomaly — Yahoo returned None")
-
-    # ── All returned matchups must be final ───────────────────────────────────
-    # Early exit before translation — status check is cheap.
-    not_final = [m for m in scoreboard if m["status"] != "final"]
-    if not_final:
-        pairs    = [(m["home_team_id"], m["away_team_id"]) for m in not_final]
-        statuses = [m["status"] for m in not_final]
+    if not matchups_dto:
+        # Yahoo acknowledged the request but listed no matchups — the normal
+        # end-of-schedule signal, which Sprint 1-5 surfaced as a None return.
+        # Never settleable, and never an upsert.
         return _not_fresh(
-            f"week {week} not settled: matchup(s) {pairs} not final (statuses: {statuses})"
-        )
+            f"week {week}: provider returned no matchups (past the end of the "
+            f"schedule, or the week is not yet published)")
 
-    # ── Translate Yahoo IDs → DB IDs (all-or-nothing) ────────────────────────
-    # Translation must precede the slate check — set containment compares
-    # DB home_team_id values, which only exist after resolver runs.
-    translated: list[dict] = []
-    unresolved: list[str]  = []
+    snapshot = normalize.build_week(
+        league=league_dto, week=week, teams=teams_dto, matchups=matchups_dto,
+        observed_at=transport.observed_at())
 
-    for m in scoreboard:
-        try:
-            db_home   = resolver.yahoo_to_db(m["home_team_id"])
-            db_away   = resolver.yahoo_to_db(m["away_team_id"])
-            db_winner = (
-                resolver.yahoo_to_db(m["winner_team_id"])
-                if m["winner_team_id"] is not None
-                else None
-            )
-        except TeamResolverError as exc:
-            unresolved.append(str(exc))
-            continue
-
-        translated.append({
-            "league_id":      league_id,
-            "week":           week,
-            "home_team_id":   db_home,
-            "away_team_id":   db_away,
-            "home_score":     m["home_score"],
-            "away_score":     m["away_score"],
-            "winner_team_id": db_winner,
-        })
-
-    if unresolved:
+    # ── Persist through the gateway ──────────────────────────────────────────
+    try:
+        result = refresh_league_week(db, snapshot, now=transport.observed_at())
+        db.commit()
+    except ProviderConflictError as exc:
+        # S6-R3. The conflict row was written inside the same transaction as the
+        # refusal, so it is COMMITTED here and survives — recording WHY the
+        # refresh refused is the entire point, and rolling it back would discard
+        # it. No load-bearing field changed: once finalized_at is set,
+        # persist.py compares and never assigns.
+        db.commit()
         return _not_fresh(
-            f"week {week}: unresolved team IDs — {'; '.join(unresolved)}"
-        )
+            f"week {week}: PROVIDER CONFLICT — the provider contradicts an "
+            f"already-final result. Stored final state is unchanged and a "
+            f"ProviderConflict was recorded ({exc.conflict_type} on "
+            f"{exc.external_identity}, key {exc.conflict_key[:16]}...). "
+            f"Settlement is refused; resolve by hand — Sprint 6 builds no "
+            f"automatic economic reversal.",
+            str(exc))
+    except ProviderIdentityError as exc:
+        db.rollback()
+        return _not_fresh(
+            f"week {week}: provider identity refused — {exc}", str(exc))
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        return _not_fresh(
+            f"week {week}: gateway refresh failed — "
+            f"{type(exc).__name__}: {exc}", str(exc))
 
-    # ── Slate completeness — set containment, not count equality ─────────────
-    # Six matchups back / six in DB / gate clears — even if one is a duplicate
-    # and one real game is missing.  The missing game keeps its stale score and
-    # settles anyway.  Set containment closes this: every DB home_team_id must
-    # appear in Yahoo's translated return.
-    yahoo_home_ids = {row["home_team_id"] for row in translated}
-    slate_ok, slate_reason, _ = _assert_slate_fresh(
-        league_id, week, db, yahoo_home_ids=yahoo_home_ids
-    )
+    if result.skipped_beyond_horizon:
+        return _not_fresh(
+            f"week {week}: beyond the provider's current week — nothing "
+            f"persisted (§6 ingestion horizon). {'; '.join(result.notes)}")
+
+    # ── Slate completeness — set-exact, in DB id space ───────────────────────
+    # Preserved from the accepted implementation, now computed from the
+    # gateway's canonically oriented rows rather than a hand-translated list.
+    # Six back / six in DB still FAILS if one is a duplicate and one real game
+    # is missing, which is the property this check exists for.
+    try:
+        resolver = build_team_identity_resolver(db, league_id=league_id)
+        provider_home_ids = {
+            resolver.to_internal(m.home_team_key) for m in matchups_dto}
+    except ProviderIdentityError as exc:
+        return _not_fresh(
+            f"week {week}: unresolved team identity — {exc}", str(exc))
+
+    slate_ok, slate_reason, _db_count = _assert_slate_fresh(
+        league_id, week, db, yahoo_home_ids=provider_home_ids)
     if not slate_ok:
         return _not_fresh(slate_reason)
 
-    # ── Upsert all rows in one transaction ───────────────────────────────────
-    # refreshed_at = NOW() written on both INSERT and UPDATE.
-    # _assert_slate_fresh with check_refreshed=True reads this column in step 1
-    # to confirm the refresh completed; NULL = never touched by a live refresh.
-    upsert_sql = text("""
-        INSERT INTO matchups
-            (league_id, week, home_team_id, away_team_id,
-             home_score, away_score, winner_team_id, refreshed_at)
-        VALUES
-            (:league_id, :week, :home_team_id, :away_team_id,
-             :home_score, :away_score, :winner_team_id, NOW())
-        ON CONFLICT (league_id, week, home_team_id)
-        DO UPDATE SET
-            home_score     = EXCLUDED.home_score,
-            away_score     = EXCLUDED.away_score,
-            winner_team_id = EXCLUDED.winner_team_id,
-            refreshed_at   = NOW()
-    """)
-    try:
-        for row in translated:
-            db.execute(upsert_sql, row)
-        db.commit()
-    except Exception as exc:
-        db.rollback()
+    # ── FINALITY IS READ FROM THE COLUMN, NOT FROM THE PAYLOAD ──────────────
+    # The old code decided settleability from the in-memory status string it had
+    # just parsed. This reads `Matchup.finalized_at` back out of the database —
+    # the one economically authoritative signal (§7) — so what gates settlement
+    # is the persisted fact, not a local variable that happened to agree with it.
+    census = week_finality(db, league_id=league_id, week=week)
+    if not census.is_final:
         return _not_fresh(
-            f"week {week}: upsert failed — {type(exc).__name__}: {exc}",
-            str(exc),
-        )
+            f"week {week} not settled: {len(census.unfinalized_matchup_ids)} of "
+            f"{census.matchups_total} matchup(s) are not economically final "
+            f"(finalized_at IS NULL, matchup ids "
+            f"{list(census.unfinalized_matchup_ids)})")
 
-    ms  = int((time.monotonic() - t0) * 1000)
-    msg = (f"week {week}: {len(translated)} matchup score(s) upserted — "
-           f"all final, full slate, all IDs resolved")
+    ms = int((time.monotonic() - t0) * 1000)
+    msg = (f"week {week}: {census.matchups_total} matchup(s) refreshed through "
+           f"the provider gateway — {result.matchups_inserted} inserted, "
+           f"{result.matchups_updated} updated, {result.matchups_unchanged} "
+           f"unchanged, {result.matchups_finalized} newly final; full slate, "
+           f"all provider identities resolved")
     return (
         StepResult(
             "refresh_scores", True, msg,
-            {"rows_upserted": len(translated), "settleable": True},
+            {"rows_inserted": result.matchups_inserted,
+             "rows_updated": result.matchups_updated,
+             "rows_unchanged": result.matchups_unchanged,
+             "newly_finalized": result.matchups_finalized,
+             "conflicts_recorded": result.conflicts_recorded,
+             "settleable": True},
             None, ms,
         ),
         RefreshResult(settleable=True, week=week, reason=msg),
@@ -511,7 +586,6 @@ def _step_sync_players(
     from db.team_resolver import build_team_resolver, TeamResolverError
     from db.schema import Player, Team
 
-    yahoo_league_id = os.getenv("YAHOO_LEAGUE_ID", "488800")
     t0 = time.monotonic()
 
     def _fail(reason: str, error: str | None = None) -> tuple[StepResult, None]:
@@ -520,6 +594,20 @@ def _step_sync_players(
             StepResult("sync_players", False, reason, {"inserted": 0}, error, ms),
             None,
         )
+
+    # THE LEAGUE IS ADDRESSED FROM PERSISTED PROVIDER IDENTITY, not from the
+    # environment (S6-R1 / Opus blocker 2). YAHOO_LEAGUE_ID is deployment
+    # configuration, not identity: it says nothing about WHICH internal league
+    # a run belongs to, so a wrong value silently ingests another league's
+    # rosters into this one. The compound provider key is reduced to its bare
+    # number only at the yfpy boundary, the one place that shape is required.
+    try:
+        _league_key = _provider_league_key(league_id, db)
+    except ValueError as exc:
+        return _fail(f"week {week}: {exc}", str(exc))
+    from providers.yahoo.transport import YahooLiveTransport
+
+    yahoo_league_id = YahooLiveTransport.league_number(_league_key)
 
     def _s(v) -> str:
         return v.decode() if isinstance(v, bytes) else str(v)
@@ -650,7 +738,6 @@ def _step_capture_roster_slots(
     from db.team_resolver import build_team_resolver, TeamResolverError
     from db.schema import Player, RosterSlot, Team
 
-    yahoo_league_id = os.getenv("YAHOO_LEAGUE_ID", "488800")
     t0 = time.monotonic()
 
     def _fail(reason: str, error: str | None = None) -> StepResult:
@@ -658,6 +745,20 @@ def _step_capture_roster_slots(
         return StepResult(
             "capture_roster_slots", False, reason, {"captured": False}, error, ms
         )
+
+    # THE LEAGUE IS ADDRESSED FROM PERSISTED PROVIDER IDENTITY, not from the
+    # environment (S6-R1 / Opus blocker 2). YAHOO_LEAGUE_ID is deployment
+    # configuration, not identity: it says nothing about WHICH internal league
+    # a run belongs to, so a wrong value silently ingests another league's
+    # rosters into this one. The compound provider key is reduced to its bare
+    # number only at the yfpy boundary, the one place that shape is required.
+    try:
+        _league_key = _provider_league_key(league_id, db)
+    except ValueError as exc:
+        return _fail(f"week {week}: {exc}", str(exc))
+    from providers.yahoo.transport import YahooLiveTransport
+
+    yahoo_league_id = YahooLiveTransport.league_number(_league_key)
 
     def _s(v) -> str:
         return v.decode() if isinstance(v, bytes) else str(v)
