@@ -235,6 +235,26 @@ class Matchup(Base):
     away_score     = Column(Float,   nullable=False)
     winner_team_id = Column(Integer, ForeignKey("teams.id"),    nullable=True)
     refreshed_at   = Column(DateTime, nullable=True)
+    # ── Economic finality (S5-P2 owner ruling) ────────────────────────────────
+    #
+    # NULL  = the result is NOT economically final
+    # set   = an authoritative result has been declared final and MAY drive
+    #         Skunk and other economic settlement
+    #
+    # DELIBERATELY NOT refreshed_at. That column means "data was ingested or
+    # refreshed", which is not the same claim and must never become load-bearing
+    # for a money path — a refresh that pulled an in-progress score would read as
+    # final. Finality is its own fact and gets its own field.
+    #
+    # NO MONEY PATH MAY INFER FINALITY from a non-null score, from a 0-0 score,
+    # from refreshed_at, or from the passage of time. home_score/away_score are
+    # NOT NULL, so an unplayed game reads 0.0-0.0 and is indistinguishable from a
+    # genuine tie by score alone — which is precisely the conflation this column
+    # exists to prevent.
+    #
+    # Sprint 6's Yahoo provider will own the mapping from authoritative final-game
+    # status to this field. Sprint 5 fixtures set it explicitly.
+    finalized_at   = Column(DateTime, nullable=True)
 
     league    = relationship("League", back_populates="matchups")
     home_team = relationship("Team", foreign_keys=[home_team_id],

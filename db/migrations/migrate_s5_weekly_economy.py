@@ -83,6 +83,17 @@ def upgrade(engine) -> None:
                               "RENAME COLUMN wallet_cents TO min_reserve_cents"))
             print("  season_allocations.wallet_cents -> min_reserve_cents")
 
+        # Matchup economic finality (S5-P2 owner ruling). Additive and
+        # nullable, so every EXISTING row is left NOT FINAL. Backfilling from
+        # refreshed_at, from a non-null score or from age would fabricate
+        # finality for results nobody declared final — the migration has no
+        # deterministic authoritative evidence of finality for historical rows,
+        # so it asserts none.
+        if not _column_exists(conn, "matchups", "finalized_at"):
+            conn.execute(text(
+                "ALTER TABLE matchups ADD COLUMN finalized_at TIMESTAMP"))
+            print("  matchups.finalized_at added (existing rows left NOT final)")
+
         if not _table_exists(conn, "economy_event"):
             conn.execute(text(_CREATE_ECONOMY_EVENT))
             conn.execute(text(_CREATE_INDEX))
