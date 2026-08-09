@@ -173,6 +173,96 @@ def main(tdb) -> None:
     _assert("S4-P2-1 the pool account is unchanged", before[4] == after[4])
     _assert("S4-P2-1 trial balance is zero", trial_balance() == 0)
 
+    print("  -- FIRST-USE GAP: Rev1.3 league with ZERO pool_instance rows --")
+    # THE REGRESSION THIS PINS. Keying the guard only on `pool_instance` left a
+    # window: a league configured for Rev1.3 whose first collection had not yet
+    # run carried no instances, so the legacy path was permitted. Measured
+    # before the fix, legacy collect charged four teams 1000 cents each — the
+    # LEGACY default, not the league's configured Rev1.3 250 — moved 4000 cents
+    # into pool:{league_id} that no occurrence owned, and claimed the week's
+    # PoolPot, which would then have blocked the real Rev1.3 collection.
+    tdb.reset()
+    with SessionLocal() as db:
+        seed_catalog(db)
+        gap_league, gap_teams = make_league(db, name="firstuse", season=SEASON)
+        mark_ready(db, league_id=gap_league.id, keys=FOUR_TEAM_KEYS)
+        # The existing Rev1.3 activation action. No new commissioner workflow.
+        configure_pool_weekly_entry(db, league_id=gap_league.id, cents=250)
+        db.commit()
+        gap_id = gap_league.id
+        gap_team_ids = [t.id for t in gap_teams]
+
+    with SessionLocal() as db:
+        _assert("S4-P2-1 (2) the league carries ZERO pool_instance rows",
+                db.query(PoolInstance).filter(
+                    PoolInstance.league_id == gap_id).count() == 0)
+        _assert("S4-P2-1 (1) yet it is Rev1.3-governed by durable config",
+                db.query(PoolConfig).filter(
+                    PoolConfig.league_id == gap_id).one()
+                .pool_weekly_entry_cents == 250)
+        entries_before = db.query(LedgerEntry).count()
+        pots_before = db.query(PoolPot).filter(
+            PoolPot.league_id == gap_id).count()
+        db.rollback()
+    pool_before = balance_of(f"pool:{gap_id}")
+
+    gap_refusals = {}
+    for label, fn in (("collect", lambda db: legacy_collect(gap_id, 3, db)),
+                      ("settle", lambda db: legacy_settle(gap_id, 3, db))):
+        with SessionLocal() as db:
+            try:
+                fn(db)
+                db.commit()
+                gap_refusals[label] = None
+            except Exception as exc:  # noqa: BLE001
+                gap_refusals[label] = exc
+                db.rollback()
+
+    _assert("S4-P2-1 (3,4) legacy collect is REFUSED before the first Rev1.3 "
+            "occurrence",
+            isinstance(gap_refusals["collect"], LegacyPoolPathRefused),
+            type(gap_refusals["collect"]).__name__
+            if gap_refusals["collect"] else "IT SUCCEEDED")
+    _assert("S4-P2-1 (4) legacy settle is likewise refused",
+            isinstance(gap_refusals["settle"], LegacyPoolPathRefused),
+            type(gap_refusals["settle"]).__name__
+            if gap_refusals["settle"] else "IT SUCCEEDED")
+    _assert("S4-P2-1 the refusal names the durable activation marker",
+            "pool_weekly_entry_cents=250"
+            in str(gap_refusals["collect"] or ""),
+            str(gap_refusals["collect"])[:110])
+
+    with SessionLocal() as db:
+        _assert("S4-P2-1 (5) zero Ledger movement",
+                db.query(LedgerEntry).count() == entries_before
+                and balance_of(f"pool:{gap_id}") == pool_before)
+        _assert("S4-P2-1 (6) zero PoolPot economic change",
+                db.query(PoolPot).filter(
+                    PoolPot.league_id == gap_id).count() == pots_before)
+        _assert("S4-P2-1 (7) zero legacy collection state",
+                db.query(PoolPot).filter(
+                    PoolPot.league_id == gap_id,
+                    PoolPot.entries_collected.is_(True)).count() == 0)
+        db.rollback()
+    _assert("S4-P2-1 trial balance is zero after both refusals",
+            trial_balance() == 0)
+
+    with SessionLocal() as db:
+        gap_result = collect_weekly_entries(db, league_id=gap_id, week=3,
+                                            provider=PROVIDER)
+        db.commit()
+    _assert("S4-P2-1 (8) the Rev1.3 collection then proceeds normally",
+            gap_result.weekly_entry_cents == 250
+            and len(gap_result.instance_ids) == 4,
+            f"{gap_result.weekly_entry_cents} cents, "
+            f"{len(gap_result.instance_ids)} occurrences")
+    with SessionLocal() as db:
+        _assert("S4-P2-1 (8) and its conservation holds",
+                assert_pool_conservation(db, league_id=gap_id, season=SEASON)
+                == balance_of(f"pool:{gap_id}"))
+        db.rollback()
+    _assert("S4-P2-1 (8) trial balance is zero", trial_balance() == 0)
+
     print("  -- the guard is inert for a league that never crossed over --")
     tdb.reset()
     with SessionLocal() as db:
