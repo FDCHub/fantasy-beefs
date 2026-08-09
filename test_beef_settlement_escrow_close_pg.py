@@ -46,6 +46,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # defers its own db.schema import.
 from test_support_postgres import setup_postgres_test_db
 
+import datetime as _dt
+#: S6 §8 — the instant this suite's fixture weeks are declared economically
+#: final at. Fixed rather than now(): a fixture's finality must not drift with
+#: the wall clock, and Matchup.finalized_at is the ONLY signal the shared
+#: settlement gate reads. Stating it makes the completed-week premise these
+#: scenarios always relied on explicit instead of implicit.
+_FIXTURE_FINAL_AT = _dt.datetime(2025, 12, 1, 12, 0, 0, tzinfo=_dt.timezone.utc)
+
+
 # The exit-2 harness/config error path stays BEFORE main()/teardown: if setup
 # fails (e.g. missing/unsafe TEST_DATABASE_URL) NOTHING was created, so there is
 # nothing to tear down here.
@@ -138,7 +147,9 @@ def main(tdb) -> None:
         test_ledger_beef_conversion.py already uses."""
         with SessionLocal() as db:
             db.add(Matchup(league_id=LEAGUE_ID, week=week, home_team_id=team_a, away_team_id=team_b,
-                            home_score=score_a, away_score=score_b))
+                            home_score=score_a, away_score=score_b,
+                            # S6 §8 — a COMPLETED week, stated explicitly.
+                            finalized_at=_FIXTURE_FINAL_AT))
             db.add(NflSchedule(season=LOCK_SEASON, week=week, home_team=nfl_a, away_team=nfl_b,
                                 kickoff_utc=FUTURE_KO))
             db.commit()

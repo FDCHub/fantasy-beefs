@@ -120,7 +120,9 @@ def seed(min_reserve_cents: dict[str, int], min_cents: dict[str, int] | None = N
         for home, away in plan:
             db.add(Matchup(league_id=league.id, week=WEEK,
                            home_team_id=ids[home], away_team_id=ids[away],
-                           home_score=0.0, away_score=0.0))
+                           home_score=0.0, away_score=0.0,
+                           # S6 §8 — a COMPLETED week, stated explicitly.
+                           finalized_at=_FIXTURE_FINAL_AT))
         for name, cents in min_reserve_cents.items():
             if cents:
                 ledger_post([("world", -cents), (f"wallet:{ids[name]}", cents)],
@@ -182,6 +184,15 @@ P_FAV, P_DOG = 0.9344, 0.7043
 FL_MATCHUP_SEED = 7
 
 from odds.odds_engine_headless import PlayerProj
+
+import datetime as _dt
+#: S6 §8 — the instant this suite's fixture weeks are declared economically
+#: final at. Fixed rather than now(): a fixture's finality must not drift with
+#: the wall clock, and Matchup.finalized_at is the ONLY signal the shared
+#: settlement gate reads. Stating it makes the completed-week premise these
+#: scenarios always relied on explicit instead of implicit.
+_FIXTURE_FINAL_AT = _dt.datetime(2025, 12, 1, 12, 0, 0, tzinfo=_dt.timezone.utc)
+
 
 
 def roster(base_id: int, mult: float = 1.0):
@@ -1582,11 +1593,52 @@ r18 = issue_dynamic(ids18, "a18", "b18")
 CH18 = r18.challenge_id
 handshake(ids18, CH18, "b18")
 snap18 = (anchor_bal(CH18), derived_bal(CH18), wal(ids18["a18"]), wal(ids18["b18"]))
+
+# ── S6 §5 — THIS CORRUPTION IS NOW UNREPRESENTABLE, AND THAT IS TESTED FIRST ──
+#
+# The duplicate row this scenario fabricates is a MIRROR: (home=a18, away=b18)
+# already exists and it adds (home=b18, away=a18). Sprint 6 added
+# uq_matchups_unordered_pair precisely to make that impossible, so the INSERT
+# now fails at the database.
+#
+# The DB refusal is the STRONGER guarantee and is asserted here. It must not
+# silently REPLACE the application-layer coverage, though: B3-41's real subject
+# is that the Final Lock guard refuses ambiguous shared-matchup data BEFORE
+# touching the engine or any money, and that guard remains the last line of
+# defence against a duplicate arriving by a route the index does not cover — a
+# restore, a bulk load with constraints disabled, a future schema change. So the
+# index is dropped for the duration of THIS scenario only, the original
+# corruption is staged exactly as before, every accepted assertion below runs
+# unchanged, and the index is restored immediately afterwards.
+_MIRROR_IX = "uq_matchups_unordered_pair"
+
 with tdb.SessionLocal() as db:
     ent18 = db.execute(text("SELECT COUNT(*) FROM ledger_entries")).scalar()
+
+_db_refused_mirror = False
+with tdb.SessionLocal() as db:
     db.add(Matchup(league_id=ids18["_league"], week=WEEK,
                    home_team_id=ids18["b18"], away_team_id=ids18["a18"],
-                   home_score=0.0, away_score=0.0))
+                   home_score=0.0, away_score=0.0,
+                   finalized_at=_FIXTURE_FINAL_AT))
+    try:
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        _db_refused_mirror = _MIRROR_IX in str(exc)
+
+check(f"B3-41 / S6-C5: the DATABASE refuses the mirrored duplicate outright "
+      f"({_MIRROR_IX})", _db_refused_mirror)
+
+# Stage the corruption anyway, so the application-layer guard is still exercised
+# against exactly the state it was written to refuse.
+with tdb.SessionLocal() as db:
+    db.execute(text(f"DROP INDEX {_MIRROR_IX}"))
+    db.add(Matchup(league_id=ids18["_league"], week=WEEK,
+                   home_team_id=ids18["b18"], away_team_id=ids18["a18"],
+                   home_score=0.0, away_score=0.0,
+                   # S6 §8 — a COMPLETED week, stated explicitly.
+                   finalized_at=_FIXTURE_FINAL_AT))
     db.commit()
 
 _sims18: list = []
@@ -1632,6 +1684,29 @@ check("B3-41: every balance is byte-identical",
       (anchor_bal(CH18), derived_bal(CH18), wal(ids18["a18"]), wal(ids18["b18"]))
       == snap18)
 conservation("B3-41")
+
+# ── Restore the S6 §5 backstop ───────────────────────────────────────────────
+#
+# The staged duplicate is removed first, then the index is recreated — and the
+# recreation is ASSERTED, not assumed. A silently-failed CREATE would leave
+# every later scenario in this suite running without the constraint, which is
+# exactly the kind of quietly-degraded coverage the drop above risks.
+with tdb.SessionLocal() as db:
+    db.execute(text(
+        "DELETE FROM matchups WHERE league_id = :lid AND week = :wk "
+        "AND home_team_id = :h AND away_team_id = :a"),
+        {"lid": ids18["_league"], "wk": WEEK,
+         "h": ids18["b18"], "a": ids18["a18"]})
+    db.execute(text(
+        f"CREATE UNIQUE INDEX {_MIRROR_IX} ON matchups "
+        f"(league_id, week, LEAST(home_team_id, away_team_id), "
+        f"GREATEST(home_team_id, away_team_id))"))
+    db.commit()
+    _restored = db.execute(text(
+        "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' "
+        "AND indexname = :n)"), {"n": _MIRROR_IX}).scalar()
+check(f"B3-41 / S6-C5: {_MIRROR_IX} is restored after the scenario",
+      bool(_restored))
 
 
 section("B4-42: NO shared matchup is NOT corruption — it is a valid "

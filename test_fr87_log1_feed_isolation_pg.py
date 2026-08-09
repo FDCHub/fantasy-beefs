@@ -46,6 +46,15 @@ _failures: list[str] = []
 # ── Harness FIRST project import ──────────────────────────────────────────────
 from test_support_postgres import setup_postgres_test_db
 
+import datetime as _dt
+#: S6 §8 — the instant this suite's fixture weeks are declared economically
+#: final at. Fixed rather than now(): a fixture's finality must not drift with
+#: the wall clock, and Matchup.finalized_at is the ONLY signal the shared
+#: settlement gate reads. Stating it makes the completed-week premise these
+#: scenarios always relied on explicit instead of implicit.
+_FIXTURE_FINAL_AT = _dt.datetime(2025, 12, 1, 12, 0, 0, tzinfo=_dt.timezone.utc)
+
+
 try:
     tdb = setup_postgres_test_db()
 except RuntimeError as e:
@@ -176,7 +185,9 @@ def main(tdb) -> None:
     def _seed_matchup(week, ta, tb, sa, sb, na, nb) -> None:
         with SessionLocal() as db:
             db.add(Matchup(league_id=LEAGUE_ID, week=week, home_team_id=ta, away_team_id=tb,
-                           home_score=sa, away_score=sb))
+                           home_score=sa, away_score=sb,
+                           # S6 §8 — a COMPLETED week, stated explicitly.
+                           finalized_at=_FIXTURE_FINAL_AT))
             db.add(NflSchedule(season=LOCK_SEASON, week=week, home_team=na, away_team=nb,
                                kickoff_utc=FUTURE_KO))
             db.commit()

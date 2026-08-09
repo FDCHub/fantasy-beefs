@@ -55,6 +55,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # module may be imported before this call.
 from test_support_postgres import setup_postgres_test_db
 
+import datetime as _dt
+#: S6 §8 — the instant this suite's fixture weeks are declared economically
+#: final at. Fixed rather than now(): a fixture's finality must not drift with
+#: the wall clock, and Matchup.finalized_at is the ONLY signal the shared
+#: settlement gate reads. Stating it makes the completed-week premise these
+#: scenarios always relied on explicit instead of implicit.
+_FIXTURE_FINAL_AT = _dt.datetime(2025, 12, 1, 12, 0, 0, tzinfo=_dt.timezone.utc)
+
+
 try:
     tdb = setup_postgres_test_db()
 except RuntimeError as e:
@@ -147,7 +156,11 @@ def main(tdb) -> None:
     with SessionLocal() as _db:
         m = Matchup(league_id=LEAGUE_ID, week=_WEEK,
                     home_team_id=HOME_ID, away_team_id=AWAY_ID,
-                    home_score=0.0, away_score=0.0)
+                    home_score=0.0, away_score=0.0,
+                    # S6 §8 — this fixture models a COMPLETED week; the shared
+                    # finality gate reads finalized_at, so the premise every
+                    # settlement scenario here already assumed is now stated.
+                    finalized_at=_FIXTURE_FINAL_AT)
         _db.add(m)
         _db.add(NflSchedule(season=LOCK_SEASON, week=_WEEK,
                             home_team="KC", away_team="PHI",

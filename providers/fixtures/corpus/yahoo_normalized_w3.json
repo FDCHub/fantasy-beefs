@@ -1,0 +1,38 @@
+{
+  "current_week": 3,
+  "league_key": "461.l.488800",
+  "matchups": [
+    {
+      "away_points": 110.0,
+      "away_team_key": "461.l.488800.t.3",
+      "finality": "FINAL",
+      "home_points": 120.0,
+      "home_team_key": "461.l.488800.t.1",
+      "is_tied": false,
+      "matchup_key": "461.l.488800.w.3.m.461.l.488800.t.1~461.l.488800.t.3",
+      "winner_team_key": "461.l.488800.t.1"
+    },
+    {
+      "away_points": 99.5,
+      "away_team_key": "461.l.488800.t.5",
+      "finality": "FINAL",
+      "home_points": 95.5,
+      "home_team_key": "461.l.488800.t.2",
+      "is_tied": false,
+      "matchup_key": "461.l.488800.w.3.m.461.l.488800.t.2~461.l.488800.t.5",
+      "winner_team_key": "461.l.488800.t.5"
+    },
+    {
+      "away_points": 88.0,
+      "away_team_key": "461.l.488800.t.6",
+      "finality": "FINAL",
+      "home_points": 101.0,
+      "home_team_key": "461.l.488800.t.4",
+      "is_tied": false,
+      "matchup_key": "461.l.488800.w.3.m.461.l.488800.t.4~461.l.488800.t.6",
+      "winner_team_key": "461.l.488800.t.4"
+    }
+  ],
+  "season": 2025,
+  "week": 3
+}

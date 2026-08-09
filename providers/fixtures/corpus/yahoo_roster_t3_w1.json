@@ -1,0 +1,886 @@
+{
+  "fantasy_content": {
+    "team": [
+      [
+        {
+          "team_key": "461.l.488800.t.3"
+        },
+        {
+          "team_id": "3"
+        },
+        {
+          "name": "Kelce Grammer"
+        }
+      ],
+      {
+        "roster": {
+          "0": {
+            "players": {
+              "0": {
+                "player": [
+                  [
+                    {
+                      "player_key": "461.p.301"
+                    },
+                    {
+                      "player_id": "301"
+                    },
+                    {
+                      "name": {
+                        "first": "Quarterback",
+                        "full": "Quarterback 3",
+                        "last": "3"
+                      }
+                    },
+                    {
+                      "editorial_team_abbr": "KC"
+                    },
+                    {
+                      "display_position": "QB"
+                    },
+                    {
+                      "eligible_positions": {
+                        "0": {
+                          "position": "QB"
+                        },
+                        "count": 1
+                      }
+                    }
+                  ],
+                  {
+                    "selected_position": [
+                      {
+                        "coverage_type": "week"
+                      },
+                      {
+                        "position": "QB"
+                      }
+                    ]
+                  },
+                  {
+                    "player_stats": {
+                      "coverage_type": "week",
+                      "stats": {
+                        "0": {
+                          "stat": {
+                            "stat_id": "10",
+                            "value": "0"
+                          }
+                        },
+                        "1": {
+                          "stat": {
+                            "stat_id": "11",
+                            "value": "0"
+                          }
+                        },
+                        "10": {
+                          "stat": {
+                            "stat_id": "9",
+                            "value": "12"
+                          }
+                        },
+                        "2": {
+                          "stat": {
+                            "stat_id": "12",
+                            "value": "0"
+                          }
+                        },
+                        "3": {
+                          "stat": {
+                            "stat_id": "13",
+                            "value": "0"
+                          }
+                        },
+                        "4": {
+                          "stat": {
+                            "stat_id": "18",
+                            "value": "0"
+                          }
+                        },
+                        "5": {
+                          "stat": {
+                            "stat_id": "4",
+                            "value": "253"
+                          }
+                        },
+                        "6": {
+                          "stat": {
+                            "stat_id": "5",
+                            "value": "2"
+                          }
+                        },
+                        "7": {
+                          "stat": {
+                            "stat_id": "6",
+                            "value": "0"
+                          }
+                        },
+                        "8": {
+                          "stat": {
+                            "stat_id": "78",
+                            "value": "0"
+                          }
+                        },
+                        "9": {
+                          "stat": {
+                            "stat_id": "8",
+                            "value": "3"
+                          }
+                        },
+                        "count": 11
+                      }
+                    }
+                  },
+                  {
+                    "player_points": {
+                      "coverage_type": "week",
+                      "total": "23.00"
+                    }
+                  }
+                ]
+              },
+              "1": {
+                "player": [
+                  [
+                    {
+                      "player_key": "461.p.302"
+                    },
+                    {
+                      "player_id": "302"
+                    },
+                    {
+                      "name": {
+                        "first": "Runner",
+                        "full": "Runner 3",
+                        "last": "3"
+                      }
+                    },
+                    {
+                      "editorial_team_abbr": "SF"
+                    },
+                    {
+                      "display_position": "RB"
+                    },
+                    {
+                      "eligible_positions": {
+                        "0": {
+                          "position": "RB"
+                        },
+                        "count": 1
+                      }
+                    }
+                  ],
+                  {
+                    "selected_position": [
+                      {
+                        "coverage_type": "week"
+                      },
+                      {
+                        "position": "RB"
+                      }
+                    ]
+                  },
+                  {
+                    "player_stats": {
+                      "coverage_type": "week",
+                      "stats": {
+                        "0": {
+                          "stat": {
+                            "stat_id": "10",
+                            "value": "1"
+                          }
+                        },
+                        "1": {
+                          "stat": {
+                            "stat_id": "11",
+                            "value": "3"
+                          }
+                        },
+                        "10": {
+                          "stat": {
+                            "stat_id": "9",
+                            "value": "91"
+                          }
+                        },
+                        "2": {
+                          "stat": {
+                            "stat_id": "12",
+                            "value": "21"
+                          }
+                        },
+                        "3": {
+                          "stat": {
+                            "stat_id": "13",
+                            "value": "0"
+                          }
+                        },
+                        "4": {
+                          "stat": {
+                            "stat_id": "18",
+                            "value": "0"
+                          }
+                        },
+                        "5": {
+                          "stat": {
+                            "stat_id": "4",
+                            "value": "0"
+                          }
+                        },
+                        "6": {
+                          "stat": {
+                            "stat_id": "5",
+                            "value": "0"
+                          }
+                        },
+                        "7": {
+                          "stat": {
+                            "stat_id": "6",
+                            "value": "0"
+                          }
+                        },
+                        "8": {
+                          "stat": {
+                            "stat_id": "78",
+                            "value": "4"
+                          }
+                        },
+                        "9": {
+                          "stat": {
+                            "stat_id": "8",
+                            "value": "18"
+                          }
+                        },
+                        "count": 11
+                      }
+                    }
+                  },
+                  {
+                    "player_points": {
+                      "coverage_type": "week",
+                      "total": "18.00"
+                    }
+                  }
+                ]
+              },
+              "2": {
+                "player": [
+                  [
+                    {
+                      "player_key": "461.p.303"
+                    },
+                    {
+                      "player_id": "303"
+                    },
+                    {
+                      "name": {
+                        "first": "Receiver",
+                        "full": "Receiver 3",
+                        "last": "3"
+                      }
+                    },
+                    {
+                      "editorial_team_abbr": "MIN"
+                    },
+                    {
+                      "display_position": "WR"
+                    },
+                    {
+                      "eligible_positions": {
+                        "0": {
+                          "position": "WR"
+                        },
+                        "count": 1
+                      }
+                    }
+                  ],
+                  {
+                    "selected_position": [
+                      {
+                        "coverage_type": "week"
+                      },
+                      {
+                        "position": "WR"
+                      }
+                    ]
+                  },
+                  {
+                    "player_stats": {
+                      "coverage_type": "week",
+                      "stats": {
+                        "0": {
+                          "stat": {
+                            "stat_id": "10",
+                            "value": "0"
+                          }
+                        },
+                        "1": {
+                          "stat": {
+                            "stat_id": "11",
+                            "value": "7"
+                          }
+                        },
+                        "10": {
+                          "stat": {
+                            "stat_id": "9",
+                            "value": "0"
+                          }
+                        },
+                        "2": {
+                          "stat": {
+                            "stat_id": "12",
+                            "value": "98"
+                          }
+                        },
+                        "3": {
+                          "stat": {
+                            "stat_id": "13",
+                            "value": "1"
+                          }
+                        },
+                        "4": {
+                          "stat": {
+                            "stat_id": "18",
+                            "value": "0"
+                          }
+                        },
+                        "5": {
+                          "stat": {
+                            "stat_id": "4",
+                            "value": "0"
+                          }
+                        },
+                        "6": {
+                          "stat": {
+                            "stat_id": "5",
+                            "value": "0"
+                          }
+                        },
+                        "7": {
+                          "stat": {
+                            "stat_id": "6",
+                            "value": "0"
+                          }
+                        },
+                        "8": {
+                          "stat": {
+                            "stat_id": "78",
+                            "value": "10"
+                          }
+                        },
+                        "9": {
+                          "stat": {
+                            "stat_id": "8",
+                            "value": "0"
+                          }
+                        },
+                        "count": 11
+                      }
+                    }
+                  },
+                  {
+                    "player_points": {
+                      "coverage_type": "week",
+                      "total": "21.00"
+                    }
+                  }
+                ]
+              },
+              "3": {
+                "player": [
+                  [
+                    {
+                      "player_key": "461.p.304"
+                    },
+                    {
+                      "player_id": "304"
+                    },
+                    {
+                      "name": {
+                        "first": "Flexer",
+                        "full": "Flexer 3",
+                        "last": "3"
+                      }
+                    },
+                    {
+                      "editorial_team_abbr": "DET"
+                    },
+                    {
+                      "display_position": "RB"
+                    },
+                    {
+                      "eligible_positions": {
+                        "0": {
+                          "position": "RB"
+                        },
+                        "count": 1
+                      }
+                    }
+                  ],
+                  {
+                    "selected_position": [
+                      {
+                        "coverage_type": "week"
+                      },
+                      {
+                        "position": "W/R/T"
+                      }
+                    ]
+                  },
+                  {
+                    "player_stats": {
+                      "coverage_type": "week",
+                      "stats": {
+                        "0": {
+                          "stat": {
+                            "stat_id": "10",
+                            "value": "0"
+                          }
+                        },
+                        "1": {
+                          "stat": {
+                            "stat_id": "11",
+                            "value": "2"
+                          }
+                        },
+                        "10": {
+                          "stat": {
+                            "stat_id": "9",
+                            "value": "41"
+                          }
+                        },
+                        "2": {
+                          "stat": {
+                            "stat_id": "12",
+                            "value": "18"
+                          }
+                        },
+                        "3": {
+                          "stat": {
+                            "stat_id": "13",
+                            "value": "0"
+                          }
+                        },
+                        "4": {
+                          "stat": {
+                            "stat_id": "18",
+                            "value": "0"
+                          }
+                        },
+                        "5": {
+                          "stat": {
+                            "stat_id": "4",
+                            "value": "0"
+                          }
+                        },
+                        "6": {
+                          "stat": {
+                            "stat_id": "5",
+                            "value": "0"
+                          }
+                        },
+                        "7": {
+                          "stat": {
+                            "stat_id": "6",
+                            "value": "0"
+                          }
+                        },
+                        "8": {
+                          "stat": {
+                            "stat_id": "78",
+                            "value": "3"
+                          }
+                        },
+                        "9": {
+                          "stat": {
+                            "stat_id": "8",
+                            "value": "9"
+                          }
+                        },
+                        "count": 11
+                      }
+                    }
+                  },
+                  {
+                    "player_points": {
+                      "coverage_type": "week",
+                      "total": "9.00"
+                    }
+                  }
+                ]
+              },
+              "4": {
+                "player": [
+                  [
+                    {
+                      "player_key": "461.p.305"
+                    },
+                    {
+                      "player_id": "305"
+                    },
+                    {
+                      "name": {
+                        "first": "Benchwarmer",
+                        "full": "Benchwarmer 3",
+                        "last": "3"
+                      }
+                    },
+                    {
+                      "editorial_team_abbr": "NYJ"
+                    },
+                    {
+                      "display_position": "WR"
+                    },
+                    {
+                      "eligible_positions": {
+                        "0": {
+                          "position": "WR"
+                        },
+                        "count": 1
+                      }
+                    }
+                  ],
+                  {
+                    "selected_position": [
+                      {
+                        "coverage_type": "week"
+                      },
+                      {
+                        "position": "BN"
+                      }
+                    ]
+                  },
+                  {
+                    "player_stats": {
+                      "coverage_type": "week",
+                      "stats": {
+                        "0": {
+                          "stat": {
+                            "stat_id": "10",
+                            "value": "0"
+                          }
+                        },
+                        "1": {
+                          "stat": {
+                            "stat_id": "11",
+                            "value": "11"
+                          }
+                        },
+                        "10": {
+                          "stat": {
+                            "stat_id": "9",
+                            "value": "0"
+                          }
+                        },
+                        "2": {
+                          "stat": {
+                            "stat_id": "12",
+                            "value": "180"
+                          }
+                        },
+                        "3": {
+                          "stat": {
+                            "stat_id": "13",
+                            "value": "3"
+                          }
+                        },
+                        "4": {
+                          "stat": {
+                            "stat_id": "18",
+                            "value": "0"
+                          }
+                        },
+                        "5": {
+                          "stat": {
+                            "stat_id": "4",
+                            "value": "0"
+                          }
+                        },
+                        "6": {
+                          "stat": {
+                            "stat_id": "5",
+                            "value": "0"
+                          }
+                        },
+                        "7": {
+                          "stat": {
+                            "stat_id": "6",
+                            "value": "0"
+                          }
+                        },
+                        "8": {
+                          "stat": {
+                            "stat_id": "78",
+                            "value": "14"
+                          }
+                        },
+                        "9": {
+                          "stat": {
+                            "stat_id": "8",
+                            "value": "0"
+                          }
+                        },
+                        "count": 11
+                      }
+                    }
+                  },
+                  {
+                    "player_points": {
+                      "coverage_type": "week",
+                      "total": "40.00"
+                    }
+                  }
+                ]
+              },
+              "5": {
+                "player": [
+                  [
+                    {
+                      "player_key": "461.p.306"
+                    },
+                    {
+                      "player_id": "306"
+                    },
+                    {
+                      "name": {
+                        "first": "TightEnd",
+                        "full": "TightEnd 3",
+                        "last": "3"
+                      }
+                    },
+                    {
+                      "editorial_team_abbr": "BAL"
+                    },
+                    {
+                      "display_position": "TE"
+                    },
+                    {
+                      "eligible_positions": {
+                        "0": {
+                          "position": "TE"
+                        },
+                        "count": 1
+                      }
+                    }
+                  ],
+                  {
+                    "selected_position": [
+                      {
+                        "coverage_type": "week"
+                      },
+                      {
+                        "position": "TE"
+                      }
+                    ]
+                  },
+                  {
+                    "player_stats": {
+                      "coverage_type": "week",
+                      "stats": {
+                        "0": {
+                          "stat": {
+                            "stat_id": "10",
+                            "value": "0"
+                          }
+                        },
+                        "1": {
+                          "stat": {
+                            "stat_id": "11",
+                            "value": "5"
+                          }
+                        },
+                        "10": {
+                          "stat": {
+                            "stat_id": "9",
+                            "value": "0"
+                          }
+                        },
+                        "2": {
+                          "stat": {
+                            "stat_id": "12",
+                            "value": "52"
+                          }
+                        },
+                        "3": {
+                          "stat": {
+                            "stat_id": "13",
+                            "value": "0"
+                          }
+                        },
+                        "4": {
+                          "stat": {
+                            "stat_id": "18",
+                            "value": "0"
+                          }
+                        },
+                        "5": {
+                          "stat": {
+                            "stat_id": "4",
+                            "value": "0"
+                          }
+                        },
+                        "6": {
+                          "stat": {
+                            "stat_id": "5",
+                            "value": "0"
+                          }
+                        },
+                        "7": {
+                          "stat": {
+                            "stat_id": "6",
+                            "value": "0"
+                          }
+                        },
+                        "8": {
+                          "stat": {
+                            "stat_id": "78",
+                            "value": "6"
+                          }
+                        },
+                        "9": {
+                          "stat": {
+                            "stat_id": "8",
+                            "value": "0"
+                          }
+                        },
+                        "count": 11
+                      }
+                    }
+                  },
+                  {
+                    "player_points": {
+                      "coverage_type": "week",
+                      "total": "8.00"
+                    }
+                  }
+                ]
+              },
+              "6": {
+                "player": [
+                  [
+                    {
+                      "player_key": "461.p.307"
+                    },
+                    {
+                      "player_id": "307"
+                    },
+                    {
+                      "name": {
+                        "first": "Slotless",
+                        "full": "Slotless 3",
+                        "last": "3"
+                      }
+                    },
+                    {
+                      "editorial_team_abbr": "LAR"
+                    },
+                    {
+                      "display_position": "WR"
+                    },
+                    {
+                      "eligible_positions": {
+                        "0": {
+                          "position": "WR"
+                        },
+                        "count": 1
+                      }
+                    }
+                  ],
+                  {
+                    "selected_position": [
+                      {
+                        "coverage_type": "week"
+                      }
+                    ]
+                  },
+                  {
+                    "player_stats": {
+                      "coverage_type": "week",
+                      "stats": {
+                        "0": {
+                          "stat": {
+                            "stat_id": "10",
+                            "value": "0"
+                          }
+                        },
+                        "1": {
+                          "stat": {
+                            "stat_id": "11",
+                            "value": "4"
+                          }
+                        },
+                        "10": {
+                          "stat": {
+                            "stat_id": "9",
+                            "value": "0"
+                          }
+                        },
+                        "2": {
+                          "stat": {
+                            "stat_id": "12",
+                            "value": "44"
+                          }
+                        },
+                        "3": {
+                          "stat": {
+                            "stat_id": "13",
+                            "value": "0"
+                          }
+                        },
+                        "4": {
+                          "stat": {
+                            "stat_id": "18",
+                            "value": "0"
+                          }
+                        },
+                        "5": {
+                          "stat": {
+                            "stat_id": "4",
+                            "value": "0"
+                          }
+                        },
+                        "6": {
+                          "stat": {
+                            "stat_id": "5",
+                            "value": "0"
+                          }
+                        },
+                        "7": {
+                          "stat": {
+                            "stat_id": "6",
+                            "value": "0"
+                          }
+                        },
+                        "8": {
+                          "stat": {
+                            "stat_id": "78",
+                            "value": "0"
+                          }
+                        },
+                        "9": {
+                          "stat": {
+                            "stat_id": "8",
+                            "value": "0"
+                          }
+                        },
+                        "count": 11
+                      }
+                    }
+                  },
+                  {
+                    "player_points": {
+                      "coverage_type": "week",
+                      "total": "6.00"
+                    }
+                  }
+                ]
+              },
+              "count": 7
+            }
+          },
+          "coverage_type": "week",
+          "week": "1"
+        }
+      }
+    ]
+  }
+}

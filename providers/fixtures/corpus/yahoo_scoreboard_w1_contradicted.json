@@ -1,0 +1,301 @@
+{
+  "fantasy_content": {
+    "league": [
+      {
+        "current_week": "3",
+        "league_id": "488800",
+        "league_key": "461.l.488800",
+        "name": "Fantasy Beefs Certification League",
+        "season": "2025"
+      },
+      {
+        "scoreboard": {
+          "0": {
+            "matchups": {
+              "0": {
+                "matchup": [
+                  {
+                    "is_tied": 0,
+                    "status": "postevent",
+                    "week": "1",
+                    "winner_team_key": "461.l.488800.t.1"
+                  },
+                  {
+                    "teams": {
+                      "0": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "461.l.488800.t.1"
+                            },
+                            {
+                              "team_id": "1"
+                            },
+                            {
+                              "name": "Mahomes Alone"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "1"
+                                    },
+                                    {
+                                      "nickname": "GM1"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "999.99"
+                            }
+                          }
+                        ]
+                      },
+                      "1": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "461.l.488800.t.2"
+                            },
+                            {
+                              "team_id": "2"
+                            },
+                            {
+                              "name": "Sunday Scaries"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "2"
+                                    },
+                                    {
+                                      "nickname": "GM2"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "98.25"
+                            }
+                          }
+                        ]
+                      },
+                      "count": 2
+                    }
+                  }
+                ]
+              },
+              "1": {
+                "matchup": [
+                  {
+                    "is_tied": 0,
+                    "status": "postevent",
+                    "week": "1",
+                    "winner_team_key": "461.l.488800.t.4"
+                  },
+                  {
+                    "teams": {
+                      "0": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "461.l.488800.t.3"
+                            },
+                            {
+                              "team_id": "3"
+                            },
+                            {
+                              "name": "Kelce Grammer"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "3"
+                                    },
+                                    {
+                                      "nickname": "GM3"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "87.00"
+                            }
+                          }
+                        ]
+                      },
+                      "1": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "461.l.488800.t.4"
+                            },
+                            {
+                              "team_id": "4"
+                            },
+                            {
+                              "name": "Purdy Good"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "4"
+                                    },
+                                    {
+                                      "nickname": "GM4"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "131.75"
+                            }
+                          }
+                        ]
+                      },
+                      "count": 2
+                    }
+                  }
+                ]
+              },
+              "2": {
+                "matchup": [
+                  {
+                    "is_tied": 1,
+                    "status": "postevent",
+                    "week": "1"
+                  },
+                  {
+                    "teams": {
+                      "0": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "461.l.488800.t.5"
+                            },
+                            {
+                              "team_id": "5"
+                            },
+                            {
+                              "name": "The Nix Files"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "5"
+                                    },
+                                    {
+                                      "nickname": "GM5"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "104.40"
+                            }
+                          }
+                        ]
+                      },
+                      "1": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "461.l.488800.t.6"
+                            },
+                            {
+                              "team_id": "6"
+                            },
+                            {
+                              "name": "Bijan Mustard"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "6"
+                                    },
+                                    {
+                                      "nickname": "GM6"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "104.40"
+                            }
+                          }
+                        ]
+                      },
+                      "count": 2
+                    }
+                  }
+                ]
+              },
+              "count": 3
+            }
+          },
+          "week": "1"
+        }
+      }
+    ]
+  }
+}

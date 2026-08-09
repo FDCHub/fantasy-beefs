@@ -1,0 +1,17 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "roster",
+  "fixture_id": "yahoo_roster_t6_w1",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "461.l.488800",
+  "notes": "week-1 selected_position slots, bench, flex, and (teams 1-2) a same-name player pair",
+  "payload_sha256": "c4bc23a7211ff81c520c199f073d922810ac63bab7edc8f6e9f144030bda2792",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [],
+  "season": 2025,
+  "team_key": "461.l.488800.t.6",
+  "week": 1
+}

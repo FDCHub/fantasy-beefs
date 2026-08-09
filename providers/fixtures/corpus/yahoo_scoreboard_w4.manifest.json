@@ -1,0 +1,23 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "scoreboard",
+  "fixture_id": "yahoo_scoreboard_w4",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "461.l.488800",
+  "notes": "C-11: week 4 is BEYOND current_week=3 and must not persist",
+  "payload_sha256": "cb10ed97deec383aa57ae8ac284a60ee853de7b9aacca16eb510ba0ff0538c43",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [
+    "$.fantasy_content.league[1].scoreboard.0.matchups.0.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.0.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.1.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.1.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.2.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.2.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted"
+  ],
+  "season": 2025,
+  "week": 4
+}

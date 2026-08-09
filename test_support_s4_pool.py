@@ -54,9 +54,17 @@ QUALIFIER_ALL_STATS = ("passing_td", "rushing_td", "receiving_td",
                        "field_goals_made", "total_touchdown_credits")
 
 
+#: The instant these fixtures declare their modelled weeks final at. A fixed
+#: value rather than now(): a fixture's finality must not drift with the clock,
+#: and a stable stamp makes replay comparisons in the Sprint 6 certification
+#: deterministic.
+FIXTURE_FINALIZED_AT = datetime(2025, 12, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+
 def make_league(db, *, name: str, season: int, n_teams: int = 4,
                 wallet_cents: int = 100_000, week: int = 3,
-                season_final_week: int = 17, playoff_start_week: int = 15):
+                season_final_week: int = 17, playoff_start_week: int = 15,
+                finalized_at: datetime | None = FIXTURE_FINALIZED_AT):
     """Create a league with funded teams, wallets, matchups and a schedule.
 
     Wallets are funded through a REAL ledger posting from `world`, never by
@@ -87,10 +95,24 @@ def make_league(db, *, name: str, season: int, n_teams: int = 4,
         ledger_post([("world", -wallet_cents), (f"wallet:{team.id}", wallet_cents)],
                     door="buy_in_paid", session=db)
 
+    # finalized_at IS STATED, NOT LEFT TO CHANCE (S6 §8).
+    #
+    # These fixtures model a week whose games are OVER — that is the premise of
+    # every settlement scenario built on them. Through Sprint 5 the premise was
+    # implicit, because a Matchup row only existed for a week that had been
+    # played. Sprint 6's provider legitimately writes matchup rows before
+    # kickoff, so the shared finality gate now reads finalized_at, and a fixture
+    # that leaves it NULL is asserting the games have not finished.
+    #
+    # This STRENGTHENS the fixtures rather than weakening them: the scenario
+    # they always meant to describe is now written down. A test that genuinely
+    # wants a non-final week says so by passing finalized_at=None, and
+    # test_s6_provider_gateway_pg.py has cases that do exactly that.
     for i in range(0, len(teams) - 1, 2):
         db.add(Matchup(league_id=league.id, week=week,
                        home_team_id=teams[i].id, away_team_id=teams[i + 1].id,
-                       home_score=0.0, away_score=0.0))
+                       home_score=0.0, away_score=0.0,
+                       finalized_at=finalized_at))
 
     # Lock time: one kickoff well in the future, inside the real NFL window the
     # 9..26-hour band check accepts, so claims are open during the test.
@@ -132,13 +154,17 @@ def add_week_schedule(db, *, season: int, week: int,
     db.flush()
 
 
-def add_week_matchups(db, *, league_id: int, week: int, teams) -> None:
+def add_week_matchups(db, *, league_id: int, week: int, teams,
+                      finalized_at: datetime | None = FIXTURE_FINALIZED_AT
+                      ) -> None:
+    """Add a week's matchups. Final by default — see make_league's comment."""
     from db.schema import Matchup
 
     for i in range(0, len(teams) - 1, 2):
         db.add(Matchup(league_id=league_id, week=week,
                        home_team_id=teams[i].id, away_team_id=teams[i + 1].id,
-                       home_score=0.0, away_score=0.0))
+                       home_score=0.0, away_score=0.0,
+                       finalized_at=finalized_at))
     db.flush()
 
 

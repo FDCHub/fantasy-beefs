@@ -1,0 +1,227 @@
+"""Fixture capture: scrubbing, manifests, provenance (§16, C-17).
+
+THE SCRUBBER RUNS BEFORE ANYTHING IS WRITTEN TO DISK, AND ITS OUTPUT IS WHAT
+GETS HASHED. That ordering matters: hashing the pre-scrub bytes would put a
+digest of credential material into a file committed to Git, and the manifest is
+supposed to be safe to publish.
+
+SCRUBBING IS BY KEY AND BY PATTERN, BOTH. Key-based scrubbing catches the fields
+we know Yahoo uses (providers/yahoo/transport.CREDENTIAL_KEYS, defined beside
+the loader that reads them, so the two cannot drift). Pattern-based scrubbing
+catches the ones we do not — a bearer token embedded in a URL, an Authorization
+header inside a captured HTTP envelope. Either alone leaves a gap: a key list
+cannot anticipate a new field name, and a regex cannot know that `guid` is
+sensitive.
+
+A REDACTION IS RECORDED, NOT SILENT. Every substitution appends to the
+manifest's `scrub_actions`, so a reviewer can see WHAT was removed from a
+fixture without having seen the original. A scrubber that quietly cleaned a
+payload would leave no way to tell a clean capture from a heavily-redacted one.
+
+PROVENANCE HAS NO DEFAULT. `write_fixture` requires it as a keyword and
+validates it against the two permitted values. Fabricating CAPTURED provenance
+for a synthetic payload is the one thing §16 names outright, and the absence of
+a default is the mechanical guard against doing it by accident.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from typing import Any
+
+from providers.yahoo.transport import CREDENTIAL_KEYS
+
+CAPTURED = "CAPTURED"
+SYNTHETIC = "SYNTHETIC"
+_PROVENANCE_VALUES = (CAPTURED, SYNTHETIC)
+
+REDACTED = "***REDACTED***"
+
+#: Value-level patterns that indicate credential material regardless of the key
+#: it arrived under. Deliberately broad: a false positive costs a redacted test
+#: fixture, a false negative costs a leaked token in Git history.
+_VALUE_PATTERNS = (
+    re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
+    re.compile(r"\bBasic\s+[A-Za-z0-9+/=]{8,}", re.IGNORECASE),
+    # Yahoo OAuth2 access tokens are long opaque strings that begin with a
+    # recognizable prefix; refresh tokens likewise.
+    re.compile(r"\bA[A-Za-z0-9]{20,}~[A-Za-z0-9~._-]{10,}"),
+    re.compile(r"(?:access_token|refresh_token|client_secret|consumer_secret)"
+               r"\s*[=:]\s*[\"']?[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE),
+)
+
+#: Personally identifying fields that are not credentials but should not enter
+#: Git from a real capture. Manager nicknames are display data and are kept —
+#: an email is not.
+_PII_KEYS = frozenset({"email", "manager_email", "guid_email"})
+
+
+@dataclass
+class FixtureManifest:
+    """Everything §16 requires a fixture to declare about itself."""
+
+    fixture_id: str
+    provenance: str
+    layer: str                    # "L1_RAW" | "L2_NORMALIZED"
+    endpoint: str
+    league_key: str
+    season: int | None = None
+    week: int | None = None
+    captured_at: str | None = None
+    http_status: int | None = None
+    client_library: str | None = None
+    payload_sha256: str = ""
+    scrub_actions: list[str] = field(default_factory=list)
+    #: The instant a replay presents as "now". Freezing it is what makes the
+    #: 24-hour Gate-2 staleness tests deterministic (§14, C-13).
+    replay_now: str | None = None
+    notes: str | None = None
+
+    def as_dict(self) -> dict:
+        return asdict(self)
+
+
+def _scrub_text(text: str, actions: list[str], where: str) -> str:
+    out = text
+    for pattern in _VALUE_PATTERNS:
+        out, count = pattern.subn(REDACTED, out)
+        if count:
+            actions.append(f"{where}: redacted {count} value(s) matching "
+                           f"{pattern.pattern[:40]!r}")
+    return out
+
+
+def scrub(node: Any, actions: list[str] | None = None,
+          path: str = "$") -> tuple[Any, list[str]]:
+    """Recursively remove credential and PII material. Returns (clean, actions).
+
+    Structure is PRESERVED — a redacted field keeps its key and gets a sentinel
+    value rather than being deleted. Deleting it would change the payload shape
+    the parser is being certified against, which would make the fixture a test
+    of a payload Yahoo never sends.
+    """
+    actions = [] if actions is None else actions
+
+    if isinstance(node, dict):
+        clean = {}
+        for key, value in node.items():
+            here = f"{path}.{key}"
+            if key in CREDENTIAL_KEYS:
+                clean[key] = REDACTED
+                actions.append(f"{here}: credential key redacted")
+                continue
+            if key in _PII_KEYS:
+                clean[key] = REDACTED
+                actions.append(f"{here}: PII key redacted")
+                continue
+            clean[key], _ = scrub(value, actions, here)
+        return clean, actions
+
+    if isinstance(node, list):
+        clean_list = []
+        for index, value in enumerate(node):
+            item, _ = scrub(value, actions, f"{path}[{index}]")
+            clean_list.append(item)
+        return clean_list, actions
+
+    if isinstance(node, str):
+        return _scrub_text(node, actions, path), actions
+
+    return node, actions
+
+
+def payload_sha256(payload: Any) -> str:
+    """SHA-256 of the canonical serialization of a scrubbed payload.
+
+    Canonical (sorted keys, fixed separators) so the digest is a property of the
+    CONTENT, not of how json.dump happened to lay it out. A digest that changed
+    when whitespace changed would report a fixture as modified every time the
+    file was reformatted, and would therefore stop being read.
+    """
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def write_fixture(directory: str, *, fixture_id: str, provenance: str,
+                  layer: str, endpoint: str, league_key: str,
+                  payload: Any, season: int | None = None,
+                  week: int | None = None, captured_at: str | None = None,
+                  http_status: int | None = None,
+                  client_library: str | None = None,
+                  replay_now: str | None = None,
+                  notes: str | None = None) -> FixtureManifest:
+    """Scrub, hash and write one fixture plus its manifest.
+
+    `provenance` is REQUIRED and validated. There is no default and no
+    inference: §16 forbids fabricating CAPTURED provenance, and the only
+    reliable guard against doing it absent-mindedly is that the caller must type
+    the word.
+    """
+    if provenance not in _PROVENANCE_VALUES:
+        raise ValueError(
+            f"provenance must be one of {_PROVENANCE_VALUES!r}, got "
+            f"{provenance!r}. §16: a fixture's provenance is declared, never "
+            f"inferred, and CAPTURED is never fabricated.")
+    if layer not in ("L1_RAW", "L2_NORMALIZED"):
+        raise ValueError(f"layer must be L1_RAW or L2_NORMALIZED, got {layer!r}")
+
+    clean, actions = scrub(payload)
+    digest = payload_sha256(clean)
+
+    manifest = FixtureManifest(
+        fixture_id=fixture_id, provenance=provenance, layer=layer,
+        endpoint=endpoint, league_key=league_key, season=season, week=week,
+        captured_at=captured_at, http_status=http_status,
+        client_library=client_library, payload_sha256=digest,
+        scrub_actions=actions, replay_now=replay_now, notes=notes,
+    )
+
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, f"{fixture_id}.json"), "w",
+              encoding="utf-8", newline="\n") as handle:
+        json.dump(clean, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    with open(os.path.join(directory, f"{fixture_id}.manifest.json"), "w",
+              encoding="utf-8", newline="\n") as handle:
+        json.dump(manifest.as_dict(), handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    return manifest
+
+
+def capture_live(transport, directory: str, *, league_key: str, week: int,
+                 season: int, fixture_prefix: str,
+                 client_library: str | None = None) -> list[FixtureManifest]:
+    """Record L1 fixtures from a LIVE transport. Provenance is CAPTURED.
+
+    THE ONLY FUNCTION IN THE REPOSITORY PERMITTED TO WRITE CAPTURED PROVENANCE,
+    and it can only be reached with a live transport in hand — which requires
+    real credentials and real network access. That is the mechanical reason
+    Sprint 6's corpus is entirely SYNTHETIC: this function has never been able
+    to run, because the Yahoo application is not authorized for the Fantasy
+    Sports API (the blocker recorded in
+    spec/pool_stat_vocabulary_rev1_0.json).
+
+    It is written and kept ready so that the day authorization lands, capturing
+    a real corpus is a command rather than a project.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    manifests = []
+    for endpoint, fetch in (
+        ("league", lambda: transport.fetch_league(league_key)),
+        ("teams", lambda: transport.fetch_teams(league_key)),
+        ("scoreboard", lambda: transport.fetch_scoreboard(league_key, week)),
+    ):
+        manifests.append(write_fixture(
+            directory,
+            fixture_id=f"{fixture_prefix}_{endpoint}_w{week}",
+            provenance=CAPTURED, layer="L1_RAW", endpoint=endpoint,
+            league_key=league_key, payload=fetch(), season=season,
+            week=week, captured_at=now, http_status=200,
+            client_library=client_library, replay_now=now,
+        ))
+    return manifests

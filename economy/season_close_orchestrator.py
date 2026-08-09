@@ -13,6 +13,7 @@ ONE deterministic order, wrapped around the EXISTING irreversible
      7  no required week is still RESULTS_NOT_READY
      8  terminal Pool rollover handling is complete
      9  pool:{league_id} is zero
+    9b  no unresolved ProviderConflict (S6 §11, additive)
     10  sweep every reserve:{team} -> championship:{league_id}
     11  distribute Skunk
     12  distribute Championship
@@ -98,7 +99,8 @@ def _team_ids(db, league_id: int) -> list[int]:
 def verify_preconditions(db, *, league_id: int, final_week: int) -> None:
     """Steps 1-9. Raises on the FIRST unmet prerequisite; writes nothing."""
     from db.schema import (
-        Bet, EconomyEvent, League, Matchup, PoolInstance, Wallet,
+        Bet, EconomyEvent, League, Matchup, PoolInstance, ProviderConflict,
+        Wallet,
     )
     from betting.pool_season_boundary import playoff_start_week
 
@@ -197,6 +199,48 @@ def verify_preconditions(db, *, league_id: int, final_week: int) -> None:
         raise SeasonClosePreconditionError(
             "pool_zero",
             f"pool:{league_id} holds {pool_balance} cents.")
+
+    # 9b — S6 §11: no UNRESOLVED provider conflict.
+    #
+    # ADDITIVE AND LAST AMONG THE PRECONDITIONS. The eight accepted Sprint 5
+    # checks above are untouched and still run in their accepted order; this one
+    # is appended, so a league that would have closed under Sprint 5 and carries
+    # no conflict closes identically. close_season() remains step 16.
+    #
+    # WHY THE CLOSE IS THE RIGHT PLACE TO BLOCK. S6-R3 forbids Sprint 6 from
+    # building automatic economic reversal, so a post-final contradiction cannot
+    # be corrected by code — it can only be recorded and escalated. Season close
+    # is irreversible and stamps a timestamp no path returns to NULL, which
+    # makes it the LAST moment a human can still act on a contradiction about a
+    # result that money has already been paid on. Closing over one would make
+    # the disagreement permanently unactionable.
+    #
+    # ACKNOWLEDGED CONFLICTS DO NOT BLOCK. An operator who acknowledged a
+    # conflict has recorded that they looked at it and accepted the stored
+    # value; that is the only resolution S6-R3 permits Sprint 6 to offer, and
+    # honouring it is what keeps the gate from being permanently unclearable.
+    # Acknowledgement moves no money — providers/yahoo/persist.py has no path
+    # that could.
+    open_conflicts = (db.query(ProviderConflict)
+                      .filter(ProviderConflict.league_id == league_id,
+                              ProviderConflict.resolved_at.is_(None))
+                      .order_by(ProviderConflict.id)
+                      .all())
+    if open_conflicts:
+        summary = [
+            f"{c.conflict_type}:{c.contradicted_field} on "
+            f"{c.external_identity} (stored {c.existing_value!r}, provider "
+            f"claimed {c.provider_value!r}, seen {c.occurrence_count}x)"
+            for c in open_conflicts[:5]
+        ]
+        more = ("" if len(open_conflicts) <= 5
+                else f" ... and {len(open_conflicts) - 5} more")
+        raise SeasonClosePreconditionError(
+            "provider_conflict",
+            f"{len(open_conflicts)} unresolved provider conflict(s) for league "
+            f"{league_id}: {'; '.join(summary)}{more}. Sprint 6 builds no "
+            f"automatic economic reversal (S6-R3) — each must be reviewed and "
+            f"acknowledged by an operator before the season may close.")
 
 
 # ── The orchestrator ──────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from betting.finality_gate import require_week_final
 from db.schema import Bet, BeefChallenge, Matchup, Projection, SessionLocal, SettlementRecoveryAudit, Transaction, Wallet
 from db.roster_read import _roster_for_week
 from feed.league_feed import log_settlement_events
@@ -334,6 +335,24 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
     and finish payouts by hand. Tracked as a deferred item.
     """
     now = datetime.now(timezone.utc)
+
+    # ── S6 §8 — ECONOMIC FINALITY PRECONDITION, BEFORE THE CLAIM ─────────────
+    #
+    # Deliberately ahead of the WeekSettlement INSERT below, not after it. The
+    # claim COMMITS on its own, and a row left in CLAIMED state can only be
+    # cleared by an authorized recovery caller holding its token — so refusing
+    # after the claim would convert "results are not ready yet" into "this week
+    # now requires manual recovery". Refusing here writes nothing at all and the
+    # week is cleanly retryable next Tuesday.
+    #
+    # This is the manual/API path's protection. Through Sprint 5 the only
+    # finality safety on Versus settlement lived in
+    # notifications/tuesday_sync.py, so a direct settle_week() call — a script,
+    # an admin route, a test — settled whatever scores happened to be in the
+    # table. From Sprint 6 the provider legitimately writes pre-kickoff matchup
+    # rows, which makes that gap live rather than theoretical.
+    require_week_final(db, league_id=league_id, week=week,
+                       context="settle_week")
 
     # NOTE: Finding 5.9 (beef escrow settlement) depends on this claim serializing
     # callers per (league_id, week) — the beef-level escrow-close skip check is only

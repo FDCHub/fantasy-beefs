@@ -1,0 +1,19 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "scoreboard",
+  "fixture_id": "yahoo_scoreboard_w2_nostatus",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "461.l.488800",
+  "notes": "C-6: matchup carries scores but NO status field \u2014 finality absent/unknown, finalized_at must stay NULL",
+  "payload_sha256": "a5290b91494c1d07673c67a93f47b8d9d6498e7fa72ee06ab51e1d3678432640",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [
+    "$.fantasy_content.league[1].scoreboard.0.matchups.0.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.0.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted"
+  ],
+  "season": 2025,
+  "week": 2
+}

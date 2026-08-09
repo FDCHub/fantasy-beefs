@@ -1,0 +1,1 @@
+"""H — the Sprint 6 offline certification gate (§17)."""

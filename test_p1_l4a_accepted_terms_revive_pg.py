@@ -82,6 +82,15 @@ from beefs import proposal_lifecycle as spec1
 from economy import challenge_funding as cf
 from economy.challenge_funding import InsufficientFundingCapacityError
 
+import datetime as _dt
+#: S6 §8 — the instant this suite's fixture weeks are declared economically
+#: final at. Fixed rather than now(): a fixture's finality must not drift with
+#: the wall clock, and Matchup.finalized_at is the ONLY signal the shared
+#: settlement gate reads. Stating it makes the completed-week premise these
+#: scenarios always relied on explicit instead of implicit.
+_FIXTURE_FINAL_AT = _dt.datetime(2025, 12, 1, 12, 0, 0, tzinfo=_dt.timezone.utc)
+
+
 REPO = Path(__file__).resolve().parent
 WEEK = 1
 
@@ -123,7 +132,9 @@ def seed(min_reserve_cents: dict[str, int], min_cents: dict[str, int] | None = N
         names = list(min_reserve_cents)
         db.add(Matchup(league_id=league.id, week=WEEK,
                        home_team_id=ids[names[0]], away_team_id=ids[names[1]],
-                       home_score=0.0, away_score=0.0))
+                       home_score=0.0, away_score=0.0,
+                       # S6 §8 — a COMPLETED week, stated explicitly.
+                       finalized_at=_FIXTURE_FINAL_AT))
         for name, cents in min_reserve_cents.items():
             if cents:
                 ledger_post([("world", -cents), (f"wallet:{ids[name]}", cents)],

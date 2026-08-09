@@ -1,0 +1,17 @@
+{
+  "fantasy_content": {
+    "league": [
+      {
+        "current_week": "3",
+        "end_week": "17",
+        "league_id": "488800",
+        "league_key": "461.l.488800",
+        "name": "Fantasy Beefs Certification League",
+        "num_teams": 6,
+        "playoff_start_week": "15",
+        "season": "2025",
+        "start_week": "1"
+      }
+    ]
+  }
+}

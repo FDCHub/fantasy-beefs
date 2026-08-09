@@ -9,7 +9,9 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    DDL,
     DateTime,
+    event,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
@@ -62,6 +64,12 @@ class League(Base):
             "topoff_cap_multiplier_bps IN (0, 5000, 10000, 15000, 20000)",
             name="ck_leagues_topoff_multiplier_bps",
         ),
+        # S6-R1 — one provider league key maps to at most one internal League.
+        # NULLs are distinct under both PostgreSQL and SQLite, so any number of
+        # provider-less leagues coexist; two leagues claiming the same Yahoo
+        # league key is the conflicting-identity case and is refused by the DB.
+        UniqueConstraint("provider", "provider_league_key",
+                         name="uq_leagues_provider_key"),
     )
 
     id                = Column(Integer, primary_key=True, autoincrement=True)
@@ -124,6 +132,20 @@ class League(Base):
     # playoff_start_week.
     season_final_week   = Column(Integer, nullable=True)
     playoff_start_week  = Column(Integer, nullable=True)
+    # ── Sprint 6 provider identity (S6-R1) ────────────────────────────────────
+    #
+    # The provider-native stable league identity. `provider` names the gateway
+    # ("yahoo"); `provider_league_key` is that provider's own stable key for this
+    # league — for Yahoo the full compound league key "461.l.488800", never the
+    # bare "488800". The game segment is what scopes the key to a season, and a
+    # bare league number would collide the moment the same league renews under a
+    # new game_id.
+    #
+    # NULLABLE because a league may legitimately have no provider (fixtures,
+    # local leagues). NULL means "no provider identity", which the resolver
+    # treats as unresolvable and fails closed on — it is never a wildcard.
+    provider            = Column(String, nullable=True)
+    provider_league_key = Column(String, nullable=True)
 
     teams    = relationship("Team",         back_populates="league")
     matchups = relationship("Matchup",      back_populates="league")
@@ -154,12 +176,52 @@ class LeagueScoring(Base):
 
 class Team(Base):
     __tablename__ = "teams"
+    __table_args__ = (
+        # S6-R1 — the provider-native stable team identity, and the ONLY
+        # authoritative one. Unique per (provider, key): one Yahoo team is one
+        # internal Team, forever, no matter how many times it is renamed.
+        UniqueConstraint("provider", "provider_team_key",
+                         name="uq_teams_provider_key"),
+        # One provider team per league is a second, independent statement: it
+        # stops the same league accumulating two rows for one provider team if
+        # the compound key were ever assembled differently by two callers.
+        UniqueConstraint("league_id", "provider_team_key",
+                         name="uq_teams_league_provider_key"),
+        # email is NOT identity (S6-R1). It keeps a plain non-unique index for
+        # the lookups notifications/ does, and nothing more.
+        Index("ix_teams_email", "email"),
+    )
 
     id        = Column(Integer, primary_key=True, autoincrement=True)
     league_id = Column(Integer, ForeignKey("leagues.id"), nullable=False)
     team_name = Column(String,  nullable=False)
     owner     = Column(String,  nullable=False)
-    email     = Column(String,  nullable=False, unique=True)
+    # ── NOT AN IDENTIFIER (S6-R1) ─────────────────────────────────────────────
+    #
+    # Was `unique=True` through Sprint 5, which encoded two mistakes at once.
+    # First, the season seed smuggled Yahoo identity through this column as
+    # 'yahoo-team-{id}@fantasy-beefs.local' and db/team_resolver.py parsed it
+    # back out — making a MANAGER EMAIL the load-bearing provider identity, the
+    # exact thing S6-R1 forbids. Second, global uniqueness made it impossible
+    # for one manager to hold a team in two leagues, which is ordinary product
+    # behavior and not something an incidental contact field may veto.
+    #
+    # The unique constraint is therefore gone. Provider identity lives on
+    # provider_team_key below; this column is contact data.
+    email     = Column(String,  nullable=False)
+    # ── Sprint 6 provider identity (S6-R1) ────────────────────────────────────
+    #
+    # Yahoo's full compound team key, e.g. "461.l.488800.t.7". The compound form
+    # is required, not cosmetic: Yahoo team_id is 1..N WITHIN a league, so the
+    # bare "7" collides across every league and every season. The game and
+    # league segments are what make it collision-safe across both.
+    #
+    # `provider_team_id` keeps the provider's own within-league ordinal so the
+    # resolver can answer a scoreboard payload that quotes only the ordinal
+    # without re-deriving it from a string on every lookup.
+    provider          = Column(String,  nullable=True)
+    provider_team_key = Column(String,  nullable=True)
+    provider_team_id  = Column(Integer, nullable=True)
 
     league         = relationship("League", back_populates="teams")
     roster         = relationship("Roster", back_populates="team")
@@ -175,12 +237,51 @@ class Team(Base):
 
 class Player(Base):
     __tablename__ = "players"
+    __table_args__ = (
+        # S6-R1 — the provider-native stable player identity. Unique per
+        # (provider, key), and the key carries the GAME segment, so the same
+        # Yahoo player_id under two different game_ids is two different rows
+        # rather than a silent overwrite.
+        UniqueConstraint("provider", "provider_player_key",
+                         name="uq_players_provider_key"),
+        # name is a display field. Indexed for lookup, never unique.
+        Index("ix_players_name", "name"),
+        # yahoo_id is retained for the legacy FR-7.30 paths but is NOT unique
+        # any more — see the column comment.
+        Index("ix_players_yahoo_id", "yahoo_id"),
+    )
 
     id       = Column(Integer,    primary_key=True, autoincrement=True)
-    name     = Column(String,     nullable=False, unique=True)
+    # ── NOT AN IDENTIFIER (S6-R1, recon R-4) ──────────────────────────────────
+    #
+    # Was `unique=True` through Sprint 5. Two real NFL players share a name
+    # often enough that this is a live defect, not a hypothetical: the second
+    # "Josh Allen" to be rostered anywhere in the system could not be inserted
+    # at all, so provider ingestion failed closed on a NAME COLLISION rather
+    # than on anything to do with identity. A same-name player must ingest
+    # cleanly, so the constraint is gone.
+    name     = Column(String,     nullable=False)
     position = Column(String,     nullable=False)      # QB | RB | WR | TE | FLEX | K | DEF
     nfl_team = Column(String(4),  nullable=True)       # NFL team abbreviation, e.g. "KC", "BAL"
-    yahoo_id = Column(String,     nullable=True, unique=True)  # Yahoo player_id; NULL until resolved (FR-7.30)
+    # ── LEGACY, NO LONGER UNIQUE (recon R-5) ──────────────────────────────────
+    #
+    # Written by FR-7.30 as str(player.player_id) — the BARE Yahoo player id,
+    # with no game segment. Yahoo scopes player_id to the GAME, so the same
+    # integer denotes different players in different seasons. A global UNIQUE on
+    # it was therefore a cross-season collision waiting to happen: the first
+    # season to claim id 12345 would permanently block the next season's 12345.
+    #
+    # The column stays so the existing FR-7.30 roster paths keep working within
+    # one season; its uniqueness does not. Authoritative identity is
+    # provider_player_key below.
+    yahoo_id = Column(String,     nullable=True)
+    # ── Sprint 6 provider identity (S6-R1) ────────────────────────────────────
+    #
+    # Yahoo's full compound player key, e.g. "461.p.31883" — game segment first.
+    # That segment is exactly what makes the key collision-safe across seasons,
+    # which the bare yahoo_id above is not.
+    provider            = Column(String, nullable=True)
+    provider_player_key = Column(String, nullable=True)
 
     rosters      = relationship("Roster",     back_populates="player")
     projections  = relationship("Projection", back_populates="player")
@@ -224,7 +325,14 @@ class RosterSlot(Base):
 
 class Matchup(Base):
     __tablename__ = "matchups"
-    __table_args__ = (UniqueConstraint("league_id", "week", "home_team_id"),)
+    __table_args__ = (
+        UniqueConstraint("league_id", "week", "home_team_id"),
+        # S6 §5 — one real provider matchup is one internal row. The derived
+        # key is canonical over the UNORDERED team pair (see the column comment),
+        # so a mirrored payload produces the same key and conflicts here.
+        UniqueConstraint("league_id", "provider_matchup_key",
+                         name="uq_matchups_provider_key"),
+    )
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
     league_id      = Column(Integer, ForeignKey("leagues.id"),  nullable=False)
@@ -255,6 +363,25 @@ class Matchup(Base):
     # Sprint 6's Yahoo provider will own the mapping from authoritative final-game
     # status to this field. Sprint 5 fixtures set it explicitly.
     finalized_at   = Column(DateTime, nullable=True)
+    # ── Sprint 6 provider matchup identity (S6 §5) ────────────────────────────
+    #
+    # DERIVED, BECAUSE YAHOO SUPPLIES NO MATCHUP KEY. A Yahoo scoreboard matchup
+    # carries no identifier of its own — only the two participating teams and
+    # the week. The stable identity is therefore constructed from facts that ARE
+    # provider-stable:
+    #
+    #     {league_key}.w.{week}.m.{lowTeamKey}~{highTeamKey}
+    #
+    # canonicalized by sorting the two PROVIDER TEAM KEYS. Sorting is what makes
+    # the key immune to payload order: Yahoo listing (B, A) instead of (A, B)
+    # produces byte-identical output, so the mirrored row conflicts on
+    # uq_matchups_provider_key instead of inserting a duplicate. Nothing here
+    # reads a team NAME, a manager, or a list position.
+    #
+    # Nullable: Sprint 1-5 rows and locally-seeded fixtures have no provider
+    # matchup and stay NULL. NULLs are distinct under a UNIQUE constraint on
+    # both backends, so any number of them coexist.
+    provider_matchup_key = Column(String, nullable=True)
 
     league    = relationship("League", back_populates="matchups")
     home_team = relationship("Team", foreign_keys=[home_team_id],
@@ -263,6 +390,39 @@ class Matchup(Base):
                              back_populates="away_matchups")
     winner    = relationship("Team", foreign_keys=[winner_team_id])
     bets      = relationship("Bet",  back_populates="matchup")
+
+
+# ── S6 §5 — mirrored-pair backstop ────────────────────────────────────────────
+#
+# The DERIVED provider key above stops a mirror at the provider layer. This
+# index stops one at the DATABASE layer, for every writer, including the ones
+# that predate Sprint 6 and set provider_matchup_key to NULL.
+#
+# The existing UNIQUE (league_id, week, home_team_id) does NOT do this job. It
+# constrains only the HOME side, so (week 3, home=A, away=B) and (week 3,
+# home=B, away=A) have different home_team_id values and both insert happily —
+# two rows for one real game, which then double-counts in every downstream
+# census and settlement read. Constraining the UNORDERED pair is what closes it.
+#
+# Expressed as raw DDL rather than a SQLAlchemy Index because the two backends
+# spell the pairwise extrema differently and there is no portable construct:
+# PostgreSQL has LEAST/GREATEST, SQLite overloads MIN/MAX as scalar functions.
+# Both predicates below are the SAME constraint; supplying only one would leave
+# the other backend silently unprotected.
+_MATCHUP_PAIR_IX_PG = DDL(
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_matchups_unordered_pair "
+    "ON matchups (league_id, week, "
+    "LEAST(home_team_id, away_team_id), GREATEST(home_team_id, away_team_id))"
+)
+_MATCHUP_PAIR_IX_SQLITE = DDL(
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_matchups_unordered_pair "
+    "ON matchups (league_id, week, "
+    "MIN(home_team_id, away_team_id), MAX(home_team_id, away_team_id))"
+)
+event.listen(Matchup.__table__, "after_create",
+             _MATCHUP_PAIR_IX_PG.execute_if(dialect="postgresql"))
+event.listen(Matchup.__table__, "after_create",
+             _MATCHUP_PAIR_IX_SQLITE.execute_if(dialect="sqlite"))
 
 
 class Wallet(Base):
@@ -2726,6 +2886,98 @@ class ChallengeFinalLockClaim(Base):
     challenge      = relationship("BeefChallenge",      foreign_keys=[challenge_id])
     final_lock     = relationship("ChallengeFinalLock", foreign_keys=[final_lock_id])
     protocol_event = relationship("ProtocolEvent",      foreign_keys=[protocol_event_id])
+
+
+# ── Sprint 6 · provider conflict (S6-R3, §10) ─────────────────────────────────
+
+class ProviderConflict(Base):
+    """A provider assertion that CONTRADICTS already-final, load-bearing state.
+
+    S6-R3: once provider state is economically final or load-bearing, a later
+    provider refresh that disagrees must NOT silently mutate it. The refresh
+    fails closed, the stored final value stands unchanged, and the disagreement
+    is recorded here as a durable, named fact.
+
+    NOT A WORKFLOW ENGINE. There is exactly one lifecycle transition —
+    unresolved to acknowledged — and it carries who did it and why. Sprint 6
+    deliberately builds NO automatic economic reversal: acknowledging a conflict
+    records that a human looked at it, and never moves a cent.
+
+    THE CONFLICT KEY IS THE IDEMPOTENCY UNIT. `conflict_key` is derived
+    deterministically from (provider, external identity, conflict type, the
+    existing value, the contradicting value), so re-ingesting the SAME
+    contradiction a hundred times finds the same row a hundred times.
+    `occurrence_count` and `last_seen_at` record the repeats; the UNIQUE
+    constraint is what stops them becoming a hundred rows. A DIFFERENT
+    contradiction — a third value for the same fact — has a different key and is
+    legitimately its own row, because it is genuinely new information.
+
+    UNRESOLVED BLOCKS SEASON CLOSE (§11). economy/season_close_orchestrator.py
+    reads this table as an additive precondition. That is the whole reason the
+    record is persistent rather than a log line: a season must not be able to
+    close over a contradiction nobody ever looked at.
+    """
+    __tablename__ = "provider_conflict"
+    __table_args__ = (
+        UniqueConstraint("conflict_key", name="uq_provider_conflict_key"),
+        CheckConstraint(
+            "conflict_type IN ('POST_FINAL_SCORE','POST_FINAL_WINNER',"
+            "'POST_FINAL_FINALITY_RETRACTION','FROZEN_SEASON_BOUNDARY',"
+            "'IDENTITY_CONFLICT')",
+            name="ck_provider_conflict_type",
+        ),
+        # Acknowledgement is all-or-nothing: a row is either unresolved with no
+        # acknowledgement metadata, or acknowledged with both stamps present.
+        # Biconditionals rather than two independent nullables, so a half-filled
+        # acknowledgement cannot exist to be misread as resolved.
+        CheckConstraint(
+            "(resolved_at IS NOT NULL) = (resolved_by IS NOT NULL)",
+            name="ck_provider_conflict_resolution_pair",
+        ),
+        CheckConstraint("occurrence_count >= 1",
+                        name="ck_provider_conflict_occurrences"),
+        Index("ix_provider_conflict_open", "league_id", "resolved_at"),
+    )
+
+    id        = Column(Integer, primary_key=True, autoincrement=True)
+    league_id = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    provider  = Column(String, nullable=False)
+
+    #: The provider's own stable key for the contradicted thing — a matchup key,
+    #: a league key. Never a name, never an internal id alone.
+    external_identity = Column(String, nullable=False)
+    conflict_type     = Column(String, nullable=False)
+
+    #: What the system already holds and refuses to overwrite, and what the
+    #: provider claimed instead. Text, because the contradicted fact may be a
+    #: score, a team id, a week number or a timestamp, and rendering all of them
+    #: through one column keeps the conflict record readable without a join.
+    existing_value      = Column(Text, nullable=False)
+    provider_value      = Column(Text, nullable=False)
+    contradicted_field  = Column(String, nullable=False)
+
+    #: Deterministic idempotency key — see the class docstring.
+    conflict_key = Column(String, nullable=False)
+
+    detected_at      = Column(DateTime(timezone=True), nullable=False)
+    last_seen_at     = Column(DateTime(timezone=True), nullable=False)
+    occurrence_count = Column(Integer, nullable=False, default=1,
+                              server_default=text("1"))
+
+    resolved_at   = Column(DateTime(timezone=True), nullable=True)
+    resolved_by   = Column(String, nullable=True)
+    resolution_note = Column(Text, nullable=True)
+
+    #: Free-form audit payload — season, week, fixture id, whatever the
+    #: detecting path knew. Never read for a decision; present so an operator
+    #: can reconstruct the ingestion that produced the contradiction.
+    audit_metadata = Column(JSON, nullable=True)
+
+    league = relationship("League")
+
+    @property
+    def is_open(self) -> bool:
+        return self.resolved_at is None
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

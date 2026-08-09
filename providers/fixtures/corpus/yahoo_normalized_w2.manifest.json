@@ -1,0 +1,16 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "normalized_week",
+  "fixture_id": "yahoo_normalized_w2",
+  "http_status": 200,
+  "layer": "L2_NORMALIZED",
+  "league_key": "461.l.488800",
+  "notes": "L2 normalized DTO set; certifies identity/finality/persistence independently of the parser",
+  "payload_sha256": "7d5cdad3b6d6468453bbf26c4fb01a60599478161fcbbb04ba0d8e1d50d3f56b",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [],
+  "season": 2025,
+  "week": 2
+}

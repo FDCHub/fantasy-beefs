@@ -49,6 +49,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Mapping, Sequence
 
+from betting.finality_gate import require_week_final
 from betting.pool_catalog import spec_from_row
 from betting.pool_census import (
     CLASSIFICATION_CLAIMS_PRESENT,
@@ -277,6 +278,24 @@ def settle_pool_instance(db, *, pool_instance_id: int, stat_source,
 
     if instance.settled:
         return _replay_result(db, instance)
+
+    # ── S6 §8 — ECONOMIC FINALITY PRECONDITION ───────────────────────────────
+    #
+    # After the replay check and before any economic work, so an ALREADY
+    # SETTLED instance still replays idempotently — a settled Pool's history
+    # must not become unreadable because the finality gate was added later.
+    #
+    # Placed here rather than only in the week-level loop so a direct
+    # settle_pool_instance() call is no less safe than a settle_week() one.
+    # §8 requires exactly that: "A manual/API settlement path must be no less
+    # safe than the Tuesday pipeline."
+    #
+    # Note this is a STRICTER gate than the census alone. The census asks "is
+    # every subject evaluable"; a pre-kickoff week where the provider has
+    # written matchup rows and the stat feed reports zeros would answer yes.
+    # Finality asks the different question the money actually depends on.
+    require_week_final(db, league_id=instance.league_id, week=instance.week,
+                       context=f"settle_pool_instance({pool_instance_id})")
 
     league = db.query(League).filter(League.id == instance.league_id).first()
     row = (db.query(PoolDefinition)

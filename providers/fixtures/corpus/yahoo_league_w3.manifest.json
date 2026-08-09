@@ -1,0 +1,16 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "league",
+  "fixture_id": "yahoo_league_w3",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "461.l.488800",
+  "notes": "league metadata; current_week=3 defines the \u00a76 ingestion horizon",
+  "payload_sha256": "66c8d7309e73f53ca4881f81f26d2864e34247a59e40a4b8a8b45c436f6fba9a",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [],
+  "season": 2025,
+  "week": null
+}
