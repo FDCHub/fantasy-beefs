@@ -300,7 +300,7 @@ def main(tdb) -> None:
         assess_weekly_skunk(db, league_id=lid, week=3)
         db.commit()
     _assert("the biggest loser carries the Skunk obligation",
-            -balance_of(receivable_account(gm)) == 2000)
+            -balance_of(receivable_account(gm)) == 1000)
     _assert("expired minimum left circulation for that GM",
             balance_of(expired_min_account(gm)) == 600,
             str(balance_of(expired_min_account(gm))))
@@ -397,7 +397,7 @@ def main(tdb) -> None:
     _assert("the Top-Off obligation survives the close",
             gm_cs.topoff_issued_cents == 2500)
     _assert("the Skunk receivable is still an obligation — a close does not "
-            "zero it", gm_cs.receivable_cents == 2000)
+            "zero it", gm_cs.receivable_cents == 1000)
     expected_delta = (placements.get(gm, 0)
                       + (report.skunk_distributed_cents
                          if gm in dict(()) else 0))

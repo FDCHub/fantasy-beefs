@@ -66,7 +66,8 @@ def main(tdb) -> None:
     )
     from economy.season_allocation import activate_season_allocation
     from economy.skunk import (
-        DEFAULT_SKUNK_CONTRIBUTION_CENTS, SkunkError, assess_weekly_skunk,
+        DEFAULT_SKUNK_CONTRIBUTION_CENTS, DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS,
+        SkunkError, assess_weekly_skunk,
         distribute_season_skunk, split_by_canonical_id,
     )
     from economy.weekly_minimum import expire_weekly_minimum, release_weekly_minimum
@@ -121,6 +122,23 @@ def main(tdb) -> None:
         return cs
 
     # ════ 1. WEEKLY SKUNK ═══════════════════════════════════════════════════
+    print("")
+    print("== BAB-504: the governed weekly Skunk fee is $10 ==")
+    # THE ORACLE IS THE LITERAL, NOT THE CONSTANT. Every other assertion in this
+    # file compares behaviour against DEFAULT_SKUNK_CONTRIBUTION_CENTS, which
+    # proves the code is self-consistent and NOTHING about whether the governed
+    # amount is right - a wrong constant satisfies all of them equally. These
+    # two pin the governed figures as literals, so a drifting constant fails
+    # here first and by name.
+    _assert("BAB-504 default weekly Skunk fee is literally 1000 cents ($10)",
+            DEFAULT_SKUNK_CONTRIBUTION_CENTS == 1000,
+            str(DEFAULT_SKUNK_CONTRIBUTION_CENTS))
+    _assert("BAB-504 season ceiling is literally 14000 cents ($140) across the "
+            "14-week regular season",
+            DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS == 14000
+            and 14 * 1000 == 14000,
+            str(DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS))
+
     print("\n== weekly Skunk: ledger-only obligation ==")
     league_id, team_ids = make_league("skunk")
     with SessionLocal() as db:
@@ -147,9 +165,8 @@ def main(tdb) -> None:
         result = assess_weekly_skunk(db, league_id=league_id, week=3)
         db.commit()
 
-    _assert("the largest margin of defeat is assessed",
-            result.assessed == ((loser, DEFAULT_SKUNK_CONTRIBUTION_CENTS),),
-            str(result.assessed))
+    _assert("the largest margin of defeat is assessed literally 1000 cents",
+            result.assessed == ((loser, 1000),), str(result.assessed))
     _assert("largest margin recorded as 40", result.largest_margin == 40.0)
     _assert("S5-R1 Wallet is UNCHANGED",
             balance_of(wallet_account(loser)) == before["wallet"])
@@ -157,13 +174,13 @@ def main(tdb) -> None:
             balance_of(min_account(loser, 3)) == before["min"])
     _assert("S5-R1 min_reserve: is UNCHANGED",
             balance_of(min_reserve_account(loser)) == before["min_reserve"])
-    _assert("receivable changed by exactly the assessment",
-            before["receivable"] - balance_of(receivable_account(loser))
-            == DEFAULT_SKUNK_CONTRIBUTION_CENTS,
-            str(balance_of(receivable_account(loser))))
-    _assert("the Skunk pot grew by exactly the assessment",
-            balance_of(skunk_account(league_id)) - before["pot"]
-            == DEFAULT_SKUNK_CONTRIBUTION_CENTS)
+    # LITERAL 1000, deliberately not the production constant - see BAB-504.
+    _assert("the receivable obligation grew by literally 1000 cents",
+            before["receivable"] - balance_of(receivable_account(loser)) == 1000,
+            str(before["receivable"] - balance_of(receivable_account(loser))))
+    _assert("the Skunk pot grew by literally 1000 cents",
+            balance_of(skunk_account(league_id)) - before["pot"] == 1000,
+            str(balance_of(skunk_account(league_id)) - before["pot"]))
     with SessionLocal() as db:
         rows = (db.query(LedgerEntry)
                 .filter(LedgerEntry.door == "skunk_assessment").all())
@@ -232,10 +249,14 @@ def main(tdb) -> None:
     _assert("the pot received exactly one contribution",
             balance_of(skunk_account(league_id))
             == DEFAULT_SKUNK_CONTRIBUTION_CENTS)
-    _assert("the remainder goes to the LOWEST canonical GM ids",
+    _assert("the remainder goes to the LOWEST canonical GM id",
             dict(tie.assessed) == expected
-            and expected[tied[0]] == 667 and expected[tied[2]] == 666,
+            and expected[tied[0]] == 334
+            and expected[tied[1]] == 333
+            and expected[tied[2]] == 333,
             str(expected))
+    _assert("the tie split conserves the governed 1000 cents exactly",
+            sum(expected.values()) == 1000, str(sum(expected.values())))
     for team_id, cents in tie.assessed:
         _assert(f"team {team_id} obligation is exactly {cents}",
                 -balance_of(receivable_account(team_id)) == cents)
@@ -585,8 +606,10 @@ def main(tdb) -> None:
         with SessionLocal() as db:
             assess_weekly_skunk(db, league_id=league_id, week=5)
             db.commit()
-    delta(do_skunk, "(11) a Skunk assessment decreases Current Settle by the "
-                    "obligation", -DEFAULT_SKUNK_CONTRIBUTION_CENTS)
+    # LITERAL -1000. This is the whole of S5-F1: the 2000-cent default moved
+    # this by -2000 and understated every assessed GM by $10 per assessment.
+    delta(do_skunk, "(11) one default Skunk assessment moves Current Settle by "
+                    "literally -1000 cents", -1000)
 
     # (13) Pool economic ownership. A collected weekly Pool contribution has
     # LEFT the GM: it funds four occurrences whose outcome is not yet theirs, and
@@ -617,7 +640,7 @@ def main(tdb) -> None:
             "field anywhere",
             final.current_settle_cents
             == final.assets_cents - final.obligations_cents
-            and final.current_settle_cents == -4800,
+            and final.current_settle_cents == -3800,
             str(final.as_dict()))
     print(f"    final position: {final.as_dict()}")
 

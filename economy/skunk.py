@@ -57,7 +57,25 @@ from economy.economy_events import (
 from ledger.ledger import _balance_of_in_session, post as ledger_post
 
 #: The governed weekly Skunk contribution, in integer cents.
-DEFAULT_SKUNK_CONTRIBUTION_CENTS = 2000
+#:
+#: AUTHORITY: BAB-504 (Weekly Contribution), Merged Section 4.7 Skunk Pot —
+#: "Default weekly Skunk amount $10; regular season only (weeks 1-14), never
+#: playoffs. ... Accumulates up to $140/season."
+#:
+#:     default weekly Skunk fee      1000 cents  ($10)
+#:     default 14-week maximum      14000 cents  ($140)
+#:
+#: This was 2000, which was wrong: it doubled every assessed GM's obligation and
+#: so understated their Current Settle by $10 per assessment.
+#:
+#: It is a DEFAULT, not a fixed rate — BAB-504 assesses "the League-configured
+#: Skunk amount", so a league may supply another via
+#: `assess_weekly_skunk(contribution_cents=...)`.
+DEFAULT_SKUNK_CONTRIBUTION_CENTS = 1000
+
+#: BAB-504's stated season ceiling, carried so a test can assert the governed
+#: $140 accumulation without re-deriving it from the weekly figure.
+DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS = 14000
 
 
 class SkunkError(ValueError):
