@@ -1373,14 +1373,13 @@ class PoolBetPick(Base):
 # column is schema work; writing it is money-path work and is out of scope.
 
 class PoolDefinition(Base):
-    """One row per catalog definition — §C1. 94 active rows seeded from
-    spec/pool_catalog_rev1_1.json; seeding is a separate step and is NOT done
-    here. Columns mirror the JSON keys exactly: all 23, no more.
+    """One row per catalog definition — §C1. 80 active rows seeded from
+    spec/pool_catalog_rev1_3.json by betting.pool_catalog.seed_definitions.
 
     metric_expression and threshold_condition are stored as opaque nullable
-    strings. Storability is independent of executability — the RANK_EXTREMUM
-    grammar parses 65 of the 66 non-null metric_expressions, and no QUALIFIER
-    evaluator exists yet, but every catalog row persists losslessly regardless.
+    strings. Storability is independent of executability: a null
+    metric_expression on a non-CLOSED_* shape is correct and expected (POR
+    §3.4), and the authoritative rule for those rows is governed_definition.
 
     CHECK domains are taken from §C1's own pipe-delimited declarations, not from
     the values that happen to appear in Rev1.0. `mechanic` therefore admits
@@ -1665,8 +1664,12 @@ class PoolRotationCycle(Base):
     """One row per cycle open — §C3 verbatim: league_id, season, rotation_cycle,
     opened_week, eligible_set_size, opened_at. Satisfies POR §4's auditable-reset
     requirement ("one row recording league, season, cycle, opening week, and
-    eligible-set size at open"). Nothing in this commit writes it — the selector
-    SIGNALS a reset, it never performs one."""
+    eligible-set size at open").
+
+    WRITTEN BY betting.pool_slate._open_cycle, which records both the opening of
+    cycle 1 and every subsequent reset. The pure selector still only SIGNALS a
+    reset — it returns reset_required with the audit context and never performs
+    one — and pool_slate is the impure half that acts on that signal."""
     __tablename__ = "pool_rotation_cycle"
     __table_args__ = (
         UniqueConstraint("league_id", "season", "rotation_cycle",

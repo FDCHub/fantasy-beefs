@@ -266,6 +266,61 @@ def settle_each(db, *, league_id: int, week: int, source: DefinitionStatSource):
     return results
 
 
+def settle_each_isolated(db, *, league_id: int, week: int,
+                         source: DefinitionStatSource):
+    """settle_week's savepoint isolation, with a per-definition stat source.
+
+    Mirrors betting.pool_settlement.settle_week step for step — same savepoint
+    per instance, same `except PoolSettlementRefusedError` and nothing broader,
+    same re-read of the persisted `settled` column to decide the week container.
+    The ONLY difference is that the recorded fixture is pointed at each
+    instance's definition before the call, which production does not need
+    because a real adaptor answers for any definition.
+
+    Returns (settled, refused, container_settled).
+    """
+    from datetime import datetime, timezone
+
+    from betting.pool_errors import PoolSettlementRefusedError
+    from betting.pool_settlement import settle_pool_instance
+    from db.schema import PoolInstance, PoolPot
+
+    instances = (db.query(PoolInstance)
+                 .filter(PoolInstance.league_id == league_id,
+                         PoolInstance.week == week)
+                 .order_by(PoolInstance.slot).all())
+
+    settled, refused = [], []
+    for instance in instances:
+        savepoint = db.begin_nested()
+        try:
+            result = settle_pool_instance(
+                db, pool_instance_id=instance.id,
+                stat_source=source.for_definition(instance.definition_key))
+            savepoint.commit()
+            settled.append(result)
+        except PoolSettlementRefusedError as refusal:
+            savepoint.rollback()
+            refused.append(refusal)
+
+    db.flush()
+    remaining = (db.query(PoolInstance)
+                 .filter(PoolInstance.league_id == league_id,
+                         PoolInstance.week == week,
+                         PoolInstance.settled.is_(False)).count())
+    container_settled = False
+    if instances and remaining == 0:
+        pot = (db.query(PoolPot)
+               .filter(PoolPot.league_id == league_id,
+                       PoolPot.week == week).first())
+        if pot is not None:
+            pot.settled = True
+            pot.settled_at = datetime.now(timezone.utc)
+            container_settled = True
+    db.flush()
+    return settled, refused, container_settled
+
+
 def trial_balance_zero() -> bool:
     """The ledger's global invariant: every posting balances, so the sum of
     every entry ever written is exactly zero."""

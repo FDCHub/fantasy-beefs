@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from betting.exceptions import ScheduleNotReadyError
+from betting.pool_legacy_guard import assert_legacy_pool_path_allowed
 from db.schema import (
     League,
     Matchup,
@@ -217,6 +218,12 @@ def collect_weekly_entries(league_id: int, week: int, db: Session) -> PoolEntryR
     Idempotent guard: raises ValueError if already collected for this week.
     Carries forward any worst-beat rollover from prior settled pots.
     """
+    # S4-P2-1 — fail closed if this league is governed by the Rev1.3 common
+    # Pool engine. Runs BEFORE the week claim, the wallet debits and every
+    # ledger posting below, so a refused attempt writes nothing at all. See
+    # betting/pool_legacy_guard.py for why the guard is league-scoped.
+    assert_legacy_pool_path_allowed(db, league_id, week)
+
     cfg = db.query(PoolConfig).filter(PoolConfig.league_id == league_id).first()
     if not cfg:
         raise ValueError(f"Pool not configured for league {league_id}")
@@ -587,6 +594,10 @@ def settle_pool(league_id: int, week: int, db: Session) -> PoolSettlementResult:
     Settle all three pool pots for the week.
     Raises ValueError if entries not yet collected or already settled.
     """
+    # S4-P2-1 — see collect_weekly_entries above. Raises before the
+    # reconciliation guard, before _credit() and before any ledger posting.
+    assert_legacy_pool_path_allowed(db, league_id, week)
+
     cfg = db.query(PoolConfig).filter(PoolConfig.league_id == league_id).first()
     if not cfg:
         raise ValueError(f"Pool not configured for league {league_id}")

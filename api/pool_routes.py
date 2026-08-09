@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 from db.deps import get_db
 from auth.jwt_auth import assert_own_team, require_commissioner, get_current_gm, User
 from ledger.ledger import _dollars_to_cents
+from betting.pool_legacy_guard import (
+    LegacyPoolPathRefused,
+    assert_legacy_pool_path_allowed,
+)
 from betting.pool_engine import (
     setup_pool_config,
     get_pool_config,
@@ -88,8 +92,15 @@ def collect_entries(
     db:    Session = Depends(get_db),
     _comm: User    = Depends(require_commissioner),
 ) -> PoolEntryResult:
+    # S4-P2-1 — the mounted legacy economic surface. The guard also sits at the
+    # engine function's own entry point; it is repeated here so the refusal
+    # happens before the request ever reaches the legacy engine, and so the
+    # reachable HTTP path is closed at the boundary the route owns.
     try:
+        assert_legacy_pool_path_allowed(db, req.league_id, req.week)
         return collect_weekly_entries(league_id=req.league_id, week=req.week, db=db)
+    except LegacyPoolPathRefused as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -128,8 +139,12 @@ def settle_weekly_pool(
     db:    Session = Depends(get_db),
     _comm: User    = Depends(require_commissioner),
 ) -> PoolSettlementResult:
+    # S4-P2-1 — see collect_entries above.
     try:
+        assert_legacy_pool_path_allowed(db, req.league_id, req.week)
         return settle_pool(league_id=req.league_id, week=req.week, db=db)
+    except LegacyPoolPathRefused as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

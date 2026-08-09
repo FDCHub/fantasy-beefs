@@ -317,6 +317,24 @@ def collect_weekly_entries(db, *, league_id: int, week: int,
     pot.settled = False
     pot.total_pot_cents = total_cents
 
+    # S4-P2-5 — POR §6.1's freeze, stamped INSIDE this transaction.
+    #
+    # THE PLACEMENT IS THE WHOLE REQUIREMENT. Stamping here means the freeze
+    # commits with the collection that justifies it, so the two states cannot
+    # disagree: a collection that rolls back — insufficient funds, a lost race
+    # for the week claim, any refusal above — takes the freeze with it and the
+    # league stays configurable. Stamping from the caller after commit would
+    # leave a window in which the pots exist and the contribution is still
+    # editable; stamping before the postings would freeze a value no pot was
+    # ever funded at.
+    #
+    # freeze_weekly_entry writes only when `pool_weekly_entry_frozen_at` IS
+    # NULL, so week 2's collection does not restamp week 1's timestamp and a
+    # retried first collection reproduces the same frozen value. The value
+    # written is the resolved one — the commissioner's configured cents, or the
+    # governed default of 100 when none was configured.
+    freeze_weekly_entry(db, league_id=league_id, entry_cents=entry_cents)
+
     db.flush()
     return WeeklyCollectionResult(
         league_id=league_id, season=season, week=week,

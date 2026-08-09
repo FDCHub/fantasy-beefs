@@ -46,6 +46,7 @@ REASON_DUPLICATE_CLAIM = "DUPLICATE_CLAIM"
 REASON_INVALID_SUBJECT = "INVALID_SUBJECT"
 REASON_SELF_PICK_BLOCKED = "SELF_PICK_BLOCKED"
 REASON_NOT_IN_LEAGUE = "NOT_IN_LEAGUE"
+REASON_INSTANCE_SETTLED = "INSTANCE_SETTLED"
 
 
 @dataclass(frozen=True)
@@ -129,6 +130,24 @@ def submit_claim(db, *, pool_instance_id: int, team_id: int, subject_id: int,
     if instance is None:
         raise PoolClaimError(REASON_INSTANCE_NOT_FOUND,
                              f"pool instance {pool_instance_id} not found")
+
+    # S4-P2-4 — a settled occurrence accepts no further claims, checked BEFORE
+    # the lock so the refusal names the real reason.
+    #
+    # THE LOCK ALONE IS NOT THIS GUARD. They fail in different situations and
+    # neither implies the other: the lock closes at first kickoff, but an
+    # instance stays settleable for as long as the data takes to arrive, and a
+    # week can be settled long after its lock. Without this check a claim
+    # arriving after settlement would be accepted — moving no money, since a
+    # claim never does — and would then sit permanently unpayable against a
+    # distributed pot, contradicting the settlement's own recorded winner set.
+    if instance.settled:
+        raise PoolClaimError(
+            REASON_INSTANCE_SETTLED,
+            f"pool instance {pool_instance_id} settled at "
+            f"{instance.settled_at.isoformat() if instance.settled_at else '?'} "
+            f"({instance.settlement_classification}); it accepts no further "
+            f"claims.")
 
     league = db.query(League).filter(League.id == instance.league_id).first()
     team = db.query(Team).filter(Team.id == team_id).first()

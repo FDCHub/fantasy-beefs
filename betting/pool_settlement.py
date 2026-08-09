@@ -57,6 +57,7 @@ from betting.pool_census import (
     classify_pool,
     require_settleable,
 )
+from betting.pool_errors import PoolSettlementRefusedError
 from betting.pool_season_boundary import is_final_week
 from betting.pool_subjects import league_weekly_structure
 from ledger.ledger import balance_of, lock_funding_scopes, post as ledger_post
@@ -457,15 +458,55 @@ def _resolve_zero_claim(db, *, instance, spec, outcome: PoolOutcome,
     )
 
 
+@dataclass(frozen=True)
+class WeekSettlementResult:
+    """One week's settlement outcome, settled and refused reported separately.
+
+    A bare list of successes would hide the refusals, and POR §6.2 requires a
+    refusal be surfaced with its classification and census rather than being
+    absent from the result."""
+
+    league_id: int
+    week: int
+    settled: tuple[SettlementResult, ...]
+    refused: tuple[PoolSettlementRefusedError, ...]
+    week_container_settled: bool
+
+    @property
+    def all_settled(self) -> bool:
+        return not self.refused
+
+
 def settle_week(db, *, league_id: int, week: int, stat_source,
-                ) -> tuple[SettlementResult, ...]:
+                ) -> WeekSettlementResult:
     """Settle every occurrence of one week, then mark the week container.
 
-    Each instance settles in its own right; a refusal on one does NOT abort the
-    others, because POR §6.2's fail-closed states are per-instance data
-    conditions and holding three settleable Pools hostage to a fourth's missing
-    stat would be a policy the POR does not state. The week container is marked
-    settled only when every instance actually settled.
+    PER-INSTANCE ISOLATION BY SAVEPOINT (S4-P2-2). Each instance settles inside
+    its own `SAVEPOINT`. A governed fail-closed refusal rolls back ONLY that
+    savepoint, so a sibling that already posted keeps its posting and its
+    `settled` flag, and the refused instance leaves nothing behind.
+
+    WITHOUT THE SAVEPOINT THIS IS A REAL DEFECT, not a theoretical one. The
+    refusal is an exception; it propagates out of the loop; the caller's
+    `db.rollback()` — or an outer `with` block — discards the ENTIRE
+    transaction, including three siblings that settled correctly. Their ledger
+    postings vanish and their `settled` flags revert, so one team's missing
+    kicker stat would un-settle three unrelated Pools. POR §6.2 makes
+    fail-closed states a property of ONE instance's subject field; nothing in it
+    licenses holding three settleable Pools hostage to a fourth's data gap.
+
+    ONLY GOVERNED FAIL-CLOSED CLASSIFICATIONS ARE ISOLATED. The except clause
+    names `PoolSettlementRefusedError`, whose entire subtree is the four §6.2
+    classifications and nothing else. An IntegrityError, a programming error, a
+    lost connection or any other exception propagates untouched and aborts the
+    whole week — a blanket `except Exception` here would swallow the very
+    conditions the event-key constraint exists to raise, and would turn a
+    duplicate-payout attempt into a silent skip.
+
+    THE WEEK CONTAINER IS MARKED ONLY WHEN EVERY INSTANCE IS SETTLED, and the
+    check reads the persisted `settled` column rather than the length of the
+    results list — so a LATER retry of a previously refused instance completes
+    the week correctly (S4-P2-3), whether or not this call settled anything.
     """
     from db.schema import PoolInstance, PoolPot
 
@@ -474,16 +515,46 @@ def settle_week(db, *, league_id: int, week: int, stat_source,
                          PoolInstance.week == week)
                  .order_by(PoolInstance.slot)
                  .all())
-    results = [settle_pool_instance(db, pool_instance_id=i.id,
-                                    stat_source=stat_source)
-               for i in instances]
 
-    if instances and all(i.settled for i in instances):
+    settled: list[SettlementResult] = []
+    refused: list[PoolSettlementRefusedError] = []
+
+    for instance in instances:
+        savepoint = db.begin_nested()
+        try:
+            result = settle_pool_instance(db, pool_instance_id=instance.id,
+                                          stat_source=stat_source)
+            savepoint.commit()
+            settled.append(result)
+        except PoolSettlementRefusedError as refusal:
+            # Releases every write this instance made — there are none by
+            # construction, because require_settleable() raises before any
+            # posting — and leaves the siblings' work intact.
+            savepoint.rollback()
+            refused.append(refusal)
+
+    # Re-read from the database rather than trusting the loop: an instance
+    # settled by an EARLIER call is already true here, which is what lets a
+    # retry close the week.
+    db.flush()
+    remaining = (db.query(PoolInstance)
+                 .filter(PoolInstance.league_id == league_id,
+                         PoolInstance.week == week,
+                         PoolInstance.settled.is_(False))
+                 .count())
+
+    container_settled = False
+    if instances and remaining == 0:
         pot = (db.query(PoolPot)
                .filter(PoolPot.league_id == league_id, PoolPot.week == week)
                .first())
         if pot is not None:
             pot.settled = True
             pot.settled_at = datetime.now(timezone.utc)
+            container_settled = True
     db.flush()
-    return tuple(results)
+
+    return WeekSettlementResult(
+        league_id=league_id, week=week, settled=tuple(settled),
+        refused=tuple(refused), week_container_settled=container_settled,
+    )
