@@ -412,8 +412,10 @@ check(
   buildPanelContent('ledger').includes('is-gold'),
 );
 check(
+  // Ledger, not Action: Package 2 supplies Action's four figures, so the
+  // still-unresolved example moved to In Play and Current Settle.
   'unresolved figures are drawn as unresolved, not invented',
-  buildPanelContent('action').includes('is-pending'),
+  buildPanelContent('ledger').includes('is-pending'),
 );
 
 /* ── Rev4.2 locked global copy ──────────────────────────────────────────── */

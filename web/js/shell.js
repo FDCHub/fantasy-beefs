@@ -1,16 +1,18 @@
 /* ============================================================================
  * FantasyStakes — UI/UX Rev 4.2 · application shell wiring
- * Sprint 7 Package 1
+ * Sprint 7 Packages 1–2
  *
- * The only module in the foundation that touches the DOM. It renders the five
- * primary destinations, binds the persistent bottom navigation, and owns the
- * single shared pop-out. Tab CONTENT is not built here — later packages fill
- * each panel through `mountPanelContent`.
+ * The only module that touches the DOM directly. It renders the five primary
+ * destinations, binds the persistent bottom navigation, and owns the single
+ * shared pop-out.
  *
- * Nothing in this file reads, derives, or writes protocol state. Figures shown
- * in Package 1 are the POR's illustrative dataset, marked as such in
- * `demo-state.js`, and are exact integer cents right up to the moment they are
- * drawn.
+ * The pop-out is a STACK. Opening the Matchup Preview from inside the composer
+ * pushes a level rather than replacing one, so closing the preview returns to
+ * a composer that still holds the market, mode and stake the GM entered. The
+ * close X always dismisses the ACTIVE sheet: one level up if there is one,
+ * otherwise the overlay itself.
+ *
+ * Nothing in this file reads, derives, or writes protocol state.
  * ========================================================================== */
 
 import {
@@ -29,6 +31,9 @@ import {
 } from './components.js';
 
 import { ILLUSTRATIVE, LEAGUE_IDENTITY, MASTHEAD } from './demo-state.js';
+import { bindLeague, buildLeaguePanel } from './league.js';
+import { bindAction, buildActionPanel } from './action.js';
+import { beginSession, composerSheet, endSession } from './composer.js';
 
 /* ── Masthead ───────────────────────────────────────────────────────────── */
 
@@ -78,63 +83,19 @@ function renderPanelHosts(root) {
 }
 
 /**
- * Package 1 content for each destination.
- *
- * Each panel receives its POR-defined frame: the tab header, the shared
- * four-cell strip where the POR defines one, and the Credits disclaimer under
- * that strip. Figures the POR has not yet given are drawn as unresolved rather
- * than invented.
+ * Content for each destination. League and Action are built by their own
+ * modules; the remaining two carry their POR frame and land in later packages.
  *
  * @param {string} destinationId
  * @returns {string}
  */
 export function buildPanelContent(destinationId) {
+  if (destinationId === 'league') return buildLeaguePanel();
+  if (destinationId === 'action') return buildActionPanel();
+
   const composer = new PanelComposer(destinationId);
 
   switch (destinationId) {
-    case 'league':
-      composer.add(tabHeader({
-        title: LEAGUE_IDENTITY.name,
-        sub: LEAGUE_IDENTITY.week,
-        asideValue: ILLUSTRATIVE.kickoffCountdown,
-        asideLabel: 'FIRST KICKOFF',
-      }));
-      composer.addStrip({
-        id: 'fs-strip-league',
-        label: 'League summary',
-        cells: [
-          {
-            label: 'Net Winnings',
-            cents: ILLUSTRATIVE.netWinningsCents,
-            signed: true,
-            context: ILLUSTRATIVE.netWinningsRank,
-          },
-          { label: 'Wallet', cents: ILLUSTRATIVE.walletCents },
-          { label: 'Weekly Min Left', cents: ILLUSTRATIVE.weeklyMinLeftCents },
-          { label: 'Available', cents: ILLUSTRATIVE.availableCents, anchor: true },
-        ],
-      });
-      composer.addDisclaimer();
-      break;
-
-    case 'action':
-      composer.add(tabHeader({
-        title: 'Action',
-        sub: 'Your wagers',
-      }));
-      composer.addStrip({
-        id: 'fs-strip-action',
-        label: 'Action summary',
-        cells: [
-          { label: 'Season Bet Record', pending: true },
-          { label: 'Bet this week', pending: true },
-          { label: 'Upside left', pending: true },
-          { label: 'Downside', pending: true },
-        ],
-      });
-      composer.addDisclaimer();
-      break;
-
     case 'ledger':
       composer.add(tabHeader({
         title: 'Ledger',
@@ -155,10 +116,7 @@ export function buildPanelContent(destinationId) {
       break;
 
     case 'week':
-      composer.add(tabHeader({
-        title: 'The Week',
-        sub: LEAGUE_IDENTITY.name,
-      }));
+      composer.add(tabHeader({ title: 'The Week', sub: LEAGUE_IDENTITY.name }));
       // The POR carries a four-cell strip on The Week, but has not yet defined
       // its four cells. The component is ready; the cells are not invented here.
       break;
@@ -191,55 +149,110 @@ export function buildPanelContent(destinationId) {
 
 /* ── Pop-out / bottom sheet ─────────────────────────────────────────────── */
 
+/**
+ * Renderers, innermost last. Each is a function returning a sheet spec, so a
+ * level re-renders from current state whenever the stack returns to it.
+ * @type {Array<() => {title?: string, sub?: string, body?: string, onMount?: Function}>}
+ */
+const sheetStack = [];
+
 let lastFocusedBeforeSheet = null;
 
-/**
- * Open the shared bottom sheet.
- *
- * @param {{title?: string, sub?: string, body?: string}} spec
- */
-export function openSheet(spec) {
+const sheetApi = {
+  push: pushSheet,
+  pop: popSheet,
+  close: closeSheet,
+  rerender: renderTopSheet,
+};
+
+function renderTopSheet() {
   const overlay = document.getElementById('fs-overlay');
   const host = document.getElementById('fs-sheet');
-  if (!overlay || !host) return;
+  if (!overlay || !host || sheetStack.length === 0) return;
 
-  lastFocusedBeforeSheet = document.activeElement;
+  const spec = sheetStack[sheetStack.length - 1]();
   host.innerHTML = sheet(spec);
+  host.scrollTop = 0;
   overlay.classList.add('is-open');
   overlay.setAttribute('aria-hidden', 'false');
+
+  if (typeof spec.onMount === 'function') spec.onMount(host, sheetApi);
 
   const closeBtn = host.querySelector('[data-fs-close]');
   if (closeBtn) closeBtn.focus();
 }
 
-/** Close the shared bottom sheet. */
+/**
+ * Push a level onto the sheet stack.
+ *
+ * @param {(() => object)|object} renderer a spec, or a function returning one
+ */
+export function pushSheet(renderer) {
+  const fn = typeof renderer === 'function' ? renderer : () => renderer;
+  if (sheetStack.length === 0) lastFocusedBeforeSheet = document.activeElement;
+  sheetStack.push(fn);
+  renderTopSheet();
+}
+
+/** Dismiss the active level, revealing the one beneath or closing the sheet. */
+export function popSheet() {
+  sheetStack.pop();
+  if (sheetStack.length === 0) closeSheet();
+  else renderTopSheet();
+}
+
+/**
+ * Open a single-level sheet, replacing anything already open.
+ *
+ * @param {(() => object)|object} spec
+ */
+export function openSheet(spec) {
+  sheetStack.length = 0;
+  pushSheet(spec);
+}
+
+/** Close the sheet entirely and discard any composer session. */
 export function closeSheet() {
   const overlay = document.getElementById('fs-overlay');
+  sheetStack.length = 0;
+  endSession();
   if (!overlay) return;
   overlay.classList.remove('is-open');
   overlay.setAttribute('aria-hidden', 'true');
-  if (lastFocusedBeforeSheet && lastFocusedBeforeSheet.focus) {
-    lastFocusedBeforeSheet.focus();
-  }
+  if (lastFocusedBeforeSheet && lastFocusedBeforeSheet.focus) lastFocusedBeforeSheet.focus();
   lastFocusedBeforeSheet = null;
+}
+
+/**
+ * Open the unified Versus composer.
+ *
+ * @param {{matchupId: string, marketId?: string|null}} spec
+ */
+export function openComposer(spec) {
+  beginSession({
+    matchupId: spec.matchupId,
+    marketId: spec.marketId ?? null,
+    availableCents: ILLUSTRATIVE.availableCents,
+  });
+  openSheet(() => composerSheet());
 }
 
 function bindSheet() {
   const overlay = document.getElementById('fs-overlay');
   if (!overlay) return;
 
-  // Scrim tap closes; a tap inside the sheet does not.
+  // Scrim tap dismisses the active level; a tap inside the sheet does not.
   overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) closeSheet();
+    if (event.target === overlay) popSheet();
   });
 
   // One delegated handler serves every close control, present and future.
   overlay.addEventListener('click', (event) => {
-    if (event.target.closest && event.target.closest('[data-fs-close]')) closeSheet();
+    if (event.target.closest && event.target.closest('[data-fs-close]')) popSheet();
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && overlay.classList.contains('is-open')) closeSheet();
+    if (event.key === 'Escape' && overlay.classList.contains('is-open')) popSheet();
   });
 }
 
@@ -276,7 +289,7 @@ function bindNavigation() {
   });
 }
 
-/* ── Package 1 interactions defined by the POR ──────────────────────────── */
+/* ── Interactions defined by the POR ────────────────────────────────────── */
 
 function bindCurrentSettle() {
   const strip = document.getElementById('fs-strip-ledger');
@@ -328,6 +341,12 @@ export function mount() {
     if (panel) panel.innerHTML = buildPanelContent(d.id);
   });
 
+  const leaguePanel = document.getElementById('panel-league');
+  if (leaguePanel) bindLeague(leaguePanel, { openComposer, openSheet });
+
+  const actionPanel = document.getElementById('panel-action');
+  if (actionPanel) bindAction(actionPanel, { openSheet });
+
   bindNavigation();
   bindSheet();
   bindCurrentSettle();
@@ -349,7 +368,9 @@ export function mountPanelContent(destinationId, html) {
 
 if (typeof document !== 'undefined') {
   // Exposed for later packages and for manual inspection in the browser.
-  window.FantasyStakes = { goTo, openSheet, closeSheet, mountPanelContent };
+  window.FantasyStakes = {
+    goTo, openSheet, pushSheet, popSheet, closeSheet, openComposer, mountPanelContent,
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount);
