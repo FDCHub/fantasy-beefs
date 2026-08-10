@@ -390,6 +390,30 @@ class CapabilitiesOut(BaseModel):
     commissioner_league_ids:  list[int]
     has_team:                 bool
 
+    # ── Acting context (S8-P4B) ──────────────────────────────────────────────
+    #
+    # THE LEAGUE THE SESSION ACTS IN, DERIVED SERVER-SIDE. Added because the
+    # browser had no authoritative way to answer "which league am I in?" — it
+    # knew only `has_team` — and the first binding attempt papered over that
+    # with a hard-coded League 1. P2's rule is that the real league being acted
+    # upon must be identified authoritatively, and that applies to reads as
+    # much as to writes: a client-supplied league is not authority, and an
+    # inferred one is a guess wearing authority's clothes.
+    #
+    # Resolved from the user's own team row, so it cannot be influenced by the
+    # caller. `null` is a real answer — an account with no team has no acting
+    # league — and the loader treats it as "no context", not as League 1.
+    acting_team_id:           Optional[int]
+    acting_league_id:         Optional[int]
+    acting_team_name:         Optional[str]
+    acting_league_name:       Optional[str]
+
+    #: True when the account's acting context cannot be resolved to exactly one
+    #: league. MVP has no multi-league GM product, so this is reported rather
+    #: than guessed at — a surface that picked one would be showing somebody
+    #: else's money.
+    acting_context_ambiguous: bool
+
 
 class IdentityOut(UserOut):
     """/auth/me — the authoritative browser identity read.
@@ -408,13 +432,42 @@ def _identity_out(u: User, db: Session) -> IdentityOut:
                      .order_by(LeagueCommissioner.league_id)
                      .all()
     ]
+    # The acting team is the user's own team row; the acting league is that
+    # team's league. One hop, no inference, and nothing the caller can supply.
+    team = (db.query(Team).filter(Team.id == u.team_id).first()
+            if u.team_id is not None else None)
+    acting_league_id = team.league_id if team is not None else None
+
+    league_name = None
+    if acting_league_id is not None:
+        league_row = (db.query(League)
+                      .filter(League.id == acting_league_id).first())
+        league_name = league_row.name if league_row is not None else None
+
+    # A commissioner with no team still has an unambiguous context when they
+    # commission exactly one league. Ambiguity is: no team AND not exactly one
+    # commissioned league — which no MVP account should have, and which is
+    # reported rather than resolved by picking.
+    if acting_league_id is None and len(league_ids) == 1:
+        acting_league_id = league_ids[0]
+        league_row = (db.query(League)
+                      .filter(League.id == acting_league_id).first())
+        league_name = league_row.name if league_row is not None else None
+
+    ambiguous = acting_league_id is None and len(league_ids) != 1
+
     return IdentityOut(
         **_user_out(u).model_dump(),
         capabilities=CapabilitiesOut(
-            authenticated           = True,
-            is_commissioner         = u.role == "commissioner",
-            commissioner_league_ids = league_ids,
-            has_team                = u.team_id is not None,
+            authenticated            = True,
+            is_commissioner          = u.role == "commissioner",
+            commissioner_league_ids  = league_ids,
+            has_team                 = u.team_id is not None,
+            acting_team_id           = team.id if team is not None else None,
+            acting_league_id         = acting_league_id,
+            acting_team_name         = team.team_name if team is not None else None,
+            acting_league_name       = league_name,
+            acting_context_ambiguous = ambiguous,
         ),
     )
 
