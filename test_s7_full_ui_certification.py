@@ -569,15 +569,22 @@ _assert("the league-wide read-model seam names its route and is not yet bound",
         SEAMS.get("positions", {}).get("endpoint")
         == "GET /league/{league_id}/ledger/positions"
         and "NOT YET BOUND" in str(SEAMS.get("positions", {}).get("status")))
-_assert("the trial-balance seam names its route and is not yet bound",
-        SEAMS.get("trial", {}).get("endpoint") == "GET /ledger/integrity"
-        and "NOT YET BOUND" in str(SEAMS.get("trial", {}).get("status")))
-# The Sprint 8 ruling, pinned: exposing the invariant must not have quietly
-# turned it into a league-scoped one, and it must not claim to prove that this
-# league balances.
+# S8-P3R: the global invariant is BACKEND-ONLY. Not a deficiency — an
+# authority boundary, because no platform-operator tier exists to hold an HTTP
+# surface for it. The commissioner's question is a LEAGUE question and has its
+# own answer, which the seam must name so P4 binds that and not this.
+_assert("the trial-balance seam declares no endpoint and says it is backend-only",
+        SEAMS.get("trial", {}).get("endpoint") is None
+        and "BACKEND-ONLY" in str(SEAMS.get("trial", {}).get("status")))
 _assert("the trial balance stayed GLOBAL and says what it does not prove",
         "global" in str(SEAMS.get("trial", {}).get("scope")).lower()
         and "league" in str(SEAMS.get("trial", {}).get("doesNotProve")).lower())
+_assert("and it points the commissioner at League Reconciliation instead",
+        SEAMS.get("trial", {}).get("commissionerSurface")
+        == "GET /league/{league_id}/ledger/reconciliation")
+_assert("no route anywhere in the API serves the global invariant",
+        not re.search(r'@app\.get\("[^"]*(integrity|trial[-_]balance)',
+                      _read_root("api", "main.py")))
 _assert("the four seams are tracked independently, not as one blocker",
         len({json.dumps(SEAMS.get(k), sort_keys=True)
              for k in ("settings", "auth", "positions", "trial")}) == 4)

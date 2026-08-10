@@ -110,18 +110,30 @@ export const LEAGUE_POSITIONS_SEAM = Object.freeze({
  * computing a substitute for it.
  */
 export const TRIAL_BALANCE_SEAM = Object.freeze({
-  // S8-P3 exposed the invariant, and deliberately did NOT make it
-  // league-scoped: a league-scoped trial balance would be a new accounting
-  // derivation wearing an existing invariant's name. The league-scoped
-  // question has its own, separate answer — the reconciliation route — and the
-  // two must never be presented as one claim.
-  status: 'GLOBAL INVARIANT EXPOSED · NOT YET BOUND',
+  // AN AUTHORITY BOUNDARY, NOT A GAP. S8-P3 briefly exposed this invariant over
+  // HTTP; S8-P3R withdrew it. The reasoning is worth keeping because it is the
+  // whole point:
+  //
+  // The invariant is GLOBAL — it sums every entry in every league. Serving it
+  // therefore needs platform authority, and this system's authority model tops
+  // out at league commissioner: the seeding convention gives a league's
+  // commissioner the global role string, so any route guarded by that role is
+  // reachable by an ordinary commissioner. Rather than weaken the authority to
+  // make the surface visible, or invent a league-scoped substitute that would
+  // be a new derivation wearing an existing invariant's name, the invariant
+  // stays where it can be held safely: in the backend.
+  //
+  // The commissioner is not left without an answer. "Does my league's money add
+  // up?" is a LEAGUE question and has a league-scoped answer — the
+  // reconciliation route below. Global conservation is an operator concern,
+  // exercised in certification, and the two were never the same claim.
+  status: 'GLOBAL INVARIANT EXISTS · BACKEND-ONLY',
   computation: 'ledger/ledger.py · trial_balance()',
-  endpoint: 'GET /ledger/integrity',
-  scope: 'global across all leagues, and stays that way',
-  payload: 'scope, balanced, imbalance_cents, note — no league or account detail',
-  doesNotProve: 'that THIS league balances; that is the reconciliation route',
-  needs: 'a GLOBAL LEDGER INTEGRITY row bound to it, labelled as global',
+  scope: 'global',
+  endpoint: null,
+  reason: 'current MVP authority model has no distinct platform-operator tier',
+  doesNotProve: 'individual league reconciliation',
+  commissionerSurface: 'GET /league/{league_id}/ledger/reconciliation',
 });
 
 /* ── Per-GM positions ───────────────────────────────────────────────────────*/

@@ -38,7 +38,12 @@ from db.schema import (
 )
 
 from db.deps import get_db
-from ledger.ledger import balance_of, _balance_of_in_session, _to_cents, trial_balance
+# trial_balance is deliberately NOT imported here. S8-P3R keeps the global
+# conservation invariant backend-only: it has no HTTP surface in the MVP,
+# because the authority model has no platform-operator tier that could safely
+# hold one. Importing it into the API layer would be the first step back
+# towards exposing it by accident.
+from ledger.ledger import balance_of, _balance_of_in_session, _to_cents
 from odds.monte_carlo import OddsResult, run as mc_run
 from betting.bet_engine import (
     BetResult,
@@ -3565,82 +3570,21 @@ def ledger_reconciliation(
     LEAGUE-SCOPED, AND NOT THE TRIAL BALANCE. This aggregates the same GM
     positions the route above returns and reports whether the league's own
     arithmetic closes. It is a different question from the ledger's global
-    conservation invariant, which remains global and is served — for platform
-    operators only — by GET /ledger/integrity.
+    conservation invariant, which remains global and — per S8-P3R — has NO HTTP
+    surface at all: the authority model has no platform-operator tier above
+    league commissioner, so there is nobody who could hold such a route safely.
+    `ledger.trial_balance()` stays a backend/operator invariant, exercised in
+    certification rather than served.
+
+    THIS IS THE COMMISSIONER-FACING ACCOUNTING SURFACE. A commissioner asking
+    "does the money add up?" is asking about THEIR league, and this answers
+    exactly that, from the same positions their GM cards are drawn from.
     """
     try:
         report = league_reconciliation(db, league_id=league_id)
     except LedgerReadModelError as e:
         raise _read_model_error(e)
     return LeagueReconciliationOut(**report.as_dict())
-
-
-# ── Global ledger integrity (S8-P3) ──────────────────────────────────────────
-
-class LedgerIntegrityOut(BaseModel):
-    """Deliberately the smallest useful answer.
-
-    `imbalance_cents` is a single global number that is 0 in a healthy system.
-    It identifies no league, no team, no account and no transaction, so it
-    discloses nothing about anyone's position while still being the one figure
-    an operator needs when the answer is "not balanced".
-    """
-    scope:           str
-    balanced:        bool
-    imbalance_cents: int
-    note:            str
-
-
-@app.get("/ledger/integrity", response_model=LedgerIntegrityOut)
-def ledger_integrity(_comm: User = Depends(require_commissioner)):
-    """The ledger's global double-entry conservation check.
-
-    GLOBAL, AND NOT LEAGUE-SCOPED — the Sprint 8 ruling, kept. `trial_balance()`
-    sums every entry across every account and door; there is no league-scoped
-    version of it and P3 does not invent one. A league-scoped variant would be a
-    NEW accounting derivation wearing the name of an existing invariant, and the
-    two would be confused precisely when it mattered.
-
-    PLATFORM AUTHORITY, DELIBERATELY. This is the one route in the API where
-    `require_commissioner` — the global role — is the CORRECT guard rather than
-    a leftover: the question is about the whole ledger, so the authority must be
-    platform-wide. It is the strongest tier this system has, and the same guard
-    that protects /auth/promote.
-
-    A KNOWN LIMIT OF THE ROLE MODEL, RECORDED RATHER THAN PAPERED OVER. There
-    is no tier above league commissioner. The seeding convention gives a
-    league's commissioner the global `commissioner` role string, so in practice
-    a league commissioner does reach this route. S8-P2 made that role confer
-    nothing over any LEAGUE, but it did not create a platform-operator tier,
-    and P3 is not the place to invent one.
-
-    That is acceptable here because of what the response contains, not because
-    the authority is sufficient in the abstract: a scope, a boolean and one
-    global integer. No league, team, account or transaction appears in it, so a
-    league commissioner reading this learns that the global ledger conserves
-    and nothing at all about any other league's money. Authority was not
-    weakened to make the route visible — the PAYLOAD was kept small enough that
-    the tier the role model can express is enough for it.
-
-    IF THIS PAYLOAD EVER GROWS — per-account balances, per-league sums, entry
-    detail — that reasoning collapses and the route needs a real platform tier
-    first. The P3 suite pins the response key set for exactly that reason.
-
-    WHAT IT DOES NOT SAY. A green result does NOT mean any particular league
-    balances — it means the global ledger conserves. The league-scoped question
-    is /league/{league_id}/ledger/reconciliation, and the two must not be
-    presented as the same claim. The `note` carries that distinction into the
-    response so a UI cannot lose it on the way to the screen.
-    """
-    imbalance = trial_balance()
-    return LedgerIntegrityOut(
-        scope="global",
-        balanced=imbalance == 0,
-        imbalance_cents=imbalance,
-        note=("Global double-entry conservation across every league. This does "
-              "NOT assert that any individual league reconciles — see "
-              "/league/{league_id}/ledger/reconciliation for that."),
-    )
 
 
 # ── Decision Engine health routes ─────────────────────────────────────────────

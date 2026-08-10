@@ -550,11 +550,18 @@ _assert("no league-scoped trial-balance route was invented",
         not re.search(r'@app\.get\("[^"]*\{league_id\}[^"]*trial', MAIN_PY)
         and not re.search(r'@app\.get\("[^"]*\{league_id\}[^"]*integrity',
                           MAIN_PY))
-_assert("the seam names the global route it will bind to",
-        trial_seam.get("endpoint") == "GET /ledger/integrity",
-        str(trial_seam.get("endpoint")))
+# S8-P3R: backend-only. No endpoint, and the seam says why.
+_assert("the seam declares no endpoint for the global invariant",
+        trial_seam.get("endpoint") is None, str(trial_seam.get("endpoint")))
+_assert("it records the invariant as existing and backend-only",
+        "BACKEND-ONLY" in str(trial_seam.get("status")))
 _assert("and records that the invariant remains global",
         "global" in str(trial_seam.get("scope")).lower())
+_assert("it names the authority reason rather than implying a deficiency",
+        "platform-operator tier" in str(trial_seam.get("reason")))
+_assert("and points the commissioner at League Reconciliation",
+        trial_seam.get("commissionerSurface")
+        == "GET /league/{league_id}/ledger/reconciliation")
 _assert("the surface does not claim to have checked it",
         integrity.get("verified") is False and "NOT VERIFIED HERE" in PANEL)
 

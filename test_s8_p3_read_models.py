@@ -508,70 +508,95 @@ _assert("cookie and Bearer reach the same authorization outcome",
         mismatch == [], str(mismatch))
 
 
-# ── 8 · Global integrity: the ruling, preserved ──────────────────────────────
+# ── 8 · Global integrity stays BACKEND-ONLY ──────────────────────────────────
 
-_section("8 · Global ledger integrity stays global")
+_section("8 · The global trial balance is backend-only, by design")
 
+# S8-P3R. P3 briefly served this invariant at GET /ledger/integrity, guarded by
+# the global commissioner role. That role is the strongest tier this system
+# has — and it is also the tier an ordinary league commissioner holds, because
+# the seeding convention grants it. The governing instruction is that when the
+# authority model cannot express platform-operator authority, the invariant
+# stays backend-only rather than being served under an authority that does not
+# fit it. The route is gone.
+#
+# This is an authority boundary, not a missing feature. Everything below
+# asserts the boundary holds from BOTH sides: the invariant still exists and
+# still works for backend and certification callers, and no HTTP caller of any
+# privilege can reach it.
+
+_assert("trial_balance() still exists and is callable from backend code",
+        callable(trial_balance))
+_assert("it still answers the global conservation question",
+        trial_balance() == 0, f"imbalance {trial_balance()}")
+
+# GLOBAL means global: it takes no league argument and accepts none.
+import inspect  # noqa: E402
+
+_assert("it remains global — it takes no league parameter",
+        list(inspect.signature(trial_balance).parameters) == [],
+        str(list(inspect.signature(trial_balance).parameters)))
+
+# No HTTP surface, at any spelling, for any caller.
+_INTEGRITY_SPELLINGS = ("/ledger/integrity", "/ledger/trial-balance",
+                        "/ledger/trial_balance", "/integrity",
+                        f"/league/{A['league']}/ledger/integrity",
+                        f"/league/{A['league']}/ledger/trial-balance")
+
+_registered = {getattr(r, "path", "") for r in app.routes}
+_assert("no route in the application serves the global invariant",
+        all(sp not in _registered for sp in _INTEGRITY_SPELLINGS),
+        str(sorted(_registered & set(_INTEGRITY_SPELLINGS))))
+
+# Proven by request too, and specifically for the most privileged caller the
+# role model can produce — if anyone could reach it, it would be this account.
 platform = _cookie(PLATFORM)
-integrity = platform.get("/ledger/integrity")
-_assert("a platform operator can read the integrity result",
-        integrity.status_code == 200, f"status {integrity.status_code}")
+_unreachable = {sp: platform.get(sp).status_code for sp in _INTEGRITY_SPELLINGS}
+_assert("even a holder of the global role cannot obtain it over HTTP",
+        all(code in (404, 405) for code in _unreachable.values()),
+        str(_unreachable))
 
-payload = integrity.json()
-_assert("it reports the GLOBAL scope, not a league",
-        payload["scope"] == "global", str(payload.get("scope")))
-_assert("it agrees with ledger.trial_balance()",
-        payload["imbalance_cents"] == trial_balance())
-_assert("the fixture's postings conserve", payload["balanced"] is True,
-        f"imbalance {payload['imbalance_cents']}")
+_assert("and neither can an ordinary league commissioner",
+        all(comm_a.get(sp).status_code in (404, 405)
+            for sp in _INTEGRITY_SPELLINGS))
 
-_assert("it discloses no league, team, account or transaction detail",
-        set(payload) == {"scope", "balanced", "imbalance_cents", "note"},
-        str(sorted(payload)))
-_assert("it says explicitly that it does not prove any league balances",
-        "NOT" in payload["note"] and "league" in payload["note"].lower())
-
-_assert("an ordinary GM cannot read it",
-        gm_a.get("/ledger/integrity").status_code == 403,
-        f"status {gm_a.get('/ledger/integrity').status_code}")
-_assert("an unauthenticated caller cannot read it",
-        _client().get("/ledger/integrity").status_code == 401)
-
-# KNOWN LIMITATION, ASSERTED RATHER THAN HIDDEN.
-#
-# The route is guarded by the strongest authority this system has — the global
-# `commissioner` role, the same guard that protects /auth/promote. But the role
-# model has no tier ABOVE league commissioner: the seeding convention gives a
-# league's commissioner that same global role string, so in practice a league
-# commissioner reaches this route.
-#
-# That is acceptable ONLY because of what the response contains: a scope, a
-# boolean and one global integer. No league, team, account or transaction
-# appears in it — asserted directly above — so a league commissioner learns
-# that the global ledger conserves and nothing whatsoever about any other
-# league's money. Authority was not weakened to make the route visible; the
-# PAYLOAD was made small enough that the tier the role model can express is
-# sufficient for it.
-#
-# Pinned here so that if the payload ever grows, this assertion is the thing
-# that has to be argued with.
-_assert("a league commissioner holding the global role does reach it — a "
-        "known limit of the role model, safe only because the payload carries "
-        "no league state",
-        _cookie(A_COMM).get("/ledger/integrity").status_code == 200)
-_assert("and what they receive still contains no league state",
-        set(_cookie(A_COMM).get("/ledger/integrity").json())
-        == {"scope", "balanced", "imbalance_cents", "note"})
-
-# No league-scoped trial balance was invented.
-_assert("no league-scoped trial-balance route exists",
-        not any("trial" in r.path or
-                (r.path.endswith("/integrity") and "{league_id}" in r.path)
-                for r in app.routes),
-        str([r.path for r in app.routes if "integrity" in r.path]))
-_assert("the reconciliation route does not claim to be a trial balance",
+# The boundary must not have been evaded by inventing a league-scoped version.
+_assert("no league-scoped trial-balance derivation was invented",
         "trial_balance" not in pathlib.Path(
             "reports/ledger_read_model.py").read_text(encoding="utf-8"))
+_assert("the API layer no longer imports trial_balance at all",
+        "trial_balance" not in [
+            n.name
+            for node in ast.walk(ast.parse(api_src))
+            if isinstance(node, ast.ImportFrom)
+            for n in node.names],
+        "api/main.py still imports the global invariant")
+
+# The commissioner is not left without an answer: the LEAGUE question has a
+# league-scoped surface, and it still works.
+_assert("League Reconciliation remains available to the league's commissioner",
+        comm_a.get(RECON_A).status_code == 200)
+_assert("and it answers the league question, reporting its own league",
+        comm_a.get(RECON_A).json()["league_id"] == A["league"])
+
+# The seam must SAY all of this, so P4 binds the right surface and does not go
+# looking for a global integrity row to display.
+_seam_src = pathlib.Path("web/js/commissioner-model.js").read_text(encoding="utf-8")
+_seam = _seam_src[_seam_src.index("export const TRIAL_BALANCE_SEAM"):]
+_seam = _seam[:_seam.index("});") + 3]
+
+_assert("the seam records the invariant as existing and backend-only",
+        "GLOBAL INVARIANT EXISTS · BACKEND-ONLY" in _seam)
+_assert("it names the computation", "trial_balance()" in _seam)
+_assert("it declares no endpoint", "endpoint: null" in _seam)
+_assert("it states the scope is global", "scope: 'global'" in _seam)
+_assert("it gives the authority reason rather than implying a deficiency",
+        "no distinct platform-operator tier" in _seam)
+_assert("it states what the invariant does not prove",
+        "doesNotProve: 'individual league reconciliation'" in _seam)
+_assert("and it points the commissioner at League Reconciliation",
+        "commissionerSurface: 'GET /league/{league_id}/ledger/reconciliation'"
+        in _seam)
 
 
 # ── 9 · No cross-league leakage ──────────────────────────────────────────────

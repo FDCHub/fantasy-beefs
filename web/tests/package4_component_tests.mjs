@@ -368,16 +368,22 @@ check('skunk receivables are already inside the GM adjustments',
 
 check('the integrity invariant is stated but not claimed as checked',
   league.integrity.verified === false && /trial balance is zero/i.test(league.integrity.invariant));
-// GOVERNED REVISION, S8-P3. The invariant is now exposed — but the Sprint 8
-// ruling was that it stays GLOBAL, so the assertion checks that too: a
-// league-scoped trial balance would be a new derivation wearing an existing
-// invariant's name.
-check('the trial-balance seam names the computation and its route',
+// GOVERNED REVISION, S8-P3R. The invariant is BACKEND-ONLY: no HTTP surface,
+// because the authority model has no platform-operator tier that could hold
+// one. That is an authority boundary, not a gap — and the seam must point the
+// commissioner at the league-scoped surface that does answer their question.
+check('the trial-balance seam names the computation and declares no route',
   TRIAL_BALANCE_SEAM.computation.includes('trial_balance()')
-  && TRIAL_BALANCE_SEAM.endpoint === 'GET /ledger/integrity');
-check('the invariant stayed global and says what it does not prove',
-  /global/i.test(TRIAL_BALANCE_SEAM.scope)
+  && TRIAL_BALANCE_SEAM.endpoint === null);
+check('it records the invariant as existing and backend-only',
+  /BACKEND-ONLY/.test(TRIAL_BALANCE_SEAM.status)
+  && /global/i.test(TRIAL_BALANCE_SEAM.scope));
+check('it gives the authority reason and what the invariant does not prove',
+  /platform-operator tier/.test(TRIAL_BALANCE_SEAM.reason)
   && /league/i.test(TRIAL_BALANCE_SEAM.doesNotProve));
+check('and it points the commissioner at League Reconciliation',
+  TRIAL_BALANCE_SEAM.commissionerSurface
+    === 'GET /league/{league_id}/ledger/reconciliation');
 check('the surface reports the invariant as not verified here',
   panel.includes('NOT VERIFIED HERE'));
 check('the reconciliation is not a second Current Settle formula',
