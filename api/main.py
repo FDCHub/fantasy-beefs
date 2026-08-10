@@ -5,8 +5,9 @@ import sys
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -71,6 +72,13 @@ from auth.allocation_gate import (
     is_league_commissioner,
     require_league_commissioner,
     set_allocation_enforcement_active,
+)
+from auth.session import (
+    CSRF_HEADER,
+    clear_browser_session,
+    csrf_failure_reason,
+    issue_browser_session,
+    new_csrf_token,
 )
 from economy.top_off import (
     approve_top_off,
@@ -169,12 +177,61 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# ── CORS (S8-P1) ──────────────────────────────────────────────────────────────
+#
+# WAS allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]. That is
+# incompatible with a cookie credential in two ways. Practically: a browser
+# refuses a wildcard origin on a credentialed request, so the setting could not
+# work as written. Substantively: it advertised that any site could read every
+# API response, and now that the browser attaches a session automatically, a
+# permissive CORS policy is what would turn "any site can call the API" into
+# "any site can call the API AS THE SIGNED-IN GM".
+#
+# The Rev 4.2 app is served by THIS process at /app, so the browser app needs
+# no CORS at all — a same-origin request never consults this policy. The
+# default is therefore the empty list: cross-origin browser access is off
+# unless an operator names the origins.
+#
+# FS_ALLOWED_ORIGINS is a comma-separated list of EXACT origins. No wildcard
+# and no regex: a deployment that needs a partner origin should have to name it.
+_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv("FS_ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", CSRF_HEADER],
 )
+
+
+# ── CSRF gate (S8-P1) ─────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def _csrf_gate(request: Request, call_next):
+    """Refuse any unsafe request that presents a session cookie without a
+    matching CSRF token.
+
+    MIDDLEWARE, NOT A DEPENDENCY, AND THAT IS THE POINT. A dependency protects
+    the routes that remember to declare it. This app has over a hundred routes
+    and Sprint 8 adds more; one added later without the dependency would be
+    silently unprotected, and the failure would be invisible because the route
+    would work perfectly. Here the default is protected and a bypass has to be
+    written deliberately.
+
+    It runs BEFORE routing, so an unknown path, a wrong method and a validation
+    error are covered on the same terms as a real route.
+
+    The decision itself lives in auth/session.py — this is the enforcement
+    point, not the policy.
+    """
+    reason = csrf_failure_reason(request)
+    if reason is not None:
+        return JSONResponse(status_code=403, content={"detail": reason})
+    return await call_next(request)
+
 
 app.mount("/tools", StaticFiles(directory="tools"), name="tools")
 
@@ -263,9 +320,116 @@ def auth_login(
     )
 
 
-@app.get("/auth/me", response_model=UserOut)
-def auth_me(current_user: User = Depends(get_current_gm)):
-    return _user_out(current_user)
+# ── Browser session (S8-P1) ───────────────────────────────────────────────────
+
+class SessionLoginRequest(BaseModel):
+    """JSON, not form-encoded.
+
+    /auth/login keeps the OAuth2 form shape because that is the contract API
+    clients and /docs already use. A browser fetch sends JSON, and a form POST
+    is exactly the shape a cross-site CSRF attempt takes, so the browser path
+    does not accept one.
+    """
+    email:    str
+    password: str
+
+
+class CapabilitiesOut(BaseModel):
+    """What the acting user may do, decided HERE.
+
+    THE FRONTEND MAY NOT COMPUTE THIS. It exists so presentation can follow
+    authority instead of guessing at it — a disabled button is a courtesy, not
+    a control. Every one of these flags is re-derived server-side by the
+    route's own dependency before anything is written, so a client that lies to
+    itself about them gets a 403, not an effect.
+    """
+    authenticated:            bool
+    is_commissioner:          bool
+    commissioner_league_ids:  list[int]
+    has_team:                 bool
+
+
+class IdentityOut(UserOut):
+    """/auth/me — the authoritative browser identity read.
+
+    Subclasses UserOut rather than replacing it, so every field the Sprint 7
+    contract exposed is still present and the addition breaks no caller.
+    """
+    capabilities: CapabilitiesOut
+
+
+def _identity_out(u: User, db: Session) -> IdentityOut:
+    league_ids = [
+        row.league_id
+        for row in db.query(LeagueCommissioner)
+                     .filter(LeagueCommissioner.user_id == u.id)
+                     .order_by(LeagueCommissioner.league_id)
+                     .all()
+    ]
+    return IdentityOut(
+        **_user_out(u).model_dump(),
+        capabilities=CapabilitiesOut(
+            authenticated           = True,
+            is_commissioner         = u.role == "commissioner",
+            commissioner_league_ids = league_ids,
+            has_team                = u.team_id is not None,
+        ),
+    )
+
+
+@app.post("/auth/session", response_model=IdentityOut)
+def auth_session_create(
+    req:      SessionLoginRequest,
+    response: Response,
+    db:       Session = Depends(get_db),
+):
+    """Browser login. The token goes in a cookie and NOWHERE else.
+
+    Deliberately NOT returning the JWT. /auth/login returns one because an API
+    client has to hold it; a browser must not, and the surest way to keep a
+    token out of script-readable storage is to never hand it to script. The
+    response body is identity only.
+    """
+    user = authenticate_user(req.email, req.password, db)
+
+    csrf  = new_csrf_token()
+    token = create_access_token(user, csrf=csrf)
+    issue_browser_session(response, token, csrf)
+
+    return _identity_out(user, db)
+
+
+@app.delete("/auth/session", status_code=204)
+def auth_session_delete(_current: User = Depends(get_current_gm)) -> Response:
+    """Browser logout — expire both cookies.
+
+    Authentication is required so that logout is an action the session takes on
+    itself. It is also an unsafe method presenting the session cookie, so the
+    CSRF gate applies: a cross-site page cannot log a GM out to bait them into
+    re-entering credentials somewhere else.
+
+    Note what this does NOT claim. The JWT stays valid until it expires; there
+    is no server-side revocation list, so a token captured before logout is not
+    killed by it. Clearing the cookie ends the BROWSER's possession of the
+    credential, which is what a logout control means to a GM sharing a device.
+    Real revocation needs a token store and is not P1 scope.
+    """
+    response = Response(status_code=204)
+    clear_browser_session(response)
+    return response
+
+
+@app.get("/auth/me", response_model=IdentityOut)
+def auth_me(
+    current_user: User = Depends(get_current_gm),
+    db:           Session = Depends(get_db),
+):
+    """The authoritative identity and capability read for the browser app.
+
+    Answers for whichever credential was presented, so an API client sees the
+    same identity the browser does.
+    """
+    return _identity_out(current_user, db)
 
 
 @app.post("/auth/promote", response_model=UserOut)

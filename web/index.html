@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="./styles/tabs.css">
 <link rel="stylesheet" href="./styles/ledger.css">
 <link rel="stylesheet" href="./styles/rules.css">
+<link rel="stylesheet" href="./styles/auth.css">
 </head>
 <body>
 
@@ -26,6 +27,11 @@
 <div class="fs-app" id="fs-app">
 
   <header class="fs-mast" id="fs-mast"></header>
+
+  <!-- Sign-in gate (Sprint 8 Package 1). Occupies the panel region when no GM
+       is signed in. The shell EMPTIES as well as hides the panels and the
+       navigation while it shows, so a signed-out page holds no league state. -->
+  <section class="fs-gate" id="fs-gate" hidden></section>
 
   <main class="fs-panels" id="fs-panels"></main>
 

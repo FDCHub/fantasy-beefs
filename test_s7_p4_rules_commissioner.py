@@ -446,8 +446,20 @@ _assert("the server-side authority model exists",
 _assert("authority is re-checked under lock before commit",
         "was revoked before this rejection could" in TOP_OFF_PY
         or "authority for league" in TOP_OFF_PY)
-_assert("the seam names the missing piece as the session, not the authority model",
-        "NO SESSION IDENTITY" in str(auth.get("status")))
+# GOVERNED REVISION, S8-P1. This asserted that the seam named the SESSION as
+# the missing piece. Package 1 supplied the session, so the old wording would
+# now be a false statement about the build, and the assertion correctly refuses
+# it. What the seam must still do is distinguish the half that closed from the
+# half that did not: an undifferentiated "solved" would claim a working
+# decision path that does not exist, and an undifferentiated "missing" would
+# understate what shipped.
+_assert("the seam records that the session half is closed",
+        "SESSION IDENTITY EXISTS" in str(auth.get("status")))
+_assert("the seam names what is still missing as the decision commands",
+        "NOT YET BOUND" in str(auth.get("status"))
+        and "decision routes" in str(auth.get("missing")))
+_assert("and it cites where the session came from",
+        "S8-P1" in str(auth.get("sessionIdentity")))
 _assert("the commissioner UI is declared illustrative",
         "illustrative" in str(auth.get("uiState")))
 _assert("every decision control renders disabled",

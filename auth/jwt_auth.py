@@ -1,12 +1,32 @@
 """
 JWT authentication for Fantasy Beefs.
 
+TWO WAYS TO PRESENT A CREDENTIAL, ONE PLACE THAT RESOLVES IT (S8-P1).
+
+  API client   POST /auth/login    → JWT in the response body
+                                   → Authorization: Bearer <token>
+  Browser      POST /auth/session  → JWT in a Secure HttpOnly cookie
+                                   → cookie attached automatically; the page
+                                     never sees the token
+
+Both arrive at the SAME get_current_user(), so every downstream guard —
+require_commissioner, assert_own_team, assert_own_wallet — is enforced
+identically whichever credential was used. Adding the cookie added a way to
+PRESENT authority, not a way to hold it.
+
+Bearer takes precedence when both are present, because an Authorization header
+is always deliberate while a cookie is ambient. Note that precedence does not
+weaken CSRF: auth/session.py refuses any unsafe request that merely PRESENTS a
+session cookie without a matching token, whatever else it carries.
+
+Cookie custody, cookie attributes and the CSRF token live in auth/session.py.
+
 Flow
-  1. POST /auth/login  →  verify bcrypt password  →  sign HS256 JWT
+  1. verify bcrypt password → sign HS256 JWT
                           claims: sub (user_id), team_id, role, exp
-  2. Subsequent requests: Authorization: Bearer <token>
-  3. get_current_user() dependency decodes + validates token → User row
-  4. require_commissioner() wraps get_current_user and enforces role
+                          browser sessions additionally carry csrf and ctx
+  2. get_current_user() dependency decodes + validates → User row
+  3. require_commissioner() wraps get_current_user and enforces role
 
 User ↔ Team coupling
   • One User per team (team_id unique).
@@ -23,7 +43,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -42,7 +62,12 @@ TOKEN_EXPIRE_HOURS  = 8
 SEED_PASSWORD       = "beefs2024"   # printed at seed time; change before real deployment
 
 pwd_context   = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+# auto_error=False so an absent Authorization header falls through to the
+# cookie path instead of 401-ing inside the security scheme. The scheme stays
+# registered, so /docs still offers the Bearer flow. Absence is no longer an
+# error here; it is an error only once BOTH credentials have been tried.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 # ── Password helpers ──────────────────────────────────────────────────────────
@@ -57,7 +82,15 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ── Token helpers ─────────────────────────────────────────────────────────────
 
-def create_access_token(user: User) -> str:
+def create_access_token(user: User, *, csrf: str | None = None) -> str:
+    """Sign a token for `user`.
+
+    Passing `csrf` mints a BROWSER SESSION token: it carries the CSRF token as
+    a claim and marks its context, which is what lets auth/session.py tell a
+    session cookie apart from an API token that has been planted in one. Every
+    token in the system is signed here, so there is one place to audit what a
+    credential can claim.
+    """
     payload = {
         "sub":     str(user.id),
         "email":   user.email,
@@ -65,30 +98,73 @@ def create_access_token(user: User) -> str:
         "role":    user.role,
         "exp":     datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
     }
+    if csrf is not None:
+        from auth.session import CONTEXT_BROWSER, CONTEXT_CLAIM, CSRF_CLAIM
+        payload[CSRF_CLAIM] = csrf
+        payload[CONTEXT_CLAIM] = CONTEXT_BROWSER
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def _decode_token(token: str) -> dict:
+def decode_token_quietly(token: str) -> dict | None:
+    """Claims, or None for any invalid token.
+
+    The non-raising twin of `_decode_token`, for callers that must inspect a
+    credential without committing to refusing the request — the CSRF gate needs
+    to read a cookie's claims while leaving the 401 decision to the route's own
+    dependency.
+    """
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
+        return None
+
+
+def _decode_token(token: str) -> dict:
+    claims = decode_token_quietly(token)
+    if claims is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    return claims
 
 
 # ── FastAPI dependencies ──────────────────────────────────────────────────────
 
+_UNAUTHENTICATED = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Not authenticated",
+    headers={"WWW-Authenticate": "Bearer"},
+)
+
+
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db:    Session = Depends(get_db),
+    request: Request,
+    token:   str | None = Depends(oauth2_scheme),
+    db:      Session = Depends(get_db),
 ) -> User:
-    payload = _decode_token(token)
+    """Resolve the acting user from either supported credential.
+
+    Bearer first — an Authorization header is deliberate, a cookie is ambient.
+    A cookie is accepted only if `read_session_claims` vouches for it, which
+    means it must be a genuine browser-session token rather than any valid JWT
+    that happens to be sitting in the cookie jar.
+    """
+    from auth.session import read_session_claims
+
+    payload: dict | None = None
+    if token:
+        payload = _decode_token(token)      # raises 401 on a bad Bearer token
+    else:
+        payload = read_session_claims(request)
+
+    if payload is None:
+        raise _UNAUTHENTICATED
+
     try:
         user_id = int(payload["sub"])
-    except (KeyError, ValueError):
+    except (KeyError, TypeError, ValueError):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Malformed token")
 
     user = db.query(User).filter(User.id == user_id, User.is_active == 1).first()

@@ -1,0 +1,171 @@
+/* ============================================================================
+ * FantasyStakes — sign-in gate and acting identity
+ * Sprint 8 Package 1
+ *
+ * NO NEW VISUAL DECISIONS. Every colour, size, space and radius below is a
+ * token the Rev 4.2 POR already fixed. The gate is a new surface, not a new
+ * look: it reuses the masthead lockup, the `.fs-btn--gold` action, the token
+ * palette and the app's 480px frame, so a GM who has seen one screen of this
+ * application recognises this one.
+ *
+ * The gate occupies the panel region and scrolls if a small viewport and a
+ * software keyboard leave it shorter than its content — a sign-in form that
+ * puts its own submit button under the keyboard is a form nobody can submit.
+ * ========================================================================== */
+
+/* ── Gate ─────────────────────────────────────────────────────────────────── */
+
+.fs-gate {
+  flex: 1 1 auto;
+  min-height: 0;              /* same rule as .fs-panels — must shrink */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: var(--fs-space-6) var(--fs-gutter);
+}
+
+.fs-gate[hidden] { display: none; }
+
+.fs-gate__inner {
+  width: 100%;
+  max-width: 320px;
+}
+
+.fs-gate__lockup {
+  text-align: center;
+  margin-bottom: var(--fs-space-6);
+}
+
+.fs-gate__tagline {
+  margin-top: var(--fs-space-2);
+  font-size: var(--fs-size-fine);
+  letter-spacing: var(--fs-track-lockup);
+  color: var(--g1);
+}
+
+.fs-gate__form {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-card);
+  padding: var(--fs-space-6);
+}
+
+.fs-gate__label {
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--g1);
+  margin-bottom: var(--fs-space-2);
+}
+
+.fs-gate__input {
+  font-family: var(--fs-font-ui);
+  /* 16px prevents iOS Safari zooming the viewport on focus. Below that it
+   * zooms, the layout jumps, and the fix is not a CSS one. */
+  font-size: 16px;
+  color: var(--bone);
+  background: var(--tile);
+  border: var(--fs-border-edge);
+  border-radius: var(--fs-radius-cell);
+  padding: var(--fs-space-4);
+  margin-bottom: var(--fs-space-5);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.fs-gate__input:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.fs-gate__error {
+  margin: 0 0 var(--fs-space-4);
+  font-size: var(--fs-size-micro);
+  line-height: 1.4;
+  color: var(--red);
+  min-height: 0;
+}
+
+/* Empty alert regions must not reserve space or draw a gap on a clean form. */
+.fs-gate__error:empty { display: none; }
+
+.fs-gate__submit {
+  width: 100%;
+  padding: var(--fs-space-4);
+  font-size: var(--fs-size-body);
+}
+
+.fs-gate__submit[disabled] { opacity: .6; }
+
+.fs-gate__note {
+  margin: var(--fs-space-5) 0 0;
+  text-align: center;
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--g2);
+}
+
+/* ── Acting identity, in the masthead ─────────────────────────────────────── */
+
+/* Sits INSIDE .fs-mast__meta, under the revision and author lines, so it adds
+ * no width to the masthead row. The masthead's height is set by the taller
+ * column — the lockup — and this row stays well inside it, which is what keeps
+ * the panel the height the Sprint 7 geometry suite certified. See the note in
+ * shell.js renderMasthead(). */
+.fs-ident {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;   /* right-aligned with the lines above it */
+  gap: var(--fs-space-3);
+  /* No top margin, and the control below is 24px. Revision + author + this row
+   * comes to 54px, which stays under the 56px lockup beside it, so the
+   * masthead keeps the exact height Sprint 7 certified and the panel keeps the
+   * height the wager cards need at 375x667. Every pixel added here comes off
+   * the panel. */
+}
+
+.fs-ident__who {
+  font-size: var(--fs-size-micro);
+  color: var(--g1);
+  /* Bounded so a long team name cannot widen the meta column and start
+   * squeezing the lockup again by another route. */
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-ident__badge {
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--gold);
+  background: var(--goldbg);
+  border: 1px solid var(--gold);
+  border-radius: var(--fs-radius-cell);
+  padding: 1px var(--fs-space-2);
+  white-space: nowrap;
+}
+
+.fs-ident__out {
+  font-family: var(--fs-font-ui);
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--g1);
+  background: transparent;
+  border: var(--fs-border-edge);
+  border-radius: var(--fs-radius-cell);
+  padding: var(--fs-space-1) var(--fs-space-4);
+  /* 24px is the tallest this can be without the meta column overtaking the
+   * lockup and shortening every panel. It sits on the scale the design system
+   * already uses for secondary controls (components.css uses 22px, ledger.css
+   * 32px); the horizontal padding carries the rest of the target. */
+  min-height: 24px;
+  cursor: pointer;
+}
+
+.fs-ident__out[disabled] { opacity: .6; }

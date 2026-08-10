@@ -27,6 +27,7 @@ USAGE:
 
 from __future__ import annotations
 
+import atexit
 import glob
 import json
 import os
@@ -84,6 +85,39 @@ def _strip_comments(source: str) -> str:
 
 
 _NODE = shutil.which("node")
+
+
+# ── The application under certification (S8-P1) ──────────────────────────────
+#
+# WHY THIS APPEARS IN A SPRINT 7 SUITE. Until S8-P1 the browser suites were
+# served by the harness's own static file server, which was exactly right for
+# certifying markup. P1 changed what the shell IS: it now asks /auth/me who is
+# acting before it draws anything, and a static server answers 404 to that. The
+# Sprint 7 assertions did not become wrong — the thing they measure stopped
+# being reachable without a server and a session.
+#
+# So the suites now run against the REAL application on a disposable database,
+# signed in as a seeded GM. That is a strictly STRONGER certification than the
+# one it replaces: every Sprint 7 claim is now measured on the build a GM will
+# actually load, rather than on the same modules served by a stub.
+#
+# The FS_TEST_* variables are read by web/tests/browser-harness.mjs. They are
+# set in os.environ rather than passed to each subprocess call because this file
+# runs Python package suites which themselves run node suites, and the
+# environment is inherited by that whole chain.
+from test_support_app_server import (  # noqa: E402
+    GM_EMAIL as _CERT_GM_EMAIL,
+    PASSWORD as _CERT_PASSWORD,
+    AppServer,
+)
+
+_APP_SERVER = AppServer().start()
+atexit.register(_APP_SERVER.stop)
+
+os.environ["FS_TEST_ORIGIN"] = _APP_SERVER.origin
+os.environ["FS_TEST_AUTH_EMAIL"] = _CERT_GM_EMAIL
+os.environ["FS_TEST_AUTH_PASSWORD"] = _CERT_PASSWORD
+
 
 APP_JS = sorted(glob.glob(os.path.join(WEB, "js", "**", "*.js"), recursive=True))
 APP_SOURCE = "\n".join(open(p, encoding="utf-8").read() for p in APP_JS)
@@ -356,16 +390,91 @@ _assert("pending holds are excluded from settlement, not counted as liabilities"
 
 
 # ── 4 · Protocol safety ──────────────────────────────────────────────────────
+#
+# GOVERNED REVISION, S8-P1. Sprint 7 certified that the application made NO
+# network call, submitted NO form and wrote NO storage. Those were the right
+# invariants for a build with no session: an application that could not reach
+# the server could not misuse it, and the assertions said so in the simplest
+# checkable way.
+#
+# P1 makes all three false BY DESIGN. The application must now call the server,
+# must submit a sign-in form, and must be reachable through a cookie. Leaving
+# the assertions in place would fail a correct build; deleting them would
+# retire the protection they provided and leave nothing in its place.
+#
+# So each is replaced by the invariant it was standing in for. Sprint 7 did not
+# actually care that `fetch(` was absent — it cared that no surface could reach
+# the protocol unaccountably. That property is still checkable, and the
+# replacements below are strictly more specific about it than counting the
+# absence of a keyword ever was.
+#
+#   WAS  no network call is made from any app module
+#   NOW  exactly one module makes network calls, and every other module
+#        reaches the server through it
+#
+#   WAS  no form is submitted
+#   NOW  the only form in the application is the sign-in gate
+#
+#   WAS  no storage is written
+#   NOW  no credential enters script-readable persistent storage: no
+#        localStorage, no sessionStorage, and document.cookie is READ (for the
+#        CSRF token) and never written
+#
+# The behavioural half of these claims — that the cookie is genuinely
+# unreadable, that a request bypassing the client seam is refused — cannot be
+# established by reading source, and is certified in a real browser by
+# test_s8_p1_browser.py.
 
-print("\nNothing in the shipped application can post, mutate or issue")
+print("\nThe application reaches the protocol through one authenticated door")
 
-_assert("no network call is made from any app module",
-        not re.search(r"\bfetch\s*\(|XMLHttpRequest|navigator\.sendBeacon", APP_RENDERED_SOURCE))
-_assert("no form is submitted", not re.search(r"\.submit\s*\(|<form", APP_RENDERED_SOURCE + INDEX))
+_NETWORK_CALL = r"\bfetch\s*\(|XMLHttpRequest|navigator\.sendBeacon"
+
+_NETWORK_MODULES = sorted(
+    os.path.basename(p) for p in APP_JS
+    if re.search(_NETWORK_CALL, _strip_comments(open(p, encoding="utf-8").read()))
+)
+_assert("exactly one module in the application makes network calls",
+        _NETWORK_MODULES == ["session.js"], str(_NETWORK_MODULES))
+
+# Every other module must therefore go through it. This is what makes "no
+# illustrative UI path can bypass the authenticated client" a fact about the
+# code rather than a convention someone has to remember.
+_CALLERS = sorted(
+    os.path.basename(p) for p in APP_JS
+    if re.search(r"from ['\"]\./session\.js['\"]",
+                 _strip_comments(open(p, encoding="utf-8").read()))
+)
+_assert("the modules that need the server import that one door",
+        set(_CALLERS) >= {"auth-view.js", "shell.js"}, str(_CALLERS))
+
 _assert("no websocket or event-source is opened",
         not re.search(r"new WebSocket|EventSource", APP_RENDERED_SOURCE))
-_assert("no storage is written",
-        not re.search(r"localStorage|sessionStorage|document\.cookie", APP_RENDERED_SOURCE))
+
+_FORMS = re.findall(r"<form\b[^>]*", APP_RENDERED_SOURCE + INDEX)
+_assert("the only form in the application is the sign-in gate",
+        len(_FORMS) == 1 and "fs-gate-form" in _FORMS[0], str(_FORMS))
+
+print("\nNo browser credential enters script-readable storage")
+
+_assert("no module writes localStorage",
+        not re.search(r"localStorage\s*(\.|\[)", APP_RENDERED_SOURCE), "localStorage is used")
+_assert("no module writes sessionStorage",
+        not re.search(r"sessionStorage\s*(\.|\[)", APP_RENDERED_SOURCE), "sessionStorage is used")
+
+# document.cookie appears exactly once, in a READ. The session token is
+# HttpOnly and unreachable; what is read is the CSRF token, which authenticates
+# nothing on its own. An assignment would be a different matter entirely, so
+# the check is specifically for one.
+_assert("no module WRITES document.cookie",
+        not re.search(r"document\.cookie\s*=", APP_RENDERED_SOURCE))
+_assert("document.cookie is read only in the one network module",
+        sorted(os.path.basename(p) for p in APP_JS
+               if "document.cookie" in _strip_comments(open(p, encoding="utf-8").read()))
+        == ["session.js"])
+_assert("no token or password is held in a module-scoped variable",
+        not re.search(r"(?i)\b(let|var|const)\s+\w*(token|password|jwt)\w*\s*=\s*['\"]",
+                      APP_RENDERED_SOURCE))
+
 _assert("no protocol module is imported into the web app",
         not re.search(r"from ['\"](\.\./)+(economy|ledger|beefs|betting|wallet|api|payments)/",
                       APP_SOURCE))
@@ -439,8 +548,16 @@ _assert("the Top-Off command seam is still declared",
         SEAMS.get("topoffCommand", {}).get("endpoint") == "POST /league/{league_id}/top-offs")
 _assert("the configuration-command seam is still declared",
         SEAMS.get("settings", {}).get("endpoint") is None)
-_assert("the session-identity seam is still declared",
-        "NO SESSION IDENTITY" in str(SEAMS.get("auth", {}).get("status")))
+# S8-P1 narrowed this one. The session half is closed — the app has an
+# authenticated identity — while the decision-command half is not, and the
+# assertion now checks exactly that split rather than the old blanket claim.
+# Reporting the seam as closed because authentication landed would claim a
+# working decision path that does not exist.
+_assert("the session-identity half of the commissioner seam is closed",
+        "SESSION IDENTITY EXISTS" in str(SEAMS.get("auth", {}).get("status")))
+_assert("and the decision-command half is still declared open",
+        "NOT YET BOUND" in str(SEAMS.get("auth", {}).get("status"))
+        and bool(SEAMS.get("auth", {}).get("missing")))
 _assert("the league-wide read-model seam is still declared",
         SEAMS.get("positions", {}).get("endpoint") is None)
 _assert("the trial-balance seam is still declared",

@@ -28,23 +28,36 @@ import { GM_POSITIONS, TOPOFF_REQUESTS, TOPOFF_STATES } from './data/commissione
 /* ── Seams ──────────────────────────────────────────────────────────────────*/
 
 /**
- * The acting-commissioner seam.
+ * The acting-commissioner seam. NARROWED BY S8-P1, NOT CLOSED.
  *
  * The authority model is fully built and enforced server-side:
  * `auth/jwt_auth.py` resolves the caller, `is_league_commissioner()` checks
  * authority for the specific league, and every decision route re-checks it
- * under lock before committing. What is missing is upstream of all of that —
- * the web app has no authenticated session, so there is no acting commissioner
- * for a decision to be attributed to.
+ * under lock before committing.
  *
- * A decision posts real Credits and writes a disclosure event. Firing one from
- * illustrative browser state would attribute an irreversible ledger posting to
- * nobody, so the controls on this tab are demonstrative and say so.
+ * WHAT PACKAGE 1 SUPPLIED. The web app now has an authenticated session.
+ * `/auth/me` names the acting user and reports, server-side, whether they hold
+ * commissioner authority and for which leagues. The half of this seam that
+ * read "there is no acting commissioner for a decision to be attributed to" is
+ * therefore answered: there is one, and the server named them.
+ *
+ * WHAT REMAINS, AND WHY THE CONTROLS ARE STILL INERT. A decision posts real
+ * Credits and writes a disclosure event. Knowing WHO is acting does not by
+ * itself make it safe to fire one from a tab whose twelve GM positions are
+ * still illustrative — the commissioner would be deciding about figures that
+ * were never read. Binding the decision commands belongs in the same package
+ * as binding the data they act on, so that a control and the number it acts on
+ * become real together rather than one sprint apart.
+ *
+ * That is why this is narrowed rather than closed. Reporting it solved because
+ * authentication landed would claim a working decision path that does not
+ * exist.
  */
 export const COMMISSIONER_AUTH_SEAM = Object.freeze({
-  status: 'AUTHORITY MODEL EXISTS · NO SESSION IDENTITY IN THE WEB APP',
+  status: 'SESSION IDENTITY EXISTS · DECISION COMMANDS NOT YET BOUND',
   serverAuthority: 'auth/jwt_auth.py · is_league_commissioner() · re-checked under lock',
-  missing: 'an authenticated session that names the acting commissioner',
+  sessionIdentity: 'S8-P1 — HttpOnly cookie session; /auth/me names the acting user',
+  missing: 'the Top-Off decision routes bound to the acting commissioner, over read league positions',
   uiState: 'illustrative — no decision is transmitted',
 });
 

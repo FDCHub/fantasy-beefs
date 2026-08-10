@@ -75,6 +75,31 @@ export function findChrome() {
   return candidates.find((p) => existsSync(p)) || null;
 }
 
+/**
+ * A `--name=value` argument, falling back to an environment variable (Sprint 8).
+ *
+ * Read HERE rather than in each suite deliberately. Sprint 8 changed where the
+ * suites are served from and whether a session is needed first; that is a
+ * property of the harness, not of what any suite asserts. Centralising it
+ * meant the five Sprint 7 suites required no edit at all, so their assertions
+ * are recognisably the ones that were certified at 6be0f50.
+ *
+ * THE ENVIRONMENT FALLBACK IS WHAT MAKES THAT POSSIBLE. The certification
+ * entry point runs Python package suites which run node suites, so an argv
+ * value would have to be threaded through three layers of subprocess by hand —
+ * three chances to forget one, each of which would silently fall back to the
+ * static server and fail confusingly. An environment variable is inherited by
+ * the whole chain.
+ *
+ * @param {string} name kebab-case, e.g. 'auth-email'
+ * @returns {string|null}
+ */
+function harnessOption(name) {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  if (hit) return hit.slice(name.length + 3);
+  return process.env[`FS_TEST_${name.toUpperCase().replace(/-/g, '_')}`] || null;
+}
+
 function startServer() {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -137,11 +162,29 @@ async function connectCdp(port) {
  * Serve `web/`, open it in a phone-emulated headless Chrome, and hand the body
  * an `evaluate` function. Everything is torn down afterwards, pass or fail.
  *
- * @param {{port?: number, path?: string, settleMs?: number}} options
+ * `origin` (Sprint 8) points the page at a server the CALLER already runs,
+ * instead of this module's static one. The Sprint 7 suites certify static
+ * markup, for which a file server is exactly right; a session suite cannot use
+ * one, because cookies, same-origin fetch and CSRF only mean anything relative
+ * to a real origin that also answers the API. Passing `origin` skips the
+ * static server rather than starting one nothing will talk to.
+ *
+ * @param {{port?: number, path?: string, settleMs?: number, origin?: string}} options
  * @param {(ctx: {evaluate: (expression: string) => Promise<any>}) => Promise<void>} body
  */
 export async function withPage(options, body) {
-  const { port = 9333, path = '/index.html', settleMs = 900 } = options || {};
+  const { port = 9333, settleMs = 900 } = options || {};
+
+  // --origin wins over the option, so one driver can point every suite at the
+  // application it started without each suite knowing that happened.
+  const origin = harnessOption('origin') || options?.origin || null;
+
+  // Served from the app's /app mount when there is an origin, from the static
+  // server's root when there is not. A suite may still name its own path.
+  const path = options?.path || (origin ? '/app/index.html' : '/index.html');
+
+  const authEmail = harnessOption('auth-email');
+  const authPassword = harnessOption('auth-password');
 
   const chrome = findChrome();
   if (!chrome) {
@@ -150,8 +193,8 @@ export async function withPage(options, body) {
     process.exit(1);
   }
 
-  const server = await startServer();
-  const { port: httpPort } = server.address();
+  const server = origin ? null : await startServer();
+  const pageOrigin = origin || `http://127.0.0.1:${server.address().port}`;
   const profile = await mkdtemp(join(tmpdir(), 'fs-e2e-'));
 
   const browser = spawn(chrome, [
@@ -176,7 +219,42 @@ export async function withPage(options, body) {
       deviceScaleFactor: 3,
       mobile: true,
     });
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}${path}` });
+    // ── Establish a session BEFORE the application first mounts ────────────
+    //
+    // Since S8-P1 the shell asks who is acting before it draws anything, so a
+    // suite that certifies the application has to arrive already signed in.
+    // The sign-in is done from a page on the TARGET ORIGIN, because that is
+    // the only way the browser will accept and keep the cookie — setting it
+    // over CDP would test the harness's idea of a cookie rather than the
+    // server's.
+    if (authEmail && authPassword) {
+      await cdp.send('Page.navigate', { url: `${pageOrigin}/app/index.html` });
+      await new Promise((r) => setTimeout(r, settleMs));
+
+      const signIn = await cdp.send('Runtime.evaluate', {
+        expression: `(async () => {
+          const res = await fetch('/auth/session', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: ${JSON.stringify(authEmail)},
+              password: ${JSON.stringify(authPassword)},
+            }),
+          });
+          return res.status;
+        })()`,
+        returnByValue: true,
+        awaitPromise: true,
+      });
+
+      if (signIn.result?.value !== 200) {
+        throw new Error(
+          `harness sign-in failed for ${authEmail} (status ${signIn.result?.value})`);
+      }
+    }
+
+    await cdp.send('Page.navigate', { url: `${pageOrigin}${path}` });
     await new Promise((r) => setTimeout(r, settleMs));
 
     const evaluate = async (expression) => {
@@ -205,15 +283,48 @@ export async function withPage(options, body) {
       await cdp.send('Emulation.setDeviceMetricsOverride', {
         width, height, deviceScaleFactor: 3, mobile: true,
       });
-      await cdp.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}${path}` });
+      await cdp.send('Page.navigate', { url: `${pageOrigin}${path}` });
       await new Promise((r) => setTimeout(r, settleMs));
     };
 
-    await body({ evaluate, setViewport });
+    /**
+     * Reload the page and wait for it to settle (Sprint 8).
+     *
+     * Driven from the DEBUGGER, not from an in-page `location.reload()`. An
+     * in-page reload destroys the execution context that the pending
+     * `Runtime.evaluate` belongs to, so the call that triggered it rejects
+     * with "Inspected target navigated or closed" — the navigation succeeds
+     * and the suite dies anyway. Navigating over CDP keeps the harness on the
+     * outside of the thing it is driving.
+     */
+    const reload = async () => {
+      await cdp.send('Page.navigate', { url: `${pageOrigin}${path}` });
+      await new Promise((r) => setTimeout(r, settleMs));
+    };
+
+    await body({ evaluate, setViewport, reload });
   } finally {
     if (cdp) cdp.close();
     browser.kill();
-    server.close();
+
+    // WAIT FOR THE BROWSER TO ACTUALLY EXIT (Sprint 8). `kill()` only asks.
+    // Chrome's renderer children outlive the parent's acknowledgement by some
+    // tens of milliseconds, and until they are gone the profile directory is
+    // still being written to. Deleting it underneath them left processes and
+    // lock files behind, and the certification entry point — which runs five
+    // of these back to back — intermittently had a later Chrome die at startup
+    // with no output at all, which reads as "0 PASS / 0 FAIL" rather than as
+    // anything diagnosable.
+    //
+    // Bounded, and a timeout is not fatal: a browser that will not exit is
+    // worth neither hanging the suite nor failing a run whose assertions have
+    // already been made.
+    await new Promise((done) => {
+      const timer = setTimeout(done, 3000);
+      browser.once('exit', () => { clearTimeout(timer); done(); });
+    });
+
+    if (server) server.close();
     await rm(profile, { recursive: true, force: true }).catch(() => {});
   }
 }

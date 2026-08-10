@@ -396,8 +396,12 @@ export function topOffSheet() {
       '<div class="fs-note">Approved Top-Offs raise Total Virtual Stakes, which ' +
       'lowers Current Settle by the same amount. A Top-Off is an advance, not ' +
       'winnings.</div>' +
+      // S8-P1: the session seam HAS landed, so "when the session seam lands"
+      // now describes something that already happened. What this control still
+      // waits on is the binding package, not authentication.
       `<div class="fs-note">Read-only in this build. The governed command is ` +
       `<code>${escapeHtml(TOPOFF_COMMAND_SEAM.endpoint)}</code>; this surface binds ` +
-      'to it when the session seam lands, and implements no top-off path of its own.</div>',
+      'to it when the Ledger above is read from the ledger, and implements no ' +
+      'top-off path of its own.</div>',
   };
 }

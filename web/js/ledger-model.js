@@ -83,15 +83,20 @@ export const LEDGER_READ_SEAM = Object.freeze({
  * Unlike the read-model, the COMMAND API already exists and is governed:
  * `POST /league/{league_id}/top-offs` takes an amount alone, resolves team and
  * requester from the authenticated user, and runs the §10 approval flow. The
- * web app has no session binding yet, so the control is presented read-only and
- * points at that endpoint. Implementing a parallel top-off path in the frontend
- * is expressly out of bounds — this constant exists so the wiring target is
- * unambiguous when the session seam lands.
+ * web app now HAS a session (S8-P1), so the authority half is settled: the app
+ * can name the acting user, and the endpoint resolves team and requester from
+ * them. What is still missing is the Ledger READ — the figures on this tab are
+ * illustrative, and a request raised against them would be a real advance
+ * sized by a number nobody read. Implementing a parallel top-off path in the
+ * frontend remains expressly out of bounds; this constant exists so the wiring
+ * target is unambiguous when the binding lands.
  */
 export const TOPOFF_COMMAND_SEAM = Object.freeze({
   status: 'COMMAND API EXISTS · NOT YET BOUND',
   endpoint: 'POST /league/{league_id}/top-offs',
   authority: 'league membership, resolved from the authenticated user',
+  sessionIdentity: 'S8-P1 — the acting user is now known to the app',
+  blockedOn: 'the Ledger read-model binding, not authentication',
   uiState: 'read-only',
 });
 

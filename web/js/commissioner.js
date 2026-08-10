@@ -13,10 +13,12 @@
  * older ordering put the conclusion before its evidence.
  *
  * NOTHING HERE DECIDES ANYTHING. The Top-Off decision routes exist, are
- * governed, and post real Credits with a disclosure event on approval. The web
- * app has no authenticated session, so there is no acting commissioner for such
- * a posting to be attributed to. The controls are therefore demonstrative and
- * say so in the surface itself, not only in a comment — see
+ * governed, and post real Credits with a disclosure event on approval. S8-P1
+ * gave the app an authenticated session, so an acting commissioner CAN now be
+ * named — but the twelve positions this tab draws are still illustrative, and
+ * deciding a real posting against figures that were never read would be worse
+ * than deciding one attributed to nobody. The controls are therefore still
+ * demonstrative and say so in the surface itself, not only in a comment — see
  * `COMMISSIONER_AUTH_SEAM`.
  * ========================================================================== */
 
@@ -136,9 +138,15 @@ export function requestSheet(request) {
         `${label}</button>`
       )).join('') +
       '</div>' +
+      // S8-P1 CORRECTION. This said the build had no authenticated session
+      // naming the acting commissioner. It has one now, so that sentence
+      // became false — and false in the worst possible place: a warning
+      // explaining to a commissioner why a control is disabled. The reason it
+      // is STILL disabled is the other half of the seam.
       '<div class="fs-note is-warn">Demonstration only — no decision is ' +
       'transmitted. Approving posts Credits and writes a disclosure event, and ' +
-      'this build has no authenticated session naming the acting commissioner. ' +
+      'the positions on this tab are illustrative rather than read from the ' +
+      'ledger — a real decision needs real figures under it. ' +
       `The governed commands are <code>${escapeHtml(TOPOFF_ROUTES.approve)}</code>, ` +
       `<code>${escapeHtml(TOPOFF_ROUTES.reject)}</code> and ` +
       `<code>${escapeHtml(TOPOFF_ROUTES.cancel)}</code>; this surface implements ` +

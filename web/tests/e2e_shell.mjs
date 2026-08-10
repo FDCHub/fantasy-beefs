@@ -10,23 +10,24 @@
  * active panel at a phone viewport, that nothing overflows horizontally, and
  * that the close control really lands in the upper-right of the sheet.
  *
- * No dependencies: a small static server and a raw CDP client over the WebSocket
- * built into Node.
+ * S8-P1 — NOW ON THE SHARED HARNESS. This suite was written before Package 2
+ * extracted `browser-harness.mjs`, and carried its own copy of the Chrome
+ * discovery, the static server and the CDP client. That duplication became a
+ * defect the moment Sprint 8 gave the shell a session: the shared harness
+ * learned to serve the suites from the real application and to sign in first,
+ * and this file — alone among the five — did not. It went on measuring a
+ * sign-in gate and reporting that the shell had not mounted.
+ *
+ * The duplicated harness is gone. The assertions below are untouched: they are
+ * the ones certified at 6be0f50, now measured against the application a GM
+ * actually loads.
  * ========================================================================== */
 
-import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, extname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const WEB_ROOT = resolve(HERE, '..');
-
-/** Phone viewport used for every geometry assertion. */
-const VIEWPORT = { width: 390, height: 844 };
+// VIEWPORT comes from the harness now rather than being redeclared here. The
+// values are identical (390x844); the point of importing it is that a suite
+// asserting "nothing exceeds the viewport width" and the harness that SETS
+// that width can no longer drift apart.
+import { VIEWPORT, withPage } from './browser-harness.mjs';
 
 const failures = [];
 
@@ -36,168 +37,27 @@ function check(label, condition, detail = '') {
   if (!condition) failures.push(label);
 }
 
-/* ── Chrome discovery ───────────────────────────────────────────────────── */
-
-function findChrome() {
-  const candidates = [
-    process.env.CHROME_PATH,
-    'C:/Program Files/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-    'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  ].filter(Boolean);
-  return candidates.find((p) => existsSync(p)) || null;
-}
-
-/* ── Static server ──────────────────────────────────────────────────────── */
-
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-};
-
-function startServer() {
-  const server = createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    const rel = url.pathname === '/' ? '/index.html' : url.pathname;
-    const path = join(WEB_ROOT, rel);
-    if (!path.startsWith(WEB_ROOT)) {
-      res.writeHead(403).end();
-      return;
-    }
-    try {
-      const body = await readFile(path);
-      res.writeHead(200, { 'Content-Type': MIME[extname(path)] || 'application/octet-stream' });
-      res.end(body);
-    } catch {
-      res.writeHead(404).end();
-    }
-  });
-  return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server)));
-}
-
-/* ── Minimal CDP client ─────────────────────────────────────────────────── */
-
-async function connectCdp(port) {
-  let targets;
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    try {
-      targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-      if (targets.some((t) => t.type === 'page' && t.webSocketDebuggerUrl)) break;
-    } catch { /* browser still starting */ }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  const page = (targets || []).find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
-  if (!page) throw new Error('no debuggable page target');
-
-  const socket = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((ok, fail) => {
-    socket.addEventListener('open', ok, { once: true });
-    socket.addEventListener('error', () => fail(new Error('CDP socket failed')), { once: true });
-  });
-
-  let nextId = 0;
-  const pending = new Map();
-  socket.addEventListener('message', (event) => {
-    const message = JSON.parse(event.data);
-    const entry = pending.get(message.id);
-    if (!entry) return;
-    pending.delete(message.id);
-    if (message.error) entry.fail(new Error(message.error.message));
-    else entry.ok(message.result);
-  });
-
-  const send = (method, params = {}) => new Promise((ok, fail) => {
-    const id = (nextId += 1);
-    pending.set(id, { ok, fail });
-    socket.send(JSON.stringify({ id, method, params }));
-  });
-
-  return { send, close: () => socket.close() };
-}
-
-/**
- * Evaluate an expression in the page and return its value.
- */
-async function evaluate(cdp, expression) {
-  const result = await cdp.send('Runtime.evaluate', {
-    expression: `(() => { ${expression} })()`,
-    returnByValue: true,
-    awaitPromise: true,
-  });
-  if (result.exceptionDetails) {
-    throw new Error(result.exceptionDetails.exception?.description || 'evaluation failed');
-  }
-  return result.result.value;
-}
-
-/* ── Test run ───────────────────────────────────────────────────────────── */
-
-const chrome = findChrome();
-if (!chrome) {
-  console.log('  [FAIL] a Chrome or Edge binary is available for the layout tests');
-  console.log('\nFAILED: 1 assertion(s)\n  - no browser found; set CHROME_PATH');
-  process.exit(1);
-}
-
-const server = await startServer();
-const { port } = server.address();
-const profile = await mkdtemp(join(tmpdir(), 'fs-e2e-'));
-
-const browser = spawn(chrome, [
-  '--headless=new',
-  '--disable-gpu',
-  '--no-first-run',
-  '--no-default-browser-check',
-  '--remote-debugging-port=9333',
-  `--user-data-dir=${profile}`,
-  `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
-  'about:blank',
-], { stdio: 'ignore' });
-
-let cdp;
-try {
-  cdp = await connectCdp(9333);
-
-  await cdp.send('Page.enable');
-  await cdp.send('Runtime.enable');
-  // Emulate a phone viewport exactly: desktop Chrome otherwise ignores the
-  // viewport meta tag, and the layout under test is a mobile layout.
-  await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: VIEWPORT.width,
-    height: VIEWPORT.height,
-    deviceScaleFactor: 3,
-    mobile: true,
-  });
-
-  await cdp.send('Page.navigate', { url: `http://127.0.0.1:${port}/index.html` });
-  await new Promise((r) => setTimeout(r, 900));
-
+await withPage({ port: 9333 }, async ({ evaluate }) => {
   console.log('\nThe app renders in a real browser at a phone viewport');
 
-  check('the shell mounted', await evaluate(cdp, `
+  check('the shell mounted', await evaluate(`
     return document.querySelectorAll('.fs-tabbar__item').length === 5;
   `));
-  check('the masthead rendered its lockup', await evaluate(cdp, `
+  check('the masthead rendered its lockup', await evaluate(`
     return document.querySelector('.fs-mast__word').textContent === 'FantasyStakes';
   `));
-  check('the tagline rendered', await evaluate(cdp, `
+  check('the tagline rendered', await evaluate(`
     return document.querySelector('.fs-mast__tagline').textContent
       === 'FANTASY LEAGUES · VIRTUAL STAKES';
   `));
-  check('neither half of the tagline is broken across lines', await evaluate(cdp, `
+  check('neither half of the tagline is broken across lines', await evaluate(`
     return [...document.querySelectorAll('.fs-mast__tagline .fs-nowrap')]
       .every(span => span.getClientRects().length === 1);
   `));
 
   console.log('\nNothing overflows the phone viewport');
 
-  const overflow = await evaluate(cdp, `
+  const overflow = await evaluate(`
     return {
       docWidth: document.documentElement.scrollWidth,
       innerWidth: window.innerWidth,
@@ -217,14 +77,14 @@ try {
 
   console.log('\nAll five navigation destinations are reachable');
 
-  const destinations = await evaluate(cdp, `
+  const destinations = await evaluate(`
     return [...document.querySelectorAll('.fs-tabbar__item')]
       .map(el => el.dataset.destination);
   `);
   check('five destinations are bound', destinations.length === 5, destinations.join(', '));
 
   for (const id of destinations) {
-    const state = await evaluate(cdp, `
+    const state = await evaluate(`
       document.querySelector('.fs-tabbar__item[data-destination="${id}"]').click();
       const panel = document.querySelector('.fs-panel.is-active');
       const tab = document.querySelector('.fs-tabbar__item.is-active');
@@ -251,7 +111,7 @@ try {
   console.log('\nThe persistent navigation never covers tab content');
 
   for (const id of destinations) {
-    const geometry = await evaluate(cdp, `
+    const geometry = await evaluate(`
       document.querySelector('.fs-tabbar__item[data-destination="${id}"]').click();
       const bar = document.querySelector('.fs-tabbar').getBoundingClientRect();
       const panel = document.querySelector('.fs-panel.is-active').getBoundingClientRect();
@@ -289,7 +149,7 @@ try {
   // assertion here pass vacuously.
   const strips = [];
   for (const id of destinations) {
-    const measured = await evaluate(cdp, `
+    const measured = await evaluate(`
       document.querySelector('.fs-tabbar__item[data-destination="${id}"]').click();
       const panel = document.querySelector('.fs-panel.is-active');
       const strip = panel.querySelector('.fs-strip');
@@ -341,7 +201,7 @@ try {
 
   console.log('\nCredit figures draw as whole dollars over exact cents');
 
-  const money = await evaluate(cdp, `
+  const money = await evaluate(`
     const values = [...document.querySelectorAll('[data-exact-cents]')];
     return values.map(el => ({
       exact: el.getAttribute('data-exact-cents'),
@@ -365,7 +225,7 @@ try {
 
   console.log('\nThe Credits disclaimer appears under its strip, once per tab');
 
-  const disclaimers = await evaluate(cdp, `
+  const disclaimers = await evaluate(`
     const out = [];
     for (const panel of document.querySelectorAll('.fs-panel')) {
       const found = panel.querySelectorAll('.fs-disclaimer');
@@ -402,7 +262,7 @@ try {
   // week cells and moved Current Settle to the My Season strip, so the stable
   // sheet-opening control on this tab is now Top-Off. What is under test is the
   // shared pop-out, not which control summoned it.
-  const sheetGeometry = await evaluate(cdp, `
+  const sheetGeometry = await evaluate(`
     document.querySelector('.fs-tabbar__item[data-destination="ledger"]').click();
     document.querySelector('#panel-ledger [data-topoff]').click();
     const overlay = document.getElementById('fs-overlay');
@@ -440,7 +300,7 @@ try {
   );
   check('the close control takes focus on open', sheetGeometry.focused === true);
 
-  const closed = await evaluate(cdp, `
+  const closed = await evaluate(`
     document.querySelector('#fs-sheet [data-fs-close]').click();
     return {
       open: document.getElementById('fs-overlay').classList.contains('is-open'),
@@ -449,7 +309,7 @@ try {
   `);
   check('the close control closes the sheet', closed.open === false && closed.hidden === 'true');
 
-  const reopenedThenNavigated = await evaluate(cdp, `
+  const reopenedThenNavigated = await evaluate(`
     document.querySelector('#panel-ledger [data-topoff]').click();
     const wasOpen = document.getElementById('fs-overlay').classList.contains('is-open');
     document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
@@ -458,13 +318,7 @@ try {
   check(
     'a destination change dismisses the sheet',
     reopenedThenNavigated.wasOpen === true && reopenedThenNavigated.stillOpen === false,
-  );
-} finally {
-  if (cdp) cdp.close();
-  browser.kill();
-  server.close();
-  await rm(profile, { recursive: true, force: true }).catch(() => {});
-}
+  );});
 
 console.log(`\n${'='.repeat(52)}`);
 if (failures.length) {

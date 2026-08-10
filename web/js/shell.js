@@ -12,7 +12,18 @@
  * close X always dismisses the ACTIVE sheet: one level up if there is one,
  * otherwise the overlay itself.
  *
- * Nothing in this file reads, derives, or writes protocol state.
+ * SPRINT 8 PACKAGE 1 — THE SHELL NOW HAS TWO STATES, AND THE SERVER PICKS.
+ * Mounting asks `/auth/me` who is acting. A signed-in answer mounts the
+ * application; anything else mounts the sign-in gate. Both transitions run
+ * through ONE subscription to the session module, so an expiry noticed
+ * mid-request lands the GM on the gate by the same path a deliberate sign-out
+ * does — there is no second way to change what the shell is showing, and
+ * therefore no path that can get it wrong.
+ *
+ * Nothing in this file reads, derives, or writes protocol state. Identity is
+ * not an exception: it is READ from the server and rendered, never decided
+ * here, and the tab modules still draw their Sprint 7 illustrative view models
+ * until the binding packages replace them.
  * ========================================================================== */
 
 import {
@@ -31,6 +42,8 @@ import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
 import { bindRules, buildRulesPanel } from './rules.js';
 import { beginSession, composerSheet, endSession } from './composer.js';
+import { bindGate, bindIdentityBlock, buildGate, buildIdentityBlock } from './auth-view.js';
+import { isAuthenticated, onIdentityChange, refreshIdentity } from './session.js';
 
 /* ── Masthead ───────────────────────────────────────────────────────────── */
 
@@ -43,6 +56,22 @@ function renderMasthead(root) {
     .map((phrase) => `<span class="fs-nowrap">${escapeHtml(phrase)}</span>`)
     .join(' · ');
 
+  // WHERE THE IDENTITY GOES, AND WHY IT IS INSIDE THE META COLUMN.
+  //
+  // The masthead is a two-item row: a shrinkable lockup and a fixed-width meta
+  // column. Adding the identity as a THIRD item was measurably wrong — it took
+  // 122px from the lockup, which forced the tagline from its certified two
+  // lines onto three, grew the masthead by 15px, and cost the panel enough
+  // height that every wager card on the League tab clipped its own content at
+  // 375x667. That is not a styling nit; it is the precise failure the Sprint 7
+  // geometry suite exists to catch, and it caught it.
+  //
+  // Stacking it under the revision and author lines costs nothing, because the
+  // masthead's height is set by the taller of the two columns and that is the
+  // lockup (56px) not the meta column (30px). A third meta line stays inside
+  // that. The identity is right-aligned with the lines above it, the locked
+  // Rev4.2 grammar is untouched, and it renders as nothing at all when no one
+  // is signed in.
   root.innerHTML =
     '<div class="fs-mast__lockup">' +
     '<div class="fs-mast__word">' +
@@ -52,7 +81,10 @@ function renderMasthead(root) {
     '</div>' +
     '<div class="fs-mast__meta">' +
     `${escapeHtml(MASTHEAD.revision)}<br>${escapeHtml(MASTHEAD.author)}` +
+    buildIdentityBlock() +
     '</div>';
+
+  bindIdentityBlock(root);
 }
 
 /* ── Bottom navigation ──────────────────────────────────────────────────── */
@@ -242,14 +274,32 @@ function bindNavigation() {
 
 /* ── Mount ──────────────────────────────────────────────────────────────── */
 
-/** Render the shell and bind every shared interaction. */
-export function mount() {
+function mountPoints() {
   const mast = document.getElementById('fs-mast');
   const panels = document.getElementById('fs-panels');
   const tabbar = document.getElementById('fs-tabbar');
-  if (!mast || !panels || !tabbar) {
+  const gate = document.getElementById('fs-gate');
+  if (!mast || !panels || !tabbar || !gate) {
     throw new Error('shell mount points missing from the document');
   }
+  return { mast, panels, tabbar, gate };
+}
+
+/**
+ * Mount the five-tab application for a signed-in GM.
+ *
+ * The panels still draw their Sprint 7 illustrative view models. Package 1 is
+ * authentication infrastructure and binds no league, action, ledger or
+ * commissioner data — replacing those sources is the binding package's work,
+ * and doing it here would spread it across two.
+ */
+function mountApplication() {
+  const { mast, panels, tabbar, gate } = mountPoints();
+
+  gate.hidden = true;
+  gate.innerHTML = '';
+  panels.hidden = false;
+  tabbar.hidden = false;
 
   renderMasthead(mast);
   renderPanelHosts(panels);
@@ -276,9 +326,74 @@ export function mount() {
   if (rulesPanel) bindRules(rulesPanel, { openSheet });
 
   bindNavigation();
-  bindSheet();
 
   goTo(DEFAULT_DESTINATION_ID);
+}
+
+/**
+ * Mount the sign-in gate.
+ *
+ * The panels and the navigation are emptied, not merely hidden. A hidden panel
+ * is still in the document, and leaving twelve GMs' worth of league state in
+ * the DOM of a signed-out page would mean the sign-out control had tidied the
+ * view without removing the data.
+ */
+function mountGate() {
+  const { mast, panels, tabbar, gate } = mountPoints();
+
+  closeSheet();
+
+  panels.innerHTML = '';
+  panels.hidden = true;
+  tabbar.innerHTML = '';
+  tabbar.hidden = true;
+
+  renderMasthead(mast);          // renders with no identity block
+
+  gate.hidden = false;
+  gate.innerHTML = buildGate();
+  bindGate(gate);
+
+  const email = gate.querySelector('#fs-gate-email');
+  if (email && email.focus) email.focus();
+}
+
+/**
+ * Render the shell and bind every shared interaction.
+ *
+ * Async because the first thing the shell needs is an answer it does not have:
+ * who is acting. Nothing is drawn on a guess in the meantime.
+ */
+export async function mount() {
+  bindSheet();
+
+  let rendered = false;
+
+  // ONE subscription drives every transition. A deliberate sign-in, a
+  // deliberate sign-out, and a session that expired under a request in flight
+  // all arrive here, so they cannot diverge.
+  onIdentityChange((identity) => {
+    rendered = true;
+    if (identity) mountApplication();
+    else mountGate();
+  });
+
+  try {
+    await refreshIdentity();
+  } catch {
+    // A transport failure is not an identity. The gate is the honest state:
+    // we could not establish who is acting, so nothing is shown as though we
+    // had. The gate reports the real error if a sign-in is then attempted.
+  }
+
+  // The subscription has already drawn the right thing in both the signed-in
+  // and the expired-session cases, because each set identity and therefore
+  // fired. `rendered` is what stops that becoming a second, redundant mount —
+  // and covers the one path that sets nothing at all, a transport failure.
+  if (!rendered) {
+    if (isAuthenticated()) mountApplication();
+    else mountGate();
+  }
 }
 
 if (typeof document !== 'undefined') {
