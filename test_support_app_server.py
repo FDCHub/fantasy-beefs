@@ -78,6 +78,15 @@ with SessionLocal() as db:
     comm_user = db.query(User).filter(User.email == {comm!r}).first()
     db.add(LeagueCommissioner(league_id=league.id, user_id=comm_user.id,
                               source="bootstrap"))
+    db.flush()
+
+    # S8-P4B-1 — post the authoritative Rev 4.2 accounting season for the GM's
+    # team. The browser suites read that team's Ledger, so from here on those
+    # figures come from posted ledger state rather than from illustrative
+    # JavaScript. The opponent team funds the settled wager's other side.
+    from test_support_rev42_fixture import _seed_accounting_fixture
+    _seed_accounting_fixture(db, league, gm_team, comm_team)
+
     db.commit()
 '''
 
