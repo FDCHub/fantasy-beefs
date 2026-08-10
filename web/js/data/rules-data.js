@@ -145,8 +145,18 @@ export const SETTINGS = Object.freeze([
  * command as well as the wiring.
  */
 export const SETTINGS_SEAM = Object.freeze({
-  status: 'NO CONFIGURATION COMMAND API',
-  endpoint: null,
+  // S8-P4, per the accepted B2 narrowing. ONE of the four rows became
+  // mutable — Standard Pool Bet, the one the POR says a commissioner sets,
+  // and the only one whose governed setter already carried bounds and a
+  // season freeze. The other three remain read-only for MVP: changing an
+  // Economy Stop, a Skunk Fee or a Championship split mid-season re-prices
+  // obligations GMs have already funded, so the absence of a command for them
+  // is the ruling, not a gap.
+  status: 'ONE GOVERNED COMMAND · THREE ROWS REMAIN READ-ONLY',
+  endpoint: 'PUT /league/{league_id}/settings/pool-entry',
+  readEndpoint: 'GET /league/{league_id}/settings',
+  mutable: ['pool-bet'],
+  readOnly: ['economy-stop', 'skunk-fee', 'championship-split'],
   readSource: 'payments/economy_config.py · db/schema.py · economy/skunk.py',
   uiState: 'read-only',
   needs: 'a governed, commissioner-authorised configuration command before any row can be edited',

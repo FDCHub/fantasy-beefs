@@ -108,10 +108,17 @@ function settingsRegion() {
     `<div class="fs-settings" id="fs-settings">${SETTINGS.map(settingRow).join('')}</div>` +
     // Stated on the surface, not only in the model: a row that looks editable
     // and is not should say why.
-    '<div class="fs-note">Current league configuration. These are read-only in ' +
-    'this build because no governed configuration command exists to call — the ' +
-    'economy stop, Pool entry, Skunk amount and payout split are set through ' +
-    'league setup, and no route changes any of them.</div>' +
+    // S8-P4 CORRECTION. This said no governed configuration command existed.
+    // One does now — Standard Pool Bet, per the B2 ruling — so the sentence
+    // became false, and false in the place a commissioner reads to find out
+    // what they may change. The other three rows are still read-only, and the
+    // reason is the ruling rather than a missing route.
+    '<div class="fs-note">Current league configuration. The Standard Pool Bet ' +
+    'is set by the commissioner and freezes once the first Pool week of the ' +
+    'season is collected. '
+    + 'The economy stop, Skunk amount and payout split are fixed ' +
+    'for the season — changing any of them would re-price obligations GMs have ' +
+    'already funded.</div>' +
     '</section>'
   );
 }

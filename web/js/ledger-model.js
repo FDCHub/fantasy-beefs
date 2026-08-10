@@ -105,6 +105,144 @@ export const TOPOFF_COMMAND_SEAM = Object.freeze({
   uiState: 'read-only',
 });
 
+/* ── Source binding (S8-P4) ─────────────────────────────────────────────────*/
+
+/**
+ * The terms the derivations below read.
+ *
+ * Defaults to the POR's illustrative figures — which is what makes the
+ * components reviewable, and testable, without a server. `bindLedger()`
+ * replaces them with the authoritative read model once a session has loaded
+ * one. THE DERIVATIONS DO NOT CHANGE: the same arithmetic runs over whichever
+ * terms are bound, so binding cannot quietly introduce a second formula.
+ */
+let SOURCE = { position: POSITION, adjustments: ADJUSTMENTS, advances: ADVANCES,
+               authoritative: false, currentSettleCents: null, heldCents: null };
+
+/**
+ * Season-opening advance, split into its two governed legs when they reconcile.
+ *
+ * @param {object} model GmLedgerOut
+ * @param {object} [settings] LeagueSettingsOut
+ * @returns {{regularSeasonMinimumCents: number, playoffsChampionshipCents: number,
+ *   addedStakesCents: number, splitResolved: boolean}}
+ */
+function splitAdvance(model, settings) {
+  const stop = settings && settings.economy_stop;
+  const reconciles = Boolean(stop)
+    && stop.min_reserve_cents + stop.reserve_cents === model.season_advance_cents;
+
+  return {
+    regularSeasonMinimumCents: reconciles ? stop.min_reserve_cents
+                                          : model.season_advance_cents,
+    playoffsChampionshipCents: reconciles ? stop.reserve_cents : 0,
+    addedStakesCents: model.topoff_issued_cents,
+    // Drawn as one figure rather than a breakdown when the legs are unknown.
+    splitResolved: reconciles,
+  };
+}
+
+/**
+ * Bind the authoritative GM Ledger read model.
+ *
+ * THE MAPPING, AND THE ONE CORRECTION IT FORCES. Rev 4.2 draws three sections;
+ * `economy/current_settle.py` groups the same money as assets − obligations.
+ * They reconcile term for term:
+ *
+ *   spendable                    → available (wallet + live weekly minimum)
+ *   weeklyReserveNotReleased     → min_reserve
+ *   acceptedEscrow               → in_play
+ *   weeklyMinOutOfCirculation    → expired_min
+ *   skunkFees (signed, negative) → −receivable
+ *   seasonOpening                → season_advance
+ *   addedStakes                  → topoff_issued
+ *
+ * `acceptedEscrow` maps to the WHOLE of `in_play`, not to in_play minus the
+ * held amount. The illustrative dataset implied otherwise and still balanced,
+ * because its invented season-winnings figure happened to offset the
+ * difference. Against real state that coincidence disappears: subtracting held
+ * from the escrow term and then adding a winnings term the backend does not
+ * have would produce a Current Settle that disagreed with the ledger. Held
+ * remains what the POR always said it was — a memo reported beside the
+ * position, never inside a total.
+ *
+ * `seasonWinnings` binds to NOTHING. P3 established it has no authoritative
+ * source, and the backend's settlement position carries no awards component,
+ * so it contributes zero to the identity and is drawn unresolved rather than
+ * given a number.
+ *
+ * @param {object} model a GmLedgerOut body from /league/{id}/ledger/me
+ * @param {object} [settings] a LeagueSettingsOut body, for the advance split
+ */
+export function bindLedger(model, settings) {
+  SOURCE = {
+    position: Object.freeze({
+      spendableCents: model.available_cents,
+      acceptedEscrowCents: model.in_play_cents,
+      weeklyReserveNotReleasedCents: model.min_reserve_cents,
+    }),
+    adjustments: Object.freeze({
+      weeklyMinOutOfCirculationCents: model.expired_min_cents,
+      // A fee is negative here; the backend reports the obligation magnitude.
+      skunkFeesCents: -model.receivable_cents,
+      // No authoritative source — see above. Zero in the identity, unresolved
+      // on screen.
+      seasonWinningsCents: 0,
+    }),
+    // THE SPLIT COMES FROM THE ECONOMY STOP, NOT FROM THE CURRENT BALANCE.
+    // `min_reserve_cents` is what is LEFT in the reserve today and falls every
+    // week as the minimum releases; the season-opening split is fixed at
+    // activation. Using the live balance would have shrunk "Regular Season
+    // Minimum" week by week while the advance it describes never moved.
+    //
+    // The stop is used only when its two legs reconcile to the posted advance.
+    // If they disagree, the posted figure is authoritative and the split is
+    // not shown as a breakdown of it — a hierarchy whose parts do not add to
+    // its total is worse than a single honest number.
+    advances: Object.freeze(splitAdvance(model, settings)),
+    authoritative: true,
+    // Carried so a caller can compare the drawn total against the server's own
+    // figure rather than trusting that the mapping above was right.
+    currentSettleCents: model.current_settle_cents,
+    heldCents: model.held_open_challenges_cents,
+  };
+}
+
+/** Restore the illustrative source. Used on sign-out and by the suites. */
+export function unbindLedger() {
+  SOURCE = { position: POSITION, adjustments: ADJUSTMENTS, advances: ADVANCES,
+             authoritative: false, currentSettleCents: null, heldCents: null };
+}
+
+/** Whether the figures currently drawn came from the backend. */
+export function isLedgerBound() {
+  return SOURCE.authoritative;
+}
+
+/**
+ * The server's own Current Settle, when bound — for comparison, not display.
+ * @returns {number|null}
+ */
+export function boundCurrentSettleCents() {
+  return SOURCE.currentSettleCents;
+}
+
+/** Credits held against open challenges, when bound. @returns {number|null} */
+export function boundHeldCents() {
+  return SOURCE.heldCents;
+}
+
+/**
+ * Whether Season winnings has an authoritative source in the current binding.
+ *
+ * False when bound: the backend has no awards component, so the figure is
+ * drawn unresolved rather than as a number. True on the illustrative source,
+ * where the POR fixed one.
+ */
+export function seasonWinningsResolved() {
+  return !SOURCE.authoritative;
+}
+
 /* ── Derivations ────────────────────────────────────────────────────────────*/
 
 function sum(...values) {
@@ -125,13 +263,14 @@ function sum(...values) {
  */
 export function advances() {
   const seasonOpeningCents = sum(
-    ADVANCES.regularSeasonMinimumCents,
-    ADVANCES.playoffsChampionshipCents,
+    SOURCE.advances.regularSeasonMinimumCents,
+    SOURCE.advances.playoffsChampionshipCents,
   );
   return {
-    ...ADVANCES,
+    ...SOURCE.advances,
     seasonOpeningCents,
-    totalVirtualStakesCents: sum(seasonOpeningCents, ADVANCES.addedStakesCents),
+    totalVirtualStakesCents: sum(seasonOpeningCents,
+                                SOURCE.advances.addedStakesCents),
   };
 }
 
@@ -163,11 +302,11 @@ export function activity() {
  */
 export function position() {
   return {
-    ...POSITION,
+    ...SOURCE.position,
     wageringPositionCents: sum(
-      POSITION.spendableCents,
-      POSITION.acceptedEscrowCents,
-      POSITION.weeklyReserveNotReleasedCents,
+      SOURCE.position.spendableCents,
+      SOURCE.position.acceptedEscrowCents,
+      SOURCE.position.weeklyReserveNotReleasedCents,
     ),
   };
 }
@@ -185,11 +324,11 @@ export function position() {
  */
 export function adjustments() {
   return {
-    ...ADJUSTMENTS,
+    ...SOURCE.adjustments,
     netAdjustmentsCents: sum(
-      ADJUSTMENTS.weeklyMinOutOfCirculationCents,
-      ADJUSTMENTS.skunkFeesCents,
-      ADJUSTMENTS.seasonWinningsCents,
+      SOURCE.adjustments.weeklyMinOutOfCirculationCents,
+      SOURCE.adjustments.skunkFeesCents,
+      SOURCE.adjustments.seasonWinningsCents,
     ),
   };
 }

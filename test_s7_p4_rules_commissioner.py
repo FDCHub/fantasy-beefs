@@ -253,16 +253,33 @@ seam = APP.get("settingsSeam", {})
 # The seam claim is only honest if no such route exists.
 _assert("no route changes the economy stop",
         not re.search(r'@app\.(post|patch|put)\("[^"]*economy[-_]stop', MAIN_PY))
-_assert("no route changes the Pool entry",
-        not re.search(r'@app\.(post|patch|put)\("[^"]*pool[-_]entry', MAIN_PY))
+# GOVERNED REVISION, S8-P4. The B2 ruling made Standard Pool Bet the ONE
+# governed settings mutation for MVP, so a route for it must now exist — and
+# must write the Rev 4.2 column, not the legacy one. The other three settings
+# stay read-only, and the assertions above and below still prove that.
+_assert("the Standard Pool Bet command exists",
+        bool(re.search(r'@app\.put\("/league/\{league_id\}/settings/pool-entry"',
+                       MAIN_PY)))
+_assert("it is league-scoped commissioner authority",
+        "def league_set_pool_entry" in MAIN_PY
+        and "require_league_commissioner" in MAIN_PY)
+_assert("it calls the governed setter rather than reimplementing the bounds",
+        "configure_pool_weekly_entry" in MAIN_PY)
+_assert("and it does not write the legacy three-pot column",
+        "weekly_entry_cents=" not in MAIN_PY.split(
+            "def league_set_pool_entry")[1][:2000])
 _assert("no route changes the Skunk amount",
         not re.search(r'@app\.(post|patch|put)\("[^"]*skunk', MAIN_PY))
 _assert("no route changes the payout split",
         not re.search(r'@app\.(post|patch|put)\("[^"]*(split|payout)', MAIN_PY))
-_assert("the module records that no configuration command exists",
-        seam.get("endpoint") is None
-        and seam.get("status") == "NO CONFIGURATION COMMAND API")
-_assert("the settings surface is read-only", seam.get("uiState") == "read-only")
+# GOVERNED REVISION, S8-P4: one command now exists. What must still hold is
+# that it is exactly one, and that the other three rows remain read-only.
+_assert("the module names the one governed command",
+        seam.get("endpoint") == "PUT /league/{league_id}/settings/pool-entry")
+_assert("exactly one row is mutable", seam.get("mutable") == ["pool-bet"])
+_assert("the other three rows remain read-only",
+        sorted(seam.get("readOnly", []))
+        == ["championship-split", "economy-stop", "skunk-fee"])
 _assert("the tab renders no editable control",
         not re.search(r"<input|<select|<textarea|type=\"checkbox\"", PANEL))
 _assert("and no save affordance",

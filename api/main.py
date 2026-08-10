@@ -3587,6 +3587,289 @@ def ledger_reconciliation(
     return LeagueReconciliationOut(**report.as_dict())
 
 
+# ── League settings: authoritative read + the one governed command (S8-P4) ───
+#
+# READ IS FOR EVERY LEAGUE MEMBER; WRITE IS COMMISSIONER-ONLY, and only one
+# value is writable. The B2 ruling fixed that: Economy Stop, Skunk Fee and
+# Championship split are READ-ONLY for MVP, because changing any of them
+# mid-season re-prices obligations GMs have already funded. Standard Pool Bet
+# is the one setting the POR says a commissioner sets, and it carries its own
+# freeze so it cannot change after the season has started spending it.
+
+class SettingsPoolEntryOut(BaseModel):
+    cents:         int
+    min_cents:     int
+    max_cents:     int
+    default_cents: int
+    frozen:        bool
+    frozen_at:     Optional[str]
+    editable:      bool
+
+
+class SettingsEconomyStopOut(BaseModel):
+    weekly_min_cents:  int
+    min_reserve_cents: int
+    reserve_cents:     int
+    buyin_cents:       int
+    editable:          bool
+
+
+class SettingsSkunkOut(BaseModel):
+    weekly_cents:         int
+    season_maximum_cents: int
+    editable:             bool
+
+
+class SettingsChampionshipSplitOut(BaseModel):
+    split:    list[int]
+    editable: bool
+
+
+class LeagueSettingsOut(BaseModel):
+    """The four governed settings, read from their real sources.
+
+    `editable` is reported per setting so the UI does not have to encode the B2
+    ruling in JavaScript. It is presentation guidance only: a write to a
+    read-only setting is refused because no command exists for it, not because
+    this flag said so.
+    """
+    league_id:          int
+    season:             int
+    economy_stop:       SettingsEconomyStopOut
+    pool_entry:         SettingsPoolEntryOut
+    skunk:              SettingsSkunkOut
+    championship_split: SettingsChampionshipSplitOut
+
+
+def _assert_league_member(current_user: User, league_id: int, db: Session) -> None:
+    """Membership OR league commissioner authority. Raises 403 otherwise.
+
+    A commissioner who owns no team in the league is still a member for the
+    purpose of reading the league's own rules.
+    """
+    if (_member_team_id(current_user, league_id, db) is None
+            and not is_league_commissioner(current_user.id, league_id, db)):
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": f"User {current_user.id} is not a member of league {league_id}.",
+        })
+
+
+def _league_settings(db: Session, league_id: int) -> LeagueSettingsOut:
+    from betting.pool_funding import (
+        GOVERNED_DEFAULT_WEEKLY_ENTRY_CENTS,
+        GOVERNED_MAX_WEEKLY_ENTRY_CENTS,
+        GOVERNED_MIN_WEEKLY_ENTRY_CENTS,
+        resolve_weekly_entry_cents,
+    )
+    from db.schema import LeagueTreasury, PoolConfig
+    from economy.skunk import (
+        DEFAULT_SKUNK_CONTRIBUTION_CENTS, DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS,
+    )
+    from payments.economy_config import get_league_economy_stop
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail=f"League {league_id} not found")
+
+    stop = get_league_economy_stop(league_id, db)
+
+    cfg = db.query(PoolConfig).filter(PoolConfig.league_id == league_id).first()
+    frozen_at = getattr(cfg, "pool_weekly_entry_frozen_at", None) if cfg else None
+
+    # The treasury row carries the league's OWN split; the module default is a
+    # fallback, not the answer, so a configured league reports what it configured.
+    treasury = (db.query(LeagueTreasury)
+                .filter(LeagueTreasury.league_id == league_id).first())
+    split = json.loads(treasury.payout_split_json) if treasury else [60, 30, 10]
+
+    return LeagueSettingsOut(
+        league_id=league_id,
+        season=league.season,
+        economy_stop=SettingsEconomyStopOut(
+            weekly_min_cents=stop.weekly_min_cents,
+            min_reserve_cents=stop.min_reserve_cents,
+            reserve_cents=stop.reserve_cents,
+            buyin_cents=stop.buyin_cents,
+            editable=False,
+        ),
+        pool_entry=SettingsPoolEntryOut(
+            cents=resolve_weekly_entry_cents(db, league_id=league_id),
+            min_cents=GOVERNED_MIN_WEEKLY_ENTRY_CENTS,
+            max_cents=GOVERNED_MAX_WEEKLY_ENTRY_CENTS,
+            default_cents=GOVERNED_DEFAULT_WEEKLY_ENTRY_CENTS,
+            frozen=frozen_at is not None,
+            frozen_at=frozen_at.isoformat() if frozen_at else None,
+            editable=frozen_at is None,
+        ),
+        skunk=SettingsSkunkOut(
+            weekly_cents=DEFAULT_SKUNK_CONTRIBUTION_CENTS,
+            season_maximum_cents=DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS,
+            editable=False,
+        ),
+        championship_split=SettingsChampionshipSplitOut(split=split, editable=False),
+    )
+
+
+@app.get("/league/{league_id}/settings", response_model=LeagueSettingsOut)
+def league_settings_read(
+    league_id:    int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """The league's governed settings, read from their authoritative sources.
+
+    Readable by any member of the league — these are the rules everyone plays
+    under, not commissioner-private state.
+    """
+    _assert_league_member(current_user, league_id, db)
+    return _league_settings(db, league_id)
+
+
+class PoolEntryUpdateRequest(BaseModel):
+    cents: int
+
+
+@app.put("/league/{league_id}/settings/pool-entry", response_model=LeagueSettingsOut)
+def league_set_pool_entry(
+    league_id: int,
+    req:       PoolEntryUpdateRequest,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Set the Standard Pool Bet — the ONE governed settings mutation in MVP.
+
+    IT WRITES `pool_weekly_entry_cents`, NOT `weekly_entry_cents`, and that
+    distinction is why this route exists at all. The legacy POST /pool/config
+    writes `PoolConfig.weekly_entry_cents`, which belongs to the retired
+    three-pot engine and defaults to 1000. The Rev 4.2 Standard Pool Bet is
+    `pool_weekly_entry_cents` — bounded $1–$5 by a schema CHECK and frozen at
+    the season's first collection. Binding the Rev 4.2 control to the legacy
+    route would have written a column nothing reads and displayed a figure
+    nothing honours.
+
+    NO SECOND IMPLEMENTATION. The governed bounds, the freeze refusal and the
+    validation all live in `betting/pool_funding.configure_pool_weekly_entry`
+    and stay there. This route resolves authority, calls it, and commits.
+    """
+    from betting.pool_funding import PoolFundingError, configure_pool_weekly_entry
+
+    try:
+        configure_pool_weekly_entry(db, league_id=league_id, cents=req.cents)
+    except PoolFundingError as e:
+        # 409 for the freeze: the request is well-formed and the caller is
+        # authorized, but the season has moved past the point where this may
+        # change. 400 for an out-of-bounds value, which is a bad request.
+        status_code = 409 if e.reason == "ENTRY_FROZEN" else 400
+        raise HTTPException(status_code=status_code,
+                            detail={"reason_code": e.reason, "message": str(e)})
+    db.commit()
+    return _league_settings(db, league_id)
+
+
+# ── The authoritative weekly Pool slate (S8-P4) ──────────────────────────────
+
+class PoolSlotOut(BaseModel):
+    slot:            int
+    definition_key:  str
+    catalog_number:  Optional[int]
+    display_name:    Optional[str]
+    category:        Optional[str]
+    scope:           Optional[str]
+    is_continuation: bool
+    pot_cents:       int
+    rollover_cents:  int
+    settled:         bool
+
+
+class PoolSlateOut(BaseModel):
+    """One week's governed slate.
+
+    `slots` is empty when no slate has been drawn. That is a real and currently
+    ordinary state: the Rev1.3 selector requires four definitions passing BOTH
+    gates, and gate 2 is a per-league, per-provider source measurement that is
+    unsatisfied without provider access. An empty slate is reported as empty and
+    the UI draws it unresolved, rather than four Pools being invented to fill
+    the row.
+    """
+    league_id:        int
+    season:           int
+    week:             int
+    slot_count:       int
+    slots:            list[PoolSlotOut]
+    drawn:            bool
+
+
+@app.get("/league/{league_id}/pool/slate/{week}", response_model=PoolSlateOut)
+def league_pool_slate(
+    league_id:    int,
+    week:         int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """The governed Pool occurrences for one week, from persisted state.
+
+    READS, NEVER DRAWS. Drawing a slate is an economic act — it opens pots and
+    consumes definitions from the rotation cycle — and belongs to the weekly
+    collection path inside its own transaction. A read route that drew on
+    demand would let any GM refreshing a tab advance the league's rotation.
+
+    THE SLATE IS THE AUTHORITY ON WHICH POOLS A WEEK HAS. It is drawn from the
+    Rev1.3 rotating catalog by `betting/pool_slate.build_and_persist_slate`;
+    this returns what that persisted, joined to the catalog for display names.
+    Continuations occupy slots and are flagged — a carried pot is a slot state,
+    never a fifth Pool and never a second category.
+    """
+    from betting.pool_rotation import DEFAULT_SLOT_COUNT
+    from db.schema import PoolDefinition, PoolInstance
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail=f"League {league_id} not found")
+
+    _assert_league_member(current_user, league_id, db)
+
+    rows = (db.query(PoolInstance)
+            .filter(PoolInstance.league_id == league_id,
+                    PoolInstance.season == league.season,
+                    PoolInstance.week == week)
+            .order_by(PoolInstance.slot)
+            .all())
+
+    definitions = {
+        d.key: d for d in db.query(PoolDefinition).filter(
+            PoolDefinition.key.in_([r.definition_key for r in rows])).all()
+    } if rows else {}
+
+    return PoolSlateOut(
+        league_id=league_id,
+        season=league.season,
+        week=week,
+        slot_count=DEFAULT_SLOT_COUNT,
+        drawn=bool(rows),
+        slots=[
+            PoolSlotOut(
+                slot=r.slot,
+                definition_key=r.definition_key,
+                catalog_number=getattr(definitions.get(r.definition_key),
+                                       "catalog_number", None),
+                display_name=getattr(definitions.get(r.definition_key),
+                                     "display_name", None),
+                category=getattr(definitions.get(r.definition_key),
+                                 "category", None),
+                scope=getattr(definitions.get(r.definition_key), "scope", None),
+                # A continuation is recorded by origin, not by a flag: a carried
+                # instance points at the pot it came from.
+                is_continuation=r.origin_instance_id is not None,
+                pot_cents=int(r.pot_cents or 0),
+                rollover_cents=int(r.rollover_cents or 0),
+                settled=bool(r.settled),
+            )
+            for r in rows
+        ],
+    )
+
+
 # ── Decision Engine health routes ─────────────────────────────────────────────
 
 from api.health_routes import router as health_router  # noqa: E402

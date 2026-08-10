@@ -211,10 +211,18 @@ check('every setting names its governing source',
 
 section('No mutation path is fabricated for a row that looks editable');
 
-check('the settings seam records that no command exists',
-  SETTINGS_SEAM.endpoint === null && SETTINGS_SEAM.status === 'NO CONFIGURATION COMMAND API');
-check('the surface states the rows are read-only', panel.includes('read-only'));
-check('the surface explains why', /no governed configuration command exists to call/.test(panel));
+// GOVERNED REVISION, S8-P4 — one governed command, three rows still read-only.
+check('the settings seam names the one governed command',
+  SETTINGS_SEAM.endpoint === 'PUT /league/{league_id}/settings/pool-entry');
+check('exactly one row is mutable',
+  JSON.stringify(SETTINGS_SEAM.mutable) === JSON.stringify(['pool-bet']));
+check('the other three rows remain read-only',
+  JSON.stringify([...SETTINGS_SEAM.readOnly].sort())
+    === JSON.stringify(['championship-split', 'economy-stop', 'skunk-fee']));
+check('the surface says which row the commissioner sets',
+  /Standard Pool Bet is set by the commissioner/.test(panel));
+check('and says the other three are fixed for the season',
+  panel.includes('fixed for the season'));
 check('a setting sheet repeats the constraint',
   /Read-only\./.test(settingSheet(SETTINGS[0]).body));
 check('no setting renders an input, a toggle or a save control',

@@ -553,8 +553,15 @@ _assert("the Ledger read-model seam names its route and is not yet bound",
         and "NOT YET BOUND" in str(SEAMS.get("ledgerRead", {}).get("status")))
 _assert("the Top-Off command seam is still declared",
         SEAMS.get("topoffCommand", {}).get("endpoint") == "POST /league/{league_id}/top-offs")
-_assert("the configuration-command seam is still declared",
-        SEAMS.get("settings", {}).get("endpoint") is None)
+# GOVERNED REVISION, S8-P4: the B2 ruling made Standard Pool Bet mutable, so
+# the seam now names one command — and must still record that the other three
+# rows are read-only, which is the substance of that ruling.
+_assert("the settings seam names the one governed command",
+        SEAMS.get("settings", {}).get("endpoint")
+        == "PUT /league/{league_id}/settings/pool-entry")
+_assert("and records that the other three rows stay read-only",
+        sorted(SEAMS.get("settings", {}).get("readOnly", []))
+        == ["championship-split", "economy-stop", "skunk-fee"])
 # S8-P1 narrowed this one. The session half is closed — the app has an
 # authenticated identity — while the decision-command half is not, and the
 # assertion now checks exactly that split rather than the old blanket claim.
