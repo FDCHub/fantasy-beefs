@@ -226,7 +226,8 @@ Guarded endpoints (require Bearer token)
   POST /bets/*         — get_current_gm + assert_own_wallet
   POST /wallet/deposit │
   POST /wallet/withdraw│ — get_current_gm + assert_own_wallet
-  POST /settle/{week}  — league commissioner (S8-P2; was a state-changing GET)
+  POST /league/{league_id}/settle/{week}  — commissioner of THAT league
+       (S8-P2: was a state-changing GET; S8-P2R: league is no longer hard-coded)
   POST /beef/challenge — get_current_gm + assert_own_team(challenger)
   POST /beef/respond   — get_current_gm + assert_own_team(challenged)
   GET  /beef/pending/* — get_current_gm + assert_own_team
@@ -397,7 +398,7 @@ Server runs on port **8007** — `uvicorn api.main:app --port 8007`
 │ POST     │ /bets/prop                    │ Top starter vs top starter head-to-head     │
 │ POST     │ /bets/full_beef               │ Best-of-3: DEF/K/Bench — win 2+ legs        │
 │ GET      │ /bets/{matchup_id}            │ All bets placed on a matchup                │
-│ POST     │ /settle/{week}               │ Settle all pending bets for a week   L-comm │
+│ POST     │ /league/{id}/settle/{week}   │ Settle a week for one named league   L-comm │
 ├──────────┼───────────────────────────────┼─────────────────────────────────────────────┤
 │ POST     │ /wallet/deposit               │ Credit a wallet                         gm   │
 │ POST     │ /wallet/withdraw              │ Debit (blocked if pending exposure)     gm   │

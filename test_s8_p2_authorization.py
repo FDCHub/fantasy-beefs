@@ -222,6 +222,11 @@ LEAGUE_SCOPED_ROUTES = [
     ("POST",   "/pool/config",                       {"league_id": "{L}", "weekly_entry": 1.0}),
     ("POST",   "/pool/collect",                      {"league_id": "{L}", "week": 5}),
     ("POST",   "/pool/settle",                       {"league_id": "{L}", "week": 5}),
+    # S8-P2R: settlement is league-parameterised like everything else here, so
+    # it is covered by all four claims below rather than only by its own
+    # section. It moved out of the entity/fixed list when it stopped being a
+    # route with a hard-coded league.
+    ("POST",   "/league/{L}/settle/5",               None),
 ]
 
 # Entity-resolved routes. Every entity below belongs to LEAGUE A, so a
@@ -242,7 +247,6 @@ ENTITY_ROUTES_IN_A = [
     ("GET",    f"/reports/wrap-up/{ENT['wrap']}/editions",     None),
     ("POST",   "/faab/freeze",                                 {"team_id": A["gm_team"], "frozen": True}),
     ("GET",    f"/admin/tuesday-sync/run/{ENT['sync_run']}",   None),
-    ("POST",   "/settle/5",                                    None),
 ]
 
 
@@ -378,32 +382,126 @@ _assert("every changed route authorizes a Bearer caller exactly as it does a coo
 
 # ── 6 · The state-changing GET is gone ───────────────────────────────────────
 
-_section("6 · Settlement is a POST, and no mutating GET remains")
+_section("6 · Settlement names its league, and the superseded spellings are gone")
 
-_assert("GET /settle/{week} no longer exists",
-        _client().get("/settle/5", headers=bearer_a).status_code == 405,
+SETTLE_A = f"/league/{A['league']}/settle/5"
+SETTLE_B = f"/league/{B['league']}/settle/5"
+
+# ── The two superseded spellings ─────────────────────────────────────────────
+
+_assert("the original mutating GET /settle/{week} is gone",
+        _client().get("/settle/5", headers=bearer_a).status_code in (404, 405),
         f"status {_client().get('/settle/5', headers=bearer_a).status_code}")
 
-_assert("no second, compatibility GET settlement path answers either",
-        _client().get("/settle", headers=bearer_a).status_code in (404, 405))
-
-_assert("POST /settle/{week} exists and authorizes the league commissioner",
-        _client().post("/settle/5", headers=bearer_a).status_code not in (401, 403, 404, 405),
+_assert("the unscoped POST /settle/{week} is gone — no settlement path omits "
+        "its league",
+        _client().post("/settle/5", headers=bearer_a).status_code in (404, 405),
         f"status {_client().post('/settle/5', headers=bearer_a).status_code}")
 
-_assert("POST /settle/{week} refuses a commissioner of another league",
-        _client().post("/settle/5", headers=bearer_b).status_code == 403)
+_assert("no compatibility settlement path answers at any shorter spelling",
+        all(_client().get(p, headers=bearer_a).status_code in (404, 405)
+            for p in ("/settle", "/settle/5", f"/league/{A['league']}/settle")))
 
-# CSRF, on the correct verb this time.
+_assert("the league-scoped route refuses a GET",
+        _client().get(SETTLE_A, headers=bearer_a).status_code == 405)
+
+# ── Cross-league authorization ───────────────────────────────────────────────
+
+_assert("League A's commissioner passes authorization on League A settlement",
+        _client().post(SETTLE_A, headers=bearer_a).status_code
+        not in (401, 403, 404, 405),
+        f"status {_client().post(SETTLE_A, headers=bearer_a).status_code}")
+
+_assert("League B's commissioner passes authorization on League B settlement",
+        _client().post(SETTLE_B, headers=bearer_b).status_code
+        not in (401, 403, 404, 405),
+        f"status {_client().post(SETTLE_B, headers=bearer_b).status_code}")
+
+_assert("League B's commissioner CANNOT settle League A",
+        _client().post(SETTLE_A, headers=bearer_b).status_code == 403,
+        f"status {_client().post(SETTLE_A, headers=bearer_b).status_code}")
+
+_assert("League A's commissioner CANNOT settle League B",
+        _client().post(SETTLE_B, headers=bearer_a).status_code == 403,
+        f"status {_client().post(SETTLE_B, headers=bearer_a).status_code}")
+
+_assert("a global role string with no league row cannot settle either league",
+        _call(role_only, "POST", SETTLE_A) == 403
+        and _call(role_only, "POST", SETTLE_B) == 403)
+
+_assert("owning a team in the league cannot settle it",
+        _call(gm_a, "POST", SETTLE_A) == 403)
+
+# ── The league that was authorized is the league that gets settled ───────────
+#
+# The claim the P2R correction actually rests on. Authorizing league A and then
+# settling league 1 would satisfy every check above and still be the bug — so
+# the engine and the freshness precondition are observed directly, and both
+# must receive the league from the PATH.
+
+import api.main as _main_mod  # noqa: E402
+
+seen: dict[str, list] = {"fresh": [], "settle": []}
+_real_fresh = _main_mod._assert_slate_fresh
+_real_settle = _main_mod.settle_week
+
+
+def _spy_fresh(league_id, week, db, **kw):
+    """Record the league, then report the slate ready.
+
+    Forced ready deliberately. The real precondition would refuse this fixture
+    — no provider-bound slate exists — and the route would return 400 before
+    settle_week was ever called, leaving the engine's league_id unobserved.
+    What is being proved here is that ONE league flows from path to engine, and
+    that requires reaching the engine.
+    """
+    seen["fresh"].append(league_id)
+    return (True, "", 0)
+
+
+def _spy_settle(week, db, league_id, **kw):
+    """Record the league and stop.
+
+    Raising rather than settling: this suite observes routing and authority,
+    not settlement economics, and actually running a settlement would post
+    ledger entries no assertion here reads.
+    """
+    seen["settle"].append(league_id)
+    raise RuntimeError("settlement halted — this suite observes routing, not economics")
+
+
+_main_mod._assert_slate_fresh = _spy_fresh
+_main_mod.settle_week = _spy_settle
+try:
+    _client().post(SETTLE_B, headers=bearer_b)
+finally:
+    _main_mod._assert_slate_fresh = _real_fresh
+    _main_mod.settle_week = _real_settle
+
+_assert("the freshness precondition receives the league from the path",
+        seen["fresh"] == [B["league"]], str(seen["fresh"]))
+_assert("the settlement engine receives that same league",
+        seen["settle"] == [B["league"]], str(seen["settle"]))
+_assert("authorization, precondition and engine all name one league",
+        seen["fresh"] == seen["settle"] == [B["league"]],
+        f"fresh={seen['fresh']} settle={seen['settle']} authorized={B['league']}")
+
+# League B is not league 1, so a surviving hard-coded default could not
+# masquerade as a correct answer here.
+_assert("the league proved is NOT the hard-coded 1 that P2R removed",
+        B["league"] != 1, f"League B is {B['league']}")
+
+# ── CSRF on the corrected route ──────────────────────────────────────────────
+
 _assert("settlement by cookie is CSRF-protected",
-        comm_a.post("/settle/5").status_code == 403,
-        f"status {comm_a.post('/settle/5').status_code}")
-_assert("and it is refused for the CSRF reason",
-        "CSRF" in comm_a.post("/settle/5").json().get("detail", ""))
+        comm_a.post(SETTLE_A).status_code == 403,
+        f"status {comm_a.post(SETTLE_A).status_code}")
+_assert("and it is refused for the CSRF reason, not the authority one",
+        "CSRF" in comm_a.post(SETTLE_A).json().get("detail", ""))
 _assert("settlement by cookie succeeds with the CSRF token",
-        _call(comm_a, "POST", "/settle/5") not in (401, 403))
+        _call(comm_a, "POST", SETTLE_A) not in (401, 403))
 _assert("settlement by Bearer needs no CSRF token",
-        _client().post("/settle/5", headers=bearer_a).status_code != 403)
+        _client().post(SETTLE_A, headers=bearer_a).status_code != 403)
 
 
 # ── 7 · Controls: nothing was missed ─────────────────────────────────────────

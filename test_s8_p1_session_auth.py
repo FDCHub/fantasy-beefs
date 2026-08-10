@@ -263,19 +263,31 @@ _assert("a self-consistent FORGED CSRF cookie+header pair is still refused",
 # A safe method never needs a token.
 _assert("GET needs no CSRF token", comm_client.get("/auth/me").status_code == 200)
 
-# REVISED BY S8-P2. P1 asserted that the state-changing `GET /settle/{week}`
-# was pulled into the CSRF gate by an explicit exception, because P1 could
-# protect the browser but had no business changing a public verb. P2 fixed the
-# contract: the route is POST, the exception list is empty, and the assertion
-# that belongs here now is that the mutating GET is GONE. Its CSRF behaviour
-# under the correct verb is certified in test_s8_p2_authorization.py.
+# REVISED BY S8-P2 AND S8-P2R. P1 asserted that the state-changing
+# `GET /settle/{week}` was pulled into the CSRF gate by an explicit exception,
+# because P1 could protect the browser but had no business changing a public
+# verb. P2 fixed the verb; P2R fixed the league scope. What belongs here now is
+# that BOTH superseded spellings are gone and the exception list is empty. The
+# CSRF behaviour of the corrected route is certified in
+# test_s8_p2_authorization.py.
 from auth.session import STATE_CHANGING_GET_PREFIXES  # noqa: E402
 
 _assert("the P1 state-changing-GET exception list is empty",
         STATE_CHANGING_GET_PREFIXES == (), str(STATE_CHANGING_GET_PREFIXES))
-_assert("the mutating GET no longer exists",
-        comm_client.get("/settle/5").status_code == 405,
+_assert("the mutating GET is gone",
+        comm_client.get("/settle/5").status_code in (404, 405),
         f"status {comm_client.get('/settle/5').status_code}")
+# The CSRF token is attached deliberately. The gate is middleware and runs
+# BEFORE routing, so a cookie session posting without one gets 403 for the
+# missing token and never reaches the router — which would make this assertion
+# pass while proving nothing about whether the route still exists.
+_unscoped = comm_client.post(
+    "/settle/5", headers={CSRF_HEADER: comm_client.cookies.get(CSRF_COOKIE)})
+_assert("the unscoped POST is gone too — no settlement path omits its league",
+        _unscoped.status_code in (404, 405), f"status {_unscoped.status_code}")
+_assert("and the league-scoped route rejects a GET",
+        comm_client.get(f"/league/{LEAGUE_ID}/settle/5").status_code == 405,
+        f"status {comm_client.get(f'/league/{LEAGUE_ID}/settle/5').status_code}")
 
 
 # ── 5 · An API token cannot be planted as a session to skip CSRF ─────────────
@@ -329,11 +341,12 @@ _assert("an invalid Bearer token is refused",
         _client().get("/auth/me", headers={"Authorization": "Bearer not.a.token"})
         .status_code == 401)
 
-# REVISED BY S8-P2, for the same reason as section 4: the mutating GET is gone,
-# so the claim worth making here is that a Bearer caller still needs no CSRF
-# token on the route's correct verb.
+# REVISED BY S8-P2/P2R, for the same reason as section 4: the claim worth
+# making here is that a Bearer caller still needs no CSRF token on the
+# corrected, league-scoped route.
 _assert("a Bearer caller reaches the settlement POST with no CSRF token",
-        _client().post("/settle/5", headers=auth_header).status_code != 403)
+        _client().post(f"/league/{LEAGUE_ID}/settle/5",
+                       headers=auth_header).status_code != 403)
 
 
 # ── 7 · Cross-origin is refused for a cookie mutation ────────────────────────

@@ -1126,13 +1126,14 @@ class SettlementOut(BaseModel):
     already_settled:  bool = False
 
 
-@app.post("/settle/{week}", response_model=SettlementOut)
+@app.post("/league/{league_id}/settle/{week}", response_model=SettlementOut)
 def settle(
-    week:         int,
-    db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_gm),
+    league_id: int,
+    week:      int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
 ):
-    """Settle a week. POST, because it writes.
+    """Settle a week for one named league.
 
     VERB CORRECTED IN S8-P2. This was a GET that called `settle_week()` —
     settlement posts bet outcomes and moves wallet balances, so the method
@@ -1142,25 +1143,37 @@ def settle(
     cover a mutation spelled as a read; that list is now empty and the
     mechanism is gone, because the contract itself is right.
 
-    THERE IS NO COMPATIBILITY GET. Leaving one would preserve exactly the
-    exposure this change exists to remove, and a caller that still issues GET
-    gets a loud 405 rather than a silent settlement.
+    LEAGUE IDENTIFIED IN S8-P2R, and this is the more important half. The
+    route previously hard-coded `league_id = 1` and authorized against that
+    constant. Every caller therefore got the same answer to "which league may
+    you settle?" regardless of which league they actually held authority for —
+    so the P2 rule that authorization must be checked against the real league
+    being acted on was satisfied only by the accident of there being one
+    league. FantasyStakes is not a permanently single-league product, and a
+    route that settles league state must say which league it means.
+
+    THE LEAGUE IS NOW A PATH PARAMETER, which lets this use the dependency
+    rather than the imperative check. That is deliberately the stronger of the
+    two: `require_league_commissioner` binds `league_id` from the path and
+    refuses BEFORE any route work, so an unauthorized caller cannot use this
+    route to learn whether a league exists, let alone touch its slate.
+
+    ONE league_id FLOWS THROUGH EVERYTHING. The value authorized above is the
+    same value passed to the freshness precondition and to `settle_week()`.
+    There is no second source and no default anywhere on the path, so the
+    league that was authorized is necessarily the league that gets settled.
+
+    NO COMPATIBILITY ROUTE, in either direction. The old GET and the unscoped
+    POST are both gone: the GET because a mutation must not be spelled as a
+    read, the unscoped POST because retaining it would leave a live settlement
+    path whose league authority is ambiguous — the exact defect this corrects.
+    Nothing in the repository called either one.
 
     RESPONSE CONTRACT UNCHANGED — same `SettlementOut`, same fields, same
-    values, same idempotent `already_settled` behaviour. Only the verb moved.
+    values, same idempotent `already_settled` behaviour.
     """
     if not 1 <= week <= 17:
         raise HTTPException(status_code=400, detail="week must be 1–17")
-
-    # Single-league deployment today — matches settle_week()'s own default
-    # and the LEAGUE_ID=1 convention used throughout this codebase.
-    league_id = 1
-
-    # S8-P2: authority is checked against the league actually being settled.
-    # The league is a constant here rather than a parameter, so this reads
-    # oddly — but checking the real value is the point, and when this route
-    # learns to take a league the check will already be against the right one.
-    assert_league_commissioner(current_user, league_id, db)
 
     is_fresh, reason, _ = _assert_slate_fresh(league_id, week, db, check_refreshed=True)
     if not is_fresh:
