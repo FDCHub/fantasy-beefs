@@ -397,9 +397,14 @@ try {
 
   console.log('\nThe shared pop-out closes from an upper-right control');
 
+  // Opened from Ledger's Request Top-Off control. Package 1 opened this sheet
+  // from the ledger strip's gold cell; Package 3 gave that strip the POR's four
+  // week cells and moved Current Settle to the My Season strip, so the stable
+  // sheet-opening control on this tab is now Top-Off. What is under test is the
+  // shared pop-out, not which control summoned it.
   const sheetGeometry = await evaluate(cdp, `
     document.querySelector('.fs-tabbar__item[data-destination="ledger"]').click();
-    document.querySelector('#fs-strip-ledger .fs-strip__cell.is-gold').click();
+    document.querySelector('#panel-ledger [data-topoff]').click();
     const overlay = document.getElementById('fs-overlay');
     const sheet = document.getElementById('fs-sheet');
     const close = sheet.querySelector('[data-fs-close]');
@@ -445,7 +450,7 @@ try {
   check('the close control closes the sheet', closed.open === false && closed.hidden === 'true');
 
   const reopenedThenNavigated = await evaluate(cdp, `
-    document.querySelector('#fs-strip-ledger .fs-strip__cell.is-gold').click();
+    document.querySelector('#panel-ledger [data-topoff]').click();
     const wasOpen = document.getElementById('fs-overlay').classList.contains('is-open');
     document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
     return { wasOpen, stillOpen: document.getElementById('fs-overlay').classList.contains('is-open') };

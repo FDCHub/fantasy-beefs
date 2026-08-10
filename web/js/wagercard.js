@@ -16,10 +16,10 @@
  * Pure functions to HTML. No DOM, no state.
  * ========================================================================== */
 
-import { escapeHtml } from './components.js';
+import { PENDING_FIGURE, escapeHtml } from './components.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
 import { formatOdds } from './wager-model.js';
-import { formatSpread } from './narrative.js';
+import { formatSpread, hasQuotedMoneyline } from './narrative.js';
 
 /**
  * @typedef {object} MarketCell
@@ -67,8 +67,17 @@ export function marketRow(cells, options = {}) {
  * @returns {MarketCell[]}
  */
 export function matchupMarketCells(m) {
+  // The moneyline is the one cell that may be unquoted: it comes from the
+  // pricing engine, while the spread and total are arithmetic on projections
+  // this build already holds. An unquoted cell draws as unresolved.
+  const quoted = hasQuotedMoneyline(m);
   return [
-    { id: 'ml', label: 'ML', value: formatOdds(m.ml), tone: m.ml < 0 ? 'fav' : 'dog' },
+    {
+      id: 'ml',
+      label: 'ML',
+      value: quoted ? formatOdds(m.ml) : PENDING_FIGURE,
+      tone: quoted ? (m.ml < 0 ? 'fav' : 'dog') : 'neu',
+    },
     { id: 'spread', label: 'SPR', value: formatSpread(m.spread), tone: m.spread < 0 ? 'fav' : 'dog' },
     { id: 'ou', label: 'O/U', value: m.total.toFixed(1), tone: 'neu' },
   ];

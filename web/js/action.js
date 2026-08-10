@@ -168,7 +168,14 @@ export function bindAction(panel, api) {
   });
 }
 
-function wagerSheet(card) {
+/**
+ * The wager-detail sheet. Exported so The Week opens the SAME detail for the
+ * same wager rather than growing a second, drifting description of it.
+ *
+ * @param {object} card
+ * @returns {{title: string, sub: string, body: string}}
+ */
+export function wagerSheet(card) {
   const rows = [
     ['Market', `${card.marketLabel} ${card.line}`],
     ['Terms', card.mode.toUpperCase()],

@@ -19,16 +19,32 @@ import { sportsbookView, theRead, whyTheLine } from './narrative.js';
  * @returns {{title: string, sub: string, body: string, onMount: Function}}
  */
 export function previewSheet(m) {
+  // Where the matchup came from is stated, not implied. An official Yahoo
+  // league matchup is not a FantasyStakes wager, and the preview must not let a
+  // GM mistake one for the other just because the grammar is shared.
+  const fromYahoo = m.source === 'yahoo';
+  const week = m.weekLabel || 'Week 5';
+
+  const sourceBanner = fromYahoo
+    ? '<div class="fs-srcbanner" data-source="yahoo">OFFICIAL YAHOO FANTASY MATCHUP</div>'
+    : '';
+
+  const closingNote = fromYahoo
+    ? '<div class="fs-note">Analysis only. This is an official Yahoo league ' +
+      'matchup, not a FantasyStakes wager — nothing here stakes Credits.</div>'
+    : '<div class="fs-note">Analysis only — no wager runs through this card. ' +
+      'Close to return to your challenge; nothing you have entered is lost.</div>';
+
   return {
     title: 'Matchup Preview',
-    sub: `${m.you.name} vs ${m.name} · Week 5`,
+    sub: `${m.you.name} vs ${m.name} · ${week}`,
     body:
+      sourceBanner +
       sportsbookSection(m) +
       lineupsSection(m) +
       collapsible('WHY THE LINE LOOKS THIS WAY', paragraphs(whyTheLine(m))) +
       collapsible('THE READ', paragraphs(theRead(m))) +
-      '<div class="fs-note">Analysis only — no wager runs through this card. ' +
-      'Close to return to your challenge; nothing you have entered is lost.</div>',
+      closingNote,
     onMount: (host) => {
       host.querySelectorAll('[data-collapse]').forEach((headEl) => {
         headEl.addEventListener('click', () => {
@@ -56,19 +72,38 @@ function sportsbookSection(m) {
   );
 }
 
+/** A per-slot figure, or the unresolved mark where none is retained. */
+function figure(row) {
+  return typeof row.projection === 'number' ? row.projection.toFixed(1) : '—';
+}
+
 function lineupsSection(m) {
   const rows = m.yourLineup.map((mine, i) => {
     const theirs = m.opponentLineup[i];
     return (
       '<div class="fs-spl__row">' +
-      `<span class="fs-spl__name">${escapeHtml(mine.player)}</span>` +
-      `<span class="fs-spl__proj">${mine.projection.toFixed(1)}</span>` +
+      `<span class="fs-spl__name">${mine.player ? escapeHtml(mine.player) : '—'}</span>` +
+      `<span class="fs-spl__proj">${figure(mine)}</span>` +
       `<span class="fs-spl__slot">${escapeHtml(mine.slot)}</span>` +
-      `<span class="fs-spl__proj">${theirs.projection.toFixed(1)}</span>` +
+      `<span class="fs-spl__proj">${figure(theirs)}</span>` +
       `<span class="fs-spl__name is-right">${theirs.player ? escapeHtml(theirs.player) : '—'}</span>` +
       '</div>'
     );
   }).join('');
+
+  // What is unknown depends on the matchup: the viewer's own roster is known
+  // and an opponent's is not; in a third-party Yahoo matchup neither is; and in
+  // a PAST week the per-slot figures themselves are not retained on either side.
+  const named = m.yourLineup.some((r) => r.player);
+  const bindingNote = m.settled
+    ? 'Per-slot results for a past week are not retained in this build. The ' +
+      'team totals are the result; the rows above them bind from Yahoo once ' +
+      'the provider read is wired.'
+    : (named
+      ? 'Opponent starters bind from Yahoo once the provider read is wired; the ' +
+        'slot shape and projections are what the inputs give us today.'
+      : 'Starters for both teams bind from Yahoo once the provider read is wired. ' +
+        'Naming them here would be inventing a roster no source supports.');
 
   const body =
     '<div class="fs-spl">' +
@@ -86,8 +121,7 @@ function lineupsSection(m) {
     '</div>' +
     '</div>' +
     '<div class="fs-note">Projections are the pregame projection and refresh ' +
-    'until the week’s first kickoff. Opponent starters bind from Yahoo once ' +
-    'the provider read is wired.</div>';
+    `until the week’s first kickoff. ${bindingNote}</div>`;
 
   return collapsible('STARTING LINEUPS &amp; PROJECTIONS', body, { open: true });
 }

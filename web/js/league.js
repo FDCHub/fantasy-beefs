@@ -138,11 +138,31 @@ export function bindLeague(panel, api) {
   });
 }
 
-function poolSheet(pool) {
+/**
+ * The Pool-detail sheet. Exported so The Week opens the same detail for the
+ * same Pool. A week may layer state on top — a settled Pool carries its outcome
+ * — but the definition, the rule and the catalog number are always the
+ * catalog's own.
+ *
+ * @param {object} pool
+ * @returns {{title: string, sub: string, body: string}}
+ */
+export function poolSheet(pool) {
+  const outcomeRows = pool.settled
+    ? '<div class="fs-prev__row"><span class="fs-prev__label">Outcome</span>' +
+      `<span class="fs-prev__value">${escapeHtml(pool.state)}</span></div>` +
+      (pool.qualified
+        ? '<div class="fs-prev__row"><span class="fs-prev__label">Return</span>' +
+          `<span class="fs-prev__value fs-money" data-exact-cents="${pool.returnCents}">` +
+          `${escapeHtml(formatCredits(pool.returnCents))}</span></div>`
+        : '')
+    : '';
+
   return {
     title: pool.name,
     sub: `${poolBadge(pool)} · catalog #${pool.catalogNumber}`,
     body:
+      outcomeRows +
       '<div class="fs-prev__row"><span class="fs-prev__label">Subject</span>' +
       `<span class="fs-prev__value">${escapeHtml(pool.subject)}</span></div>` +
       '<div class="fs-prev__row"><span class="fs-prev__label">Settles on</span>' +
@@ -159,7 +179,14 @@ function poolSheet(pool) {
         ? `<div class="fs-note">Carried from Week ${pool.carriedFromWeek}. A continuation ` +
           'occupies one of the week’s four slots.</div>'
         : '') +
-      '<div class="fs-note">All Pools for the week lock at the week’s first kickoff. ' +
-      'Entry binds to the Pool engine in a later Sprint 7 package.</div>',
+      (pool.rolledForward
+        ? '<div class="fs-note">No entry qualified, so the pot carried forward. ' +
+          'Rolling over is a modifier on this Pool, not a different kind of Pool.</div>'
+        : '') +
+      (pool.settled
+        ? '<div class="fs-note">Settled. Pool settlement is performed by the Pool ' +
+          'engine; nothing here moves Credits.</div>'
+        : '<div class="fs-note">All Pools for the week lock at the week’s first kickoff. ' +
+          'Entry binds to the Pool engine in a later Sprint 7 package.</div>'),
   };
 }

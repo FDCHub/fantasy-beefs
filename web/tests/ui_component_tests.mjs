@@ -412,10 +412,20 @@ check(
   buildPanelContent('ledger').includes('is-gold'),
 );
 check(
-  // Ledger, not Action: Package 2 supplies Action's four figures, so the
-  // still-unresolved example moved to In Play and Current Settle.
+  // Asserted against the COMPONENT, not against whichever tab still happens to
+  // have an unresolved cell. Package 2 gave Action its four figures and
+  // Package 3 gave Ledger its four, so no shipped strip carries a pending cell
+  // any more — but the rule this protects is the component's, and it has to
+  // hold for whatever binds a figure it does not yet have.
   'unresolved figures are drawn as unresolved, not invented',
-  buildPanelContent('ledger').includes('is-pending'),
+  summaryStrip({
+    cells: [
+      { label: 'Bound', cents: 1000 },
+      { label: 'Unbound', pending: true },
+      { label: 'Bound', cents: 2000 },
+      { label: 'Bound', cents: 3000 },
+    ],
+  }).includes('is-pending'),
 );
 
 /* ── Rev4.2 locked global copy ──────────────────────────────────────────── */

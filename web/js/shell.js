@@ -1,6 +1,6 @@
 /* ============================================================================
  * FantasyStakes — UI/UX Rev 4.2 · application shell wiring
- * Sprint 7 Packages 1–2
+ * Sprint 7 Packages 1–3
  *
  * The only module that touches the DOM directly. It renders the five primary
  * destinations, binds the persistent bottom navigation, and owns the single
@@ -30,9 +30,11 @@ import {
   tabHeader,
 } from './components.js';
 
-import { ILLUSTRATIVE, LEAGUE_IDENTITY, MASTHEAD } from './demo-state.js';
+import { ILLUSTRATIVE, MASTHEAD } from './demo-state.js';
 import { bindLeague, buildLeaguePanel } from './league.js';
 import { bindAction, buildActionPanel } from './action.js';
+import { bindWeek, buildWeekPanel } from './week.js';
+import { bindLedger, buildLedgerPanel } from './ledger.js';
 import { beginSession, composerSheet, endSession } from './composer.js';
 
 /* ── Masthead ───────────────────────────────────────────────────────────── */
@@ -83,8 +85,8 @@ function renderPanelHosts(root) {
 }
 
 /**
- * Content for each destination. League and Action are built by their own
- * modules; the remaining two carry their POR frame and land in later packages.
+ * Content for each destination. Four of the five are built by their own
+ * modules; Rules & Settings carries its POR frame and lands in Package 4.
  *
  * @param {string} destinationId
  * @returns {string}
@@ -92,35 +94,12 @@ function renderPanelHosts(root) {
 export function buildPanelContent(destinationId) {
   if (destinationId === 'league') return buildLeaguePanel();
   if (destinationId === 'action') return buildActionPanel();
+  if (destinationId === 'week') return buildWeekPanel();
+  if (destinationId === 'ledger') return buildLedgerPanel();
 
   const composer = new PanelComposer(destinationId);
 
   switch (destinationId) {
-    case 'ledger':
-      composer.add(tabHeader({
-        title: 'Ledger',
-        sub: 'Transaction history and account breakdown',
-      }));
-      composer.add('<div class="fs-eyebrow" style="margin-left:14px">YOUR POSITION</div>');
-      composer.addStrip({
-        id: 'fs-strip-ledger',
-        label: 'Your position',
-        cells: [
-          { label: 'Wallet', cents: ILLUSTRATIVE.walletCents },
-          { label: 'Available', cents: ILLUSTRATIVE.availableCents },
-          { label: 'In Play', pending: true },
-          { label: 'Current Settle', pending: true, gold: true },
-        ],
-      });
-      composer.addDisclaimer();
-      break;
-
-    case 'week':
-      composer.add(tabHeader({ title: 'The Week', sub: LEAGUE_IDENTITY.name }));
-      // The POR carries a four-cell strip on The Week, but has not yet defined
-      // its four cells. The component is ready; the cells are not invented here.
-      break;
-
     case 'rules':
       composer.add(tabHeader({
         title: 'Rules & Settings',
@@ -291,35 +270,10 @@ function bindNavigation() {
 
 /* ── Interactions defined by the POR ────────────────────────────────────── */
 
-function bindCurrentSettle() {
-  const strip = document.getElementById('fs-strip-ledger');
-  if (!strip) return;
-  const cell = strip.querySelector('.fs-strip__cell.is-gold');
-  if (!cell) return;
-
-  cell.classList.add('is-tappable');
-  cell.setAttribute('role', 'button');
-  cell.setAttribute('tabindex', '0');
-
-  const open = () => openSheet({
-    title: 'The Sheet',
-    sub: 'Authoritative season reconciliation',
-    body: note(
-      'The Sheet is built in a later Sprint 7 package. Current Settle is ' +
-      'reconciled here; the Ledger records transaction history and does not ' +
-      'prove this figure.',
-      { pending: true },
-    ),
-  });
-
-  cell.addEventListener('click', open);
-  cell.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      open();
-    }
-  });
-}
+/* Package 1 bound the Ledger strip's gold cell to a placeholder sheet promising
+ * that Current Settle would be reconciled "in a later Sprint 7 package". This
+ * IS that package: the Ledger now carries the whole reconciliation on the tab,
+ * so the placeholder is gone rather than left pointing at a page that exists. */
 
 /* ── Mount ──────────────────────────────────────────────────────────────── */
 
@@ -347,9 +301,14 @@ export function mount() {
   const actionPanel = document.getElementById('panel-action');
   if (actionPanel) bindAction(actionPanel, { openSheet });
 
+  const weekPanel = document.getElementById('panel-week');
+  if (weekPanel) bindWeek(weekPanel, { openSheet });
+
+  const ledgerPanel = document.getElementById('panel-ledger');
+  if (ledgerPanel) bindLedger(ledgerPanel, { openSheet });
+
   bindNavigation();
   bindSheet();
-  bindCurrentSettle();
 
   goTo(DEFAULT_DESTINATION_ID);
 }

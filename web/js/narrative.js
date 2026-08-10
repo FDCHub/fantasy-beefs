@@ -17,9 +17,73 @@
  * "Why The Line Looks This Way" is market analysis. "The Read" is fantasy
  * analysis. The POR keeps them separate, so the market section does not carry
  * roster storytelling and the fantasy section does not re-explain the line.
+ *
+ * TWO PERSPECTIVES, ONE SET OF SENTENCES. Package 3 shows the league's official
+ * Yahoo matchups, most of which the viewer is not playing in. Rather than fork
+ * the prose, every sentence is built through `voice()`: the subject side is
+ * addressed as "you" when the viewer is in the matchup and by name when they
+ * are not. The analysis is the same analysis either way.
+ *
+ * AN UNQUOTED MONEYLINE IS DRAWN AS UNQUOTED. A spread and a total are
+ * arithmetic on projections we hold. A moneyline is not: it comes from the
+ * simulation engine (`odds/monte_carlo.py`, converted by `p2o` in
+ * `odds/dynamic_pricing.py`), and no seam exposes it to the web app. The POR
+ * carries moneylines for the viewer's own board and for nothing else, so a
+ * matchup without one says so instead of deriving a number from the spread.
  * ========================================================================== */
 
+import { PENDING_FIGURE } from './components.js';
 import { formatOdds } from './wager-model.js';
+
+/**
+ * How to address the two sides of a matchup.
+ *
+ * `m.viewerIsSubject` defaults to true, so a League matchup — where the subject
+ * side IS the viewer — keeps the second-person voice it has always had.
+ *
+ * @param {object} m
+ * @returns {object}
+ */
+function voice(m) {
+  const isViewer = m.viewerIsSubject !== false;
+  const name = m.you.name;
+  return {
+    isViewer,
+    subject: isViewer ? 'you' : name,
+    Subject: isViewer ? 'You' : name,
+    possessive: isViewer ? 'your' : `${name}’s`,
+    Possessive: isViewer ? 'Your' : `${name}’s`,
+    are: isViewer ? 'are' : 'is',
+    need: isViewer ? 'need' : 'needs',
+    clear: isViewer ? 'clear' : 'clears',
+  };
+}
+
+/**
+ * How to refer to a lineup row.
+ *
+ * A row binds a player name only where a source supports one. Where it does
+ * not, the slot is the honest reference — never a name chosen to fill the
+ * sentence.
+ *
+ * @param {{slot: string, player: ?string, projection: number}} row
+ * @returns {string}
+ */
+function lineupRef(row) {
+  return row.player
+    ? `${row.player} at ${row.projection.toFixed(1)}`
+    : `the ${row.slot} slot at ${row.projection.toFixed(1)}`;
+}
+
+/**
+ * Whether this matchup carries a quoted moneyline.
+ *
+ * @param {object} m
+ * @returns {boolean}
+ */
+export function hasQuotedMoneyline(m) {
+  return Number.isInteger(m.ml) && m.ml !== 0;
+}
 
 /**
  * Implied win probability of American odds, as a percentage.
@@ -69,13 +133,36 @@ export function formatSpread(spread) {
  * @returns {{rows: Array<{label: string, value: string}>, favourite: string}}
  */
 export function sportsbookView(m) {
+  const quoted = hasQuotedMoneyline(m);
+  const v = voice(m);
+
+  // A finished matchup is reported as a RESULT. Drawing a realised margin under
+  // a `Spread` label, or this week's board price on a matchup that closed days
+  // ago, would dress results up as a market.
+  if (m.settled) {
+    return {
+      favourite: m.favourite,
+      quoted: false,
+      settled: true,
+      rows: [
+        { label: 'Result', value: `${m.winner} by ${Math.abs(m.spread).toFixed(1)}` },
+        { label: `Final · ${m.you.name}`, value: m.yourProjection.toFixed(1) },
+        { label: `Final · ${m.name}`, value: m.opponentProjection.toFixed(1) },
+        { label: 'Combined', value: m.total.toFixed(1) },
+        { label: 'Closing line', value: PENDING_FIGURE },
+      ],
+    };
+  }
+
   return {
     favourite: m.favourite,
+    quoted,
+    settled: false,
     rows: [
       { label: 'Favourite', value: `${m.favourite} by ${Math.abs(m.spread).toFixed(1)}` },
-      { label: `ML · ${m.you.name}`, value: formatOdds(m.ml) },
-      { label: `ML · ${m.name}`, value: formatOdds(mirrorOdds(m.ml)) },
-      { label: 'Spread · your side', value: formatSpread(m.spread) },
+      { label: `ML · ${m.you.name}`, value: quoted ? formatOdds(m.ml) : PENDING_FIGURE },
+      { label: `ML · ${m.name}`, value: quoted ? formatOdds(mirrorOdds(m.ml)) : PENDING_FIGURE },
+      { label: `Spread · ${v.isViewer ? 'your side' : m.you.name}`, value: formatSpread(m.spread) },
       { label: 'Total', value: m.total.toFixed(1) },
       { label: 'Projected score', value: `${m.yourProjection.toFixed(1)} — ${m.opponentProjection.toFixed(1)}` },
     ],
@@ -90,25 +177,46 @@ export function sportsbookView(m) {
  */
 export function whyTheLine(m) {
   const gap = Math.abs(m.spread).toFixed(1);
-  const youAreDog = m.spread > 0;
-  const probability = impliedProbability(m.ml);
+  const subjectIsDog = m.spread > 0;
+  const v = voice(m);
+
+  // Nothing to explain about a line this build does not hold. The result is
+  // reported instead, and the absence is stated rather than filled.
+  if (m.settled) {
+    return [
+      `${m.winner} won it by ${gap} — ${m.yourProjection.toFixed(1)} to ` +
+      `${m.opponentProjection.toFixed(1)}, ${m.total.toFixed(1)} between them.`,
+
+      'The line this matchup closed at is not retained in this build, so there ' +
+      'is no price here to check that result against. What we hold is the ' +
+      'scoreline, and it is shown as itself.',
+    ];
+  }
+
+  const moneylineParagraph = hasQuotedMoneyline(m)
+    ? `On the moneyline ${v.subject} ${v.are} ${subjectIsDog ? 'getting' : 'laying'} ` +
+      `${formatOdds(m.ml)} — priced to win ${impliedProbability(m.ml)}% of the time. ` +
+      (subjectIsDog
+        ? `The market is paying ${v.subject} to be the shorter projection, so the ` +
+          'edge, if there is one, is in the gap being smaller than it looks.'
+        : `${v.Subject} ${v.are} paying for the longer projection, so the edge, if ` +
+          'there is one, is in the gap holding all the way to kickoff.')
+    // Deriving a price from the spread would be inventing a pricing model. The
+    // spread and total above need no quote; the moneyline does.
+    : 'No moneyline is quoted on this matchup. The spread and the total above ' +
+      'are arithmetic on the projections and stand on their own; a price is a ' +
+      'separate thing, and it binds when the pricing engine is wired through.';
 
   return [
     `${m.favourite} is laying ${gap}. The projections are the whole of it: ` +
-    `${m.name} projects ${m.opponentProjection.toFixed(1)} against your ` +
+    `${m.name} projects ${m.opponentProjection.toFixed(1)} against ${v.possessive} ` +
     `${m.yourProjection.toFixed(1)}, and the spread reproduces that ${gap}-point ` +
     'gap rather than adding a view of its own.',
 
     `The total of ${m.total.toFixed(1)} is those same two projections added. ` +
     'It moves when either lineup moves, which is the only thing that moves it.',
 
-    `On the moneyline you are ${youAreDog ? 'getting' : 'laying'} ` +
-    `${formatOdds(m.ml)} — priced to win ${probability}% of the time. ` +
-    (youAreDog
-      ? 'The market is paying you to be the shorter projection, so the edge, ' +
-        'if there is one, is in the gap being smaller than it looks.'
-      : 'You are paying for the longer projection, so the edge, if there is ' +
-        'one, is in the gap holding all the way to kickoff.'),
+    moneylineParagraph,
   ];
 }
 
@@ -119,6 +227,25 @@ export function whyTheLine(m) {
  * @returns {string[]} paragraphs
  */
 export function theRead(m) {
+  const v = voice(m);
+  const gap = Math.abs(m.spread).toFixed(1);
+
+  // A settled matchup has no per-slot figures to read — see `lineupFor` in
+  // week-data. Ranking a lineup whose rows are unresolved would be ranking
+  // nothing, so The Read works from the two totals it actually has.
+  if (m.settled) {
+    const close = Math.abs(m.spread) < 10;
+    return [
+      `${v.Possessive} ${m.yourProjection.toFixed(1)} against ` +
+      `${m.name}’s ${m.opponentProjection.toFixed(1)} was ` +
+      `${close ? 'a one-swing game' : 'a comfortable margin'} at ${gap} points.`,
+
+      'Which slots produced that total is not retained for a past week. It ' +
+      'binds from Yahoo once the provider read is wired; naming the players ' +
+      'who did it would be inventing a box score.',
+    ];
+  }
+
   const ranked = [...m.yourLineup].sort((a, b) => b.projection - a.projection);
   const [first, second, third] = ranked;
   const topThree = first.projection + second.projection + third.projection;
@@ -126,25 +253,24 @@ export function theRead(m) {
 
   const theirRanked = [...m.opponentLineup].sort((a, b) => b.projection - a.projection);
   const theirTop = theirRanked[0];
-  const gap = Math.abs(m.spread).toFixed(1);
 
   return [
-    `Your ${m.yourProjection.toFixed(1)} is concentrated: ${first.player} at ` +
-    `${first.projection.toFixed(1)}, ${second.player} at ${second.projection.toFixed(1)} ` +
-    `and ${third.player} at ${third.projection.toFixed(1)} carry ${share}% of it. ` +
-    'Concentration cuts both ways — it is where your ceiling comes from and ' +
-    'where a quiet week hurts most.',
+    `${v.Possessive} ${m.yourProjection.toFixed(1)} is concentrated: ` +
+    `${lineupRef(first)}, ${lineupRef(second)} and ${lineupRef(third)} carry ` +
+    `${share}% of it. Concentration cuts both ways — it is where ${v.possessive} ` +
+    'ceiling comes from and where a quiet week hurts most.',
 
-    `Their ${m.opponentProjection.toFixed(1)} leans hardest on the ${theirTop.slot} ` +
-    `slot at ${theirTop.projection.toFixed(1)}. Opponent starters bind from Yahoo ` +
-    'once the provider read is wired; the slot shape and projections are what ' +
-    'the inputs give us today.',
+    `${m.name} projects ${m.opponentProjection.toFixed(1)}, leaning hardest on the ` +
+    `${theirTop.slot} slot at ${theirTop.projection.toFixed(1)}. Starters bind from ` +
+    'Yahoo once the provider read is wired; the slot shape and projections are ' +
+    'what the inputs give us today.',
 
     m.spread > 0
-      ? `You need ${gap} points of the gap back. On these projections that is ` +
-        'one starter beating their projection by that much, not a lineup-wide ' +
-        'change of fortune.'
-      : `You are giving ${gap}. On these projections you clear it only if your ` +
-        'top slots hit — the margin is smaller than the record gap suggests.',
+      ? `${v.Subject} ${v.need} ${gap} points of the gap back. On these projections ` +
+        'that is one starter beating their projection by that much, not a ' +
+        'lineup-wide change of fortune.'
+      : `${v.Subject} ${v.are} giving ${gap}. On these projections ${v.subject} ` +
+        `${v.clear} it only if ${v.possessive} top slots hit — the margin is ` +
+        'smaller than the record gap suggests.',
   ];
 }
