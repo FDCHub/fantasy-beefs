@@ -81,24 +81,20 @@ CONTEXT_BROWSER = "browser"
 #: caller presents the ambient cookie credential.
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
-#: GET routes that change state despite their verb.
+#: GET routes that change state despite their verb. EMPTY, AND MEANT TO STAY SO.
 #:
-#: `GET /settle/{week}` calls `settle_week()`, which posts settlement. A read
-#: method that writes is a pre-existing contract defect — it predates Sprint 8
-#: — but it became a CSRF exposure the moment the browser started carrying an
-#: ambient credential, because the method-based gate above would wave it
-#: through. SameSite=Lax withholds the cookie from cross-site SUBRESOURCE
-#: requests, so an <img> tag cannot reach it, but a top-level navigation a
-#: commissioner is induced to follow is exactly the case Lax permits.
+#: P1 found one — `GET /settle/{week}` called `settle_week()` — and listed it
+#: here so the CSRF gate would cover a mutation spelled as a read. S8-P2 fixed
+#: the contract instead: the route is now `POST /settle/{week}`, the method
+#: gate covers it for the ordinary reason, and there is no compatibility GET.
 #:
-#: Listing it here closes the exposure without changing the route's verb, and
-#: changing a public verb is not S8-P1's business: an API client calling it with
-#: a Bearer token is unaffected either way, since a request with no session
-#: cookie is not CSRF-exposed and never reaches this check.
-#:
-#: RECORDED AS A FINDING FOR S8-P2. The real fix is POST, and P2 owns the
-#: authorization surface. This list should shrink to empty there, not grow.
-STATE_CHANGING_GET_PREFIXES = ("/settle/",)
+#: The mechanism is kept rather than deleted, at zero cost, because it is the
+#: honest way to record the rule: a GET that writes is a defect, and if one is
+#: ever introduced this is where it must be declared and where the control in
+#: test_s8_p2_authorization.py will find it. An empty tuple asserts the claim
+#: "there are no state-changing GETs" in a form that can be checked, which a
+#: deleted constant cannot.
+STATE_CHANGING_GET_PREFIXES: tuple[str, ...] = ()
 
 _SESSION_MAX_AGE_SECONDS = 8 * 60 * 60   # matches TOKEN_EXPIRE_HOURS
 

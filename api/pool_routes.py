@@ -9,7 +9,11 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db.deps import get_db
-from auth.jwt_auth import assert_own_team, require_commissioner, get_current_gm, User
+# require_commissioner is no longer imported: S8-P2 moved every commissioner
+# route in this module to league-scoped authority, so a global-role import
+# would only be an invitation to reintroduce the gap.
+from auth.jwt_auth import assert_own_team, get_current_gm, User
+from auth.allocation_gate import assert_league_commissioner
 from ledger.ledger import _dollars_to_cents
 from betting.pool_legacy_guard import (
     LegacyPoolPathRefused,
@@ -64,8 +68,12 @@ class SettleRequest(BaseModel):
 def create_pool_config(
     req:   PoolConfigRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ) -> PoolConfigOut:
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
         weekly_entry_cents = _dollars_to_cents(req.weekly_entry)
         return setup_pool_config(
@@ -90,8 +98,12 @@ def read_pool_config(league_id: int, db: Session = Depends(get_db)) -> PoolConfi
 def collect_entries(
     req:   CollectEntriesRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ) -> PoolEntryResult:
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     # S4-P2-1 — the mounted legacy economic surface. The guard also sits at the
     # engine function's own entry point; it is repeated here so the refusal
     # happens before the request ever reaches the legacy engine, and so the
@@ -137,8 +149,12 @@ def read_predictions(
 def settle_weekly_pool(
     req:   SettleRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ) -> PoolSettlementResult:
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     # S4-P2-1 — see collect_entries above.
     try:
         assert_legacy_pool_path_allowed(db, req.league_id, req.week)

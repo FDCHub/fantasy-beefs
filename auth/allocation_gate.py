@@ -157,6 +157,32 @@ def is_league_commissioner(user_id: int, league_id: int, db: Session) -> bool:
     )
 
 
+def assert_league_commissioner(user: User, league_id: int, db: Session) -> None:
+    """Imperative twin of `require_league_commissioner` (S8-P2).
+
+    WHY BOTH EXIST. The dependency binds `league_id` from the route's PATH,
+    which is the right and safest shape when the league is in the path. Many
+    governed operations name their league in the request BODY, in a query
+    parameter, or only indirectly through the entity being acted on (a rule, an
+    escrow account, a wrap-up). A dependency cannot reach those, so those
+    routes would otherwise have had to keep the global guard — which is the
+    very gap P2 exists to close.
+
+    This is deliberately NOT a role framework. It is one lookup against the
+    same `is_league_commissioner()` the dependency uses, so both paths answer
+    the same question the same way and there is one definition of league
+    authority in the system.
+
+    CALL IT BEFORE ANY WRITE, and before any read that would disclose league
+    state. It raises the same 403 the dependency raises.
+    """
+    if not is_league_commissioner(user.id, league_id, db):
+        raise HTTPException(
+            status_code = status.HTTP_403_FORBIDDEN,
+            detail      = "Commissioner access required for this league",
+        )
+
+
 def require_league_commissioner(
     league_id:    int,
     db:           Session = Depends(get_db),

@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from db.schema import (
     Bet,
     BeefChallenge,
+    CommissionerRule,
+    EscrowAccount,
     FaabTransaction,
     League,
     LeagueCommissioner,
@@ -28,8 +30,10 @@ from db.schema import (
     Roster,
     Team,
     Transaction,
+    TuesdaySyncRun,
     User,
     Wallet,
+    WeeklyWrapUp,
     SessionLocal,
 )
 
@@ -67,6 +71,7 @@ from auth.jwt_auth import (
     require_commissioner,
 )
 from auth.allocation_gate import (
+    assert_league_commissioner,
     get_allocation_enforcement_active,
     get_season_allocation_gate,
     is_league_commissioner,
@@ -293,6 +298,30 @@ def _user_out(u: User) -> UserOut:
     )
 
 
+def _league_of(model, entity_id, db: Session, label: str) -> int:
+    """The league a governed entity belongs to (S8-P2).
+
+    Rules, escrow accounts, sync runs and wrap-ups all carry `league_id`
+    directly, so this is a lookup and never a traversal — there is no chain of
+    joins whose middle link could go missing and silently widen authority.
+
+    ORDER OF DISCLOSURE, stated because it is a security decision. A caller
+    must be told 404 for an entity that does not exist and 403 for one they may
+    not touch, which means existence is observable BEFORE authority is checked
+    on these routes. That is unavoidable when the league can only be learned
+    from the entity itself, and it is strictly better than what it replaces:
+    before P2, any globally-roled commissioner could not merely observe these
+    rows but read and mutate every one of them, in every league.
+
+    Routes whose league is in the PATH do not have this property and do not use
+    this helper — `require_league_commissioner` refuses them before any lookup.
+    """
+    row = db.query(model).filter(model.id == entity_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"{label} not found")
+    return row.league_id
+
+
 @app.post("/auth/register", response_model=UserOut, status_code=201)
 def auth_register(req: RegisterRequest, db: Session = Depends(get_db)):
     try:
@@ -438,6 +467,21 @@ def auth_promote(
     db:   Session = Depends(get_db),
     _comm: User = Depends(require_commissioner),
 ):
+    """Change a user's PLATFORM role.
+
+    DELIBERATELY STILL GLOBAL — the one route S8-P2 examined and left alone.
+    `User.role` is a property of the account, not of a membership: it is not
+    scoped to a league, no league_id can be derived from the request, and there
+    is no league whose commissioner would be the right authority. Narrowing it
+    to `require_league_commissioner` would mean inventing a league context that
+    the operation does not have.
+
+    Note what this route can and cannot do. It sets the global role string —
+    which, after P2, no longer grants authority over any league's governed
+    operations. League authority is a LeagueCommissioner row, granted through
+    POST /league/{league_id}/commissioners, which IS league-scoped. So this
+    route can no longer be used to reach into a league.
+    """
     try:
         user = promote_user(req.email, req.role, db)
     except ValueError as e:
@@ -1082,18 +1126,42 @@ class SettlementOut(BaseModel):
     already_settled:  bool = False
 
 
-@app.get("/settle/{week}", response_model=SettlementOut)
+@app.post("/settle/{week}", response_model=SettlementOut)
 def settle(
-    week:  int,
-    db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    week:         int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
 ):
+    """Settle a week. POST, because it writes.
+
+    VERB CORRECTED IN S8-P2. This was a GET that called `settle_week()` —
+    settlement posts bet outcomes and moves wallet balances, so the method
+    misdescribed the route to every intermediary that trusts it: caches,
+    prefetchers, link scanners, and crucially the browser's own cross-site
+    rules. P1 had to carry an explicit exception list so its CSRF gate would
+    cover a mutation spelled as a read; that list is now empty and the
+    mechanism is gone, because the contract itself is right.
+
+    THERE IS NO COMPATIBILITY GET. Leaving one would preserve exactly the
+    exposure this change exists to remove, and a caller that still issues GET
+    gets a loud 405 rather than a silent settlement.
+
+    RESPONSE CONTRACT UNCHANGED — same `SettlementOut`, same fields, same
+    values, same idempotent `already_settled` behaviour. Only the verb moved.
+    """
     if not 1 <= week <= 17:
         raise HTTPException(status_code=400, detail="week must be 1–17")
 
     # Single-league deployment today — matches settle_week()'s own default
     # and the LEAGUE_ID=1 convention used throughout this codebase.
     league_id = 1
+
+    # S8-P2: authority is checked against the league actually being settled.
+    # The league is a constant here rather than a parameter, so this reads
+    # oddly — but checking the real value is the point, and when this route
+    # learns to take a league the check will already be against the right one.
+    assert_league_commissioner(current_user, league_id, db)
+
     is_fresh, reason, _ = _assert_slate_fresh(league_id, week, db, check_refreshed=True)
     if not is_fresh:
         raise HTTPException(status_code=400, detail=reason)
@@ -1487,7 +1555,7 @@ def _cents_to_dollars(cents: int) -> str:
 def payments_set_buyin_enforcement(
     req:   BuyinEnforcementRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """Commissioner turns season-allocation enforcement on/off for a league.
 
@@ -1496,9 +1564,13 @@ def payments_set_buyin_enforcement(
     Stripe or payment meaning. Renaming both is deferred to a controlled
     post-MVP migration.
     """
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
         active = set_allocation_enforcement_active(
-            req.league_id, req.active, db, performer_id=_comm.id,
+            req.league_id, req.active, db, performer_id=current_user.id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2357,9 +2429,13 @@ def _tx_out(t: FaabTxRecord) -> FaabTxOut:
 def faab_setup(
     req:   FaabSetupRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """Commissioner configures opening balances and transfer rules for the season."""
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
         cfg = setup_faab_config(
             req.league_id, db,
@@ -2391,14 +2467,18 @@ def faab_get_config(
 def faab_init_season(
     league_id: int = Query(..., description="League ID"),
     db:        Session = Depends(get_db),
-    _comm:     User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Credit opening balances to all teams in the league.
     Idempotent — skips teams that already have FAAB wallets.
     """
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, league_id, db)
+
     try:
-        states = init_season_wallets(league_id, db, performer_id=_comm.id)
+        states = init_season_wallets(league_id, db, performer_id=current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return [_fw_out(s) for s in states]
@@ -2489,11 +2569,18 @@ def faab_transactions(
 
 @app.post("/faab/freeze", response_model=FaabWalletOut, status_code=200)
 def faab_set_freeze(
-    req:   FreezeRequest,
-    db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    req:          FreezeRequest,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
 ):
     """Commissioner manually freezes or unfreezes a team's bet wallet."""
+    # S8-P2: the request names a TEAM, and a team belongs to exactly one
+    # league, so authority is checked against that team's league. Freezing a
+    # wallet is a real restraint on a GM's ability to act, and before P2 any
+    # globally-roled commissioner could impose it on any team in any league.
+    assert_league_commissioner(
+        current_user, _league_of(Team, req.team_id, db, "Team"), db)
+
     try:
         state = set_freeze(req.team_id, req.frozen, db)
     except ValueError as e:
@@ -2654,12 +2741,21 @@ def _exec_model_out(e: RuleExecutionOut) -> RuleExecutionOutModel:
 @app.post("/rules/parse", response_model=ParsePreviewOut, status_code=200)
 def rules_parse(
     req:   ParseRuleRequest,
-    _comm: User    = Depends(require_commissioner),
+    db:           Session = Depends(get_db),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Parse a natural language rule using AI (Ollama → Anthropic → heuristic).
     Does NOT save anything — commissioner reviews the preview before creating.
     """
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role. This route saves nothing,
+    # but it spends an AI call and reflects league context back to the caller,
+    # so it is gated like the rest — a preview is still an action.
+    # `db` is new here: the route had no database dependency because it never
+    # touched one, and the authority lookup does.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
         spec, model, latency = parse_rule_text(req.raw_text)
     except ValueError as e:
@@ -2685,16 +2781,20 @@ def rules_parse(
 def rules_create(
     req:   CreateRuleRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Save a parsed rule as a draft.
     Pass the spec dict from /rules/parse, optionally edited before saving.
     """
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
         rule = create_rule_draft(
             req.league_id, req.raw_text, req.spec, db,
-            performer_id = _comm.id,
+            performer_id = current_user.id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2706,7 +2806,7 @@ def rules_list(
     league_id: int,
     status:    Optional[str] = Query(default=None, description="draft|active|paused|completed"),
     db:        Session = Depends(get_db),
-    _comm:     User    = Depends(require_commissioner),
+    _comm:     User    = Depends(require_league_commissioner),
 ):
     """List all rules for a league (commissioner-only)."""
     return [_rule_model_out(r) for r in list_rules(league_id, db, status=status)]
@@ -2716,9 +2816,14 @@ def rules_list(
 def rules_get(
     rule_id: int,
     db:      Session = Depends(get_db),
-    _comm:   User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """Get a specific rule by ID."""
+    # S8-P2: the league is reachable only through the entity, so it is
+    # resolved first and authority is checked against it.
+    assert_league_commissioner(
+        current_user, _league_of(CommissionerRule, rule_id, db, "Rule"), db)
+
     try:
         return _rule_model_out(get_rule(rule_id, db))
     except ValueError as e:
@@ -2729,11 +2834,16 @@ def rules_get(
 def rules_activate(
     rule_id: int,
     db:      Session = Depends(get_db),
-    _comm:   User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """Activate a draft rule so it will be executed on Tuesday runs."""
+    # S8-P2: the league is reachable only through the entity, so it is
+    # resolved first and authority is checked against it.
+    assert_league_commissioner(
+        current_user, _league_of(CommissionerRule, rule_id, db, "Rule"), db)
+
     try:
-        return _rule_model_out(activate_rule(rule_id, db, performer_id=_comm.id))
+        return _rule_model_out(activate_rule(rule_id, db, performer_id=current_user.id))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -2742,11 +2852,16 @@ def rules_activate(
 def rules_pause(
     rule_id: int,
     db:      Session = Depends(get_db),
-    _comm:   User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """Pause an active rule without deleting it."""
+    # S8-P2: the league is reachable only through the entity, so it is
+    # resolved first and authority is checked against it.
+    assert_league_commissioner(
+        current_user, _league_of(CommissionerRule, rule_id, db, "Rule"), db)
+
     try:
-        return _rule_model_out(pause_rule(rule_id, db, performer_id=_comm.id))
+        return _rule_model_out(pause_rule(rule_id, db, performer_id=current_user.id))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -2755,11 +2870,16 @@ def rules_pause(
 def rules_delete_draft(
     rule_id: int,
     db:      Session = Depends(get_db),
-    _comm:   User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """Delete a draft rule (cannot delete active/paused/completed rules)."""
+    # S8-P2: the league is reachable only through the entity, so it is
+    # resolved first and authority is checked against it.
+    assert_league_commissioner(
+        current_user, _league_of(CommissionerRule, rule_id, db, "Rule"), db)
+
     try:
-        delete_draft(rule_id, db, performer_id=_comm.id)
+        delete_draft(rule_id, db, performer_id=current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -2768,14 +2888,18 @@ def rules_delete_draft(
 def rules_execute_weekly(
     req:   WeeklyExecuteRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Execute all active weekly rules for the given week.
     Called by Tuesday automation (P1.5). Idempotent.
     """
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
-        execs = execute_weekly_rules(req.league_id, req.week, db, performer_id=_comm.id)
+        execs = execute_weekly_rules(req.league_id, req.week, db, performer_id=current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return [_exec_model_out(e) for e in execs]
@@ -2785,14 +2909,18 @@ def rules_execute_weekly(
 def rules_execute_eos(
     req:   EosExecuteRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Execute all active end-of-season rules and release qualifying escrow accounts.
     Called during final settlement (P1.5). Idempotent.
     """
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
-        execs = execute_end_of_season_rules(req.league_id, db, performer_id=_comm.id)
+        execs = execute_end_of_season_rules(req.league_id, db, performer_id=current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return [_exec_model_out(e) for e in execs]
@@ -2806,7 +2934,7 @@ def rules_executions(
     limit:     int = Query(default=100, ge=1, le=500),
     offset:    int = Query(default=0,   ge=0),
     db:        Session = Depends(get_db),
-    _comm:     User    = Depends(require_commissioner),
+    _comm:     User    = Depends(require_league_commissioner),
 ):
     """Paginated rule execution history. Filter by rule_id and/or week."""
     return [
@@ -2821,14 +2949,19 @@ def rules_release_escrow(
     escrow_id:    int,
     req:          ReleaseEscrowRequest,
     db:           Session = Depends(get_db),
-    _comm:        User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Manually release an open escrow to a target team's bet wallet.
     If target_team_id is omitted, uses the escrow's stored release target.
     """
+    # S8-P2: the league is reachable only through the entity, so it is
+    # resolved first and authority is checked against it.
+    assert_league_commissioner(
+        current_user, _league_of(EscrowAccount, escrow_id, db, "Escrow account"), db)
+
     try:
-        esc = release_escrow(escrow_id, db, performer_id=_comm.id,
+        esc = release_escrow(escrow_id, db, performer_id=current_user.id,
                              target_team_id=req.target_team_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2848,7 +2981,7 @@ def rules_audit(
     limit:  int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0,   ge=0),
     db:     Session = Depends(get_db),
-    _comm:  User    = Depends(require_commissioner),
+    _comm:  User    = Depends(require_league_commissioner),
 ):
     """Full rule audit trail for the league. Commissioner-only."""
     return get_rule_audit_log(league_id, db, limit=limit, offset=offset)
@@ -2905,12 +3038,16 @@ def _sync_out(s: TuesdayRunSummary) -> TuesdaySyncOut:
 def admin_tuesday_sync(
     req:   TuesdaySyncRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Manually trigger the Tuesday automation for a specific week.
     Set mock_mode=false only when SMTP is configured and you want real emails.
     """
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
         summary = run_tuesday_sync(
             req.league_id, req.week, db, mock_mode=req.mock_mode,
@@ -2925,7 +3062,7 @@ def admin_sync_runs(
     league_id: int,
     limit:     int = Query(default=20, ge=1, le=100),
     db:        Session = Depends(get_db),
-    _comm:     User    = Depends(require_commissioner),
+    _comm:     User    = Depends(require_league_commissioner),
 ):
     """List recent Tuesday sync runs for a league. Commissioner-only."""
     return get_run_history(league_id, db, limit=limit)
@@ -2933,11 +3070,20 @@ def admin_sync_runs(
 
 @app.get("/admin/tuesday-sync/run/{run_id}")
 def admin_sync_run_detail(
-    run_id: str,
-    db:     Session = Depends(get_db),
-    _comm:  User    = Depends(require_commissioner),
+    run_id:       str,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
 ):
     """Get full detail for a specific Tuesday sync run, including all step logs."""
+    # S8-P2: `run_id` is the run's own opaque identifier, NOT the primary key,
+    # so this cannot use _league_of() and looks the row up by the column the
+    # route actually keys on. Getting that wrong would authorize against some
+    # other league's run that happened to share an integer id.
+    run = db.query(TuesdaySyncRun).filter(TuesdaySyncRun.run_id == run_id).first()
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
+    assert_league_commissioner(current_user, run.league_id, db)
+
     result = get_run_detail(run_id, db)
     if not result:
         raise HTTPException(status_code=404, detail=f"Run {run_id!r} not found")
@@ -2985,13 +3131,17 @@ def _wrapup_out(w: WrapUpOut) -> dict:
 def reports_wrap_up_generate(
     req:   WrapUpGenerateRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Generate AI Weekly Wrap-Up + Roast Beef for the given week.
     Stores as draft, posts to feed, and emails all GMs.
     Commissioner can regenerate with updated content.
     """
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     try:
         out = generate_weekly_wrap(req.league_id, req.week, db, mock_mode=req.mock_mode)
     except Exception as e:
@@ -3004,7 +3154,7 @@ def reports_wrap_up_get(
     league_id: int,
     week:      int,
     db:        Session = Depends(get_db),
-    _comm:     User    = Depends(require_commissioner),
+    _comm:     User    = Depends(require_league_commissioner),
 ):
     """Get the most recent wrap-up for a specific week."""
     out = get_wrap_up(league_id, week, db)
@@ -3018,7 +3168,7 @@ def reports_wrap_up_list(
     league_id: int,
     limit:     int = Query(default=20, ge=1, le=100),
     db:        Session = Depends(get_db),
-    _comm:     User    = Depends(require_commissioner),
+    _comm:     User    = Depends(require_league_commissioner),
 ):
     """List all wrap-ups for a league, newest first."""
     return [_wrapup_out(w) for w in get_wrap_up_list(league_id, db, limit=limit)]
@@ -3029,9 +3179,14 @@ def reports_wrap_up_edit(
     wrap_up_id: int,
     req:        WrapUpEditRequest,
     db:         Session = Depends(get_db),
-    _comm:      User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """Commissioner edits the league body and/or roast beef section before send."""
+    # S8-P2: the league is reachable only through the entity, so it is
+    # resolved first and authority is checked against it.
+    assert_league_commissioner(
+        current_user, _league_of(WeeklyWrapUp, wrap_up_id, db, "Wrap-up"), db)
+
     try:
         out = update_wrap_up(wrap_up_id, req.league_body, req.roast_beef, db)
     except ValueError as e:
@@ -3044,12 +3199,17 @@ def reports_wrap_up_send(
     wrap_up_id: int,
     req:        WrapUpSendRequest,
     db:         Session = Depends(get_db),
-    _comm:      User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """
     Re-send (or first-send) wrap-up emails to all GMs.
     Use after commissioner has reviewed/edited the draft.
     """
+    # S8-P2: the league is reachable only through the entity, so it is
+    # resolved first and authority is checked against it.
+    assert_league_commissioner(
+        current_user, _league_of(WeeklyWrapUp, wrap_up_id, db, "Wrap-up"), db)
+
     try:
         sent = send_wrap_up(wrap_up_id, db, mock_mode=req.mock_mode)
     except ValueError as e:
@@ -3061,9 +3221,14 @@ def reports_wrap_up_send(
 def reports_wrap_up_editions(
     wrap_up_id: int,
     db:         Session = Depends(get_db),
-    _comm:      User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """List all per-GM editions for a wrap-up (status tags, playoff prob, sent status)."""
+    # S8-P2: the league is reachable only through the entity, so it is
+    # resolved first and authority is checked against it.
+    assert_league_commissioner(
+        current_user, _league_of(WeeklyWrapUp, wrap_up_id, db, "Wrap-up"), db)
+
     return get_gm_editions(wrap_up_id, db)
 
 
@@ -3087,9 +3252,13 @@ class RankingsComputeRequest(BaseModel):
 def reports_rankings_compute(
     req:   RankingsComputeRequest,
     db:    Session = Depends(get_db),
-    _comm: User    = Depends(require_commissioner),
+    current_user: User = Depends(get_current_gm),
 ):
     """Compute (or recompute) power rankings for the given league and week, post to feed."""
+    # S8-P2: the league is named by the request, so authority is checked
+    # against THAT league rather than a global role.
+    assert_league_commissioner(current_user, req.league_id, db)
+
     rankings = _compute_rankings(req.league_id, req.week, db)
     if not rankings:
         raise HTTPException(404, "No teams found for this league")
@@ -3200,7 +3369,7 @@ class SettlementReportOut(BaseModel):
 def reports_settlement(
     league_id: int,
     db:        Session = Depends(get_db),
-    _comm:     User    = Depends(require_commissioner),
+    _comm:     User    = Depends(require_league_commissioner),
 ):
     """Season-end settlement report: each winner's payout decomposed into
     collected vs. contingent-on-outstanding-receivables (B2-6.3-R)."""

@@ -263,22 +263,19 @@ _assert("a self-consistent FORGED CSRF cookie+header pair is still refused",
 # A safe method never needs a token.
 _assert("GET needs no CSRF token", comm_client.get("/auth/me").status_code == 200)
 
-# …but a GET THAT WRITES does. `GET /settle/{week}` calls settle_week(). The
-# verb is a pre-existing contract defect recorded for S8-P2; what P1 must not
-# do is leave a state-changing route outside the gate merely because of how it
-# is spelled.
-settle_no_token = comm_client.get("/settle/5")
-_assert("a state-changing GET is refused without a CSRF token",
-        settle_no_token.status_code == 403,
-        f"status {settle_no_token.status_code}")
-_assert("and it is refused for the CSRF reason, not an incidental one",
-        "CSRF" in settle_no_token.json().get("detail", ""),
-        settle_no_token.text[:120])
+# REVISED BY S8-P2. P1 asserted that the state-changing `GET /settle/{week}`
+# was pulled into the CSRF gate by an explicit exception, because P1 could
+# protect the browser but had no business changing a public verb. P2 fixed the
+# contract: the route is POST, the exception list is empty, and the assertion
+# that belongs here now is that the mutating GET is GONE. Its CSRF behaviour
+# under the correct verb is certified in test_s8_p2_authorization.py.
+from auth.session import STATE_CHANGING_GET_PREFIXES  # noqa: E402
 
-settle_token = comm_client.get(
-    "/settle/5", headers={CSRF_HEADER: comm_client.cookies.get(CSRF_COOKIE)})
-_assert("with the token it gets past CSRF to the route's own logic",
-        settle_token.status_code != 403, f"status {settle_token.status_code}")
+_assert("the P1 state-changing-GET exception list is empty",
+        STATE_CHANGING_GET_PREFIXES == (), str(STATE_CHANGING_GET_PREFIXES))
+_assert("the mutating GET no longer exists",
+        comm_client.get("/settle/5").status_code == 405,
+        f"status {comm_client.get('/settle/5').status_code}")
 
 
 # ── 5 · An API token cannot be planted as a session to skip CSRF ─────────────
@@ -332,11 +329,11 @@ _assert("an invalid Bearer token is refused",
         _client().get("/auth/me", headers={"Authorization": "Bearer not.a.token"})
         .status_code == 401)
 
-# The state-changing-GET protection must not have caught API clients in its
-# net. With no session cookie there is nothing ambient to abuse, so a Bearer
-# caller never reaches the gate at all.
-_assert("a Bearer caller reaches the state-changing GET with no CSRF token",
-        _client().get("/settle/5", headers=auth_header).status_code != 403)
+# REVISED BY S8-P2, for the same reason as section 4: the mutating GET is gone,
+# so the claim worth making here is that a Bearer caller still needs no CSRF
+# token on the route's correct verb.
+_assert("a Bearer caller reaches the settlement POST with no CSRF token",
+        _client().post("/settle/5", headers=auth_header).status_code != 403)
 
 
 # ── 7 · Cross-origin is refused for a cookie mutation ────────────────────────
