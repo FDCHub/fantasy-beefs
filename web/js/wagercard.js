@@ -128,9 +128,17 @@ export function wagerCard(spec) {
   if (tapAction) classes.push('is-tappable');
   if (className) classes.push(className);
 
+  // A card that carries its OWN nested controls — League's market cells — stays
+  // a plain container and puts a real button in its foot. A card whose only
+  // action is the card itself becomes the button. Either way there is exactly
+  // one keyboard path per action, and no button is ever nested inside a button.
+  const nestedControls = Boolean(markets && interactiveMarkets);
+  const activation = tapAction && !nestedControls ? ' role="button" tabindex="0"' : '';
+
   const attrs =
     (tapAction ? ` data-card-action="${escapeHtml(tapAction)}"` : '') +
-    (tapId ? ` data-card-id="${escapeHtml(tapId)}"` : '');
+    (tapId ? ` data-card-id="${escapeHtml(tapId)}"` : '') +
+    activation;
 
   const badgeHtml = badge
     ? `<span class="fs-wcard__badge${badgeTone ? ` is-${escapeHtml(badgeTone)}` : ''}">${escapeHtml(badge)}</span>`
@@ -153,10 +161,17 @@ export function wagerCard(spec) {
       '</div>'
     : '';
 
+  // The foot value is the keyboard path on a card that could not become a
+  // button itself. It keeps the same class either way, so surfaces reading the
+  // foot do not have to know which form they got.
+  const footValueHtml = tapAction && nestedControls
+    ? `<button type="button" class="fs-wcard__footvalue fs-wcard__cta">${escapeHtml(footValue)}</button>`
+    : `<span class="fs-wcard__footvalue">${escapeHtml(footValue)}</span>`;
+
   const footHtml = footLabel || footValue
     ? '<div class="fs-wcard__foot">' +
       `<span class="fs-wcard__footlabel">${escapeHtml(footLabel)}</span>` +
-      `<span class="fs-wcard__footvalue">${escapeHtml(footValue)}</span>` +
+      footValueHtml +
       '</div>'
     : '';
 

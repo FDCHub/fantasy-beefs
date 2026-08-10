@@ -295,6 +295,10 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       topoffAboveStrip: t.bottom <= strip.top + 1,
       topoffHeight: Math.round(t.height),
       topoffWidth: Math.round(t.width),
+      topoffFont: parseFloat(getComputedStyle(topoff).fontSize),
+      topoffFilled: getComputedStyle(topoff).backgroundColor !== 'rgba(0, 0, 0, 0)',
+      topoffBordered: parseFloat(getComputedStyle(topoff).borderTopWidth) > 0,
+      topoffUnderlined: getComputedStyle(topoff).textDecorationLine.includes('underline'),
       disclaimers: panel.querySelectorAll('.fs-disclaimer').length,
       strips: panel.querySelectorAll('.fs-strip').length,
     };
@@ -305,8 +309,19 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     ledgerHead.sub === 'My Week 5 · Regular Season', ledgerHead.sub);
   check('Request Top-Off is in the header area, above the strip',
     ledgerHead.topoffAboveStrip === true);
+  // What the POR fixes is that this reads as TEXT, not that its hit box is
+  // small: small type, no fill, no border, underlined, and narrow. Package 5
+  // padded the hit area to a phone-usable target without touching any of that,
+  // so the box height is no longer the thing worth asserting — and the target
+  // size is asserted in its own right below.
   check('Request Top-Off is a small text control, not a large button',
-    ledgerHead.topoffHeight <= 20 && ledgerHead.topoffWidth <= 130,
+    ledgerHead.topoffFont <= 11 && !ledgerHead.topoffFilled
+    && !ledgerHead.topoffBordered && ledgerHead.topoffUnderlined
+    && ledgerHead.topoffWidth <= 130,
+    `${ledgerHead.topoffFont}px, filled=${ledgerHead.topoffFilled}, ` +
+    `bordered=${ledgerHead.topoffBordered}, ${ledgerHead.topoffWidth}px wide`);
+  check('and its tap target is usable on a phone',
+    ledgerHead.topoffHeight >= 32,
     `${ledgerHead.topoffWidth}×${ledgerHead.topoffHeight}px`);
   check('the Credits disclaimer appears exactly once',
     ledgerHead.disclaimers === 1, String(ledgerHead.disclaimers));

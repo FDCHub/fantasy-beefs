@@ -25,6 +25,7 @@ import {
   upsideLeftCents,
 } from './data/action-data.js';
 import { moneyFigure, wagerCard } from './wagercard.js';
+import { onActivate } from './interaction.js';
 
 /** Header string, locked by the Rev 4.2 handoff. */
 export const ACTION_HEADER = 'WEEK 5 · REGULAR SEASON ACTION';
@@ -61,7 +62,9 @@ export function buildActionPanel() {
       `<section class="fs-railsec" data-rail="${rail}">` +
       sectionHeading(railHeading(rail)) +
       `<div class="fs-rail is-stretch" role="list">` +
-      cardsFor(rail).map((card) => `<div class="fs-rail__item">${lifecycleCard(card)}</div>`).join('') +
+      cardsFor(rail).map((card) => (
+        `<div class="fs-rail__item" role="listitem">${lifecycleCard(card)}</div>`
+      )).join('') +
       '</div></section>'
     )).join('') +
     '</div>',
@@ -161,7 +164,7 @@ function footValueFor(card) {
  */
 export function bindAction(panel, api) {
   panel.querySelectorAll('[data-card-action="wager"]').forEach((el) => {
-    el.addEventListener('click', () => {
+    onActivate(el, () => {
       const card = RAILS.flatMap((r) => cardsFor(r)).find((c) => c.id === el.dataset.cardId);
       if (card) api.openSheet(wagerSheet(card));
     });
@@ -204,6 +207,6 @@ export function wagerSheet(card) {
       )).join('') +
       `<div class="fs-note">${escapeHtml(card.copy)}</div>` +
       '<div class="fs-note">Deciding on a wager binds to the proposal lifecycle ' +
-      'in a later Sprint 7 package. Nothing here moves Credits.</div>',
+      'when the session seam lands. Nothing here moves Credits.</div>',
   };
 }

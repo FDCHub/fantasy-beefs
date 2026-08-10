@@ -28,6 +28,7 @@ import { lifecycleCard, wagerSheet } from './action.js';
 import { poolSheet } from './league.js';
 import { previewSheet } from './preview.js';
 import { matchupMarketCells, wagerCard } from './wagercard.js';
+import { onActivate } from './interaction.js';
 
 /** Locked Rev 4.2 subtitle. */
 export const WEEK_SUBTITLE = 'Official Yahoo matchups + FantasyStakes action';
@@ -150,7 +151,7 @@ export function yahooCard(m) {
 function yahooModule() {
   const matchups = yahooMatchups(selectedWeek);
   const cards = matchups
-    .map((m) => `<div class="fs-vcar__item">${yahooCard(m)}</div>`)
+    .map((m) => `<div class="fs-vcar__item" role="listitem">${yahooCard(m)}</div>`)
     .join('');
 
   return (
@@ -169,7 +170,9 @@ function betsModule() {
   // is never made up by inventing a wager that no protocol record supports.
   const bets = weekBets(selectedWeek).slice(0, BETS_SHOWN);
   const cards = bets
-    .map((card) => `<div class="fs-vcar__item is-compact">${lifecycleCard(card)}</div>`)
+    .map((card) => (
+      `<div class="fs-vcar__item is-compact" role="listitem">${lifecycleCard(card)}</div>`
+    ))
     .join('');
 
   return (
@@ -260,7 +263,7 @@ export function bindWeek(panel, api) {
 
   const matchups = yahooMatchups(selectedWeek);
   panel.querySelectorAll('[data-card-action="yahoo"]').forEach((el) => {
-    el.addEventListener('click', () => {
+    onActivate(el, () => {
       const m = matchups.find((x) => x.id === el.dataset.cardId);
       if (m) api.openSheet(previewSheet(m));
     });
@@ -268,7 +271,7 @@ export function bindWeek(panel, api) {
 
   const bets = weekBets(selectedWeek);
   panel.querySelectorAll('[data-card-action="wager"]').forEach((el) => {
-    el.addEventListener('click', () => {
+    onActivate(el, () => {
       const card = bets.find((c) => c.id === el.dataset.cardId);
       if (card) api.openSheet(wagerSheet(card));
     });

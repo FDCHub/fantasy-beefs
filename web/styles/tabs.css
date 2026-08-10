@@ -50,6 +50,11 @@
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+  /* A grid item defaults to min-height:auto and so refuses to shrink below its
+   * own content — which on a short phone made the 2x2 grid scroll, breaking the
+   * POR's "all four visible together". The card compresses and clips instead. */
+  min-height: 0;
+  overflow: hidden;
   padding: var(--fs-space-3) var(--fs-space-4);
   background: var(--card);
   border: var(--fs-border);
@@ -80,6 +85,13 @@
 .fs-pool__badge.is-rollover { box-shadow: inset 0 0 0 1px var(--gold); }
 
 .fs-pool__name {
+  /* Clamped to two lines: a long catalog name must not push the rule and the
+   * pot out of a card that cannot grow. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 0;
   font-size: 9.5px;
   font-weight: var(--fs-weight-strong);
   line-height: 1.25;
@@ -88,6 +100,7 @@
 
 .fs-pool__rule {
   flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
   font-size: 8px;
   line-height: 1.35;
@@ -140,4 +153,47 @@
 .fs-railsec .fs-rail > .fs-rail__item {
   width: 216px;
   min-height: 132px;
+}
+
+/* ── Short phones ──────────────────────────────────────────────────────────
+ * On a 667px-tall device League's two zones are each roughly 40px shorter than
+ * on a 844px one, and both cards ran out of room: the matchup card clipped its
+ * own foot, and the Pool card's flexible rows were squashed below a line box,
+ * which slices text through the middle of the glyphs.
+ *
+ * The answer is to DROP the least load-bearing content rather than compress
+ * everything until nothing is legible. A card loses its line of analysis and a
+ * Pool loses its rule text — both are one tap away in the detail sheet — and
+ * what remains keeps a whole line box each. */
+
+@media (max-height: 720px) {
+  /* The teaser is the card's most expendable line. */
+  .fs-carousel .fs-wcard__copy { display: none; }
+
+  .fs-carousel .fs-market { min-height: 34px; padding: 2px 0; }
+
+  .fs-pool { padding: var(--fs-space-2) var(--fs-space-3); }
+
+  /* One whole line each, and no shrinking below it. */
+  .fs-pool__name {
+    -webkit-line-clamp: 1;
+    flex: 0 0 auto;
+  }
+
+  /* `flex: 0 0 auto` matters as much as the clamp: a clamped box that is still
+   * allowed to stretch renders a second line and lets the card's overflow slice
+   * it, which is the artefact this whole block exists to remove. */
+  .fs-pool__rule {
+    flex: 0 0 auto;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* The foot stays pinned to the bottom now that nothing above it stretches. */
+  .fs-pool__foot { margin-top: auto; }
+
+  /* The badge already says ROLLOVER; the second line is redundant here. */
+  .fs-pool__carried { display: none; }
 }

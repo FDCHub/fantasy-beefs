@@ -181,6 +181,22 @@
 
 /* League's card fills the carousel viewport; Action's fills its rail item. */
 .fs-wcard--matchup .fs-wcard__identity { font-size: 13px; }
+
+/* The foot value on a card that could not become a button itself. It is a real
+ * control so a keyboard reaches the composer, and it inherits the foot's
+ * typography so the card looks exactly as it did. */
+.fs-wcard__cta {
+  min-height: 32px;
+  padding: 0 var(--fs-space-2);
+  margin: 0 calc(var(--fs-space-2) * -1);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.fs-wcard__cta:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
 .fs-wcard--lifecycle { height: 100%; }
 
 /* ── Composer ──────────────────────────────────────────────────────────────*/

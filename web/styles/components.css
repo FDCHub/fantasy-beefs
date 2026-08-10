@@ -132,19 +132,6 @@
   padding: 8px var(--fs-space-4);
 }
 
-/* A boxed scrolling body — the card-framed list used by Ledger and Rules. */
-.fs-scrollbox {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  margin: 0 var(--fs-gutter) var(--fs-space-4);
-  padding: 4px 14px;
-  background: var(--card);
-  border: var(--fs-border);
-  border-radius: var(--fs-radius-card);
-}
-
 /* ── Horizontal rail with scroll-snap (POR §7) ─────────────────────────────
  * Used where the item count is large and variable, e.g. Head-to-Head. */
 .fs-rail {
@@ -280,7 +267,6 @@
 }
 
 .fs-btn--gold  { background: var(--goldbg);  border: 1px solid var(--gold);   color: var(--gold); }
-.fs-btn--green { background: var(--greenbg); border: 1px solid #3b6d11;       color: var(--green2); }
 .fs-btn--ghost { background: transparent;    border: var(--fs-border-edge);   color: var(--g1); }
 
 /* ── Money text ────────────────────────────────────────────────────────────*/

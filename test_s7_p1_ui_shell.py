@@ -196,7 +196,6 @@ _assert("the shell is a single flex column", "flex-direction: column" in app_rul
 
 panels_rule = _rule(SHELL_CSS, ".fs-panels")
 panel_rule = _rule(SHELL_CSS, ".fs-panel")
-scroll_rule = _rule(SHELL_CSS, ".fs-panel__scroll")
 _assert("the panel host takes the space left over", "flex: 1 1 auto" in panels_rule)
 _assert(
     "the panel host may shrink below its content — min-height:0",
@@ -204,8 +203,22 @@ _assert(
     "without this the column overflows and pushes the nav off screen",
 )
 _assert("panels may shrink below their content", "min-height: 0" in panel_rule)
-_assert("the scrolling region is inside the panel", "overflow-y: auto" in scroll_rule)
-_assert("the scrolling region may shrink", "min-height: 0" in scroll_rule)
+# Package 1 shipped one shared `.fs-panel__scroll`, which no tab ended up using:
+# each built its own scroll region instead. Package 5 removed the unused class,
+# so the contract is asserted against the FIVE regions that really exist — which
+# is what it was always protecting, and now covers every tab rather than none.
+SCROLL_REGIONS = {
+    ".fs-zones": _read("styles", "components.css"),      # League
+    ".fs-rails": _read("styles", "tabs.css"),            # Action
+    ".fs-lscroll": _read("styles", "ledger.css"),        # Ledger
+    ".fs-wkscroll": _read("styles", "ledger.css"),       # The Week
+    ".fs-rulescroll": _read("styles", "rules.css"),      # Rules & Settings
+}
+for _selector, _css in SCROLL_REGIONS.items():
+    _region = _rule(_css, _selector)
+    _assert(f"{_selector}: the scrolling region is inside the panel",
+            "overflow-y: auto" in _region or "flex: 1 1 auto" in _region)
+    _assert(f"{_selector}: the scrolling region may shrink", "min-height: 0" in _region)
 _assert("the document itself never scrolls", "overflow: hidden" in _rule(SHELL_CSS, "body"))
 
 
@@ -367,10 +380,16 @@ def _run_node_suite(script: str, label: str) -> None:
             "install Node, or run the script directly where Node is available",
         )
         return
+    # Node writes UTF-8. Without saying so, Python decodes it with the console
+    # codepage, and on Windows every middot, em dash and minus sign in the
+    # suite's own output arrives as mojibake. Packages 2-4 already say so; this
+    # brings Package 1's harness into line.
     proc = subprocess.run(
         [node, os.path.join(WEB, "tests", script)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=ROOT,
     )
     sys.stdout.write(proc.stdout)

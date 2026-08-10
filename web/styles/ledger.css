@@ -19,7 +19,10 @@
 }
 
 .fs-wkswitch__opt {
-  padding: 2px var(--fs-space-2);
+  /* Visual size is the POR's; the hit area is padded up to a phone-usable
+   * target without changing the type. */
+  min-height: 32px;
+  padding: 2px var(--fs-space-3);
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -198,6 +201,8 @@
  * strip below it. */
 
 .fs-topoff {
+  /* A small text control by POR — padded to a usable hit area, not enlarged. */
+  min-height: 32px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -333,7 +338,8 @@
   justify-content: space-between;
   gap: var(--fs-space-3);
   width: 100%;
-  padding: 3px 0;
+  min-height: 32px;
+  padding: var(--fs-space-2) 0;
   border: 0;
   background: transparent;
   font-family: inherit;

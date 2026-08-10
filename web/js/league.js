@@ -68,7 +68,7 @@ export function buildLeaguePanel() {
 
 function betsZone() {
   const cards = allMatchups()
-    .map((m) => `<div class="fs-carousel__item">${matchupCard(m)}</div>`)
+    .map((m) => `<div class="fs-carousel__item" role="listitem">${matchupCard(m)}</div>`)
     .join('');
 
   return (
@@ -187,6 +187,6 @@ export function poolSheet(pool) {
         ? '<div class="fs-note">Settled. Pool settlement is performed by the Pool ' +
           'engine; nothing here moves Credits.</div>'
         : '<div class="fs-note">All Pools for the week lock at the week’s first kickoff. ' +
-          'Entry binds to the Pool engine in a later Sprint 7 package.</div>'),
+          'Entry binds to the Pool engine when the session seam lands.</div>'),
   };
 }

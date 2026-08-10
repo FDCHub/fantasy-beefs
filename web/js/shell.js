@@ -2,9 +2,9 @@
  * FantasyStakes — UI/UX Rev 4.2 · application shell wiring
  * Sprint 7 Packages 1–4
  *
- * The only module that touches the DOM directly. It renders the five primary
- * destinations, binds the persistent bottom navigation, and owns the single
- * shared pop-out.
+ * The shell renders the five primary destinations, binds the persistent bottom
+ * navigation, and owns the single shared pop-out. Each tab module builds and
+ * binds its own panel.
  *
  * The pop-out is a STACK. Opening the Matchup Preview from inside the composer
  * pushes a level rather than replacing one, so closing the preview returns to
@@ -240,11 +240,6 @@ function bindNavigation() {
 
 /* ── Interactions defined by the POR ────────────────────────────────────── */
 
-/* Package 1 bound the Ledger strip's gold cell to a placeholder sheet promising
- * that Current Settle would be reconciled "in a later Sprint 7 package". This
- * IS that package: the Ledger now carries the whole reconciliation on the tab,
- * so the placeholder is gone rather than left pointing at a page that exists. */
-
 /* ── Mount ──────────────────────────────────────────────────────────────── */
 
 /** Render the shell and bind every shared interaction. */
@@ -286,23 +281,9 @@ export function mount() {
   goTo(DEFAULT_DESTINATION_ID);
 }
 
-/**
- * Replace one panel's content. The seam later packages build against.
- *
- * @param {string} destinationId
- * @param {string} html
- */
-export function mountPanelContent(destinationId, html) {
-  const panel = document.getElementById(destinationById(destinationId).panelId);
-  if (!panel) throw new Error(`panel host missing for "${destinationId}"`);
-  panel.innerHTML = html;
-}
-
 if (typeof document !== 'undefined') {
-  // Exposed for later packages and for manual inspection in the browser.
-  window.FantasyStakes = {
-    goTo, openSheet, pushSheet, popSheet, closeSheet, openComposer, mountPanelContent,
-  };
+  // Exposed for manual inspection in the browser console.
+  window.FantasyStakes = { goTo, openSheet, pushSheet, popSheet, closeSheet, openComposer };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount);

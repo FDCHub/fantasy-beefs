@@ -9,7 +9,8 @@
  * every suite that uses this harness runs against a real phone viewport with
  * mobile emulation on. Desktop Chrome ignores the viewport meta tag, and a
  * suite that measured a desktop layout would pass while the phone build
- * overflowed.
+ * overflowed. `setViewport` re-applies that emulation so one suite can certify
+ * several phone sizes in a single session.
  * ========================================================================== */
 
 import { createServer } from 'node:http';
@@ -190,7 +191,25 @@ export async function withPage(options, body) {
       return result.result.value;
     };
 
-    await body({ evaluate });
+    /**
+     * Re-emulate at a different phone size.
+     *
+     * Package 5 certifies three viewports rather than one, and a layout claim
+     * is only worth as much as the layout it was measured in — so the metrics
+     * override is reapplied rather than the page merely being resized.
+     *
+     * @param {number} width
+     * @param {number} height
+     */
+    const setViewport = async (width, height) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width, height, deviceScaleFactor: 3, mobile: true,
+      });
+      await cdp.send('Page.navigate', { url: `http://127.0.0.1:${httpPort}${path}` });
+      await new Promise((r) => setTimeout(r, settleMs));
+    };
+
+    await body({ evaluate, setViewport });
   } finally {
     if (cdp) cdp.close();
     browser.kill();

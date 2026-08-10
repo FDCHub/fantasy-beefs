@@ -137,17 +137,6 @@ body {
   color: var(--g1);
 }
 
-/* The single scrolling region inside a panel. Its height is whatever the
- * column has left after the masthead, tab header and navigation are placed,
- * so content scrolls under nothing. */
-.fs-panel__scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 0 var(--fs-gutter) var(--fs-space-4);
-}
-
 /* ── Bottom navigation — persistent, in-flow, safe-area aware ──────────────
  * `flex:0 0 auto` + column flow = the nav occupies real layout height.
  * The safe-area inset is added as PADDING so the tint extends into the home
