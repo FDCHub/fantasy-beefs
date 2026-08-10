@@ -1,6 +1,6 @@
 /* ============================================================================
  * FantasyStakes — UI/UX Rev 4.2 · application shell wiring
- * Sprint 7 Packages 1–3
+ * Sprint 7 Packages 1–4
  *
  * The only module that touches the DOM directly. It renders the five primary
  * destinations, binds the persistent bottom navigation, and owns the single
@@ -22,19 +22,14 @@ import {
   selectDestination,
 } from './nav.js';
 
-import {
-  PanelComposer,
-  escapeHtml,
-  note,
-  sheet,
-  tabHeader,
-} from './components.js';
+import { escapeHtml, sheet } from './components.js';
 
 import { ILLUSTRATIVE, MASTHEAD } from './demo-state.js';
 import { bindLeague, buildLeaguePanel } from './league.js';
 import { bindAction, buildActionPanel } from './action.js';
 import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
+import { bindRules, buildRulesPanel } from './rules.js';
 import { beginSession, composerSheet, endSession } from './composer.js';
 
 /* ── Masthead ───────────────────────────────────────────────────────────── */
@@ -85,8 +80,8 @@ function renderPanelHosts(root) {
 }
 
 /**
- * Content for each destination. Four of the five are built by their own
- * modules; Rules & Settings carries its POR frame and lands in Package 4.
+ * Content for each destination. All five are built by their own modules; this
+ * function is the routing table and holds no markup of its own.
  *
  * @param {string} destinationId
  * @returns {string}
@@ -96,34 +91,9 @@ export function buildPanelContent(destinationId) {
   if (destinationId === 'action') return buildActionPanel();
   if (destinationId === 'week') return buildWeekPanel();
   if (destinationId === 'ledger') return buildLedgerPanel();
+  if (destinationId === 'rules') return buildRulesPanel();
 
-  const composer = new PanelComposer(destinationId);
-
-  switch (destinationId) {
-    case 'rules':
-      composer.add(tabHeader({
-        title: 'Rules & Settings',
-        sub: 'Rules sheets · League settings · Commish',
-      }));
-      // Rules & Settings summarises no position, so it carries no strip and,
-      // therefore, no Credits disclaimer.
-      break;
-
-    default:
-      throw new Error(`no panel content defined for "${destinationId}"`);
-  }
-
-  const label = destinationById(destinationId).label;
-  composer.add(
-    '<div class="fs-panel__scroll">' +
-    note(
-      `${label} content is built in a later Sprint 7 package. ` +
-      'This release establishes the shared shell, navigation and global components.',
-    ) +
-    '</div>',
-  );
-
-  return composer.toHTML();
+  throw new Error(`no panel content defined for "${destinationId}"`);
 }
 
 /* ── Pop-out / bottom sheet ─────────────────────────────────────────────── */
@@ -306,6 +276,9 @@ export function mount() {
 
   const ledgerPanel = document.getElementById('panel-ledger');
   if (ledgerPanel) bindLedger(ledgerPanel, { openSheet });
+
+  const rulesPanel = document.getElementById('panel-rules');
+  if (rulesPanel) bindRules(rulesPanel, { openSheet });
 
   bindNavigation();
   bindSheet();

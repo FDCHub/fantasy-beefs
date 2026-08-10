@@ -25,6 +25,8 @@ import {
 } from '../js/data/week-data.js';
 
 import {
+  BETS_HEADING,
+  BETS_SHOWN,
   WEEK_SUBTITLE,
   buildWeekPanel,
   currentSelectedWeek,
@@ -32,6 +34,8 @@ import {
   selectWeek,
   yahooCard,
 } from '../js/week.js';
+
+import { CARDS, seasonRecordLabel, settledCents } from '../js/data/action-data.js';
 
 import {
   LEDGER_SUBTITLE,
@@ -178,8 +182,10 @@ section('FantasyStakes Bets shows the week’s wagers, the viewer’s own first'
 
 const currentBets = weekBets(CURRENT_WEEK);
 check('the current week shows exactly four', currentBets.length === 4, String(currentBets.length));
-check('the heading count is derived from the cards',
-  week.includes(`FANTASYSTAKES BETS · ${currentBets.length} SHOWN`));
+check('the heading is the locked Rev 4.2 wording',
+  week.includes(BETS_HEADING), BETS_HEADING);
+check('the locked heading states the viewport treatment, not a record count',
+  BETS_HEADING === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕', BETS_HEADING);
 check('the current week shows live, not settled, wagers',
   currentBets.every((c) => !c.settled));
 check('the bets carry the Package 2 wager grammar',
@@ -250,6 +256,21 @@ check('the slot shape itself is still shown',
 const pastBets = weekBets(PAST_WEEK);
 check('the past week shows settled wagers only',
   pastBets.length > 0 && pastBets.every((c) => c.settled === true));
+
+// The locked heading is presentation; the records are protocol. A week with
+// three settled wagers keeps the heading AND keeps three records.
+check('the locked heading is unchanged on a past week',
+  week.includes(BETS_HEADING), BETS_HEADING);
+check('no fourth historical wager is fabricated to match the heading',
+  pastBets.length === 3, String(pastBets.length));
+check('the settled record set is still the three Action holds',
+  CARDS.filter((c) => c.settled).length === 3,
+  String(CARDS.filter((c) => c.settled).length));
+check('the locked Action figures are untouched by the correction',
+  settledCents() === 2000 && seasonRecordLabel() === '14–7',
+  `${settledCents()} · ${seasonRecordLabel()}`);
+check('the module never draws more than the viewport treatment states',
+  weekBets(CURRENT_WEEK).slice(0, BETS_SHOWN).length <= BETS_SHOWN);
 
 const pastPools = weekPools(PAST_WEEK);
 check('past Pools are settled', pastPools.every((p) => p.settled === true));

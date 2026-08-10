@@ -32,6 +32,21 @@ import { matchupMarketCells, wagerCard } from './wagercard.js';
 /** Locked Rev 4.2 subtitle. */
 export const WEEK_SUBTITLE = 'Official Yahoo matchups + FantasyStakes action';
 
+/**
+ * Locked Rev 4.2 heading for the FantasyStakes Bets module.
+ *
+ * `4 SHOWN` is the VIEWPORT treatment — how many wagers this module presents —
+ * and it is locked copy, not a running count of records. Package 3 derived the
+ * number from the card list, which made a past week with three settled records
+ * draw `3 SHOWN`. That was the wrong correction to the right instinct: the
+ * heading must not be invented, and neither must a fourth historical wager to
+ * satisfy it. The heading is fixed here and the module shows at most four.
+ */
+export const BETS_HEADING = 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕';
+
+/** The viewport cap the heading states. */
+export const BETS_SHOWN = 4;
+
 /** Which week the tab is showing. The current week is the opening state. */
 let selectedWeek = CURRENT_WEEK;
 
@@ -149,16 +164,17 @@ function yahooModule() {
 /* ── Module 2 · FantasyStakes bets ──────────────────────────────────────────*/
 
 function betsModule() {
-  const bets = weekBets(selectedWeek);
+  // At most four, because that is what the locked heading says this module
+  // presents. A week holding fewer real wagers draws fewer cards — the shortfall
+  // is never made up by inventing a wager that no protocol record supports.
+  const bets = weekBets(selectedWeek).slice(0, BETS_SHOWN);
   const cards = bets
     .map((card) => `<div class="fs-vcar__item is-compact">${lifecycleCard(card)}</div>`)
     .join('');
 
-  // The count is derived, never typed: a heading that claimed four while the
-  // module drew three would be the one lie a weekly dashboard cannot afford.
   return (
     '<section class="fs-wkmod" data-module="bets">' +
-    sectionHeading(`FANTASYSTAKES BETS · ${bets.length} SHOWN · SWIPE ↕`) +
+    sectionHeading(BETS_HEADING) +
     `<div class="fs-vcar is-compact" id="fs-week-bets" role="list">${cards}</div>` +
     '</section>'
   );

@@ -1,0 +1,464 @@
+/* ============================================================================
+ * FantasyStakes — UI/UX Rev 4.2 · Rules & Settings and commissioner surfaces
+ * Sprint 7 Package 4
+ * ========================================================================== */
+
+.fs-rulescroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--fs-space-2) var(--fs-gutter) var(--fs-space-6);
+}
+
+.fs-rulesec + .fs-rulesec { margin-top: var(--fs-space-4); }
+
+/* ── Rule rows ─────────────────────────────────────────────────────────────
+ * Compact and tappable, with the chevron carrying the disclosure affordance. */
+
+.fs-rules,
+.fs-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-2);
+}
+
+.fs-rulerow,
+.fs-setrow {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-space-3);
+  width: 100%;
+  padding: var(--fs-space-3) var(--fs-space-4);
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-rulerow:active,
+.fs-setrow:active { background: #1a1610; }
+
+.fs-rulerow:focus-visible,
+.fs-setrow:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+
+.fs-rulerow__main { flex: 1 1 auto; min-width: 0; }
+
+.fs-rulerow__title {
+  display: block;
+  font-size: var(--fs-size-body);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+}
+
+.fs-rulerow__blurb {
+  display: block;
+  font-size: var(--fs-size-micro);
+  line-height: 1.35;
+  color: var(--g1);
+}
+
+.fs-rulerow__count {
+  flex: 0 0 auto;
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-size-micro);
+  color: var(--g2);
+}
+
+.fs-rulerow__chev,
+.fs-setrow__chev {
+  flex: 0 0 auto;
+  color: var(--g2);
+}
+
+/* ── Settings rows ─────────────────────────────────────────────────────────*/
+
+.fs-setrow__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-size-body);
+  color: var(--bone);
+}
+
+.fs-setrow__value {
+  flex: 0 0 auto;
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-micro);
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+/* ── Rule sheet content ────────────────────────────────────────────────────*/
+
+.fs-rule + .fs-rule {
+  margin-top: var(--fs-space-4);
+  padding-top: var(--fs-space-4);
+  border-top: var(--fs-border-hair);
+}
+
+.fs-rule__head {
+  font-size: var(--fs-size-body);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.35;
+  color: var(--bone);
+}
+
+.fs-rule__body {
+  margin-top: var(--fs-space-2);
+  font-size: var(--fs-size-fine);
+  line-height: 1.5;
+  color: var(--g1);
+}
+
+.fs-rule__src {
+  margin-top: var(--fs-space-2);
+  font-family: var(--fs-font-money);
+  font-size: 8.5px;
+  letter-spacing: .02em;
+  color: var(--g2);
+  overflow-wrap: anywhere;
+}
+
+/* ── Commissioner ──────────────────────────────────────────────────────────*/
+
+.fs-commish {
+  margin-top: var(--fs-space-6);
+  padding-top: var(--fs-space-4);
+  border-top: var(--fs-border-edge);
+}
+
+.fs-commish__head {
+  margin-bottom: var(--fs-space-3);
+  font-size: var(--fs-size-fine);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--gold);
+}
+
+.fs-comsec + .fs-comsec { margin-top: var(--fs-space-5); }
+
+/* A · Top-Off requests */
+
+.fs-reqs { display: flex; flex-direction: column; gap: var(--fs-space-3); }
+
+.fs-reqgroup__head {
+  margin-bottom: var(--fs-space-1);
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--g2);
+}
+
+.fs-req {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-space-3);
+  width: 100%;
+  margin-top: var(--fs-space-2);
+  padding: var(--fs-space-3) var(--fs-space-4);
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-req:active { background: #1a1610; }
+.fs-req:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+
+.fs-req__state {
+  flex: 0 0 auto;
+  padding: 1px var(--fs-space-2);
+  border-radius: 3px;
+  font-size: 7px;
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fs-req__state.is-pending   { background: #2a2210; color: var(--amber); }
+.fs-req__state.is-approved  { background: var(--greenbg); color: var(--green2); }
+.fs-req__state.is-rejected  { background: #2a1414; color: var(--red); }
+.fs-req__state.is-cancelled { background: #1b1811; color: var(--g1); }
+
+.fs-req__main { flex: 1 1 auto; min-width: 0; }
+
+.fs-req__team {
+  display: block;
+  font-size: var(--fs-size-micro);
+  font-weight: var(--fs-weight-medium);
+  color: var(--bone);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-req__meta {
+  display: block;
+  font-size: 8.5px;
+  color: var(--g2);
+}
+
+.fs-req__amount {
+  flex: 0 0 auto;
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-body);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+}
+
+/* Decision controls — rendered, disabled, and explained. */
+
+.fs-decide {
+  display: flex;
+  gap: var(--fs-space-2);
+  margin-top: var(--fs-space-4);
+}
+
+.fs-decide__btn { flex: 1 1 0; min-height: 40px; }
+
+.fs-decide__btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.fs-note.is-warn {
+  border-left: 2px solid var(--amber);
+  padding-left: var(--fs-space-3);
+}
+
+.fs-prov {
+  margin-top: var(--fs-space-4);
+  padding-top: var(--fs-space-3);
+  border-top: var(--fs-border-hair);
+}
+
+.fs-prov__head {
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--g2);
+}
+
+.fs-prov__row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: var(--fs-space-2);
+  font-size: 8.5px;
+  color: var(--g2);
+}
+
+.fs-prov__row code {
+  font-family: var(--fs-font-money);
+  color: var(--g1);
+  overflow-wrap: anywhere;
+}
+
+/* B · GM ledger cards */
+
+.fs-gmcards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--fs-space-2);
+}
+
+.fs-gmcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-2);
+  min-width: 0;
+  padding: var(--fs-space-3);
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-gmcard:active { background: #1a1610; }
+.fs-gmcard:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+
+.fs-gmcard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-2);
+  min-width: 0;
+}
+
+.fs-gmcard__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 9.5px;
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-gmcard__settle {
+  flex: 0 0 auto;
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-micro);
+  font-weight: var(--fs-weight-strong);
+  white-space: nowrap;
+}
+
+.fs-gmcard__settle.is-positive { color: var(--green2); }
+.fs-gmcard__settle.is-negative { color: var(--red); }
+
+.fs-gmcard__cells { display: flex; gap: var(--fs-space-2); }
+
+.fs-gmcard__cell { flex: 1 1 0; min-width: 0; }
+
+.fs-gmcard__label {
+  display: block;
+  font-size: 7px;
+  letter-spacing: .08em;
+  color: var(--g2);
+}
+
+.fs-gmcard__value {
+  display: block;
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+  font-size: 9.5px;
+  color: var(--bone);
+}
+
+.fs-gmcard__foot {
+  font-size: 7px;
+  letter-spacing: .06em;
+  color: var(--g2);
+}
+
+/* In a commissioner sheet the three statement blocks sit directly on the sheet
+ * rather than each in its own card, so they need separation of their own —
+ * without it the Wagering Position total and the first adjustment row read as
+ * one continuous list. */
+#fs-sheet .fs-lsec__body + .fs-lsec__body {
+  margin-top: var(--fs-space-3);
+  padding-top: var(--fs-space-3);
+  border-top: var(--fs-border-hair);
+}
+
+/* C · League reconciliation */
+
+.fs-closes {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--fs-space-2);
+  margin-top: var(--fs-space-3);
+  padding: var(--fs-space-3);
+  border-radius: var(--fs-radius-cell);
+  font-size: var(--fs-size-micro);
+  line-height: 1.4;
+}
+
+.fs-closes.is-ok  { background: var(--greenbg); color: var(--green2); }
+.fs-closes.is-off { background: #2a1414; color: var(--red); }
+
+.fs-closes__mark { font-weight: var(--fs-weight-heavy); }
+
+.fs-exgroup { margin-top: var(--fs-space-4); }
+
+.fs-exgroup__head {
+  margin-bottom: var(--fs-space-2);
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--gold);
+}
+
+.fs-exrow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fs-space-2);
+  font-size: var(--fs-size-micro);
+}
+
+.fs-exrow__label { flex: 1 1 auto; min-width: 0; color: var(--bone); }
+
+.fs-exrow__count {
+  flex: 0 0 auto;
+  font-family: var(--fs-font-money);
+  color: var(--g1);
+}
+
+.fs-exrow__value {
+  flex: 0 0 auto;
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+  color: var(--bone);
+}
+
+.fs-exrow__flag {
+  flex: 0 0 auto;
+  padding: 0 var(--fs-space-2);
+  border-radius: 3px;
+  background: #1b1811;
+  font-size: 7px;
+  letter-spacing: .06em;
+  color: var(--g1);
+  white-space: nowrap;
+}
+
+.fs-exrow__flag.is-liability { background: #2a2210; color: var(--amber); }
+
+.fs-exrow__note {
+  margin: 1px 0 var(--fs-space-3);
+  font-size: 8.5px;
+  line-height: 1.4;
+  color: var(--g2);
+}
+
+.fs-integrity {
+  margin-top: var(--fs-space-4);
+  padding-top: var(--fs-space-3);
+  border-top: var(--fs-border-hair);
+}
+
+.fs-integrity__head {
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--g2);
+}
+
+.fs-integrity__body {
+  margin-top: 2px;
+  font-size: 8.5px;
+  line-height: 1.45;
+  color: var(--g2);
+}
+
+.fs-integrity__body code,
+.fs-note code {
+  font-family: var(--fs-font-money);
+  color: var(--g1);
+  overflow-wrap: anywhere;
+}
+
+/* ── D · Legal ─────────────────────────────────────────────────────────────
+ * Subordinate by construction: the smallest type on the tab, tertiary grey,
+ * and the last thing on the page. */
+
+.fs-legal {
+  margin-top: var(--fs-space-6);
+  padding-top: var(--fs-space-4);
+  border-top: var(--fs-border-hair);
+  font-size: 8.5px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--g2);
+}

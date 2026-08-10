@@ -69,11 +69,15 @@ function ledgerHeader() {
 /**
  * One reconciliation row.
  *
+ * Exported as `ledgerRow` so the commissioner's per-GM detail is drawn in this
+ * grammar rather than a second one. A commissioner reading a GM's position
+ * should be reading the same statement the GM reads.
+ *
  * @param {{label: string, cents?: number, text?: string, level?: number,
  *   signed?: boolean, total?: boolean, lead?: boolean, id?: string}} spec
  * @returns {string}
  */
-function row(spec) {
+export function ledgerRow(spec) {
   const { label, cents, text, level = 0, signed = false, total = false, lead = false, id = '' } = spec;
 
   const classes = ['fs-lrow'];
@@ -162,11 +166,11 @@ function advancesSection(r) {
       // Season-Opening is a PARENT of its two components and a SIBLING of Added
       // Stakes. Nesting Added Stakes underneath would claim it was part of the
       // opening allocation, which it is not.
-      row({ label: 'Season-Opening FantasyStakes', cents: a.seasonOpeningCents, lead: true }) +
-      row({ label: 'Regular Season Minimum Stakes', cents: a.regularSeasonMinimumCents, level: 1 }) +
-      row({ label: 'Playoffs / Championship Stakes', cents: a.playoffsChampionshipCents, level: 1 }) +
-      row({ label: 'Added Stakes', cents: a.addedStakesCents, signed: true, lead: true }) +
-      row({ label: 'Total Virtual Stakes', cents: a.totalVirtualStakesCents, total: true }),
+      ledgerRow({ label: 'Season-Opening FantasyStakes', cents: a.seasonOpeningCents, lead: true }) +
+      ledgerRow({ label: 'Regular Season Minimum Stakes', cents: a.regularSeasonMinimumCents, level: 1 }) +
+      ledgerRow({ label: 'Playoffs / Championship Stakes', cents: a.playoffsChampionshipCents, level: 1 }) +
+      ledgerRow({ label: 'Added Stakes', cents: a.addedStakesCents, signed: true, lead: true }) +
+      ledgerRow({ label: 'Total Virtual Stakes', cents: a.totalVirtualStakesCents, total: true }),
   });
 }
 
@@ -184,7 +188,7 @@ function wageringSection(r) {
       label: 'Settled losses', cents: act.settledLossesCents,
       items: VERSUS_LOSSES_SUPPORT, key: 'versus-losses',
     }) +
-    row({ label: 'Net Versus', cents: act.netVersusCents, signed: true, total: true }) +
+    ledgerRow({ label: 'Net Versus', cents: act.netVersusCents, signed: true, total: true }) +
     '</div>';
 
   const pools =
@@ -197,15 +201,15 @@ function wageringSection(r) {
       label: 'Pool entries', cents: act.poolEntriesCents,
       items: POOL_ENTRIES_SUPPORT, key: 'pool-entries',
     }) +
-    row({ label: 'Net Pools', cents: act.netPoolsCents, signed: true, total: true }) +
+    ledgerRow({ label: 'Net Pools', cents: act.netPoolsCents, signed: true, total: true }) +
     '</div>';
 
   const positionGroup =
     '<div class="fs-lgroup"><div class="fs-lgroup__head">CURRENT WAGER POSITION</div>' +
-    row({ label: 'Spendable Credits', cents: pos.spendableCents }) +
-    row({ label: 'Accepted wager escrow', cents: pos.acceptedEscrowCents }) +
-    row({ label: 'Weekly reserve not yet released', cents: pos.weeklyReserveNotReleasedCents }) +
-    row({ label: 'Wagering Position', cents: pos.wageringPositionCents, signed: true, total: true }) +
+    ledgerRow({ label: 'Spendable Credits', cents: pos.spendableCents }) +
+    ledgerRow({ label: 'Accepted wager escrow', cents: pos.acceptedEscrowCents }) +
+    ledgerRow({ label: 'Weekly reserve not yet released', cents: pos.weeklyReserveNotReleasedCents }) +
+    ledgerRow({ label: 'Wagering Position', cents: pos.wageringPositionCents, signed: true, total: true }) +
     '</div>';
 
   // The memo is the anti-double-counting rule stated to the GM in the same
@@ -245,8 +249,8 @@ function adjustmentsSection(r) {
     title: 'SEASON ADJUSTMENTS + WINNINGS',
     sub: 'Amounts outside ordinary Versus and Pool wagering.',
     body:
-      row({ label: 'Weekly Min · out of circulation', cents: adj.weeklyMinOutOfCirculationCents, signed: true }) +
-      row({ label: 'Skunk Fees', cents: adj.skunkFeesCents }) +
+      ledgerRow({ label: 'Weekly Min · out of circulation', cents: adj.weeklyMinOutOfCirculationCents, signed: true }) +
+      ledgerRow({ label: 'Skunk Fees', cents: adj.skunkFeesCents }) +
       '<div class="fs-lexp" data-expand="season-winnings">' +
       '<button type="button" class="fs-lexp__head" aria-expanded="false">' +
       '<span class="fs-lrow__label"><span class="fs-lexp__chev">›</span>Season winnings earned</span>' +
@@ -257,8 +261,8 @@ function adjustmentsSection(r) {
       '<div class="fs-note">Rev 4.2 fixes the total; the per-award split is not yet ' +
       'specified, and the Skunk pot distributes at season close rather than weekly.</div>' +
       '</div></div>' +
-      CHAMPIONSHIPS.map((c) => row({ label: c.label, text: c.state })).join('') +
-      row({ label: 'Net Adjustments + Winnings', cents: adj.netAdjustmentsCents, signed: true, total: true }),
+      CHAMPIONSHIPS.map((c) => ledgerRow({ label: c.label, text: c.state })).join('') +
+      ledgerRow({ label: 'Net Adjustments + Winnings', cents: adj.netAdjustmentsCents, signed: true, total: true }),
   });
 }
 

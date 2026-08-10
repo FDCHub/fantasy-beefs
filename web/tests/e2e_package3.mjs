@@ -223,6 +223,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       pregame: cards.filter(c => /PREGAME/.test(c.textContent)).length,
       betsHeading: panel.querySelector('[data-module="bets"] .fs-heading__text').textContent,
       betsText: panel.querySelector('[data-module="bets"]').textContent,
+      betsCount: panel.querySelectorAll('[data-module="bets"] .fs-wcard').length,
       poolStates: [...panel.querySelectorAll('.fs-poolrow__state')].map(el => el.textContent),
       strips: panel.querySelectorAll('.fs-strip').length,
       modules: panel.querySelectorAll('[data-module]').length,
@@ -232,8 +233,13 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     past.selected.length === 1 && past.selected[0] === '4', past.selected.join(','));
   check('every past matchup presents as settled', past.final === 6, `${past.final} of 6`);
   check('no past matchup still presents as pregame', past.pregame === 0);
-  check('the bets module reports its settled count',
-    /SHOWN/.test(past.betsHeading), past.betsHeading);
+  // Locked copy, identical on both weeks: `4 SHOWN` is the viewport treatment,
+  // not a count of records, and a week holding three settled wagers still shows
+  // three rather than gaining a fabricated fourth.
+  check('the locked bets heading is unchanged on a past week',
+    past.betsHeading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕', past.betsHeading);
+  check('the past week draws only the wagers it really has',
+    past.betsCount === 3, String(past.betsCount));
   check('past bets show their result', /WON|LOST/.test(past.betsText));
   check('a Pool that found no qualifier says it rolled forward',
     past.poolStates.some(s => /rolled to Week 5/i.test(s)), past.poolStates.join(' | '));
