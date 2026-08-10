@@ -490,12 +490,26 @@ _assert("and its three terms match too",
 _assert("every GM is on the league's single economy stop",
         all(p["seasonOpeningCents"] == 22000 for p in positions))
 
+# GOVERNED REVISION, S8-P3. This asserted that NO league-wide positions route
+# existed and that the seam recorded its absence. P3 built one, so the old
+# assertions would now fail a correct build. What must still hold is the reason
+# the seam existed: the cards on this tab are illustrative until they are
+# bound, and the league-wide read must be an aggregation of the per-team
+# calculation rather than a second formula.
 positions_seam = APP.get("positionsSeam", {})
-_assert("no league-wide positions route exists",
-        not re.search(r'@app\.get\("[^"]*positions', MAIN_PY))
-_assert("the seam records that absence", positions_seam.get("endpoint") is None)
-_assert("and names the per-team computation that does exist",
+_assert("the league-wide positions route now exists",
+        bool(re.search(r'@app\.get\("/league/\{league_id\}/ledger/positions"',
+                       MAIN_PY)))
+_assert("the seam names it as the binding target",
+        positions_seam.get("endpoint") == "GET /league/{league_id}/ledger/positions",
+        str(positions_seam.get("endpoint")))
+_assert("and still names the per-team computation it aggregates",
         "current_settle.py" in str(positions_seam.get("computation")))
+_assert("the seam records that the cards are not yet bound",
+        "NOT YET BOUND" in str(positions_seam.get("status")))
+_assert("the read model aggregates the per-GM calculation rather than "
+        "requerying",
+        "gm_ledger()" in str(positions_seam.get("readModel")))
 _assert("the surface calls the league state illustrative",
         "Illustrative league state" in PANEL)
 
@@ -529,9 +543,18 @@ integrity = league.get("integrity", {})
 trial_seam = APP.get("trialSeam", {})
 _assert("the trial-balance invariant is real",
         "def trial_balance" in _read_root("ledger", "ledger.py"))
-_assert("no HTTP route exposes it",
-        not re.search(r'@app\.get\("[^"]*trial[-_]balance', MAIN_PY))
-_assert("the seam records that", trial_seam.get("endpoint") is None)
+# GOVERNED REVISION, S8-P3. The invariant is now exposed at /ledger/integrity.
+# Two things must still hold, and they are the substance of the ruling: no
+# LEAGUE-SCOPED trial balance was invented, and the seam says so.
+_assert("no league-scoped trial-balance route was invented",
+        not re.search(r'@app\.get\("[^"]*\{league_id\}[^"]*trial', MAIN_PY)
+        and not re.search(r'@app\.get\("[^"]*\{league_id\}[^"]*integrity',
+                          MAIN_PY))
+_assert("the seam names the global route it will bind to",
+        trial_seam.get("endpoint") == "GET /ledger/integrity",
+        str(trial_seam.get("endpoint")))
+_assert("and records that the invariant remains global",
+        "global" in str(trial_seam.get("scope")).lower())
 _assert("the surface does not claim to have checked it",
         integrity.get("verified") is False and "NOT VERIFIED HERE" in PANEL)
 

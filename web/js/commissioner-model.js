@@ -88,11 +88,16 @@ export const TOPOFF_ROUTES = Object.freeze({
  * `data/commissioner-data.js` and kept explicitly separate from anything read.
  */
 export const LEAGUE_POSITIONS_SEAM = Object.freeze({
-  status: 'PER-GM COMPUTATION EXISTS · NO LEAGUE-WIDE READ-MODEL',
+  // S8-P3 built it, and built it as an aggregation of the SAME per-GM
+  // calculation rather than as a second query — so a commissioner's view of a
+  // GM is that GM's own figure by construction, not by coincidence. The cards
+  // below are still illustrative until P4 binds them.
+  status: 'READ MODEL EXISTS · NOT YET BOUND',
   computation: 'economy/current_settle.py — one team at a time',
-  endpoint: null,
-  nearest: 'GET /reports/settlement/{league_id} — season-end championship settlement only',
-  needs: 'a league-scoped route returning every GM\'s CurrentSettle components',
+  endpoint: 'GET /league/{league_id}/ledger/positions',
+  readModel: 'reports/ledger_read_model.py · league_positions() → gm_ledger()',
+  reconciliation: 'GET /league/{league_id}/ledger/reconciliation',
+  needs: 'the twelve cards bound to that route in place of the figures below',
 });
 
 /**
@@ -105,11 +110,18 @@ export const LEAGUE_POSITIONS_SEAM = Object.freeze({
  * computing a substitute for it.
  */
 export const TRIAL_BALANCE_SEAM = Object.freeze({
-  status: 'INVARIANT EXISTS · NOT READABLE FROM THE WEB APP',
+  // S8-P3 exposed the invariant, and deliberately did NOT make it
+  // league-scoped: a league-scoped trial balance would be a new accounting
+  // derivation wearing an existing invariant's name. The league-scoped
+  // question has its own, separate answer — the reconciliation route — and the
+  // two must never be presented as one claim.
+  status: 'GLOBAL INVARIANT EXPOSED · NOT YET BOUND',
   computation: 'ledger/ledger.py · trial_balance()',
-  endpoint: null,
-  scope: 'global across all leagues, not league-scoped',
-  needs: 'a league-scoped integrity read the commissioner surface can call',
+  endpoint: 'GET /ledger/integrity',
+  scope: 'global across all leagues, and stays that way',
+  payload: 'scope, balanced, imbalance_cents, note — no league or account detail',
+  doesNotProve: 'that THIS league balances; that is the reconciliation route',
+  needs: 'a GLOBAL LEDGER INTEGRITY row bound to it, labelled as global',
 });
 
 /* ── Per-GM positions ───────────────────────────────────────────────────────*/

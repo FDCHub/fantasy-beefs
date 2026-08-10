@@ -542,7 +542,23 @@ _assert("no GET route in the API changes state", mutating_gets == [],
 # router still on the global guard. The AST knows where a signature ends.
 import ast  # noqa: E402
 
-DELIBERATELY_GLOBAL = {"/auth/promote"}
+#: Routes whose authority is platform-wide BY NATURE, each justified here.
+#:
+#: This set is the whole point of the control: adding a globally-guarded route
+#: must require editing this line and saying why. S8-P3 added the second entry
+#: and this assertion is what caught it.
+#:
+#:   /auth/promote     — sets a user's PLATFORM role. Not scoped to a league;
+#:                       no league_id is derivable from the request. Since P2
+#:                       the role it sets confers nothing over any league.
+#:   /ledger/integrity — the ledger's GLOBAL conservation invariant. A
+#:                       league-scoped version would be a new accounting
+#:                       derivation wearing an existing invariant's name, which
+#:                       the Sprint 8 ruling forbids. Its payload carries no
+#:                       league, team, account or transaction detail, which is
+#:                       what makes the available authority tier sufficient —
+#:                       pinned in test_s8_p3_read_models.py section 8.
+DELIBERATELY_GLOBAL = {"/auth/promote", "/ledger/integrity"}
 
 
 def _guarded_routes():

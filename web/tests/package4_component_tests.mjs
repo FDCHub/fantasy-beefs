@@ -330,8 +330,11 @@ check('the expansion states the shared arithmetic',
   /the same arithmetic this GM’s own Ledger performs/.test(detail.body));
 check('a held balance is explained as excluded from settlement',
   /not counted again in\s*\n?\s*Current Settle/.test(gmSheet(you).body));
-check('the league positions seam is declared',
-  LEAGUE_POSITIONS_SEAM.endpoint === null);
+// GOVERNED REVISION, S8-P3 — see the note in package3_component_tests.mjs.
+check('the league positions seam names its route',
+  LEAGUE_POSITIONS_SEAM.endpoint === 'GET /league/{league_id}/ledger/positions');
+check('and records that the cards are not yet bound to it',
+  LEAGUE_POSITIONS_SEAM.status.includes('NOT YET BOUND'));
 check('the surface says the league state is illustrative',
   /Illustrative league state/.test(panel));
 
@@ -365,9 +368,16 @@ check('skunk receivables are already inside the GM adjustments',
 
 check('the integrity invariant is stated but not claimed as checked',
   league.integrity.verified === false && /trial balance is zero/i.test(league.integrity.invariant));
-check('the trial-balance seam names the computation',
+// GOVERNED REVISION, S8-P3. The invariant is now exposed — but the Sprint 8
+// ruling was that it stays GLOBAL, so the assertion checks that too: a
+// league-scoped trial balance would be a new derivation wearing an existing
+// invariant's name.
+check('the trial-balance seam names the computation and its route',
   TRIAL_BALANCE_SEAM.computation.includes('trial_balance()')
-  && TRIAL_BALANCE_SEAM.endpoint === null);
+  && TRIAL_BALANCE_SEAM.endpoint === 'GET /ledger/integrity');
+check('the invariant stayed global and says what it does not prove',
+  /global/i.test(TRIAL_BALANCE_SEAM.scope)
+  && /league/i.test(TRIAL_BALANCE_SEAM.doesNotProve));
 check('the surface reports the invariant as not verified here',
   panel.includes('NOT VERIFIED HERE'));
 check('the reconciliation is not a second Current Settle formula',

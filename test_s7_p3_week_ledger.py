@@ -282,10 +282,16 @@ _assert("the module names it as the computation",
 # The seam claim is only honest if the endpoint really is absent.
 _assert("no HTTP read-model for Current Settle exists yet",
         not re.search(r'@app\.(get|post)\("[^"]*current[-_]settle', MAIN_PY))
-_assert("the module declares that absence rather than inventing a route",
-        READ_SEAM.get("endpoint") is None)
-_assert("the nearest existing route is named",
-        "/wallet/{team_id}" in str(READ_SEAM.get("nearest")))
+# GOVERNED REVISION, S8-P3. This asserted the route's ABSENCE. It exists now,
+# so the honest claims are that the seam names it and that this tab has not yet
+# been bound to it — the figures above are still the POR's illustrative ones.
+_assert("the module names the route rather than inventing a figure",
+        READ_SEAM.get("endpoint") == "GET /league/{league_id}/ledger/me",
+        str(READ_SEAM.get("endpoint")))
+_assert("the seam records that the Ledger tab is not yet bound",
+        "NOT YET BOUND" in str(READ_SEAM.get("status")))
+_assert("and that the route publishes exact cents, leaving display to the UI",
+        "cents" in str(READ_SEAM.get("units")))
 
 _assert("the governed Top-Off command really exists",
         '@app.post("/league/{league_id}/top-offs"' in MAIN_PY)

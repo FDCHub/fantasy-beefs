@@ -70,11 +70,16 @@ import {
  * second implementation of the accounting.
  */
 export const LEDGER_READ_SEAM = Object.freeze({
-  status: 'COMPUTATION EXISTS · NO HTTP READ-MODEL',
+  // S8-P3 built the read model. What is left is the binding, which is P4's —
+  // this module still draws the illustrative figures below, and saying the
+  // seam is closed while it does that would be the same lie in the other
+  // direction.
+  status: 'READ MODEL EXISTS · NOT YET BOUND',
   computation: 'economy/current_settle.py · CurrentSettle.as_dict()',
-  endpoint: null,
-  nearest: 'GET /wallet/{team_id} — balance and transactions only',
-  needs: 'a GM-scoped read route returning the CurrentSettle components',
+  endpoint: 'GET /league/{league_id}/ledger/me',
+  readModel: 'reports/ledger_read_model.py · gm_ledger()',
+  units: 'exact integer cents; whole-dollar display stays in credits.js',
+  needs: 'the Ledger tab bound to that route in place of the figures below',
 });
 
 /**

@@ -542,8 +542,15 @@ _assert("every destination is built by its own module, with no placeholder branc
 # Seam documentation is NOT a stale placeholder. Each of these describes a real,
 # named integration boundary and must survive this pass.
 SEAMS = APP.get("seams", {})
-_assert("the Ledger read-model seam is still declared",
-        SEAMS.get("ledgerRead", {}).get("endpoint") is None)
+# GOVERNED REVISION, S8-P3. These three seams recorded that no read model
+# existed. P3 built all three, so `endpoint is None` would now fail a correct
+# build. What each seam must still record is that the SURFACE is not yet bound
+# — the tabs below still draw illustrative figures until P4 — and, for the
+# trial balance, that it deliberately stayed global.
+_assert("the Ledger read-model seam names its route and is not yet bound",
+        SEAMS.get("ledgerRead", {}).get("endpoint")
+        == "GET /league/{league_id}/ledger/me"
+        and "NOT YET BOUND" in str(SEAMS.get("ledgerRead", {}).get("status")))
 _assert("the Top-Off command seam is still declared",
         SEAMS.get("topoffCommand", {}).get("endpoint") == "POST /league/{league_id}/top-offs")
 _assert("the configuration-command seam is still declared",
@@ -558,10 +565,19 @@ _assert("the session-identity half of the commissioner seam is closed",
 _assert("and the decision-command half is still declared open",
         "NOT YET BOUND" in str(SEAMS.get("auth", {}).get("status"))
         and bool(SEAMS.get("auth", {}).get("missing")))
-_assert("the league-wide read-model seam is still declared",
-        SEAMS.get("positions", {}).get("endpoint") is None)
-_assert("the trial-balance seam is still declared",
-        SEAMS.get("trial", {}).get("endpoint") is None)
+_assert("the league-wide read-model seam names its route and is not yet bound",
+        SEAMS.get("positions", {}).get("endpoint")
+        == "GET /league/{league_id}/ledger/positions"
+        and "NOT YET BOUND" in str(SEAMS.get("positions", {}).get("status")))
+_assert("the trial-balance seam names its route and is not yet bound",
+        SEAMS.get("trial", {}).get("endpoint") == "GET /ledger/integrity"
+        and "NOT YET BOUND" in str(SEAMS.get("trial", {}).get("status")))
+# The Sprint 8 ruling, pinned: exposing the invariant must not have quietly
+# turned it into a league-scoped one, and it must not claim to prove that this
+# league balances.
+_assert("the trial balance stayed GLOBAL and says what it does not prove",
+        "global" in str(SEAMS.get("trial", {}).get("scope")).lower()
+        and "league" in str(SEAMS.get("trial", {}).get("doesNotProve")).lower())
 _assert("the four seams are tracked independently, not as one blocker",
         len({json.dumps(SEAMS.get(k), sort_keys=True)
              for k in ("settings", "auth", "positions", "trial")}) == 4)

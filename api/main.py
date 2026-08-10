@@ -38,7 +38,7 @@ from db.schema import (
 )
 
 from db.deps import get_db
-from ledger.ledger import balance_of, _balance_of_in_session, _to_cents
+from ledger.ledger import balance_of, _balance_of_in_session, _to_cents, trial_balance
 from odds.monte_carlo import OddsResult, run as mc_run
 from betting.bet_engine import (
     BetResult,
@@ -139,6 +139,14 @@ from reports.weekly_wrap import (
 )
 from reports.my_account import get_my_account_summary
 from reports.settlement_report import championship_settlement_report
+from reports.ledger_read_model import (
+    REASON_LEAGUE_NOT_FOUND,
+    REASON_TEAM_NOT_IN_LEAGUE,
+    LedgerReadModelError,
+    gm_ledger,
+    league_positions,
+    league_reconciliation,
+)
 from admin.commissioner_rules import (
     EscrowOut,
     ParsePreview,
@@ -3404,6 +3412,234 @@ def reports_settlement(
             )
             for r in report.rows
         ],
+    )
+
+
+# ── Accounting read models (S8-P3) ───────────────────────────────────────────
+#
+# THREE SURFACES, ONE CALCULATION. The GM Ledger, the commissioner's GM cards
+# and the League Reconciliation are all served from
+# `reports/ledger_read_model.py`, which calls `economy.current_settle` exactly
+# once. These routes shape and authorize; they compute nothing. A figure
+# assembled here would be a second accounting system with a nicer name.
+#
+# EXACT INTEGER CENTS ARE THE CONTRACT. Every monetary field below is an `int`
+# and is named `*_cents`. Unlike the older settlement report, which carries
+# `*_dollars` strings beside its cents for compatibility, these models publish
+# no formatted value at all: whole-dollar display is a Rev 4.2 presentation
+# decision that happens once, in `credits.js`, over the exact cents.
+
+class GmLedgerOut(BaseModel):
+    """One GM's authoritative position. Every monetary field is exact cents."""
+    team_id:   int
+    team_name: str
+    owner:     str
+
+    # Assets
+    wallet_cents:          int
+    weekly_min_live_cents: int
+    min_reserve_cents:     int
+    expired_min_cents:     int
+    in_play_cents:         int
+    assets_cents:          int
+
+    # Obligations
+    season_advance_cents: int
+    topoff_issued_cents:  int
+    receivable_cents:     int
+    obligations_cents:    int
+
+    # Result
+    current_settle_cents: int
+
+    # Reported beside the position, never inside a total
+    held_open_challenges_cents: int
+
+    # Groupings of the authoritative terms above
+    available_cents:            int
+    total_virtual_stakes_cents: int
+
+
+class ExceptionRowOut(BaseModel):
+    count:                int
+    cents:                int
+    settlement_liability: bool
+    note:                 str
+
+
+class LeagueReconciliationOut(BaseModel):
+    league_id:      int
+    season:         int
+    position_count: int
+
+    aggregate_assets_cents:               int
+    aggregate_obligations_cents:          int
+    aggregate_current_settle_cents:       int
+    aggregate_total_virtual_stakes_cents: int
+    sum_of_gm_settles_cents:              int
+    reconciles:                           bool
+
+    exceptions: dict[str, ExceptionRowOut]
+
+
+def _read_model_error(e: LedgerReadModelError) -> HTTPException:
+    """Domain refusals mapped NARROWLY.
+
+    Only the two named reasons become 4xx. `CurrentSettleError` — which is what
+    an unattributable escrow raises — is deliberately NOT caught: it means
+    posted state cannot be explained, which is the loudest thing this system can
+    say, and converting it into a tidy 400 would hide it from the alerting that
+    a 500 reaches.
+    """
+    if e.reason == REASON_LEAGUE_NOT_FOUND:
+        return HTTPException(status_code=404, detail=str(e))
+    if e.reason == REASON_TEAM_NOT_IN_LEAGUE:
+        return HTTPException(status_code=403, detail=str(e))
+    raise e
+
+
+@app.get("/league/{league_id}/ledger/me", response_model=GmLedgerOut)
+def ledger_me(
+    league_id:    int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """The acting GM's own position in this league.
+
+    THE TEAM IS NOT A PARAMETER, and that is the security property. It is
+    resolved from the authenticated user's own team and checked to belong to
+    the path league, so there is no id for a caller to substitute — a GM cannot
+    read another GM's Ledger through this route because there is nowhere to ask
+    for one. The commissioner surface below is the governed way to see other
+    GMs, and it requires commissioner authority for the league.
+
+    A caller with no team in this league receives 403 rather than an empty
+    position: "you are not in this league" and "you are in it with nothing" are
+    different answers and must not look alike.
+    """
+    team_id = _member_team_id(current_user, league_id, db)
+    if team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    try:
+        return GmLedgerOut(**gm_ledger(db, team_id=team_id,
+                                       league_id=league_id).as_dict())
+    except LedgerReadModelError as e:
+        raise _read_model_error(e)
+
+
+@app.get("/league/{league_id}/ledger/positions", response_model=list[GmLedgerOut])
+def ledger_positions(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Every GM's position in this league — the commissioner's GM Ledger cards.
+
+    League-scoped authority, checked before any position is read, so this route
+    cannot be used to probe another league's roster size or existence.
+
+    One entry per team actually in the league. The Rev 4.2 surface shows twelve
+    cards because the illustrative league has twelve teams; nothing here assumes
+    that number.
+    """
+    try:
+        return [GmLedgerOut(**p.as_dict())
+                for p in league_positions(db, league_id=league_id)]
+    except LedgerReadModelError as e:
+        raise _read_model_error(e)
+
+
+@app.get("/league/{league_id}/ledger/reconciliation",
+         response_model=LeagueReconciliationOut)
+def ledger_reconciliation(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Whether this league's GM positions reconcile.
+
+    LEAGUE-SCOPED, AND NOT THE TRIAL BALANCE. This aggregates the same GM
+    positions the route above returns and reports whether the league's own
+    arithmetic closes. It is a different question from the ledger's global
+    conservation invariant, which remains global and is served — for platform
+    operators only — by GET /ledger/integrity.
+    """
+    try:
+        report = league_reconciliation(db, league_id=league_id)
+    except LedgerReadModelError as e:
+        raise _read_model_error(e)
+    return LeagueReconciliationOut(**report.as_dict())
+
+
+# ── Global ledger integrity (S8-P3) ──────────────────────────────────────────
+
+class LedgerIntegrityOut(BaseModel):
+    """Deliberately the smallest useful answer.
+
+    `imbalance_cents` is a single global number that is 0 in a healthy system.
+    It identifies no league, no team, no account and no transaction, so it
+    discloses nothing about anyone's position while still being the one figure
+    an operator needs when the answer is "not balanced".
+    """
+    scope:           str
+    balanced:        bool
+    imbalance_cents: int
+    note:            str
+
+
+@app.get("/ledger/integrity", response_model=LedgerIntegrityOut)
+def ledger_integrity(_comm: User = Depends(require_commissioner)):
+    """The ledger's global double-entry conservation check.
+
+    GLOBAL, AND NOT LEAGUE-SCOPED — the Sprint 8 ruling, kept. `trial_balance()`
+    sums every entry across every account and door; there is no league-scoped
+    version of it and P3 does not invent one. A league-scoped variant would be a
+    NEW accounting derivation wearing the name of an existing invariant, and the
+    two would be confused precisely when it mattered.
+
+    PLATFORM AUTHORITY, DELIBERATELY. This is the one route in the API where
+    `require_commissioner` — the global role — is the CORRECT guard rather than
+    a leftover: the question is about the whole ledger, so the authority must be
+    platform-wide. It is the strongest tier this system has, and the same guard
+    that protects /auth/promote.
+
+    A KNOWN LIMIT OF THE ROLE MODEL, RECORDED RATHER THAN PAPERED OVER. There
+    is no tier above league commissioner. The seeding convention gives a
+    league's commissioner the global `commissioner` role string, so in practice
+    a league commissioner does reach this route. S8-P2 made that role confer
+    nothing over any LEAGUE, but it did not create a platform-operator tier,
+    and P3 is not the place to invent one.
+
+    That is acceptable here because of what the response contains, not because
+    the authority is sufficient in the abstract: a scope, a boolean and one
+    global integer. No league, team, account or transaction appears in it, so a
+    league commissioner reading this learns that the global ledger conserves
+    and nothing at all about any other league's money. Authority was not
+    weakened to make the route visible — the PAYLOAD was kept small enough that
+    the tier the role model can express is enough for it.
+
+    IF THIS PAYLOAD EVER GROWS — per-account balances, per-league sums, entry
+    detail — that reasoning collapses and the route needs a real platform tier
+    first. The P3 suite pins the response key set for exactly that reason.
+
+    WHAT IT DOES NOT SAY. A green result does NOT mean any particular league
+    balances — it means the global ledger conserves. The league-scoped question
+    is /league/{league_id}/ledger/reconciliation, and the two must not be
+    presented as the same claim. The `note` carries that distinction into the
+    response so a UI cannot lose it on the way to the screen.
+    """
+    imbalance = trial_balance()
+    return LedgerIntegrityOut(
+        scope="global",
+        balanced=imbalance == 0,
+        imbalance_cents=imbalance,
+        note=("Global double-entry conservation across every league. This does "
+              "NOT assert that any individual league reconciles — see "
+              "/league/{league_id}/ledger/reconciliation for that."),
     )
 
 

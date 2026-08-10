@@ -497,7 +497,14 @@ check('no figure is drawn with cents', !/\$\d+\.\d\d/.test(ledger));
 
 section('Seams are named, not fabricated');
 
-check('the Ledger read-model seam is declared', LEDGER_READ_SEAM.endpoint === null);
+// GOVERNED REVISION, S8-P3: the read model was built, so `endpoint === null`
+// would now fail a correct build. The claim that must survive is that this
+// module still DRAWS illustrative figures — binding is P4's — and that the
+// seam names the route it will bind to.
+check('the Ledger read-model seam names its route',
+  LEDGER_READ_SEAM.endpoint === 'GET /league/{league_id}/ledger/me');
+check('and records that the tab is not yet bound to it',
+  LEDGER_READ_SEAM.status.includes('NOT YET BOUND'));
 check('it names the authoritative computation',
   LEDGER_READ_SEAM.computation.includes('economy/current_settle.py'));
 check('the Top-Off command seam names the governed endpoint',
