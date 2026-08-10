@@ -1,0 +1,307 @@
+/* ============================================================================
+ * FantasyStakes — UI/UX Rev 4.2 · shared global components
+ * Sprint 7 Package 1
+ *
+ * Every component here is used by more than one tab. Tab-specific styling does
+ * not belong in this file.
+ * ========================================================================== */
+
+/* ── Section heading ───────────────────────────────────────────────────────
+ * The shared eyebrow treatment: small, heavily tracked, upper case, with an
+ * optional light right-side helper label (POR §2.4). */
+.fs-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  margin: 14px var(--fs-space-1) var(--fs-space-3);
+}
+
+.fs-heading__text {
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--bone);
+}
+
+.fs-heading__helper {
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-regular);
+  letter-spacing: .08em;
+  color: var(--g2);
+}
+
+/* An eyebrow with no helper — used above rails and grids. */
+.fs-eyebrow {
+  margin: 0 var(--fs-space-1) var(--fs-space-2);
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--g1);
+}
+
+/* ── Four-cell summary strip ───────────────────────────────────────────────
+ * One reusable component across League, Action, The Week and Ledger (POR §1.4).
+ * Four equal columns, tile background, small grey label above a larger centred
+ * value. Icon-free — no rule here may introduce an icon slot. */
+.fs-strip {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--fs-space-2);
+  margin: 0 var(--fs-gutter) var(--fs-space-4);
+}
+
+.fs-strip__cell {
+  background: var(--tile);
+  border: 1px solid transparent;
+  border-radius: var(--fs-radius-cell);
+  padding: 8px var(--fs-space-3);
+}
+
+/* One cell per strip may carry the anchor/gold treatment (POR §1.4). */
+.fs-strip__cell.is-anchor { border-color: var(--edge); }
+.fs-strip__cell.is-gold   { border-color: var(--edge); }
+
+.fs-strip__label {
+  min-height: 22px;
+  margin-bottom: 3px;
+  font-size: var(--fs-size-eyebrow);
+  line-height: 1.2;
+  text-align: left;
+  color: var(--g1);
+}
+
+.fs-strip__cell.is-gold .fs-strip__label { color: var(--gold); }
+
+/* Rev4.2: stronger value typography. Money never reflows on update, so the
+ * value is tabular monospace at a fixed weight. */
+.fs-strip__value {
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-value);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: -.02em;
+  text-align: center;
+  color: var(--bone);
+}
+
+.fs-strip__cell.is-gold   .fs-strip__value,
+.fs-strip__cell.is-anchor .fs-strip__value { color: var(--gold); }
+
+.fs-strip__value.is-positive { color: var(--green2); }
+.fs-strip__value.is-negative { color: var(--red); }
+.fs-strip__value.is-pending  { color: var(--amber); }
+
+/* Rank/context reads as context, not as a second figure — secondary grey,
+ * including its separator (POR §2.3). */
+.fs-strip__context {
+  font-family: var(--fs-font-ui);
+  font-size: var(--fs-size-micro);
+  font-weight: var(--fs-weight-regular);
+  color: var(--g1);
+}
+
+/* ── Credits disclaimer ────────────────────────────────────────────────────
+ * Sits under the applicable four-cell strip, at most once per tab. */
+.fs-disclaimer {
+  flex: 0 0 auto;
+  margin: -6px var(--fs-gutter) var(--fs-space-4);
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: .1em;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--g2);
+}
+
+/* ── Card / container primitives ───────────────────────────────────────────
+ * `fs-card` is the surface; `fs-tile` is the inset. */
+.fs-card {
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-card);
+  padding: var(--fs-space-4) 11px;
+}
+
+.fs-card.is-tappable { cursor: pointer; }
+.fs-card.is-tappable:active { opacity: .72; }
+
+.fs-tile {
+  background: var(--tile);
+  border-radius: var(--fs-radius-tile);
+  padding: 8px var(--fs-space-4);
+}
+
+/* A boxed scrolling body — the card-framed list used by Ledger and Rules. */
+.fs-scrollbox {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 var(--fs-gutter) var(--fs-space-4);
+  padding: 4px 14px;
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-card);
+}
+
+/* ── Horizontal rail with scroll-snap (POR §7) ─────────────────────────────
+ * Used where the item count is large and variable, e.g. Head-to-Head. */
+.fs-rail {
+  display: flex;
+  gap: var(--fs-space-3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--fs-space-1) var(--fs-space-1) 4px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.fs-rail::-webkit-scrollbar { display: none; }
+
+.fs-rail > .fs-rail__item {
+  flex: 0 0 auto;
+  width: 158px;
+  scroll-snap-align: start;
+}
+
+/* Cards in a rail stretch to the rail's height rather than setting their own,
+ * so adding a line of copy inside a card does not increase card height. */
+.fs-rail.is-stretch { align-items: stretch; }
+
+/* ── Vertical snap list ────────────────────────────────────────────────────
+ * The paged vertical primitive later tabs use for week-by-week and slate
+ * sequences. */
+.fs-vsnap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: y proximity;
+}
+
+.fs-vsnap > .fs-vsnap__item { scroll-snap-align: start; }
+
+/* ── Equal-billing zone parent ─────────────────────────────────────────────
+ * Both children sit at `flex:1 1 0`, so neither can grow at the other's
+ * expense (POR §2.4). */
+.fs-zones {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-4);
+  padding: 0 var(--fs-gutter) var(--fs-space-4);
+}
+
+.fs-zones > .fs-zone {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Pop-out / bottom sheet ────────────────────────────────────────────────
+ * One common interaction treatment: a scrim over the app frame with the sheet
+ * anchored to the bottom edge. */
+.fs-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, .6);
+}
+
+.fs-overlay.is-open { display: flex; }
+
+.fs-sheet {
+  position: relative;
+  width: 100%;
+  max-height: 80%;
+  overflow-y: auto;
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-sheet) var(--fs-radius-sheet) 0 0;
+  padding: var(--fs-space-6) var(--fs-space-6) calc(20px + var(--fs-safe-bottom));
+}
+
+.fs-sheet__title {
+  font-size: var(--fs-size-title);
+  font-weight: var(--fs-weight-medium);
+  margin-bottom: 3px;
+  /* Never let a long title run under the close control. */
+  padding-right: 28px;
+}
+
+.fs-sheet__sub {
+  margin-bottom: 14px;
+  font-size: var(--fs-size-fine);
+  color: var(--g1);
+}
+
+/* Universal close X — always upper-right of the active sheet/card.
+ * Rev4.2: this supersedes any older upper-left treatment. No rule anywhere
+ * may set `left` on this control. */
+.fs-sheet__close {
+  position: absolute;
+  top: var(--fs-space-5);
+  right: 14px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--g1);
+  cursor: pointer;
+}
+
+.fs-sheet__close:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────*/
+.fs-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: var(--fs-space-5);
+  border: none;
+  border-radius: var(--fs-radius-cell);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: var(--fs-weight-strong);
+  cursor: pointer;
+}
+
+.fs-btn--gold  { background: var(--goldbg);  border: 1px solid var(--gold);   color: var(--gold); }
+.fs-btn--green { background: var(--greenbg); border: 1px solid #3b6d11;       color: var(--green2); }
+.fs-btn--ghost { background: transparent;    border: var(--fs-border-edge);   color: var(--g1); }
+
+/* ── Money text ────────────────────────────────────────────────────────────*/
+.fs-money {
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-money.is-positive { color: var(--green2); }
+.fs-money.is-negative { color: var(--red); }
+
+/* A phrase held unbreakable, so a narrow viewport wraps between phrases rather
+ * than inside one. */
+.fs-nowrap { white-space: nowrap; }
+
+/* ── Notes ─────────────────────────────────────────────────────────────────*/
+.fs-note {
+  margin: 8px var(--fs-space-1) var(--fs-space-4);
+  font-size: var(--fs-size-fine);
+  line-height: 1.55;
+  color: var(--g1);
+}
+
+.fs-note--pending { color: var(--amber); }

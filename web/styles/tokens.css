@@ -1,0 +1,89 @@
+/* ============================================================================
+ * FantasyStakes — UI/UX Rev 4.2 · design tokens
+ * Sprint 7 Package 1 — Shared UI Shell + Global Components
+ *
+ * The palette token NAMES and VALUES are fixed by the locked POR (Rev4.1 §1.3,
+ * carried forward unchanged into Rev4.2). They are reproduced here verbatim so
+ * the application and the canonical prototype cannot drift apart.
+ *
+ * Tokens the POR does not name — spacing, radius, type scale, border weights —
+ * are namespaced `--fs-*` so they can never be confused with a POR palette
+ * token. They encode the geometry the locked look already uses; they do not
+ * introduce new visual decisions.
+ * ========================================================================== */
+
+:root {
+  /* ── POR palette · Rev4.1 §1.3 — names and values are load-bearing ──────── */
+  --bg:     #0c0a07;   /* app background */
+  --mast:   #12100c;   /* masthead, bottom navigation */
+  --card:   #161309;   /* cards */
+  --tile:   #1b1811;   /* strip cells, inset tiles */
+
+  --line:   #221d11;   /* dividers */
+  --line2:  #2a2415;   /* borders */
+  --edge:   #3a3220;   /* emphasised borders, anchor cells */
+
+  --bone:   #e8e2d2;   /* primary text */
+  --gold:   #c9a24a;   /* accent, active state, anchor values */
+  --goldbg: #2a2210;   /* gold tint fill */
+
+  --green:  #97c459;   /* positive money — border/rule weight */
+  --green2: #c0dd97;   /* positive money — text */
+  --greenbg:#1e2413;   /* green tint fill */
+  --red:    #f09595;   /* negative money */
+  --amber:  #ef9f27;   /* pending, unresolved */
+
+  --g1:     #8a8573;   /* secondary text */
+  --g2:     #5a5546;   /* tertiary text */
+
+  /* ── Type ───────────────────────────────────────────────────────────────── */
+  --fs-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Money is tabular-figure monospace everywhere — POR §1.3. */
+  --fs-font-money: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --fs-size-eyebrow:    9px;    /* section eyebrows, strip labels */
+  --fs-size-micro:      10px;   /* helper and context text */
+  --fs-size-fine:       11px;   /* secondary copy, taglines */
+  --fs-size-body:       12px;   /* rows, card body */
+  --fs-size-title:      15px;   /* tab titles, sheet titles */
+  --fs-size-value:      18px;   /* four-cell strip value — Rev4.2 stronger */
+  --fs-size-word:       23px;   /* masthead lockup */
+
+  --fs-weight-regular:  400;
+  --fs-weight-medium:   500;
+  --fs-weight-strong:   600;   /* Rev4.2 strip values */
+  --fs-weight-heavy:    700;
+
+  --fs-track-eyebrow:  .14em;   /* eyebrow / section-heading letter-spacing */
+  --fs-track-lockup:   .22em;   /* masthead tagline letter-spacing */
+
+  /* ── Spacing ────────────────────────────────────────────────────────────── */
+  --fs-space-1:  2px;
+  --fs-space-2:  5px;
+  --fs-space-3:  7px;
+  --fs-space-4:  10px;
+  --fs-space-5:  12px;
+  --fs-space-6:  16px;
+
+  /* Horizontal inset applied to every full-bleed rail, strip and scroll body. */
+  --fs-gutter:   12px;
+
+  /* ── Radius ─────────────────────────────────────────────────────────────── */
+  --fs-radius-cell:  8px;
+  --fs-radius-tile:  9px;
+  --fs-radius-card:  12px;
+  --fs-radius-sheet: 16px;
+
+  /* ── Borders ────────────────────────────────────────────────────────────── */
+  --fs-border-hair:   1px solid var(--line);
+  --fs-border:        1px solid var(--line2);
+  --fs-border-edge:   1px solid var(--edge);
+
+  /* ── Frame ──────────────────────────────────────────────────────────────── */
+  --fs-app-max-width: 480px;
+
+  /* Safe-area insets, resolved once. A device without insets reports 0px, so
+   * these are safe to add unconditionally. */
+  --fs-safe-top:    env(safe-area-inset-top, 0px);
+  --fs-safe-bottom: env(safe-area-inset-bottom, 0px);
+}

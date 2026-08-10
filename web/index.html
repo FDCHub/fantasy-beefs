@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- viewport-fit=cover exposes env(safe-area-inset-*) so the bottom navigation
+     can clear the home indicator without covering tab content. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FantasyStakes">
+<meta name="theme-color" content="#0c0a07">
+<title>FantasyStakes</title>
+<link rel="stylesheet" href="./styles/tokens.css">
+<link rel="stylesheet" href="./styles/shell.css">
+<link rel="stylesheet" href="./styles/components.css">
+</head>
+<body>
+
+<!-- Application shell — a single flex column: masthead, panel, navigation.
+     The navigation sits in normal flow, so it reserves its own height and
+     cannot overlay the active panel at any viewport size. -->
+<div class="fs-app" id="fs-app">
+
+  <header class="fs-mast" id="fs-mast"></header>
+
+  <main class="fs-panels" id="fs-panels"></main>
+
+  <nav class="fs-tabbar" id="fs-tabbar" role="tablist" aria-label="Primary"></nav>
+
+  <!-- Shared pop-out. One sheet host serves every surface; the close control
+       is rendered inside it, upper-right. -->
+  <div class="fs-overlay" id="fs-overlay" aria-hidden="true">
+    <div class="fs-sheet" id="fs-sheet" role="dialog" aria-modal="true"
+         aria-labelledby="fs-sheet-title"></div>
+  </div>
+
+</div>
+
+<script type="module" src="./js/shell.js"></script>
+</body>
+</html>

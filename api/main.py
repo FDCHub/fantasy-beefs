@@ -178,6 +178,13 @@ app.add_middleware(
 
 app.mount("/tools", StaticFiles(directory="tools"), name="tools")
 
+# UI/UX Rev 4.2 application shell (Sprint 7). Static assets only: HTML, CSS and
+# ES modules. Serving them reads and writes no protocol state. The directory is
+# resolved from this file's location rather than the process working directory,
+# so the shell is served identically however the app is launched.
+_WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+app.mount("/app", StaticFiles(directory=_WEB_DIR, html=True), name="app")
+
 
 @app.on_event("startup")
 def _create_tables() -> None:

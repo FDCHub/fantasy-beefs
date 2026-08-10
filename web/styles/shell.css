@@ -1,0 +1,202 @@
+/* ============================================================================
+ * FantasyStakes — UI/UX Rev 4.2 · application shell
+ * Sprint 7 Package 1
+ *
+ * Layout contract: the shell is a single flex COLUMN — masthead, panel, nav.
+ * The bottom navigation participates in normal flow at `flex:0 0 auto`, so it
+ * reserves its own height and can never overlay tab content. Nothing in this
+ * file may take the navigation out of flow (`position:fixed/absolute/sticky`);
+ * that is the mechanism that keeps the POR's "persistent and reachable without
+ * covering tab content" requirement true at every viewport height.
+ * ========================================================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--bone);
+  font-family: var(--fs-font-ui);
+  -webkit-font-smoothing: antialiased;
+  /* The app frame owns all scrolling; the document itself never scrolls. */
+  overflow: hidden;
+}
+
+/* ── App frame ─────────────────────────────────────────────────────────────
+ * `dvh` tracks the dynamic viewport so a collapsing mobile browser chrome bar
+ * cannot push the navigation under the content. `vh` is the fallback. */
+.fs-app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-width: var(--fs-app-max-width);
+  margin: 0 auto;
+  padding-top: var(--fs-safe-top);
+  overflow: hidden;
+}
+
+/* ── Masthead — fixed and identical on every tab (POR §1.1) ───────────────── */
+.fs-mast {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fs-space-4);
+  padding: var(--fs-space-5) var(--fs-space-6) var(--fs-space-4);
+  background: var(--mast);
+  border-bottom: var(--fs-border-hair);
+}
+
+.fs-mast__lockup {
+  min-width: 0;
+}
+
+.fs-mast__word {
+  font-size: var(--fs-size-word);
+  font-weight: var(--fs-weight-heavy);
+  line-height: 1;
+}
+
+/* `Fantasy` in bone, `Stakes` in gold — POR §1.1. */
+.fs-mast__word .fs-word-a { color: var(--bone); }
+.fs-mast__word .fs-word-b { color: var(--gold); }
+
+/* Tagline: all caps, middot separator, letter-spaced, no periods. */
+.fs-mast__tagline {
+  margin-top: 3px;
+  font-size: var(--fs-size-fine);
+  letter-spacing: var(--fs-track-lockup);
+  color: var(--g1);
+}
+
+.fs-mast__meta {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: var(--fs-size-fine);
+  line-height: 1.35;
+  color: var(--g2);
+}
+
+/* ── Tab panels ────────────────────────────────────────────────────────────
+ * `min-height:0` is required: without it a flex child refuses to shrink below
+ * its content height, the column overflows, and the navigation is pushed off
+ * screen — the exact failure this layout exists to prevent. */
+.fs-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fs-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fs-panel.is-active {
+  display: flex;
+}
+
+/* Tab header block — identity left, countdown/context right (POR §2.2). */
+.fs-tabhead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fs-space-4);
+  padding: 11px var(--fs-gutter) 9px;
+}
+
+.fs-tabhead__main { min-width: 0; }
+.fs-tabhead__aside { flex: 0 0 auto; text-align: right; }
+
+.fs-tabhead__title {
+  font-size: var(--fs-size-title);
+  font-weight: var(--fs-weight-medium);
+  line-height: 1.25;
+}
+
+.fs-tabhead__sub {
+  margin-top: var(--fs-space-1);
+  font-size: var(--fs-size-fine);
+  color: var(--g1);
+}
+
+/* The single scrolling region inside a panel. Its height is whatever the
+ * column has left after the masthead, tab header and navigation are placed,
+ * so content scrolls under nothing. */
+.fs-panel__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--fs-gutter) var(--fs-space-4);
+}
+
+/* ── Bottom navigation — persistent, in-flow, safe-area aware ──────────────
+ * `flex:0 0 auto` + column flow = the nav occupies real layout height.
+ * The safe-area inset is added as PADDING so the tint extends into the home
+ * indicator area while the tap targets stay above it. */
+.fs-tabbar {
+  flex: 0 0 auto;
+  display: flex;
+  background: var(--mast);
+  border-top: var(--fs-border);
+  padding: var(--fs-space-3) var(--fs-space-1);
+  padding-bottom: calc(var(--fs-space-3) + var(--fs-safe-bottom));
+}
+
+.fs-tabbar__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  color: var(--g2);
+  cursor: pointer;
+}
+
+.fs-tabbar__item.is-active { color: var(--gold); }
+
+/* Inline SVG, stroke:currentColor — the active-gold state renders identically
+ * across operating systems, and no emoji is used (POR §1.2). */
+.fs-tabbar__icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.fs-tabbar__label {
+  font-size: 8px;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.fs-tabbar__item.is-active .fs-tabbar__label {
+  font-weight: var(--fs-weight-strong);
+}
+
+.fs-tabbar__item:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
