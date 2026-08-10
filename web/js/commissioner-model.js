@@ -186,9 +186,74 @@ export function gmPosition(record) {
   };
 }
 
+/* ── Source binding (S8-P4B) ────────────────────────────────────────────────*/
+
+/**
+ * The rows `gmPositions()` maps, and the league roll-up's exception figures.
+ *
+ * Defaults to the illustrative league so the components stay reviewable and
+ * testable without a server. `bindCommissioner()` replaces them with the
+ * authoritative read models. `gmPosition()` itself is untouched by binding —
+ * the same arithmetic runs over whichever rows are bound, which is what stops
+ * a commissioner-side formula from appearing.
+ */
+let POSITIONS_SOURCE = GM_POSITIONS;
+let SERVER_RECONCILIATION = null;
+
+/**
+ * Bind the authoritative league positions and reconciliation.
+ *
+ * THE PER-GM MAPPING IS THE LEDGER'S, DELIBERATELY. Every field below maps
+ * exactly as `ledger-model.bindLedger()` maps it, including both P4A
+ * corrections: `acceptedEscrow` takes the WHOLE of `in_play`, and `held` stays
+ * a memo that no total consumes. A commissioner reading a GM's card and that
+ * GM reading their own Ledger are then looking at one figure produced one way,
+ * which is the property the Sprint 7 certification asserts across packages.
+ *
+ * `seasonOpening` takes the POSTED advance rather than an economy-stop
+ * lookup — a card is a per-GM figure and the posting is what that GM actually
+ * received.
+ *
+ * @param {Array<object>} positions GmLedgerOut rows from /ledger/positions
+ * @param {object|null} [reconciliation] LeagueReconciliationOut, for exceptions
+ */
+export function bindCommissioner(positions, reconciliation = null) {
+  POSITIONS_SOURCE = positions.map((p) => Object.freeze({
+    teamId: p.team_id,
+    name: p.team_name,
+    spendableCents: p.available_cents,
+    acceptedEscrowCents: p.in_play_cents,
+    weeklyReserveNotReleasedCents: p.min_reserve_cents,
+    heldCents: p.held_open_challenges_cents,
+    weeklyMinOutOfCirculationCents: p.expired_min_cents,
+    skunkFeesCents: -p.receivable_cents,
+    // No authoritative source; zero in the identity, unresolved on screen.
+    seasonWinningsCents: 0,
+    seasonOpeningCents: p.season_advance_cents,
+    addedStakesCents: p.topoff_issued_cents,
+  }));
+  SERVER_RECONCILIATION = reconciliation;
+}
+
+/** Restore the illustrative league. Used on sign-out and by the suites. */
+export function unbindCommissioner() {
+  POSITIONS_SOURCE = GM_POSITIONS;
+  SERVER_RECONCILIATION = null;
+}
+
+/** Whether the cards currently drawn came from the backend. */
+export function isCommissionerBound() {
+  return POSITIONS_SOURCE !== GM_POSITIONS;
+}
+
+/** The server's own reconciliation, when bound — for comparison. */
+export function boundReconciliation() {
+  return SERVER_RECONCILIATION;
+}
+
 /** Every GM's position, in league order. */
 export function gmPositions() {
-  return GM_POSITIONS.map(gmPosition);
+  return POSITIONS_SOURCE.map(gmPosition);
 }
 
 /* ── Top-Off requests ───────────────────────────────────────────────────────*/
@@ -278,6 +343,13 @@ export function leagueReconciliation() {
     totalVirtualStakesCents,
   });
 
+  // When bound, the open-Top-Off figures come from the server's own
+  // reconciliation rather than from the illustrative request list. The
+  // SETTLEMENT treatment is identical either way — reported, never counted —
+  // so binding changes the numbers and not the accounting.
+  const serverOpen = SERVER_RECONCILIATION
+    && SERVER_RECONCILIATION.exceptions
+    && SERVER_RECONCILIATION.exceptions.open_top_offs;
   const open = openRequests();
   const holds = positions.filter((p) => p.heldCents > 0);
   const receivables = positions.filter((p) => p.skunkFeesCents < 0);
@@ -293,8 +365,9 @@ export function leagueReconciliation() {
     closes: sumOfGmSettlesCents === aggregateSettleCents,
     exceptions: Object.freeze({
       openTopOffs: Object.freeze({
-        count: open.length,
-        cents: open.reduce((t, r) => t + r.amount_cents, 0),
+        count: serverOpen ? serverOpen.count : open.length,
+        cents: serverOpen ? serverOpen.cents
+                          : open.reduce((t, r) => t + r.amount_cents, 0),
         settlementLiability: false,
         note: 'Requested, not decided. Nothing is issued until a commissioner approves.',
       }),
