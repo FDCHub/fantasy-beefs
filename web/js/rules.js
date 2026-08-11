@@ -30,6 +30,7 @@ import {
 } from './settings-model.js';
 import { explainRefusal, updatePoolEntry } from './settings-command.js';
 import { LEAGUE_IDENTITY } from './demo-state.js';
+import { leagueName } from './league-model.js';
 import { bindCommissioner, commissionerArea } from './commissioner.js';
 
 /** Locked Rev 4.2 header copy. */
@@ -260,7 +261,10 @@ export function buildRulesPanel() {
 
   composer.add(tabHeader({
     title: RULES_TITLE,
-    sub: LEAGUE_IDENTITY.name,
+    // THE REAL LEAGUE, when one is bound. `LEAGUE_IDENTITY.name` is the
+    // fixture's `CULV APPRECIATION SOCIETY` and was shown as the heading of a
+    // signed-in GM's own settings.
+    sub: leagueName() ?? LEAGUE_IDENTITY.name,
     asideLabel: RULES_SUBTITLE,
   }));
 

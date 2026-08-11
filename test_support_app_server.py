@@ -122,6 +122,7 @@ _SEED_ACTION = """
     from db.schema import Projection as _Pr, Roster as _R, Wallet as _W
 
     _shape = {shape!r}
+    _week = {slate_week}
 
     # THE EMPTY GM IS A THIRD TEAM, seeded with nothing. Declining the Rev 4.2
     # fixture's own opening challenge would leave a terminal record, and a GM
@@ -147,13 +148,14 @@ _SEED_ACTION = """
                          position="WR", nfl_team=_nfl)
                 db.add(_pl); db.flush()
                 db.add(_R(team_id=_t.id, player_id=_pl.id))
-                db.add(_Pr(player_id=_pl.id, week=5, season=2026,
+                db.add(_Pr(player_id=_pl.id, week=_week, season=2026,
                            projected_points=12.0 + _i, source="fixture"))
         if not db.query(_W).filter(_W.team_id == _t.id).first():
             db.add(_W(team_id=_t.id, balance=0.0))
     db.flush()
-    if not db.query(_M).filter(_M.league_id == league.id, _M.week == 5).first():
-        db.add(_M(league_id=league.id, week=5, home_team_id=gm_team.id,
+    if not db.query(_M).filter(_M.league_id == league.id,
+                              _M.week == _week).first():
+        db.add(_M(league_id=league.id, week=_week, home_team_id=gm_team.id,
                   away_team_id=comm_team.id, home_score=0.0, away_score=0.0))
     db.flush()
 
@@ -190,7 +192,7 @@ _SEED_ACTION = """
         _from, _to = ((comm_team.id, gm_team.id) if _shape == "recipient"
                       else (gm_team.id, comm_team.id))
         _issued = _cf.issue_funded_challenge(
-            event_id=_uuid.uuid4(), league_id=league.id, week=5,
+            event_id=_uuid.uuid4(), league_id=league.id, week=_week,
             challenger_team_id=_from, challenged_team_id=_to,
             wager_type="straight",
             terms=_terms(2_000, dynamic=(_shape == "dynamic")),
@@ -217,7 +219,11 @@ _SEED_ACTION = """
 #: suite runs against the plain league, and silently giving it a drawn Pool slate
 #: would change what those suites are certifying.
 _SEED_POOL_SLATE = """
-    # A DRAWN slate for week 5, from the REAL Rev1.3 catalog. This is the
+    # A DRAWN slate for the league's OWN stated week, from the REAL Rev1.3
+    # catalog. S8-P4C-5 made the week a parameter: a fixture that hard-coded 5
+    # could not tell "the UI reads the authoritative week" apart from "the UI
+    # assumes 5", which is exactly what the adversarial week-9 session exists
+    # to distinguish. This is the
     # persisted output `betting/pool_slate.build_and_persist_slate` would write.
     # The builder itself cannot run here — it needs four definitions passing
     # BOTH gates, and gate 2 is the per-league provider measurement this
@@ -232,7 +238,8 @@ _SEED_POOL_SLATE = """
     slate_keys = [d.key for d in db.query(PoolDefinition)
                   .order_by(PoolDefinition.catalog_number).limit(4).all()]
 
-    prior = PoolInstance(league_id=league.id, season=league.season, week=4,
+    prior = PoolInstance(league_id=league.id, season=league.season,
+                         week={prior_week},
                          phase="REGULAR", rotation_cycle=1,
                          definition_key=slate_keys[0], slot=1,
                          pot_cents=1000, rollover_cents=0, settled=True)
@@ -240,7 +247,8 @@ _SEED_POOL_SLATE = """
 
     for slot, key in enumerate(slate_keys, start=1):
         db.add(PoolInstance(
-            league_id=league.id, season=league.season, week=5, phase="REGULAR",
+            league_id=league.id, season=league.season, week={slate_week},
+            phase="REGULAR",
             rotation_cycle=1, definition_key=key, slot=slot,
             pot_cents=100 * slot, rollover_cents=1000 if slot == 1 else 0,
             origin_instance_id=prior.id if slot == 1 else None,
@@ -361,12 +369,19 @@ class AppServer:
         until it intermittently does not.
         """
         extra = ""
+        # The seeded week follows what the league STATES. A league with no
+        # stated week still needs a concrete week to seed rows for, so week 5
+        # stands in there — it is fixture scaffolding, not a claim, and the
+        # league reports no current week either way.
+        slate_week = self._provider_week or 5
         if self._seed_pool_slate:
-            extra += _SEED_POOL_SLATE
+            extra += _SEED_POOL_SLATE.format(slate_week=slate_week,
+                                             prior_week=slate_week - 1)
         if self._freeze_pool_entry:
             extra += _SEED_FROZEN_POOL_ENTRY
         if self._action_shape:
-            extra += _SEED_ACTION.format(shape=self._action_shape)
+            extra += _SEED_ACTION.format(shape=self._action_shape,
+                                         slate_week=slate_week)
 
         script = _SEED_SCRIPT.format(db_url=db_url, root=ROOT, gm=GM_EMAIL,
                                      comm=COMMISSIONER_EMAIL, password=PASSWORD,

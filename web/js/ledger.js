@@ -18,6 +18,7 @@
  * ========================================================================== */
 
 import { PanelComposer, escapeHtml } from './components.js';
+import { currentWeek } from './league-model.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
 import {
   CHAMPIONSHIPS,
@@ -36,6 +37,7 @@ import {
   TOPOFF_COMMAND_SEAM,
   boundHeldCents,
   boundWeeklyMinLiveCents,
+  MODE_DEMO,
   ledgerMode,
   reconciliation,
   seasonWinningsResolved,
@@ -45,6 +47,23 @@ import {
 /** Locked Rev 4.2 header copy. */
 export const LEDGER_TITLE = 'FANTASYSTAKES LEDGER';
 export const LEDGER_SUBTITLE = 'My Week 5 · Regular Season';
+
+/**
+ * The subtitle a signed-in GM reads.
+ *
+ * S8-P4C-5: `My Week 5` is a fixture string and was shown to every GM whatever
+ * week their league was in. The locked grammar is preserved; only the number
+ * becomes the league's own, and where no provider refresh has stated a week the
+ * claim is dropped rather than guessed.
+ *
+ * @returns {string}
+ */
+export function ledgerSubtitle() {
+  if (ledgerMode() === MODE_DEMO) return LEDGER_SUBTITLE;
+  const week = currentWeek();
+  return week === null ? 'My Week · Regular Season'
+                       : `My Week ${week} · Regular Season`;
+}
 export const MY_SEASON_LABEL = 'My Season';
 export const TOPOFF_LABEL = 'Request Top-Off';
 
@@ -65,7 +84,7 @@ function ledgerHeader() {
     '<div class="fs-tabhead">' +
     '<div class="fs-tabhead__main">' +
     `<div class="fs-tabhead__title">${escapeHtml(LEDGER_TITLE)}</div>` +
-    `<div class="fs-tabhead__sub">${escapeHtml(LEDGER_SUBTITLE)}</div>` +
+    `<div class="fs-tabhead__sub">${escapeHtml(ledgerSubtitle())}</div>` +
     '</div>' +
     '<div class="fs-tabhead__aside">' +
     `<button type="button" class="fs-topoff" data-topoff>${escapeHtml(TOPOFF_LABEL)}</button>` +

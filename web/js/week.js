@@ -63,11 +63,51 @@ export const BETS_HEADING = 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕';
 export const BETS_SHOWN = 4;
 
 /** Which week the tab is showing. The current week is the opening state. */
-let selectedWeek = CURRENT_WEEK;
+let selectedWeek = null;
 
-/** @returns {number} */
+/**
+ * The week this tab is showing.
+ *
+ * S8-P4C-5: THE FIXTURE WEEK IS THE FALLBACK, NOT THE DEFAULT. `selectedWeek`
+ * used to initialise to the illustrative `CURRENT_WEEK`, so a production league
+ * in week 9 opened The Week on week 5 — its Yahoo module read week 5, and its
+ * Versus module filtered the GM's wagers for week 5 and found none. Both looked
+ * like empty states rather than the wrong question.
+ *
+ * Null until something asks, so the authoritative week is consulted at read
+ * time rather than captured at module load, before any binding has happened.
+ */
+function activeWeek() {
+  if (selectedWeek !== null) return selectedWeek;
+  return currentWeek() ?? CURRENT_WEEK;
+}
+
+/**
+ * The pair of weeks the switch offers.
+ *
+ * FROM THE LEAGUE'S CURRENT WEEK, never from the SELECTED one. Deriving it from
+ * the selection made the switch walk backwards: choosing week 8 redrew the pair
+ * as 7 and 8, so week 9 vanished from the control that was supposed to offer
+ * it. The pair is a property of when the season is, and selecting within it
+ * cannot change it.
+ */
+function switchWeeks() {
+  const now = currentWeek() ?? CURRENT_WEEK;
+  return [now - 1, now];
+}
+
+/**
+ * The week currently shown — resolved, never the raw internal state.
+ *
+ * Callers ask this to learn WHICH WEEK IS ON SCREEN, and `selectedWeek` is null
+ * until a GM taps the switch. Returning the null would make the accessor mean
+ * "nobody has tapped yet", which is a different question and not the one any
+ * caller is asking.
+ *
+ * @returns {number}
+ */
 export function currentSelectedWeek() {
-  return selectedWeek;
+  return activeWeek();
 }
 
 /**
@@ -75,14 +115,19 @@ export function currentSelectedWeek() {
  * @returns {number}
  */
 export function selectWeek(week) {
-  if (!WEEKS.includes(week)) throw new Error(`week ${week} is not on the switch`);
+  // THE SWITCH'S OWN TWO WEEKS, which follow the authoritative week — not the
+  // fixture's fixed pair. A production league in week 9 offers weeks 8 and 9,
+  // and `WEEKS` would have refused both.
+  if (!switchWeeks().includes(week)) {
+    throw new Error(`week ${week} is not on the switch`);
+  }
   selectedWeek = week;
   return selectedWeek;
 }
 
 /** Restore the opening state — used by the suites. */
 export function resetWeek() {
-  selectedWeek = CURRENT_WEEK;
+  selectedWeek = null;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────────*/
@@ -98,7 +143,7 @@ export function resetWeek() {
  */
 function weekSwitch() {
   const control = (week) => {
-    const selected = selectedWeek === week;
+    const selected = activeWeek() === week;
     return (
       `<button type="button" class="fs-wkswitch__opt${selected ? ' is-selected' : ''}" ` +
       `data-week="${week}" aria-pressed="${selected}">WEEK ${week}</button>`
@@ -108,9 +153,9 @@ function weekSwitch() {
   return (
     '<div class="fs-wkhead">' +
     '<div class="fs-wkswitch" role="group" aria-label="Week">' +
-    control(PAST_WEEK) +
+    control(switchWeeks()[0]) +
     '<span class="fs-wkswitch__mid">REGULAR SEASON</span>' +
-    control(CURRENT_WEEK) +
+    control(switchWeeks()[1]) +
     '</div>' +
     `<div class="fs-wkhead__sub">${escapeHtml(WEEK_SUBTITLE)}</div>` +
     '</div>'
@@ -175,7 +220,7 @@ function yahooModule() {
 }
 
 function demoMatchupBody() {
-  return yahooMatchups(selectedWeek)
+  return yahooMatchups(activeWeek())
     .map((m) => `<div class="fs-vcar__item" role="listitem">${yahooCard(m)}</div>`)
     .join('');
 }
@@ -204,14 +249,14 @@ function providerMatchupBody() {
     return weekNote('no-week',
       'No fantasy week has been published for this league yet.');
   }
-  const rows = weekMatchups(selectedWeek);
+  const rows = weekMatchups(activeWeek());
   if (rows === null) {
     return weekNote('not-read',
-      `Week ${selectedWeek} has not been loaded.`);
+      `Week ${activeWeek()} has not been loaded.`);
   }
   if (!rows.length) {
     return weekNote('empty',
-      `No matchups have been published for week ${selectedWeek}.`);
+      `No matchups have been published for week ${activeWeek()}.`);
   }
   return rows
     .map((m) => `<div class="fs-vcar__item" role="listitem">`
@@ -290,7 +335,7 @@ function betsModule() {
 }
 
 function demoBetsBody() {
-  return weekBets(selectedWeek).slice(0, BETS_SHOWN)
+  return weekBets(activeWeek()).slice(0, BETS_SHOWN)
     .map((card) => (
       `<div class="fs-vcar__item is-compact" role="listitem">${lifecycleCard(card)}</div>`
     ))
@@ -315,11 +360,11 @@ function versusBody() {
   }
   const rows = SECTIONS
     .flatMap((section) => sectionCards(section))
-    .filter((card) => card.week === `WK ${selectedWeek}`)
+    .filter((card) => card.week === `WK ${activeWeek()}`)
     .slice(0, BETS_SHOWN);
 
   if (!rows.length) {
-    return weekNote('empty', `No wagers for week ${selectedWeek}.`);
+    return weekNote('empty', `No wagers for week ${activeWeek()}.`);
   }
   return rows
     .map((card) => (
@@ -371,7 +416,7 @@ function poolRow(pool) {
  */
 function poolsModule() {
   const mode = slateMode();
-  const pools = mode === SLATE_MODE_DEMO ? weekPools(selectedWeek) : slateRows();
+  const pools = mode === SLATE_MODE_DEMO ? weekPools(activeWeek()) : slateRows();
 
   if (mode === SLATE_MODE_UNDRAWN || mode === 'unavailable') {
     const reason = mode === SLATE_MODE_UNDRAWN
@@ -437,7 +482,14 @@ export function bindWeek(panel, api) {
     });
   });
 
-  const matchups = yahooMatchups(selectedWeek);
+  // THE FIXTURE LOOKUPS ARE DEMO-ONLY. `yahooMatchups` and `weekBets` know
+  // only the fixture's two weeks and THROW for any other — so a production
+  // league in week 9 took down the whole panel build, and with it every panel
+  // after it in the mount order. In production the cards are bound from the
+  // served models, and these lookups must not run at all.
+  const demo = leagueMode() === LEAGUE_MODE_DEMO;
+
+  const matchups = demo ? yahooMatchups(activeWeek()) : [];
   panel.querySelectorAll('[data-card-action="yahoo"]').forEach((el) => {
     onActivate(el, () => {
       const m = matchups.find((x) => x.id === el.dataset.cardId);
@@ -445,7 +497,9 @@ export function bindWeek(panel, api) {
     });
   });
 
-  const bets = weekBets(selectedWeek);
+  const bets = actionMode() === 'demo'
+    ? weekBets(activeWeek())
+    : SECTIONS.flatMap((section) => sectionCards(section));
   panel.querySelectorAll('[data-card-action="wager"]').forEach((el) => {
     onActivate(el, () => {
       const card = bets.find((c) => c.id === el.dataset.cardId);
@@ -454,7 +508,7 @@ export function bindWeek(panel, api) {
   });
 
   const pools = slateMode() === SLATE_MODE_DEMO
-    ? weekPools(selectedWeek) : slateRows();
+    ? weekPools(activeWeek()) : slateRows();
   panel.querySelectorAll('[data-pool]').forEach((el) => {
     el.addEventListener('click', () => {
       const pool = pools.find((p) => String(p.catalogNumber) === el.dataset.pool);
