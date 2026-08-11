@@ -73,12 +73,26 @@ export const MODE_COPY = Object.freeze({
   }),
   [MODE_DYNAMIC]: Object.freeze({
     label: 'DYNAMIC',
-    headline: 'Lineups and odds stay live until kickoff.',
-    // §5.3, verbatim.
+    headline: 'Lineups and odds stay live until Final Lock.',
+    // §5.3, CORRECTED — S8-P4C-2R2, on explicit authorisation.
+    //
+    // This block was carried verbatim from the UX spec and said the terms
+    // "lock in at kickoff". Checked against the governing trigger, that phrase
+    // is ambiguous rather than merely loose: GE-901 / AP-212 fix Final Lock
+    // immediately before the EARLIEST scheduled kickoff among players in
+    // EITHER covered final Yahoo starting lineup. "Kickoff" invites a GM to
+    // picture their own matchup's Sunday start, when a covered Thursday-night
+    // starter — on either side — locks the whole wager days earlier.
+    //
+    // The substantive Locked/Dynamic explanation is preserved exactly: the
+    // Anchor is fixed, only the Derived side may move, it may only come DOWN,
+    // and never past the ceiling set at acceptance. Only the timing clause
+    // changed, and it changed to match the protocol rather than to soften it.
     body:
-      'Both lineups and the odds stay live and lock in at kickoff. Your stake ' +
-      'stays put — but if the odds shift, your opponent’s stake can come ' +
-      'down (never up, never past the max set now). That ceiling never grows.',
+      'Lineups and odds stay live until Final Lock, just before the first ' +
+      'covered player’s game begins. Your Anchor Stake stays fixed; the ' +
+      'opponent’s Derived Stake may come down, never above the acceptance ' +
+      'ceiling.',
   }),
 });
 

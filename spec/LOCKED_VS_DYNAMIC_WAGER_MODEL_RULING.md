@@ -73,7 +73,17 @@ Under the proposal-freeze model, a Locked Bet does **not** reprice at acceptance
 
 **Resolution:** Fix the UI copy to match Rev 7, not the protocol. The issuer's Anchor Stake is fixed and never moves on odds; only the opponent's Derived Stake reprices, capped at its Handshake ceiling (can hold or decrease, never increase). This is a product/UI ruling — no Opus Math Review required, because the copy is being conformed to already-verified math.
 
-**Corrected card copy (Dynamic offer):** "Both lineups and the odds stay live and lock in at kickoff. Your stake stays put — but if the odds shift, your opponent's stake can come down (never up, never past the max set now). That ceiling never grows."
+**Corrected card copy (Dynamic offer):** "Lineups and odds stay live until Final Lock, just before the first covered player’s game begins. Your Anchor Stake stays fixed; the opponent’s Derived Stake may come down, never above the acceptance ceiling."
+
+**Timing clause amended 2026-08-11 (S8-P4C-2R2), on explicit authorisation.** The economics are unchanged and were not reopened: the Anchor is fixed, only the Derived Stake moves, it may only come down, and it is bounded by the acceptance ceiling. What changed is WHEN the copy says that happens.
+
+The superseded clause read "lock in at kickoff". Checked against the governing trigger, that phrase is ambiguous rather than merely loose: GE-901 and AP-212 fix Final Lock immediately before the EARLIEST scheduled NFL kickoff involving any player in EITHER covered final Yahoo starting lineup. "Kickoff" invites a GM to picture their own fantasy matchup’s Sunday start, when a covered Thursday-night starter — on either side of the wager — locks the whole thing days earlier. It understated how soon the opponent’s stake is fixed, on the one card where the timing is the product.
+
+An intermediate wording, "when the first of your players takes the field", is recorded here as ALSO rejected: it corrected the day and broke the ownership, because the earliest covered player may be the opponent’s. The adopted clause names the first COVERED player’s game and is neutral as to whose lineup supplies it.
+
+Certified by `test_s8_p4c2r2_final_lock_copy.py`, which proves the trigger fires on the opponent’s Thursday starter while the GM’s own lineup plays Sunday, and asserts the shipped copy against that same rule.
+
+Superseded copy, for history: "Both lineups and the odds stay live and lock in at kickoff. Your stake stays put — but if the odds shift, your opponent's stake can come down (never up, never past the max set now). That ceiling never grows."
 
 Original conflict (for history): draft UI copy said the stake could "flex up or down," contradicting Rev 7 (§Dynamic Challenge, line 23; Adjustment formula, lines 91, 98–100).
 

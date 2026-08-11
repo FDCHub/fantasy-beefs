@@ -86,21 +86,38 @@ section('Mode copy does not contradict the adopted Locked/Dynamic ruling');
 const dynamicBody = MODE_COPY[MODE_DYNAMIC].body;
 const lockedBody = MODE_COPY[MODE_LOCKED].body;
 
-check(
-  'Dynamic copy is the §5.3 corrected card copy, verbatim',
-  dynamicBody ===
-    'Both lineups and the odds stay live and lock in at kickoff. Your stake ' +
-    'stays put — but if the odds shift, your opponent’s stake can come ' +
-    'down (never up, never past the max set now). That ceiling never grows.',
-);
+// REVISED BY S8-P4C-2R2, ON EXPLICIT AUTHORISATION — and revised rather than
+// relaxed. The verbatim pin above froze the §5.3 text including its timing
+// clause, "lock in at kickoff". That phrase was checked against the governing
+// trigger and found ambiguous: GE-901 / AP-212 fix Final Lock immediately
+// before the EARLIEST scheduled kickoff among players in EITHER covered final
+// Yahoo starting lineup, so "kickoff" invites a GM to picture their own
+// matchup's Sunday start when a covered Thursday-night starter — on either
+// side — locks the whole wager days earlier.
+//
+// A verbatim pin cannot survive a correction to the text it pins, so what the
+// pin was PROTECTING is asserted directly instead: every substantive claim the
+// §5.3 copy makes about the economics, each checked on its own. Those claims
+// are unchanged. Only the timing clause moved, and the trigger it now names is
+// certified against the trigger's real behaviour in
+// `test_s8_p4c2r2_final_lock_copy.py`.
 check(
   'Dynamic copy does not say a stake can flex up — the retired conflict',
   !/flex up|flex up or down|can go up|may increase/i.test(dynamicBody),
 );
-check('Dynamic copy states the issuer stake is fixed', /stake\s+stays put/i.test(dynamicBody));
+check('Dynamic copy states the issuer stake is fixed',
+  /Anchor Stake stays fixed/i.test(dynamicBody), dynamicBody);
 check('Dynamic copy states the derived stake may only come down',
-  /come\s+down/i.test(dynamicBody) && /never up/i.test(dynamicBody));
-check('Dynamic copy states the ceiling never grows', /ceiling never grows/i.test(dynamicBody));
+  /come\s+down/i.test(dynamicBody) && /never above/i.test(dynamicBody),
+  dynamicBody);
+check('Dynamic copy states the ceiling bounds it',
+  /ceiling/i.test(dynamicBody), dynamicBody);
+check('Dynamic copy names Final Lock as the event',
+  /Final Lock/i.test(dynamicBody), dynamicBody);
+check('and the first COVERED player’s game as the trigger',
+  /first covered player/i.test(dynamicBody), dynamicBody);
+check('never the GM’s own first player',
+  !/(first of your players|your first player)/i.test(dynamicBody), dynamicBody);
 
 const lockedCopy = `${MODE_COPY[MODE_LOCKED].headline} ${lockedBody}`;
 check('Locked copy states terms freeze on creation, not on acceptance',
@@ -485,8 +502,13 @@ const dynSpec = (() => {
 })();
 check('choosing Dynamic swaps the explanation',
   dynSpec.body.includes(MODE_COPY[MODE_DYNAMIC].headline));
+// THE CLAIM IS THAT THE BODY REACHES THE SHEET, not that one phrase does — and
+// pinning a phrase from the timing clause tied this check to wording S8-P4C-2R2
+// corrected. Asserting the body itself keeps the check true through any future
+// authorised copy change while still failing if the explanation goes missing.
 check('the Dynamic explanation reaches the rendered composer',
-  dynSpec.body.includes('never up, never past the max set now'));
+  dynSpec.body.includes(MODE_COPY[MODE_DYNAMIC].body),
+  MODE_COPY[MODE_DYNAMIC].body.slice(0, 60));
 
 section('The Matchup Preview holds the four required sections');
 

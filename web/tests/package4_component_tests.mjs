@@ -135,8 +135,15 @@ check('the Locked rule quotes the shared mode copy',
   lockedRule.body === MODE_COPY[MODE_LOCKED].body);
 check('the Dynamic rule quotes the shared mode copy',
   dynamicRule.body === MODE_COPY[MODE_DYNAMIC].body);
-check('the Dynamic rule keeps the one-way ceiling',
-  /never up, never past the max set now/.test(dynamicRule.body));
+// REVISED BY S8-P4C-2R2. The pinned phrase carried the one-way ceiling AND the
+// timing clause that was corrected with it. The claim being made is the
+// ECONOMICS — the Derived side moves in one direction only and is bounded — so
+// that is what is asserted, in two parts rather than one quotation.
+check('the Dynamic rule keeps the one-way movement',
+  /come down/i.test(dynamicRule.body), dynamicRule.body);
+check('and keeps the ceiling that bounds it',
+  /never above the acceptance ceiling/i.test(dynamicRule.body),
+  dynamicRule.body);
 check('the Locked rule says terms freeze on send, not on acceptance',
   /freeze the moment you send/.test(lockedRule.heading + lockedRule.body));
 check('the retired "flex up or down" draft never appears', !/flex up/i.test(allRuleText));

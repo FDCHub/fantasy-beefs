@@ -383,6 +383,18 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
     report.check('it never claims both sides float',
       !/both sides (float|move|re-?price)/i.test(copy));
 
+    // S8-P4C-2R2 — WHOSE PLAYER TRIGGERS IT. The earliest covered kickoff may
+    // belong to the OPPONENT's lineup (GE-901 / AP-212), so copy that points at
+    // the GM's own players is false for exactly the GM whose starters all play
+    // late — and it renders perfectly while being wrong.
+    report.check('it never claims the GM’s OWN first player triggers the lock',
+      !/(first of your players|your first player)/i.test(copy));
+    report.check('and it names the first COVERED player’s game',
+      /first covered player/i.test(copy),
+      'neutral as to whose lineup supplies the earliest kickoff');
+    report.check('naming Final Lock as the event',
+      /Final Lock/i.test(copy));
+
     if (card && card.derived_ceiling_cents !== null
         && card.derived_ceiling_cents !== undefined) {
       // THE CEILING CAME FROM THE BACKEND. Compared against the served value,

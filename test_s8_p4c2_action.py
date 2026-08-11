@@ -720,9 +720,18 @@ _assert("P4C-2R: the Action header asserts no week outside demo",
 # §6 — the Final Lock wording.
 _assert("P4C-2R: Action's Dynamic copy no longer says 'at kickoff'",
         "re-priced at kickoff" not in _action_code)
-_assert("P4C-2R: and names the earliest covered kickoff in plain words",
-        "first of your players takes the field" in _action_ui,
-        "GE-901: Final Lock precedes the EARLIEST covered kickoff")
+# SUPERSEDED BY S8-P4C-2R2. This pinned "the first of your players takes the
+# field", which fixed P4C-2's wrong DAY and introduced a wrong OWNER: GE-901 /
+# AP-212 read the earliest covered kickoff across EITHER lineup, so the player
+# who triggers Final Lock may be the opponent's. The invariant it stood for was
+# always "the copy names the governed trigger", and that is what is asserted
+# now. The wording itself is certified in full by
+# `test_s8_p4c2r2_final_lock_copy.py`, against the trigger's own behaviour.
+_assert("P4C-2R2: and names Final Lock at the first COVERED player's game",
+        "at Final Lock" in _action_code
+        and "first covered player" in _action_code
+        and "first of your players" not in _action_code,
+        "neutral as to whose lineup supplies the earliest kickoff")
 
 
 

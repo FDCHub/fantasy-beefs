@@ -279,8 +279,16 @@ _assert("gate 5.3 is cleared, so the copy may be shipped",
 all_mode_copy = json.dumps(APP.get("modeCopy", {}))
 _assert("the superseded 'flex up or down' draft copy is gone",
         "flex up" not in _plain(all_mode_copy).lower())
-_assert("the Dynamic explanation states the one-way ceiling",
-        "never up" in _plain(dynamic_body).lower())
+# REVISED BY S8-P4C-2R2. `"never up"` was the phrasing the superseded clause
+# used for the one-way ceiling; the amended ruling says "may come down, never
+# above the acceptance ceiling", which states the same two facts in different
+# words. The claim is the ECONOMICS — one direction of travel, and a bound — so
+# both halves are asserted rather than a phrase that happens to carry them.
+_dyn = _plain(dynamic_body).lower()
+_assert("the Dynamic explanation states one-way movement",
+        "come down" in _dyn, _plain(dynamic_body)[:90])
+_assert("the Dynamic explanation states the ceiling that bounds it",
+        "never above" in _dyn and "ceiling" in _dyn, _plain(dynamic_body)[:90])
 
 
 # ── Pool catalog fidelity ────────────────────────────────────────────────────

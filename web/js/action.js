@@ -298,21 +298,29 @@ function modeLabel(card) {
  * bound the backend wrote at the Handshake; a "likely" number would be a client
  * calculating a price, which is the one thing this layer may never do.
  *
- * WHEN, EXACTLY — AND WHY THIS NO LONGER SAYS "AT KICKOFF". S8-P4C-2 wrote
- * "re-priced at kickoff", and checking it against the governing text showed the
- * wording was materially wrong rather than merely loose. GE-901: Final Lock
- * occurs immediately before the EARLIEST scheduled NFL kickoff involving any
- * player in either final starting lineup covered by the wager — "once any
- * covered starting player locks in Yahoo, the entire wager SHALL Final Lock."
+ * WHEN, EXACTLY. GE-901 / AP-212: Final Lock occurs immediately before the
+ * EARLIEST scheduled NFL kickoff involving any player in EITHER final Yahoo
+ * starting lineup covered by the wager — "once any covered starting player
+ * locks in Yahoo, the entire wager SHALL Final Lock."
  *
- * A lineup-wide wager therefore locks at the FIRST of a GM's players to play,
- * which for anyone holding a Thursday-night starter is days before the Sunday
- * game they would picture on hearing "kickoff". That understates how soon their
- * opponent's stake is fixed, on the one card where the timing is the product.
+ * TWO WRONG ANSWERS HAVE ALREADY BEEN WRITTEN HERE, and both were wrong in the
+ * same direction: they made the lock sound later and more predictable than it
+ * is, on the one card where the timing IS the product.
  *
- * So the copy names the real trigger in plain words — the first of your players
- * to play — without the Final Lock jargon. The underlying timing is unchanged;
- * only the sentence describing it is.
+ *   "at kickoff" (S8-P4C-2) invited a GM to picture their own fantasy matchup
+ *   starting on Sunday, when a covered Thursday-night starter locks the whole
+ *   wager days earlier.
+ *
+ *   "when the first of YOUR players takes the field" (S8-P4C-2R) fixed the
+ *   day and broke the ownership: the earliest covered player may be the
+ *   OPPONENT's. A GM whose own starters all play Sunday would have been told
+ *   they had until Sunday while their opponent's Thursday starter had already
+ *   triggered it.
+ *
+ * The trigger is the earliest covered kickoff across BOTH lineups, and the copy
+ * now says exactly that — "the first covered player's game", which is neutral
+ * as to whose player it is. `Final Lock` is named because it is the product's
+ * own term for the event, not engine jargon.
  *
  * @param {object} card
  * @returns {string}
@@ -321,7 +329,7 @@ function modeCopy(card) {
   if (card.mode !== 'dynamic') {
     return 'Terms are frozen as offered. Neither side moves.';
   }
-  const when = 'when the first of your players takes the field';
+  const when = 'at Final Lock, just before the first covered player’s game begins';
   if (card.derivedCeilingCents !== null && card.derivedCeilingCents !== undefined) {
     return `Your opponent’s stake is set ${when}, up to `
       + `${formatCredits(card.derivedCeilingCents)}. Yours does not move.`;
@@ -516,7 +524,7 @@ export function wagerSheet(card) {
   // opponent's side is set at Final Lock, so the sheet says so rather than
   // printing a placeholder that would read as a quote. The wording matches
   // `modeCopy` — see the note there on why "at kickoff" was wrong.
-  const SET_AT_LOCK = 'Set when your first player takes the field';
+  const SET_AT_LOCK = 'Set at Final Lock';
   const theirStake = (card.opponentStakeCents === null
     || card.opponentStakeCents === undefined)
     ? SET_AT_LOCK
