@@ -30,7 +30,17 @@ import {
   WEEK_STRIP,
   BET_RECORD,
 } from './data/ledger-data.js';
-import { TOPOFF_COMMAND_SEAM, reconciliation, supportingRows } from './ledger-model.js';
+import {
+  MODE_AUTHORITATIVE,
+  MODE_UNAVAILABLE,
+  TOPOFF_COMMAND_SEAM,
+  boundHeldCents,
+  boundWeeklyMinLiveCents,
+  ledgerMode,
+  reconciliation,
+  seasonWinningsResolved,
+  supportingRows,
+} from './ledger-model.js';
 
 /** Locked Rev 4.2 header copy. */
 export const LEDGER_TITLE = 'FANTASYSTAKES LEDGER';
@@ -308,20 +318,56 @@ function currentSettleCard(r) {
 /**
  * @returns {string}
  */
+/**
+ * Weekly Minimum Left, from whichever source is bound.
+ *
+ * The bound model publishes `spendableCents` as wallet + live weekly minimum
+ * (they are one spendable pool), so the live-minimum component is not
+ * separately carried on the position. It is read from the strip fixture in
+ * demo mode and from the authoritative advance split otherwise — see the P4B-1
+ * expectation map, which keeps this cell exact at $10.
+ *
+ * @returns {number} exact integer cents
+ */
+function weeklyMinLeftCents() {
+  const bound = boundWeeklyMinLiveCents();
+  return bound === null ? WEEK_STRIP.weeklyMinLeftCents : bound;
+}
+
 export function buildLedgerPanel() {
   const composer = new PanelComposer('ledger');
   const r = reconciliation();
 
   composer.add(ledgerHeader());
 
+  // MY WEEK — authoritative when bound, unresolved when production has no
+  // answer, illustrative only in demo mode. `unresolved` is applied per cell
+  // rather than to the strip, because the strip's four-cell grammar is locked
+  // and an unavailable session still has four cells; what it does not have is
+  // four figures.
+  const mode = ledgerMode();
+  const unresolved = mode === MODE_UNAVAILABLE;
+
+  // Held has an authoritative source of its own and is NOT part of any total.
+  // Bound, it is whatever the server reports — $0 on the live path today,
+  // because no reachable code posts challenge escrow (P4B-0).
+  const heldCents = mode === MODE_AUTHORITATIVE
+    ? boundHeldCents()
+    : WEEK_STRIP.heldCents;
+
   composer.addStrip({
     id: 'fs-strip-ledger',
     label: 'My week',
     cells: [
-      { label: 'Available', cents: WEEK_STRIP.availableCents, anchor: true },
-      { label: 'In Play', cents: WEEK_STRIP.inPlayCents },
-      { label: 'Held', cents: WEEK_STRIP.heldCents },
-      { label: 'Weekly Min Left', cents: WEEK_STRIP.weeklyMinLeftCents },
+      { label: 'Available', cents: r.position.spendableCents, anchor: true,
+        pending: unresolved },
+      // In Play is the escrow the position counts. Held is reported beside it
+      // and never subtracted from it again.
+      { label: 'In Play', cents: r.position.acceptedEscrowCents,
+        pending: unresolved },
+      { label: 'Held', cents: heldCents, pending: unresolved },
+      { label: 'Weekly Min Left', cents: weeklyMinLeftCents(),
+        pending: unresolved },
     ],
   });
 
@@ -336,8 +382,21 @@ export function buildLedgerPanel() {
     cells: [
       { label: 'Bet Record', text: BET_RECORD },
       { label: 'Versus + Pools', cents: r.versusPlusPoolsCents, signed: true },
-      { label: 'Awards / Adj.', cents: r.adjustments.netAdjustmentsCents, signed: true },
-      { label: 'Current Settle', cents: r.currentSettleCents, signed: true, gold: true },
+      // AWARDS / ADJ. IS UNRESOLVED WHENEVER THE FIGURES ARE REAL.
+      //
+      // The cell means expired minimum + Skunk + season winnings. P3 proved
+      // season winnings has no authoritative source: award credits sit inside
+      // the wallet balance and no posted door attributes them. Two of the
+      // three components are sourced, so a number COULD be printed — and that
+      // is exactly the trap. Printing +$8 would put a partial subtotal under a
+      // label that means the whole, and printing $0 would assert an
+      // authoritative zero nobody measured. The approved unresolved treatment
+      // draws it as —, and the expandable detail below still carries the two
+      // components that ARE sourced.
+      { label: 'Awards / Adj.', cents: r.adjustments.netAdjustmentsCents,
+        signed: true, pending: unresolved || !seasonWinningsResolved() },
+      { label: 'Current Settle', cents: r.currentSettleCents, signed: true,
+        gold: true, pending: unresolved },
     ],
   });
 

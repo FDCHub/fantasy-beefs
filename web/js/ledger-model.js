@@ -116,8 +116,31 @@ export const TOPOFF_COMMAND_SEAM = Object.freeze({
  * one. THE DERIVATIONS DO NOT CHANGE: the same arithmetic runs over whichever
  * terms are bound, so binding cannot quietly introduce a second formula.
  */
-let SOURCE = { position: POSITION, adjustments: ADJUSTMENTS, advances: ADVANCES,
-               authoritative: false, currentSettleCents: null, heldCents: null };
+/**
+ * THREE MODES, AND THE THIRD ONE IS THE POINT.
+ *
+ *   demo           the POR's illustrative figures. Component suites and
+ *                  isolated review render this, and it is the default so a
+ *                  module imported on its own still draws something coherent.
+ *   authoritative  bound to a real read model.
+ *   unavailable    PRODUCTION, but the read failed or was refused.
+ *
+ * Without the third mode, a 403 or a 500 in an authenticated session would
+ * fall through to `demo` and a GM would be shown the prototype's −$45 as
+ * though it were their money. That is the single worst outcome available to
+ * this package, and a boolean cannot express the difference: "not bound" and
+ * "bound to nothing" have to be distinguishable.
+ */
+export const MODE_DEMO = 'demo';
+export const MODE_AUTHORITATIVE = 'authoritative';
+export const MODE_UNAVAILABLE = 'unavailable';
+
+const DEMO_SOURCE = {
+  position: POSITION, adjustments: ADJUSTMENTS, advances: ADVANCES,
+  mode: MODE_DEMO, currentSettleCents: null, heldCents: null,
+};
+
+let SOURCE = DEMO_SOURCE;
 
 /**
  * Season-opening advance, split into its two governed legs when they reconcile.
@@ -200,23 +223,54 @@ export function bindLedger(model, settings) {
     // not shown as a breakdown of it — a hierarchy whose parts do not add to
     // its total is worse than a single honest number.
     advances: Object.freeze(splitAdvance(model, settings)),
-    authoritative: true,
+    mode: MODE_AUTHORITATIVE,
     // Carried so a caller can compare the drawn total against the server's own
     // figure rather than trusting that the mapping above was right.
     currentSettleCents: model.current_settle_cents,
     heldCents: model.held_open_challenges_cents,
+    // Carried separately because `spendableCents` groups wallet AND live
+    // weekly minimum into one spendable pool, while the strip draws the
+    // weekly-minimum component as its own cell.
+    weeklyMinLiveCents: model.weekly_min_live_cents,
   };
+}
+
+/**
+ * Enter production UNAVAILABLE mode.
+ *
+ * Zeroed terms so the derivations stay total functions and no caller has to
+ * guard every arithmetic site against null. The zeros are never DRAWN — the
+ * renderers read `ledgerMode()` and show the unresolved treatment — but they
+ * keep a stray `reconciliation()` call from throwing, which would take the tab
+ * down instead of degrading it.
+ */
+export function markLedgerUnavailable() {
+  const zero = {
+    position: Object.freeze({ spendableCents: 0, acceptedEscrowCents: 0,
+                              weeklyReserveNotReleasedCents: 0 }),
+    adjustments: Object.freeze({ weeklyMinOutOfCirculationCents: 0,
+                                 skunkFeesCents: 0, seasonWinningsCents: 0 }),
+    advances: Object.freeze({ regularSeasonMinimumCents: 0,
+                              playoffsChampionshipCents: 0,
+                              addedStakesCents: 0, splitResolved: false }),
+  };
+  SOURCE = { ...zero, mode: MODE_UNAVAILABLE, currentSettleCents: null,
+             heldCents: null };
+}
+
+/** The current mode. @returns {'demo'|'authoritative'|'unavailable'} */
+export function ledgerMode() {
+  return SOURCE.mode;
 }
 
 /** Restore the illustrative source. Used on sign-out and by the suites. */
 export function unbindLedger() {
-  SOURCE = { position: POSITION, adjustments: ADJUSTMENTS, advances: ADVANCES,
-             authoritative: false, currentSettleCents: null, heldCents: null };
+  SOURCE = DEMO_SOURCE;
 }
 
 /** Whether the figures currently drawn came from the backend. */
 export function isLedgerBound() {
-  return SOURCE.authoritative;
+  return SOURCE.mode === MODE_AUTHORITATIVE;
 }
 
 /**
@@ -232,6 +286,11 @@ export function boundHeldCents() {
   return SOURCE.heldCents;
 }
 
+/** Live weekly minimum, when bound. @returns {number|null} */
+export function boundWeeklyMinLiveCents() {
+  return SOURCE.weeklyMinLiveCents ?? null;
+}
+
 /**
  * Whether Season winnings has an authoritative source in the current binding.
  *
@@ -240,7 +299,7 @@ export function boundHeldCents() {
  * where the POR fixed one.
  */
 export function seasonWinningsResolved() {
-  return !SOURCE.authoritative;
+  return SOURCE.mode === MODE_DEMO;
 }
 
 /* ── Derivations ────────────────────────────────────────────────────────────*/

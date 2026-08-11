@@ -197,8 +197,14 @@ export function gmPosition(record) {
  * the same arithmetic runs over whichever rows are bound, which is what stops
  * a commissioner-side formula from appearing.
  */
+/** Same three modes as the Ledger, and for the same reason — see ledger-model. */
+export const COMM_MODE_DEMO = 'demo';
+export const COMM_MODE_AUTHORITATIVE = 'authoritative';
+export const COMM_MODE_UNAVAILABLE = 'unavailable';
+
 let POSITIONS_SOURCE = GM_POSITIONS;
 let SERVER_RECONCILIATION = null;
+let COMM_MODE = COMM_MODE_DEMO;
 
 /**
  * Bind the authoritative league positions and reconciliation.
@@ -233,17 +239,40 @@ export function bindCommissioner(positions, reconciliation = null) {
     addedStakesCents: p.topoff_issued_cents,
   }));
   SERVER_RECONCILIATION = reconciliation;
+  COMM_MODE = COMM_MODE_AUTHORITATIVE;
+}
+
+/**
+ * Enter production UNAVAILABLE mode — the ordinary-GM case.
+ *
+ * /ledger/positions and /ledger/reconciliation are commissioner surfaces, so a
+ * GM's session gets 403 for both. That is an EXPECTED CAPABILITY STATE, not an
+ * application failure: the correct response is an empty authoritative set and
+ * a surface that says so. Falling back to `GM_POSITIONS` here would show a GM
+ * twelve fabricated league positions, which is the exact defect the first
+ * shell binding exposed.
+ */
+export function markCommissionerUnavailable() {
+  POSITIONS_SOURCE = [];
+  SERVER_RECONCILIATION = null;
+  COMM_MODE = COMM_MODE_UNAVAILABLE;
+}
+
+/** The current mode. @returns {'demo'|'authoritative'|'unavailable'} */
+export function commissionerMode() {
+  return COMM_MODE;
 }
 
 /** Restore the illustrative league. Used on sign-out and by the suites. */
 export function unbindCommissioner() {
   POSITIONS_SOURCE = GM_POSITIONS;
   SERVER_RECONCILIATION = null;
+  COMM_MODE = COMM_MODE_DEMO;
 }
 
 /** Whether the cards currently drawn came from the backend. */
 export function isCommissionerBound() {
-  return POSITIONS_SOURCE !== GM_POSITIONS;
+  return COMM_MODE === COMM_MODE_AUTHORITATIVE;
 }
 
 /** The server's own reconciliation, when bound — for comparison. */

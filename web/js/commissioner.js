@@ -22,11 +22,14 @@
  * `COMMISSIONER_AUTH_SEAM`.
  * ========================================================================== */
 
-import { escapeHtml, sectionHeading } from './components.js';
+import { escapeHtml, note, sectionHeading } from './components.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
 import { ledgerRow } from './ledger.js';
 import {
+  COMM_MODE_AUTHORITATIVE,
+  COMM_MODE_UNAVAILABLE,
   COMMISSIONER_AUTH_SEAM,
+  commissionerMode,
   LEAGUE_POSITIONS_SEAM,
   TOPOFF_ROUTES,
   gmPositions,
@@ -40,7 +43,23 @@ import { LEAGUE_SIZE, TOPOFF_REQUESTS } from './data/commissioner-data.js';
 /** Locked Rev 4.2 headings. */
 export const COMMISSIONER_HEADING = 'COMMISSIONER';
 export const TOPOFF_HEADING = 'A · TOP-OFF REQUESTS';
-export const GM_CARDS_HEADING = `B · GM LEDGER CARDS · ${LEAGUE_SIZE} · TAP TO EXPAND`;
+/**
+ * The GM-cards heading.
+ *
+ * COUNT COMES FROM THE POSITIONS ACTUALLY HELD, not from a constant. Rev 4.2
+ * shows twelve because the illustrative league has twelve teams; a bound
+ * league of eight must say eight, and an unavailable session must not claim a
+ * count at all.
+ *
+ * @param {number} count
+ * @returns {string}
+ */
+export function gmCardsHeading(count) {
+  return `B · GM LEDGER CARDS · ${count} · TAP TO EXPAND`;
+}
+
+/** The demo-mode heading, kept for the component suites' locked-copy check. */
+export const GM_CARDS_HEADING = gmCardsHeading(LEAGUE_SIZE);
 export const RECONCILIATION_HEADING = 'C · LEAGUE RECONCILIATION';
 
 /** The locked section order. Asserted by the suites rather than assumed. */
@@ -199,14 +218,39 @@ function gmCard(position) {
 }
 
 export function gmCardsSection() {
+  const mode = commissionerMode();
+
+  // UNAVAILABLE IS NOT AN ERROR AND IS NOT DEMO. An ordinary GM's session gets
+  // 403 from /ledger/positions because it is a commissioner surface — an
+  // expected capability state. What must never happen is falling through to
+  // the illustrative twelve, which would show a GM a league of fabricated
+  // positions. So the section renders empty and says why.
+  if (mode === COMM_MODE_UNAVAILABLE) {
+    return (
+      '<section class="fs-comsec" data-commissioner="gm-cards" ' +
+      'data-state="unavailable">' +
+      sectionHeading('B · GM LEDGER CARDS') +
+      '<div class="fs-gmcards" id="fs-gm-cards"></div>' +
+      note('League positions are not available to this session. Reading every ' +
+           'GM’s position requires commissioner authority for this league.',
+           { pending: true }) +
+      '</section>'
+    );
+  }
+
   const positions = gmPositions();
+  const provenance = mode === COMM_MODE_AUTHORITATIVE
+    ? 'Read from <code>GET /league/{league_id}/ledger/positions</code>. Every ' +
+      'card is that GM’s own Current Settle, produced by the arithmetic their ' +
+      'own Ledger tab performs.'
+    : 'Illustrative league state. These figures are the POR’s, not a read.';
+
   return (
-    '<section class="fs-comsec" data-commissioner="gm-cards">' +
-    sectionHeading(GM_CARDS_HEADING) +
+    '<section class="fs-comsec" data-commissioner="gm-cards" ' +
+    `data-state="${escapeHtml(mode)}">` +
+    sectionHeading(gmCardsHeading(positions.length)) +
     `<div class="fs-gmcards" id="fs-gm-cards">${positions.map(gmCard).join('')}</div>` +
-    '<div class="fs-note">Illustrative league state. No route returns every ' +
-    'GM’s position: <code>economy/current_settle.py</code> computes one team at a ' +
-    'time and nothing aggregates twelve.</div>' +
+    `<div class="fs-note">${provenance}</div>` +
     '</section>'
   );
 }
