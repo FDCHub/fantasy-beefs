@@ -628,6 +628,103 @@ _assert("§12: and genuinely has nothing",
         all(v == 0 for v in empty_body["counts"].values()),
         str(empty_body["counts"]))
 
+# ══ P4C-2R · the illustrative authority seams ═══════════════════════════════
+
+_section("P4C-2R · no illustrative value carries authority")
+
+_composer_src = open(os.path.join(ROOT, "web", "js", "composer.js"),
+                     encoding="utf-8").read()
+_components_src = open(os.path.join(ROOT, "web", "js", "components.js"),
+                       encoding="utf-8").read()
+_action_ui = open(os.path.join(ROOT, "web", "js", "action.js"),
+                  encoding="utf-8").read()
+
+
+def _code_only(js: str) -> str:
+    """A JS source with its comments removed.
+
+    BECAUSE THE PROSE EXPLAINS WHAT WAS REMOVED. Both repairs below are
+    documented at their sites, and those comments quote the exact strings the
+    assertions look for — so a plain substring scan reports the fix as absent
+    and fails for the reason it was written to catch. This is the same false
+    negative P4B corrected by moving its Python scans onto the AST; there is no
+    JS parser here, so comments are stripped instead.
+
+    Deliberately conservative: block comments go, and so do lines whose first
+    non-space characters begin a line comment. An inline `//` after code is left
+    alone rather than risk cutting a string that contains one.
+    """
+    out, i, n = [], 0, len(js)
+    while i < n:
+        if js.startswith("/*", i):
+            end = js.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        line_end = js.find(chr(10), i)
+        if line_end == -1:
+            line_end = n
+        line = js[i:line_end]
+        if not line.lstrip().startswith(("//", "*")):
+            out.append(line)
+        i = line_end + 1
+    return chr(10).join(out)
+
+
+_action_code = _code_only(_action_ui)
+_components_code = _code_only(_components_src)
+
+# §1 — THE NAME BRIDGE IS GONE, structurally. A repair that only removed the
+# call site would leave the helper behind for the next caller to find.
+_assert("P4C-2R: no module resolves an opponent from display text",
+        "team_name ===" not in _shell_src
+        and "resolveOpponentTeamId" not in _shell_src
+        and "team_name ===" not in _composer_src,
+        "no name-based authority bridge remains")
+
+# §2 — AND THE ONLY WAY IN IS BY SERVED ID. `selectOpponent` refuses an id that
+# is not in the served list, which makes the property structural rather than a
+# matter of every caller behaving.
+_assert("P4C-2R: the composer accepts a target only from the served list",
+        "is not an authoritative opponent" in _composer_src
+        and "session.opponents.find((o) => o.team_id === teamId)"
+        in _composer_src)
+_assert("P4C-2R: and a handed-in id is validated against that list too",
+        "opponents.some((o) => o.team_id === spec.opponentTeamId)"
+        in _composer_src,
+        "an unlisted id is treated as absent, never trusted")
+
+# §4 — the season record. Both halves: gone in production, kept in demo.
+_assert("P4C-2R: the COMPLETED heading drops the record outside demo",
+        "actionMode() === 'demo'" in _action_ui and "'COMPLETED'" in _action_ui)
+_assert("P4C-2R: and the locked Rev 4.2 heading survives IN demo",
+        "COMPLETED \u00b7 ${seasonRecordLabel()} SEASON" in _action_ui)
+
+# §5 — the strip. The leak was never only 14-7: all four cells were computed
+# from the illustrative CARDS and shown to signed-in GMs as their own money.
+_assert("P4C-2R: every Action strip cell is unresolved outside demo",
+        _action_ui.count("pending: unresolved") >= 4,
+        f"{_action_ui.count('pending: unresolved')} cells marked")
+
+# AND `pending` NOW MEANS ONE THING. Season Bet Record was the first pending
+# cell carrying `text`, and the shared component printed it — struck through as
+# unresolved while still showing the number.
+_assert("P4C-2R: a pending strip cell draws the unresolved figure, never its text",
+        "valueHtml = PENDING_FIGURE;" in _components_code
+        and "cell.text || PENDING_FIGURE" not in _components_code)
+
+# §5 — the tab header asserted a week it could not know.
+_assert("P4C-2R: the Action header asserts no week outside demo",
+        "'REGULAR SEASON ACTION'" in _action_ui
+        and "export function actionHeader()" in _action_ui)
+
+# §6 — the Final Lock wording.
+_assert("P4C-2R: Action's Dynamic copy no longer says 'at kickoff'",
+        "re-priced at kickoff" not in _action_code)
+_assert("P4C-2R: and names the earliest covered kickoff in plain words",
+        "first of your players takes the field" in _action_ui,
+        "GE-901: Final Lock precedes the EARLIEST covered kickoff")
+
+
 
 print("\n" + "=" * 74)
 if _failures:

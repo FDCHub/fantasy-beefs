@@ -135,8 +135,17 @@ function stripCell(cell) {
   let exactAttr = '';
 
   if (cell.pending) {
+    // PENDING MEANS THERE IS NO AUTHORITATIVE VALUE, so there is nothing to
+    // draw but the unresolved figure.
+    //
+    // S8-P4C-2R: this used to read `cell.text || PENDING_FIGURE`, which was
+    // harmless while every pending cell carried `cents` — the text was absent
+    // and the fallback fired. The first pending cell with `text` was Action's
+    // Season Bet Record, and it printed the illustrative `14–7` to authenticated
+    // GMs while wearing the pending style: struck through as unresolved, and
+    // still showing the number. A cell cannot be both.
     valueClasses.push('is-pending');
-    valueHtml = escapeHtml(cell.text || PENDING_FIGURE);
+    valueHtml = PENDING_FIGURE;
   } else if (typeof cell.cents === 'number') {
     assertIntegerCents(cell.cents, `strip cell "${cell.label}" cents`);
     // The drawn figure is whole dollars; the exact cents ride along in the DOM

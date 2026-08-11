@@ -92,19 +92,68 @@ export function endSession() {
  */
 export function beginSession(spec) {
   const m = matchup(spec.matchupId);
+
+  // THE AUTHORITATIVE TARGET LIST, or none. `opponents` are `ActionState` rows
+  // — real team ids the server served. In demo it is empty, and the composer
+  // then has no live target and no issue hook, so the two halves are never
+  // half-present.
+  const opponents = Array.isArray(spec.opponents) ? spec.opponents : [];
+
+  // S8-P4C-2R: NO NAME BRIDGE. A caller MAY hand in an already-authoritative
+  // `opponentTeamId`, but it is honoured only if it appears in the served list
+  // — an id that does not is treated as absent rather than trusted. Nothing
+  // resolves a target from display text.
+  const preselected = opponents.some((o) => o.team_id === spec.opponentTeamId)
+    ? spec.opponentTeamId : null;
+
   session = {
     matchup: m,
+    opponents,
+    // The acting team's own name, from `/auth/me`. Null in demo.
+    actingTeamName: spec.actingTeamName || null,
     state: createComposerState({
-      // `teamId` IS THE AUTHORITATIVE TARGET and is undefined in demo, where
-      // there is no server to send to. The issue hook is likewise absent there,
-      // so the two are never half-present: either both are real or neither is.
-      opponent: { id: m.id, name: m.name, teamId: spec.opponentTeamId ?? null },
+      // `id` and `name` remain the ILLUSTRATIVE entry context — the League card
+      // this was opened from, which is still a fixture until P4C-3. `teamId` is
+      // the only field carrying authority, and it comes from the served list.
+      opponent: { id: m.id, name: m.name, teamId: preselected },
       marketId: spec.marketId ?? null,
       mode: MODE_LOCKED,
       availableCents: spec.availableCents,
     }),
   };
   return session;
+}
+
+/**
+ * Select the authoritative opponent, by team id.
+ *
+ * BY ID, FROM THE SERVED LIST, and refused otherwise. This is the only way a
+ * composer session acquires a real target, which is what makes "the command
+ * cannot be steered by display text" a structural property rather than a habit.
+ *
+ * @param {number} teamId
+ */
+export function selectOpponent(teamId) {
+  if (!session) throw new Error('no composer session');
+  const found = session.opponents.find((o) => o.team_id === teamId);
+  if (!found) {
+    throw new Error(`team ${teamId} is not an authoritative opponent`);
+  }
+  session.state = {
+    ...session.state,
+    opponent: {
+      ...session.state.opponent,
+      teamId: found.team_id,
+      authoritativeName: found.team_name,
+    },
+  };
+  return session.state;
+}
+
+/** Whether this session can name a real target. @returns {boolean} */
+export function hasAuthoritativeOpponent() {
+  return Boolean(session && session.state.opponent.teamId !== null
+                 && session.state.opponent.teamId !== undefined);
 }
 
 /**
@@ -117,10 +166,29 @@ export function composerSheet() {
   if (!session) throw new Error('no composer session');
   const { matchup: m, state } = session;
 
+  // THE TITLE FOLLOWS THE AUTHORITATIVE TARGET once one is chosen. Leaving the
+  // fixture's opponent name in the title while the command addressed a
+  // different team is precisely the confusion this repair removes.
+  const opponentName = state.opponent.authoritativeName || m.name;
+
+  // AND THE GM'S OWN NAME COMES FROM THE SESSION in production. `m.you.name` is
+  // the fixture's GM; a signed-in GM was being shown someone else's team name
+  // above a control that would spend their money.
+  const yourName = session.actingTeamName || m.you.name;
+
+  // THE SUBTITLE ASSERTED A RECORD, A RANK AND A WEEK, all three from the
+  // illustrative League fixture. None is Action's to source — record and rank
+  // are League's and the week is Week's, both P4C-3 — so in production the line
+  // says only what it is for. Demo keeps the locked Rev 4.2 line exactly.
+  const sub = session.opponents.length
+    ? 'Pick your market'
+    : `${m.record} · ${m.rank} · Week 5 · pick your market`;
+
   return {
-    title: `${m.you.name} vs ${m.name}`,
-    sub: `${m.record} · ${m.rank} · Week 5 · pick your market`,
+    title: `${yourName} vs ${opponentName}`,
+    sub,
     body:
+      opponentSelector(state) +
       marketSelector(m, state) +
       previewButton() +
       modeSelector(state) +
@@ -133,6 +201,35 @@ export function composerSheet() {
 }
 
 /* ── Sections ───────────────────────────────────────────────────────────── */
+
+/**
+ * Who the wager is against — the authoritative selector.
+ *
+ * DRAWN ONLY IN PRODUCTION. In demo there are no served opponents, so this
+ * renders nothing and the locked Rev 4.2 composer is unchanged: the fixture
+ * opens against one matchup and stays that way.
+ *
+ * IN PRODUCTION IT IS REQUIRED. The League card that opened this composer is
+ * still illustrative until P4C-3, so it carries no authority to hand over — and
+ * rather than let its display name stand in for one, the composer asks. `Send`
+ * stays disabled until a real team is chosen.
+ */
+function opponentSelector(state) {
+  if (!session.opponents.length) return '';
+  const chosen = state.opponent.teamId;
+  return (
+    '<div class="fs-oppsel" data-opponent-block>' +
+    '<div class="fs-oppsel__label">Who are you challenging?</div>' +
+    session.opponents.map((o) => (
+      '<button type="button" class="fs-btn fs-oppsel__btn'
+      + (o.team_id === chosen ? ' is-selected' : '') + '" '
+      + `data-composer-opponent="${o.team_id}" `
+      + `aria-pressed="${o.team_id === chosen}">`
+      + `${escapeHtml(o.team_name)}</button>`
+    )).join('') +
+    '</div>'
+  );
+}
 
 function marketSelector(m, state) {
   const cells = matchupMarketCells(m);
@@ -242,12 +339,20 @@ function economicsRows(m, state) {
 
 function sendControl(state) {
   const verdict = validateComposer(state);
-  const message = verdict.ok ? '' : (verdict.hint || verdict.reasons[0]);
+  // A LIVE SEND NEEDS A REAL TARGET. Checked here rather than inside
+  // `validateComposer`, which is shared with the demo composer that has no
+  // target to choose and would otherwise be permanently invalid.
+  const needsTarget = Boolean(session.opponents.length)
+    && (state.opponent.teamId === null || state.opponent.teamId === undefined);
+  const ok = verdict.ok && !needsTarget;
+  const message = needsTarget
+    ? 'Choose who you are challenging.'
+    : (verdict.ok ? '' : (verdict.hint || verdict.reasons[0]));
   return (
     '<div class="fs-send" data-send-block>' +
     `<div class="fs-send__why" data-send-why>${escapeHtml(message)}</div>` +
     `<button type="button" class="fs-btn fs-btn--gold fs-send__btn" data-composer-send ` +
-    `${verdict.ok ? '' : 'disabled'}>Send Challenge</button>` +
+    `${ok ? '' : 'disabled'}>Send Challenge</button>` +
     '</div>'
   );
 }
@@ -258,6 +363,13 @@ function bindComposer(host, api) {
   host.querySelectorAll('[data-composer-market]').forEach((el) => {
     el.addEventListener('click', () => {
       session.state = selectMarket(session.state, el.dataset.composerMarket);
+      api.rerender();
+    });
+  });
+
+  host.querySelectorAll('[data-composer-opponent]').forEach((el) => {
+    el.addEventListener('click', () => {
+      selectOpponent(Number(el.dataset.composerOpponent));
       api.rerender();
     });
   });
@@ -301,6 +413,9 @@ function bindComposer(host, api) {
       try {
         await ISSUE_HOOK.issue({
           challengerTeamId: ISSUE_HOOK.actingTeamId,
+          // THE SELECTED AUTHORITATIVE TEAM ID, and nothing else. No name, no
+          // fixture id, no lookup — the value came from the served opponent
+          // list at the moment the GM chose it.
           challengedTeamId: state.opponent.teamId,
           week: ISSUE_HOOK.week,
           wagerType: marketById(state.marketId).persisted,
@@ -334,11 +449,18 @@ function refreshDerived(host) {
   if (econ) econ.innerHTML = economicsRows(m, state);
 
   const verdict = validateComposer(state);
+  const needsTarget = Boolean(session.opponents.length)
+    && (state.opponent.teamId === null || state.opponent.teamId === undefined);
+
   const send = host.querySelector('[data-composer-send]');
-  if (send) send.disabled = !verdict.ok;
+  if (send) send.disabled = !verdict.ok || needsTarget;
 
   const why = host.querySelector('[data-send-why]');
-  if (why) why.textContent = verdict.ok ? '' : (verdict.hint || verdict.reasons[0]);
+  if (why) {
+    why.textContent = needsTarget
+      ? 'Choose who you are challenging.'
+      : (verdict.ok ? '' : (verdict.hint || verdict.reasons[0]));
+  }
 
   const hint = host.querySelector('[data-stake-hint]');
   if (hint) {

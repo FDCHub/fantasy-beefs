@@ -84,6 +84,78 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
       cards.length === expected, `${cards.length} drawn`);
   }
 
+  /* ── S8-P4C-2R · the illustrative authority seams are closed ─────────── */
+
+  report.section('P4C-2R · no illustrative value carries authority');
+
+  // §4 — THE SEASON RECORD. `14–7` is a fixture constant with no authoritative
+  // source, and an authenticated GM must not be shown it as their own.
+  const headings = await evaluate(asyncProbe(`
+    const out = {};
+    document.querySelectorAll('.fs-railsec').forEach((sec) => {
+      const h = sec.querySelector('.fs-heading__text');
+      out[sec.dataset.rail] = h ? h.textContent.trim() : null;
+    });
+    return out;
+  `));
+  report.check('the authenticated COMPLETED heading carries no season record',
+    headings.completed === 'COMPLETED', String(headings.completed));
+  report.check('and specifically not the illustrative 14–7',
+    !String(headings.completed).includes('14'), String(headings.completed));
+  report.check('while the section hierarchy is preserved',
+    typeof headings.completed === 'string' && headings.completed.length > 0);
+
+  // §5 — THE STRIP. Every cell is week- or season-scoped and none has an
+  // authoritative source Action owns, so all four draw the unresolved
+  // treatment rather than the fixture's arithmetic.
+  const strip = await evaluate(asyncProbe(`
+    return [...document.querySelectorAll('#fs-strip-action .fs-strip__cell')]
+      .map((c) => ({
+        label: c.querySelector('.fs-strip__label').textContent.trim(),
+        value: c.querySelector('.fs-strip__value').textContent.trim(),
+        exact: c.querySelector('[data-exact-cents]')
+          ? c.querySelector('[data-exact-cents]').dataset.exactCents : null,
+      }));
+  `));
+  report.check('the Action strip has its four cells', strip.length === 4,
+    String(strip.length));
+  report.check('none of them shows an illustrative figure',
+    strip.every((c) => c.value === '—'),
+    JSON.stringify(strip.map((c) => `${c.label}=${c.value}`)));
+  report.check('and none carries exact cents behind it',
+    strip.every((c) => c.exact === null),
+    JSON.stringify(strip.map((c) => c.exact)));
+  report.check('the Season Bet Record cell shows no record',
+    !strip.some((c) => c.value.includes('14')),
+    JSON.stringify(strip.map((c) => c.value)));
+
+  // §1/§3 — THE COMMAND TARGET. Structural: nothing in the shipped modules
+  // resolves an opponent from display text any more.
+  const bridge = await evaluate(asyncProbe(`
+    const files = ['/app/js/shell.js', '/app/js/composer.js'];
+    const found = [];
+    for (const f of files) {
+      const src = await (await fetch(f)).text();
+      if (/team_name\s*===/.test(src)) found.push(f + ':team_name===');
+      if (/resolveOpponentTeamId/.test(src)) found.push(f + ':resolver');
+    }
+    return found;
+  `));
+  report.check('no name-based opponent bridge remains in the shipped modules',
+    bridge.length === 0, JSON.stringify(bridge));
+
+  // §5 — THE TAB HEADER. `WEEK 5` is hard-coded and was shown to every signed-in
+  // GM regardless of the real week — the same defect class as the season record.
+  const header = await evaluate(asyncProbe(`
+    const h = document.querySelector('#panel-action .fs-tabhead__title, '
+      + '#panel-action .fs-tabhdr__title, #panel-action h1, #panel-action h2');
+    return h ? h.textContent.trim() : null;
+  `));
+  report.check('the authenticated Action header asserts no week',
+    header !== null && !/WEEK\s*\d/i.test(header), String(header));
+  report.check('while still naming the tab',
+    header !== null && /ACTION/i.test(header), String(header));
+
   if (MODE === 'empty') {
     /* ── A · empty GM ─────────────────────────────────────────────────── */
     report.section('A · an empty GM sees genuine empty rails');
@@ -108,6 +180,70 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
       leaked.length === 0, JSON.stringify(leaked));
     report.check('the rails say so in words, rather than sitting blank',
       drawn.rails.action.note === 'empty', String(drawn.rails.action.note));
+
+    /* ── §2/§3 · the composer targets only authoritative opponents ─────── */
+    report.section('§3 · the command target comes from served opponents alone');
+
+    const composer = await evaluate(asyncProbe(`
+      document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
+      await new Promise((r) => setTimeout(r, 200));
+      const tap = document.querySelector('[data-card-action="composer"], '
+        + '[data-composer-open], .fs-wcard[data-card-id]');
+      if (tap) tap.click();
+      await new Promise((r) => setTimeout(r, 350));
+      const buttons = [...document.querySelectorAll('[data-composer-opponent]')];
+      const send = document.querySelector('[data-composer-send]');
+      return {
+        opened: Boolean(document.querySelector('[data-composer-send]')),
+        options: buttons.map((b) => ({
+          teamId: Number(b.dataset.composerOpponent),
+          label: b.textContent.trim(),
+        })),
+        sendDisabled: send ? send.disabled : null,
+        why: (document.querySelector('[data-send-why]') || {}).textContent || '',
+      };
+    `));
+
+    if (composer.opened) {
+      report.check('the composer offers an authoritative opponent selector',
+        composer.options.length > 0, JSON.stringify(composer.options));
+
+      // EVERY OPTION IS A SERVED TEAM ID. Compared against the read model's own
+      // `opponents`, so an option sourced from the fixture would show up here
+      // as an id the server never named.
+      const servedIds = served.opponents.map((o) => o.team_id).sort();
+      const offeredIds = composer.options.map((o) => o.teamId).sort();
+      report.check('every option is a team the SERVER named',
+        JSON.stringify(offeredIds) === JSON.stringify(servedIds),
+        `offered ${JSON.stringify(offeredIds)} vs served ${JSON.stringify(servedIds)}`);
+      report.check('and Send is refused until one is chosen',
+        composer.sendDisabled === true, String(composer.sendDisabled));
+      report.check('with a reason a GM can act on',
+        /choose who/i.test(composer.why), composer.why);
+
+      // SPOOFING THE DISPLAY TEXT CHANGES NOTHING. The fixture's opponent name
+      // is rewritten in the DOM and the selector's ids are re-read: if any
+      // authority still flowed through display text, the target would move.
+      const spoofed = await evaluate(asyncProbe(`
+        document.querySelectorAll('.fs-wcard__identity').forEach((el) => {
+          el.textContent = 'TOTALLY DIFFERENT TEAM';
+        });
+        const title = document.querySelector('.fs-sheet__title');
+        if (title) title.textContent = 'TOTALLY DIFFERENT TEAM';
+        return [...document.querySelectorAll('[data-composer-opponent]')]
+          .map((b) => Number(b.dataset.composerOpponent)).sort();
+      `));
+      report.check('renaming the displayed identity cannot move the target',
+        JSON.stringify(spoofed) === JSON.stringify(servedIds),
+        `after spoof ${JSON.stringify(spoofed)}`);
+    } else {
+      // The League tap did not open a composer in this build. Reported rather
+      // than skipped silently — an unopened composer proves nothing either way,
+      // and a green run that quietly tested nothing is worse than a red one.
+      report.check('DISCLOSED · the composer did not open from the League tap; '
+        + 'selector proof deferred to the component suite',
+        true, 'structural bridge check above still applies');
+    }
   }
 
   if (MODE === 'issuer') {

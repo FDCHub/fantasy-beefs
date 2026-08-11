@@ -38,6 +38,25 @@ import { onActivate } from './interaction.js';
 export const ACTION_HEADER = 'WEEK 5 · REGULAR SEASON ACTION';
 
 /**
+ * The header a signed-in GM actually reads.
+ *
+ * `WEEK 5` IS A FIXTURE CONSTANT. It is hard-coded above and was rendered to
+ * every authenticated GM regardless of the real week — the same defect class as
+ * the season record, and found by the same audit. A GM in week 9 was told they
+ * were looking at week 5.
+ *
+ * The week is a Week/League-domain fact and P4C-3 owns binding it, so Action
+ * cannot source one without doing work this package was told not to do. What it
+ * can do is stop asserting a week it does not know. The tab keeps its name and
+ * drops the claim; demo is unchanged, because there the fixture IS the subject.
+ *
+ * @returns {string}
+ */
+export function actionHeader() {
+  return actionMode() === 'demo' ? ACTION_HEADER : 'REGULAR SEASON ACTION';
+}
+
+/**
  * How the Response Card reaches the live commands.
  *
  * INSTALLED BY THE SHELL, and null in `demo` for the same reason the composer's
@@ -67,20 +86,44 @@ export function buildActionPanel() {
   const composer = new PanelComposer('action');
 
   composer.add(tabHeader({
-    title: ACTION_HEADER,
+    title: actionHeader(),
     sub: 'Your wagers — the only place you manage them',
   }));
 
   // Every figure is derived from the cards below, so the strip and the rails
   // cannot disagree.
+  // THE STRIP IS ILLUSTRATIVE IN DEMO AND UNRESOLVED IN PRODUCTION, and there
+  // is no third option yet. Every one of these four figures is week-scoped or
+  // season-scoped:
+  //
+  //   Season Bet Record  needs a season W/L history read — no authoritative
+  //                      source exists anywhere in the backend today;
+  //   Bet this week      needs an authoritative CURRENT WEEK to scope to, and
+  //   Upside left        the same, plus a payout figure that a Dynamic wager
+  //                      does not have until Final Lock;
+  //   Settled            the same current week.
+  //
+  // The current week is a Week/League-domain fact and P4C-3 owns binding it, so
+  // Action cannot source these without reaching into work this package was told
+  // not to do. What it CAN do is stop presenting fixture arithmetic as the
+  // signed-in GM's own money — which is what these were doing, computed from
+  // `data/action-data.js`'s illustrative CARDS.
+  //
+  // `pending` is the same approved unresolved treatment the Ledger's
+  // Awards / Adj. cell uses: the cell keeps its place and its label, and draws
+  // — instead of a number nobody measured.
+  const unresolved = actionMode() !== 'demo';
   composer.addStrip({
     id: 'fs-strip-action',
     label: 'Action summary',
     cells: [
-      { label: 'Season Bet Record', text: seasonRecordLabel() },
-      { label: 'Bet this week', cents: betThisWeekCents() },
-      { label: 'Upside left', cents: upsideLeftCents(), signed: true },
-      { label: 'Settled', cents: settledCents(), signed: true, anchor: true },
+      { label: 'Season Bet Record', text: seasonRecordLabel(),
+        pending: unresolved },
+      { label: 'Bet this week', cents: betThisWeekCents(), pending: unresolved },
+      { label: 'Upside left', cents: upsideLeftCents(), signed: true,
+        pending: unresolved },
+      { label: 'Settled', cents: settledCents(), signed: true, anchor: true,
+        pending: unresolved },
     ],
   });
 
@@ -116,12 +159,23 @@ export function railHeading(rail) {
     case 'action': return `ACTION REQUIRED ${sectionCount('action')}`;
     case 'waiting': return `WAITING ${sectionCount('waiting')}`;
     case 'live': return `LIVE ${sectionCount('live')}`;
-    // COMPLETED carries the season record rather than a count, which is the
-    // locked Rev 4.2 treatment. The record is a Week/Action history figure and
-    // P4C-2 does not own its production source, so it stays illustrative until
-    // the package that does — and says so rather than showing a bound-looking
-    // number that is not.
-    case 'completed': return `COMPLETED · ${seasonRecordLabel()} SEASON`;
+    // COMPLETED CARRIES THE SEASON RECORD ONLY IN DEMO.
+    //
+    // The locked Rev 4.2 heading is `COMPLETED · 14–7 SEASON`, and 14–7 is a
+    // fixture constant with no authoritative source — S8-P4C-2 classified it
+    // UNRESOLVED and then went on rendering it to signed-in GMs, which is the
+    // seam this repair closes. A GM reading their own Action tab would have
+    // seen someone else's season record presented as theirs.
+    //
+    // In production the heading keeps its place in the hierarchy and drops the
+    // claim. NOT `0–0`, which asserts a real record of no games; not a card
+    // count relabelled as a record, which would be a different figure wearing
+    // this one's name. P4C-3 may restore a real record if a provider or history
+    // source turns out to supply one.
+    case 'completed':
+      return actionMode() === 'demo'
+        ? `COMPLETED · ${seasonRecordLabel()} SEASON`
+        : 'COMPLETED';
     default: throw new Error(`unknown rail "${rail}"`);
   }
 }
@@ -244,6 +298,22 @@ function modeLabel(card) {
  * bound the backend wrote at the Handshake; a "likely" number would be a client
  * calculating a price, which is the one thing this layer may never do.
  *
+ * WHEN, EXACTLY — AND WHY THIS NO LONGER SAYS "AT KICKOFF". S8-P4C-2 wrote
+ * "re-priced at kickoff", and checking it against the governing text showed the
+ * wording was materially wrong rather than merely loose. GE-901: Final Lock
+ * occurs immediately before the EARLIEST scheduled NFL kickoff involving any
+ * player in either final starting lineup covered by the wager — "once any
+ * covered starting player locks in Yahoo, the entire wager SHALL Final Lock."
+ *
+ * A lineup-wide wager therefore locks at the FIRST of a GM's players to play,
+ * which for anyone holding a Thursday-night starter is days before the Sunday
+ * game they would picture on hearing "kickoff". That understates how soon their
+ * opponent's stake is fixed, on the one card where the timing is the product.
+ *
+ * So the copy names the real trigger in plain words — the first of your players
+ * to play — without the Final Lock jargon. The underlying timing is unchanged;
+ * only the sentence describing it is.
+ *
  * @param {object} card
  * @returns {string}
  */
@@ -251,11 +321,12 @@ function modeCopy(card) {
   if (card.mode !== 'dynamic') {
     return 'Terms are frozen as offered. Neither side moves.';
   }
+  const when = 'when the first of your players takes the field';
   if (card.derivedCeilingCents !== null && card.derivedCeilingCents !== undefined) {
-    return 'Your opponent’s stake is re-priced at kickoff, up to '
+    return `Your opponent’s stake is set ${when}, up to `
       + `${formatCredits(card.derivedCeilingCents)}. Yours does not move.`;
   }
-  return 'Your opponent’s stake is re-priced at kickoff. Yours does not move.';
+  return `Your opponent’s stake is set ${when}. Yours does not move.`;
 }
 
 /**
@@ -443,13 +514,15 @@ export function bindAction(panel, api) {
 export function wagerSheet(card) {
   // A DERIVED STAKE THAT IS NOT YET PRICED HAS NO NUMBER. In Dynamic the
   // opponent's side is set at Final Lock, so the sheet says so rather than
-  // printing a placeholder that would read as a quote.
+  // printing a placeholder that would read as a quote. The wording matches
+  // `modeCopy` — see the note there on why "at kickoff" was wrong.
+  const SET_AT_LOCK = 'Set when your first player takes the field';
   const theirStake = (card.opponentStakeCents === null
     || card.opponentStakeCents === undefined)
-    ? 'Set at kickoff'
+    ? SET_AT_LOCK
     : formatCredits(card.opponentStakeCents);
   const pot = (card.potCents === null || card.potCents === undefined)
-    ? 'Set at kickoff'
+    ? SET_AT_LOCK
     : formatCredits(card.potCents);
 
   const rows = [

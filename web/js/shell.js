@@ -73,7 +73,6 @@ import {
   bindCommissioner, markCommissionerUnavailable, unbindCommissioner,
 } from './commissioner-model.js';
 import { CURRENT_WEEK } from './data/week-data.js';
-import { matchup } from './data/league-data.js';
 import {
   bindSettings, markSettingsUnavailable, unbindSettings,
 } from './settings-model.js';
@@ -297,12 +296,21 @@ export function openComposer(spec) {
     // server refuses it either way, but being told after sending is worse than
     // being told while typing.
     availableCents: boundAvailableCents() ?? ILLUSTRATIVE.availableCents,
-    // THE AUTHORITATIVE TARGET, matched by name against the served opponent
-    // list. The League tab is still illustrative until P4C-3, so the matchup
-    // this was opened from carries a fixture identity; resolving the real team
-    // here is what lets the issue command name a real GM. Null when no match
-    // exists, and the composer then has no live hook to send with.
-    opponentTeamId: resolveOpponentTeamId(spec.matchupId),
+    // THE AUTHORITATIVE TARGET LIST, handed to the composer whole.
+    //
+    // S8-P4C-2R REMOVED THE NAME BRIDGE that used to stand here. It took the
+    // illustrative League matchup's DISPLAY NAME, matched it against the served
+    // opponents, and used the result as the target of a real Credits command.
+    // Two teams sharing a name, a renamed team, or a fixture that simply
+    // drifted from production would have addressed the wrong GM's money — and
+    // nothing on the page would have looked wrong while it happened.
+    //
+    // The composer now asks instead. That is one more tap than the locked flow,
+    // and it is the smallest honest option while the League tab is still
+    // illustrative: its cards carry no authoritative id to hand over, so there
+    // is nothing to pass through except a name, and a name is not authority.
+    opponents: authoritativeOpponents(),
+    actingTeamName: actingTeamName(),
   });
   openSheet(() => composerSheet());
 }
@@ -319,23 +327,28 @@ function boundAvailableCents() {
 }
 
 /**
- * Resolve a composer target to a real team id.
- *
- * BY NAME, and only against the SERVED opponent list — so the id can never come
- * from the fixture, which is the failure this guards: a fixture id that happened
- * to be a valid team number would have addressed a stranger. No match means no
- * authoritative target, and `null` disables the live send rather than guessing.
- *
- * @param {string} matchupId
- * @returns {number|null}
+ * The acting GM's own team name, as the server names it.
+ * @returns {string|null}
  */
-function resolveOpponentTeamId(matchupId) {
+function actingTeamName() {
+  const identity = currentIdentity();
+  const caps = (identity && identity.capabilities) || {};
+  return caps.acting_context_ambiguous ? null : (caps.acting_team_name || null);
+}
+
+/**
+ * The league's other teams, exactly as the server named them.
+ *
+ * Empty when nothing is bound, which leaves the composer with no authoritative
+ * target and therefore no live send — the honest state for a page that could
+ * not read who is in the league.
+ *
+ * @returns {Array<{team_id: number, team_name: string, owner: string}>}
+ */
+function authoritativeOpponents() {
   const data = productionData();
-  if (!data || !data.action || !Array.isArray(data.action.opponents)) return null;
-  const m = matchup(matchupId);
-  if (!m) return null;
-  const found = data.action.opponents.find((o) => o.team_name === m.name);
-  return found ? found.team_id : null;
+  if (!data || !data.action || !Array.isArray(data.action.opponents)) return [];
+  return data.action.opponents;
 }
 
 function bindSheet() {

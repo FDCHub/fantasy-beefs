@@ -400,6 +400,20 @@ check('WAITING 2', railHeading('waiting') === 'WAITING 2');
 check('LIVE 4', railHeading('live') === 'LIVE 4');
 check('COMPLETED · 14–7 SEASON', railHeading('completed') === 'COMPLETED · 14–7 SEASON');
 
+// S8-P4C-2R — THE DEMO HALF OF THE SEASON-RECORD REPAIR. Production drops the
+// record because 14–7 has no authoritative source; the locked Rev 4.2 heading
+// must survive here, where the illustrative fixture IS the subject. The two
+// halves are asserted in different suites on purpose: this one has no server,
+// and the browser suite has no fixture.
+const { railHeading: uiRailHeading } = await import('../js/action.js');
+const { actionMode } = await import('../js/action-model.js');
+check('the shipped heading is in demo mode by default', actionMode() === 'demo');
+check('and the shipped COMPLETED heading keeps the locked record in demo',
+  uiRailHeading('completed') === 'COMPLETED · 14–7 SEASON',
+  uiRailHeading('completed'));
+check('while ACTION REQUIRED still counts the fixture in demo',
+  uiRailHeading('action') === 'ACTION REQUIRED 2', uiRailHeading('action'));
+
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 
 section('League and Action panels');
