@@ -12,7 +12,7 @@ from db.deps import get_db
 # require_commissioner is no longer imported: S8-P2 moved every commissioner
 # route in this module to league-scoped authority, so a global-role import
 # would only be an invitation to reintroduce the gap.
-from auth.jwt_auth import assert_own_team, get_current_gm, User
+from auth.jwt_auth import assert_wagering_team_owner, get_current_gm, User
 from auth.allocation_gate import assert_league_commissioner
 from ledger.ledger import _dollars_to_cents
 from betting.pool_legacy_guard import (
@@ -123,6 +123,20 @@ def submit_prediction(
     db:          Session = Depends(get_db),
     current_gm:  User    = Depends(get_current_gm),
 ) -> PoolPredictionOut:
+    # S8-P4C-4: STRICT OWNERSHIP, AND IT HAD NONE AT ALL.
+    #
+    # Found by this package's mutation inventory, not previously reported. The
+    # route took `req.team_id` and wrote a prediction row for it with no
+    # ownership check whatsoever — any authenticated GM could submit a Worst
+    # Beat prediction as any team in any league. That is weaker than the
+    # commissioner-permissive defect the checklist already carried.
+    #
+    # Worst Beat is retired (0 active, never Gate-1 eligible, never in a
+    # slate), so this surface predicts a Pool that cannot be drawn — but the
+    # route is mounted and reachable, and "the feature is retired" is not a
+    # reason to leave an unauthenticated-in-effect write on it.
+    assert_wagering_team_owner(req.team_id, current_gm,
+                               "submit its predictions")
     try:
         return submit_worst_beat_prediction(
             league_id         = req.league_id,
@@ -206,7 +220,24 @@ def submit_pick(
     Self-pick is allowed only for biggest_winner; blocked for the other three.
     Rejected after the weekly lock_time (Thursday 8:20 PM ET by default).
     """
-    assert_own_team(req.team_id, current_gm)
+    # S8-P4C-4: STRICT POOL-PICK OWNERSHIP.
+    #
+    # This used `assert_own_team`, whose commissioner exemption let a
+    # commissioner submit a Pool pick AS another GM. That exemption is correct
+    # for administrative reads and wrong here for the same reason it was wrong
+    # for wagers: a Pool pick is a COMPETITIVE CHOICE. It decides who a GM is
+    # backing, and one submitted on their behalf changes their position in the
+    # league without their consent.
+    #
+    # It moves no Credits — `submit_pool_pick` posts nothing — so this is a
+    # game-integrity repair rather than an accounting one, which is why P4C-1R
+    # scoped it out and recorded it on the P4 close checklist instead of fixing
+    # it opportunistically.
+    #
+    # A commissioner still picks for their OWN team, because they are that
+    # team's GM. What they lose is only the ability to pick for someone else.
+    assert_wagering_team_owner(req.team_id, current_gm,
+                               "submit its Pool picks")
     try:
         result = submit_pool_pick(
             league_id    = req.league_id,

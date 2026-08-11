@@ -205,8 +205,15 @@ def assert_own_team(team_id: int, current_user: User) -> None:
         )
 
 
-def assert_wagering_team_owner(team_id: int, current_user: User) -> None:
+def assert_wagering_team_owner(team_id: int, current_user: User,
+                               action: str = "wager with its Credits") -> None:
     """Raise 403 unless current_user IS the GM of team_id. No role exemption.
+
+    `action` names what is being refused, for the message only — it never
+    affects the decision. S8-P4C-4 added it because Pool picks reuse this guard
+    and move no Credits: telling a GM they may not "wager with its Credits"
+    when they tried to submit a pick describes the wrong act, and a refusal a
+    GM cannot map onto what they did is a bad refusal even when it is correct.
 
     WAGERING IDENTITY IS OWNERSHIP, NOT RANK. A wager commits a specific team's
     Credits, so the only person who may act for that team is the GM whose money
@@ -231,8 +238,7 @@ def assert_wagering_team_owner(team_id: int, current_user: User) -> None:
     if current_user.team_id != team_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=(f"Access denied: only team {team_id}'s own GM may wager "
-                    f"with its Credits"),
+            detail=f"Access denied: only team {team_id}'s own GM may {action}",
         )
 
 

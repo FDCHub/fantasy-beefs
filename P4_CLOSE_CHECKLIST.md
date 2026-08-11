@@ -9,16 +9,16 @@ for P4 close, not a nice-to-have.
 
 ---
 
-## MANDATORY · P4C-4 — `submit_pool_pick` wagering-actor ownership
+## CLOSED · P4C-4 — `submit_pool_pick` wagering-actor ownership
 
-**Status:** OPEN
+**Status:** CLOSED — S8-P4C-4
 **Owner:** S8-P4C-4 (Pool authorization repair + certification)
 **Found by:** S8-P4C-1R, during the `assert_own_team()` caller inventory
 **Restated by:** S8-P4C-2 (no Pool behaviour changed, as instructed)
 
-`api/pool_routes.py:209` — `submit_pool_pick` still guards with the
-commissioner-permissive `assert_own_team()`. A commissioner can therefore submit
-a Pool pick **as another GM**.
+**The defect, as found.** `api/pool_routes.py` — `submit_pool_pick` guarded
+with the commissioner-permissive `assert_own_team()`, so a commissioner could
+submit a Pool pick **as another GM**.
 
 **Why it was not fixed in P4C-1R or P4C-2.** The P4C-1R repair was scoped to
 *wagering actor authority* — the paths that spend a team's Credits. Verified by
@@ -33,24 +33,32 @@ authority in the final MVP: a Pool pick decides who a GM is backing, and a
 commissioner submitting one on someone's behalf changes that GM's competitive
 position without their consent.
 
-**What closing it requires**
+**How it was closed (S8-P4C-4)**
 
-- [ ] Classify `submit_pool_pick` as a **participant action**, not an
-      administrative read.
-- [ ] Guard it with strict ownership — `assert_wagering_team_owner()` or the
-      Pool-domain equivalent, whichever the P4C-4 design settles on. Do not
-      widen the wagering helper's name to cover Pools if the domains should stay
-      separate; do not reuse the lenient helper.
-- [ ] Prove a commissioner cannot submit a pick as another GM (403), and that
-      **no pick row is written** on the refusal — the same "more than 403"
-      standard P4C-1R held wagering to.
-- [ ] Prove a commissioner CAN still submit their own team's pick.
-- [ ] Re-audit every remaining `assert_own_team()` caller at that point. Two
-      administrative reads are currently classified as legitimately
-      commissioner-permissive — `faab_transactions` and `account_summary` — and
-      that classification should be re-confirmed rather than inherited.
+- [x] Classified as a **participant action** — a Pool pick is a competitive
+      choice, not an administrative read.
+- [x] Guarded with `assert_wagering_team_owner()`. The helper gained an
+      `action` parameter so the refusal names what was refused; it moves no
+      Credits, and telling a GM they may not "wager with its Credits" when they
+      submitted a pick describes the wrong act.
+- [x] Proved a commissioner cannot pick as another GM (403), with **no pick
+      row, no participation change and an unchanged trial balance** — the
+      "more than 403" standard, in the API suite and in a real browser.
+- [x] Proved a commissioner CAN submit their own team's pick — refused, when
+      refused at all, for a Pool reason and never an ownership one.
+- [x] Re-audited the remaining `assert_own_team()` callers: `faab_transactions`
+      and `account_summary` remain administrative reads and keep the lenient
+      guard, re-confirmed rather than inherited.
 
-**Regression guard that already exists.** `test_s8_p4c1r_wagering_authority.py`
-§1 pins the exact set of routes using each helper. Moving `submit_pool_pick` to
-the strict guard will require updating that pinned set, which is intentional —
-the set is meant to be changed deliberately and never drift.
+**A second defect was found and fixed in the same pass.** `POST /pool/predict`
+(`submit_worst_beat_prediction`) had **no ownership check at all** — any
+authenticated GM could submit a prediction as any team in any league, which is
+weaker than the commissioner-permissive defect this item was opened for. It is
+now strictly owned. Worst Beat is retired and cannot be drawn, but the route is
+mounted and reachable, and a retired feature is not a reason to leave an
+effectively unauthenticated write on it.
+
+**Regression guards.** `test_s8_p4c1r_wagering_authority.py` §1 pins the exact
+set of routes using each helper, and `test_s8_p4c4_pool_certification.py` §1
+asserts structurally that the lenient guard is no longer CALLED anywhere in the
+Pool routes. Both must be changed deliberately for the set to move again.
