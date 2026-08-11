@@ -14,12 +14,7 @@
  * not take a gold card — it takes a marked badge and its carried pot in gold.
  * ========================================================================== */
 
-import {
-  PanelComposer,
-  escapeHtml,
-  sectionHeading,
-  tabHeader,
-} from './components.js';
+import { PENDING_FIGURE, PanelComposer, escapeHtml, sectionHeading, tabHeader } from './components.js';
 import { formatCredits } from './credits.js';
 import { ILLUSTRATIVE, LEAGUE_IDENTITY } from './demo-state.js';
 import { OPPONENTS, POOLS, allMatchups, poolBadge } from './data/league-data.js';
@@ -170,14 +165,22 @@ export function poolSheet(pool) {
       '<div class="fs-prev__row"><span class="fs-prev__label">Entry</span>' +
       `<span class="fs-prev__value fs-money" data-exact-cents="${pool.entryCents}">` +
       `${escapeHtml(formatCredits(pool.entryCents))}</span></div>` +
+      // S8-P4B-3R: `entered` is a count of entries, which the SLATE does not
+      // carry — entries live in `pool_claim`, and no read model publishes them
+      // yet. Drawing the em dash is the approved unresolved treatment; drawing
+      // `undefined`, which is what an unguarded interpolation did, is not.
       '<div class="fs-prev__row"><span class="fs-prev__label">Entered</span>' +
-      `<span class="fs-prev__value fs-money">${pool.entered}</span></div>` +
+      `<span class="fs-prev__value fs-money">` +
+      `${pool.entered === undefined ? PENDING_FIGURE : pool.entered}</span></div>` +
       '<div class="fs-prev__row"><span class="fs-prev__label">Pot</span>' +
       `<span class="fs-prev__value fs-money" data-exact-cents="${pool.potCents}">` +
       `${escapeHtml(formatCredits(pool.potCents))}</span></div>` +
       (pool.continuation
-        ? `<div class="fs-note">Carried from Week ${pool.carriedFromWeek}. A continuation ` +
-          'occupies one of the week’s four slots.</div>'
+        ? '<div class="fs-note">'
+          + (pool.carriedFromWeek === undefined
+            ? 'Carried from an earlier week. '
+            : `Carried from Week ${pool.carriedFromWeek}. `)
+          + 'A continuation occupies one of the week’s four slots.</div>'
         : '') +
       (pool.rolledForward
         ? '<div class="fs-note">No entry qualified, so the pot carried forward. ' +

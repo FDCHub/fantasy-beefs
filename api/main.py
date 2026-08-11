@@ -3829,6 +3829,10 @@ class PoolSlotOut(BaseModel):
     display_name:    Optional[str]
     category:        Optional[str]
     scope:           Optional[str]
+    #: The definition's own settle condition, for the Pool detail surface.
+    #: Carried from the catalog rather than restated, so a card and the
+    #: definition it names cannot describe different rules.
+    metric_expression: Optional[str]
     is_continuation: bool
     pot_cents:       int
     rollover_cents:  int
@@ -3911,6 +3915,8 @@ def league_pool_slate(
                 category=getattr(definitions.get(r.definition_key),
                                  "category", None),
                 scope=getattr(definitions.get(r.definition_key), "scope", None),
+                metric_expression=getattr(definitions.get(r.definition_key),
+                                          "metric_expression", None),
                 # A continuation is recorded by origin, not by a flag: a carried
                 # instance points at the pot it came from.
                 is_continuation=r.origin_instance_id is not None,

@@ -47,6 +47,7 @@ PASSWORD = "sprint8-password"
 
 _SEED_SCRIPT = '''
 import os, sys
+from datetime import datetime, timezone
 os.environ["DATABASE_URL"] = {db_url!r}
 sys.path.insert(0, {root!r})
 
@@ -87,8 +88,54 @@ with SessionLocal() as db:
     from test_support_rev42_fixture import _seed_accounting_fixture
     _seed_accounting_fixture(db, league, gm_team, comm_team)
 
+    {extra_seed}
     db.commit()
 '''
+
+#: Opt-in seed steps. Kept OUT of the default fixture on purpose: every existing
+#: suite runs against the plain league, and silently giving it a drawn Pool slate
+#: would change what those suites are certifying.
+_SEED_POOL_SLATE = """
+    # A DRAWN slate for week 5, from the REAL Rev1.3 catalog. This is the
+    # persisted output `betting/pool_slate.build_and_persist_slate` would write.
+    # The builder itself cannot run here — it needs four definitions passing
+    # BOTH gates, and gate 2 is the per-league provider measurement this
+    # environment does not satisfy — so the RESULT is seeded and the UI is then
+    # tested for reading it rather than composing one. No gate is weakened and
+    # no provider measurement is fabricated.
+    from betting.pool_catalog import seed_definitions
+    from db.schema import PoolDefinition, PoolInstance
+    seed_definitions(db)
+    db.flush()
+
+    slate_keys = [d.key for d in db.query(PoolDefinition)
+                  .order_by(PoolDefinition.catalog_number).limit(4).all()]
+
+    prior = PoolInstance(league_id=league.id, season=league.season, week=4,
+                         phase="REGULAR", rotation_cycle=1,
+                         definition_key=slate_keys[0], slot=1,
+                         pot_cents=1000, rollover_cents=0, settled=True)
+    db.add(prior); db.flush()
+
+    for slot, key in enumerate(slate_keys, start=1):
+        db.add(PoolInstance(
+            league_id=league.id, season=league.season, week=5, phase="REGULAR",
+            rotation_cycle=1, definition_key=key, slot=slot,
+            pot_cents=100 * slot, rollover_cents=1000 if slot == 1 else 0,
+            origin_instance_id=prior.id if slot == 1 else None,
+            settled=False))
+    db.flush()
+"""
+
+_SEED_FROZEN_POOL_ENTRY = """
+    # The governed frozen state: `pool_weekly_entry_frozen_at` is written once,
+    # by the season's first Rev1.3 collection, and `configure_pool_weekly_entry`
+    # refuses every later change. Seeding the timestamp reproduces that state.
+    from db.schema import PoolConfig
+    cfg = PoolConfig(league_id=league.id, pool_weekly_entry_cents=200,
+                     pool_weekly_entry_frozen_at=datetime.now(timezone.utc))
+    db.add(cfg); db.flush()
+"""
 
 
 def _free_port() -> int:
@@ -104,10 +151,15 @@ class AppServer:
     directory removed on exit, whether the body succeeded or raised.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, seed_pool_slate: bool = False,
+                 freeze_pool_entry: bool = False) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
         self.origin: str = ""
+        # Both default to False so the fixture every existing suite runs
+        # against is byte-identical to the one they were certified on.
+        self._seed_pool_slate = seed_pool_slate
+        self._freeze_pool_entry = freeze_pool_entry
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -175,8 +227,15 @@ class AppServer:
         same SQLite file as the server, which is the kind of thing that works
         until it intermittently does not.
         """
+        extra = ""
+        if self._seed_pool_slate:
+            extra += _SEED_POOL_SLATE
+        if self._freeze_pool_entry:
+            extra += _SEED_FROZEN_POOL_ENTRY
+
         script = _SEED_SCRIPT.format(db_url=db_url, root=ROOT, gm=GM_EMAIL,
-                                     comm=COMMISSIONER_EMAIL, password=PASSWORD)
+                                     comm=COMMISSIONER_EMAIL, password=PASSWORD,
+                                     extra_seed=extra)
         result = subprocess.run([sys.executable, "-c", script],
                                 capture_output=True, text=True, cwd=ROOT)
         if result.returncode != 0:

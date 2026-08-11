@@ -44,6 +44,20 @@ let MODE = SLATE_MODE_DEMO;
 let SERVED = null;
 
 /**
+ * The league's Standard Pool Bet, for the card's Entry row.
+ *
+ * A SETTING, not a property of the draw — so it is supplied by the shell from
+ * the settings read rather than guessed at here. 0 until one is bound, which
+ * the card draws as $0 rather than as a fabricated figure.
+ */
+let ENTRY_CENTS = 0;
+
+/** @param {number} cents from the authoritative settings read */
+export function setSlateEntryCents(cents) {
+  ENTRY_CENTS = Number.isInteger(cents) ? cents : 0;
+}
+
+/**
  * Bind an authoritative slate read.
  *
  * @param {object} body a PoolSlateOut from GET /league/{id}/pool/slate/{week}
@@ -98,6 +112,19 @@ export function slateRows() {
     name: slot.display_name || slot.definition_key,
     scope: slot.scope,
     category: slot.category,
+    // Presentation fields the locked Pool card and detail sheet expect. Each
+    // is derived from the slate's own authoritative content — the scope the
+    // catalog assigned and the definition's settle condition — rather than
+    // invented. `entryCents` is the league's Standard Pool Bet, supplied by
+    // the caller because it is a SETTING, not a property of the draw.
+    subject: slot.scope === 'MATCHUP' ? 'Matchup' : 'Team',
+    rule: slot.metric_expression || '—',
+    entryCents: ENTRY_CENTS,
+    // Not settled state the slate carries; the detail sheet reads these only
+    // for a settled Pool and a drawn week's slots are open.
+    state: slot.settled ? 'Settled' : '',
+    qualified: false,
+    returnCents: 0,
     potCents: slot.pot_cents,
     rolloverCents: slot.rollover_cents,
     // A carried pot is a slot STATE. The renderer badges it; it never adds a

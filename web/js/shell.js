@@ -62,7 +62,7 @@ import {
   bindSettings, markSettingsUnavailable, unbindSettings,
 } from './settings-model.js';
 import {
-  bindSlate, markSlateUnavailable, unbindSlate,
+  bindSlate, markSlateUnavailable, setSlateEntryCents, unbindSlate,
 } from './pool-slate-model.js';
 import { bindPoolEntryForm, setCommissionerCapability, setSettingSheetMount } from './rules.js';
 
@@ -354,6 +354,11 @@ async function bindAuthoritativeData() {
 
   if (data && data.settings) bindSettings(data.settings);
   else markSettingsUnavailable();
+
+  // The Entry a Pool card shows is the league's Standard Pool Bet, which lives
+  // in settings rather than in the draw — so it is supplied before the slate
+  // binds, from the same authoritative read the Settings tab uses.
+  if (data && data.settings) setSlateEntryCents(data.settings.pool_entry.cents);
 
   if (data && data.slate) bindSlate(data.slate);
   else markSlateUnavailable();
