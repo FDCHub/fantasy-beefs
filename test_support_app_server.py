@@ -59,7 +59,19 @@ Base.metadata.create_all(engine)
 create_ledger_table()
 
 with SessionLocal() as db:
-    league = League(name="Certification League", season=2026)
+    # S8-P4C-3: THE FIXTURE LEAGUE STATES ITS OWN WEEK. Until now the frontend
+    # assumed week 5 from an illustrative constant; the week is authoritative
+    # now and comes from `leagues.provider_current_week`, so a fixture that
+    # declared nothing would leave every week-scoped read unscoped — the Pool
+    # slate included.
+    #
+    # Week 5 is the same week this fixture's slate, matchups and Rev 4.2
+    # figures were always built for. What changed is that the league now SAYS
+    # so, rather than the browser guessing it.
+    league = League(name="Certification League", season=2026,
+                    provider="yahoo",
+                    provider_league_key="461.l.certification",
+                    provider_current_week={provider_week})
     db.add(league); db.flush()
 
     gm_team = Team(team_name="Gravy Train", owner="A. Gm",
@@ -262,7 +274,8 @@ class AppServer:
 
     def __init__(self, *, seed_pool_slate: bool = False,
                  freeze_pool_entry: bool = False,
-                 action_shape: str | None = None) -> None:
+                 action_shape: str | None = None,
+                 provider_week: int | None = 5) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
         self.origin: str = ""
@@ -274,6 +287,12 @@ class AppServer:
         # leaves the fixture exactly as every earlier suite was certified on —
         # the Rev 4.2 season already carries one open challenge and no more.
         self._action_shape = action_shape
+        # S8-P4C-3: the week the fixture league STATES. Defaults to 5 — the week
+        # every earlier suite was certified on — so their fixtures are
+        # unchanged. `None` seeds a provider-bound league that has never been
+        # refreshed, which is the state a real deployment without Yahoo
+        # credentials actually has.
+        self._provider_week = provider_week
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -351,6 +370,7 @@ class AppServer:
 
         script = _SEED_SCRIPT.format(db_url=db_url, root=ROOT, gm=GM_EMAIL,
                                      comm=COMMISSIONER_EMAIL, password=PASSWORD,
+                                     provider_week=self._provider_week,
                                      extra_seed=extra)
         result = subprocess.run([sys.executable, "-c", script],
                                 capture_output=True, text=True, cwd=ROOT)

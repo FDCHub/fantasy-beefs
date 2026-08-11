@@ -42,6 +42,10 @@ import { bindAction, buildActionPanel, setRespondHook } from './action.js';
 // PANEL while this one binds the DATA. Importing both under one name is a
 // syntax error, and the near-miss is exactly how the Ledger pair broke in P4B.
 import {
+  bindLeagueContext, bindWeekMatchups, currentWeek, markLeagueUnavailable,
+  unbindLeague,
+} from './league-model.js';
+import {
   bindAction as bindActionModel,
   markActionUnavailable,
   unbindAction as unbindActionModel,
@@ -72,7 +76,6 @@ import {
 import {
   bindCommissioner, markCommissionerUnavailable, unbindCommissioner,
 } from './commissioner-model.js';
-import { CURRENT_WEEK } from './data/week-data.js';
 import {
   bindSettings, markSettingsUnavailable, unbindSettings,
 } from './settings-model.js';
@@ -327,6 +330,18 @@ function boundAvailableCents() {
 }
 
 /**
+ * The authoritative current week, or null when none is bound.
+ *
+ * Reads the league model rather than a constant, so there is exactly one
+ * answer to "what week is it" in the production shell.
+ *
+ * @returns {number|null}
+ */
+function authoritativeWeek() {
+  return currentWeek();
+}
+
+/**
  * The acting GM's own team name, as the server names it.
  * @returns {string|null}
  */
@@ -450,7 +465,11 @@ async function bindAuthoritativeData() {
   }
 
   try {
-    await loadProductionData({ leagueId, week: CURRENT_WEEK });
+    // NO WEEK IS PASSED. The loader reads the league context first and takes
+    // the provider's own current week from it. The shell used to hand in
+    // `CURRENT_WEEK` — an illustrative constant — which made every week-scoped
+    // production read ask for week 5 regardless of the real week.
+    await loadProductionData({ leagueId });
   } catch {
     markLedgerUnavailable();
     markCommissionerUnavailable();
@@ -484,6 +503,15 @@ async function bindAuthoritativeData() {
   if (data && data.action) bindActionModel(data.action);
   else markActionUnavailable();
 
+  // LEAGUE CONTEXT, and the week every other surface is scoped to.
+  if (data && data.context) bindLeagueContext(data.context);
+  else markLeagueUnavailable();
+
+  // The provider-backed matchups for that week, when there is a week.
+  if (data && data.week !== null && data.weekMatchups) {
+    bindWeekMatchups(data.week, data.weekMatchups);
+  }
+
   // ── The live Action commands ──────────────────────────────────────────
   //
   // INSTALLED ONLY WHEN THE READ BOUND. If the Action state is unavailable the
@@ -510,7 +538,10 @@ async function bindAuthoritativeData() {
     setIssueHook({
       leagueId,
       actingTeamId,
-      week: CURRENT_WEEK,
+      // THE AUTHORITATIVE WEEK, or null. A composer that cannot name the week
+      // cannot issue: the route requires one, and guessing it would post a real
+      // wager into the wrong week.
+      week: authoritativeWeek(),
       issue: issueChallenge,
       refresh: refreshAction,
       explain: explainActionRefusal,
@@ -563,6 +594,7 @@ function clearAuthoritativeData() {
   clearProductionData();
   unbindLedgerModel();
   unbindActionModel();
+  unbindLeague();
   // The commands go with the session. Leaving them installed after sign-out
   // would leave a signed-out page holding a live wagering command.
   setIssueHook(null);

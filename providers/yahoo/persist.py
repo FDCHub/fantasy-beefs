@@ -504,6 +504,20 @@ def refresh_league_week(db, snapshot: ProviderWeek, *,
 
     # §6 — THE INGESTION HORIZON. Checked before any matchup is written.
     current_week = snapshot.league.current_week
+
+    # S8-P4C-3: RECORD THE PROVIDER'S CURRENT WEEK. It already governs the
+    # horizon below; persisting it lets read models answer "which week is it"
+    # from the provider's own statement instead of a constant.
+    #
+    # LAST WRITER WINS, deliberately, and this is NOT a boundary reconciliation.
+    # `_reconcile_boundary` exists for season_final_week / playoff_start_week,
+    # where a provider contradicting an already-frozen value is a CONFLICT
+    # because the economy has been built on it. The current week is the opposite
+    # kind of fact: it is expected to advance, and a refresh reporting a later
+    # week is the normal case rather than a disagreement.
+    if current_week is not None and league.provider_current_week != current_week:
+        league.provider_current_week = current_week
+        db.add(league)
     if (not allow_future_weeks and current_week is not None
             and snapshot.week > current_week):
         result.skipped_beyond_horizon = True

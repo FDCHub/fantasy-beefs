@@ -286,7 +286,20 @@ export function boundHeldCents() {
   return SOURCE.heldCents;
 }
 
-/** Live weekly minimum, when bound. @returns {number|null} */
+/**
+ * The GM's spendable Credits — wallet plus live weekly minimum.
+ *
+ * Reads the SAME `position.spendableCents` the Ledger tab totals from, so the
+ * League strip and the Ledger cannot disagree about what is spendable. Null in
+ * demo, where there is no bound position.
+ *
+ * @returns {number|null}
+ */
+export function boundAvailableCents() {
+  return ledgerMode() === MODE_AUTHORITATIVE
+    ? SOURCE.position.spendableCents : null;
+}
+
 export function boundWeeklyMinLiveCents() {
   return SOURCE.weeklyMinLiveCents ?? null;
 }

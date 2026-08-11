@@ -138,6 +138,46 @@ export function actionIsEmpty() {
 }
 
 /**
+ * The GM's own Credits committed to wagers for one week.
+ *
+ * S8-P4C-3. This was unresolved through P4C-2 for one reason: it is week-scoped
+ * and no authoritative current week existed. The provider states one and the
+ * gateway now persists it, so the figure is derivable — and every OTHER input
+ * was already served per card.
+ *
+ * A SUM OF SERVED FIELDS, NOT A NEW MEASUREMENT. `your_stake_cents` is the
+ * GM's own side of a wager, taken from the frozen proposal; the week is the
+ * challenge's own; and settled wagers are excluded because their money has
+ * already resolved and is no longer committed.
+ *
+ * Null when no week is bound, which is what keeps the cell unresolved rather
+ * than quietly totalling every week at once.
+ *
+ * @param {number|null} week
+ * @returns {number|null}
+ */
+export function committedCentsForWeek(week) {
+  if (MODE !== ACTION_MODE_AUTHORITATIVE || !SERVED) return null;
+  if (week === null || week === undefined) return null;
+
+  let total = 0;
+  for (const section of SECTIONS) {
+    for (const row of SERVED.sections[section] || []) {
+      if (row.week !== week) continue;
+      if (row.settled) continue;
+      // OPEN AND LIVE ONLY. A declined or expired proposal committed nothing —
+      // its escrow was reversed — and counting it would report money the GM
+      // still has as money they have staked.
+      if (!['offered', 'countered', 'accepted'].includes(row.protocol_state)) {
+        continue;
+      }
+      total += Number.isInteger(row.your_stake_cents) ? row.your_stake_cents : 0;
+    }
+  }
+  return total;
+}
+
+/**
  * One served card in the shape the renderer already speaks.
  *
  * A TRANSLATION, NOT A DERIVATION. Every field below is copied from the served

@@ -701,9 +701,22 @@ _assert("P4C-2R: and the locked Rev 4.2 heading survives IN demo",
 
 # §5 — the strip. The leak was never only 14-7: all four cells were computed
 # from the illustrative CARDS and shown to signed-in GMs as their own money.
-_assert("P4C-2R: every Action strip cell is unresolved outside demo",
-        _action_ui.count("pending: unresolved") >= 4,
-        f"{_action_ui.count('pending: unresolved')} cells marked")
+# REVISED BY S8-P4C-3. This counted four unconditional `pending: unresolved`
+# cells, which was accurate when none of the four had a source. `Bet this week`
+# now binds to the authoritative current week, so it is unresolved only when
+# there is no week — and a count that still said "four unconditional" would be
+# describing code that no longer exists.
+#
+# The invariant is unchanged: no strip cell may show an illustrative figure
+# outside demo. Three are unconditionally unresolved and the fourth is
+# conditionally so; the rendered outcome of both is asserted in the browser
+# suite, against the served figures.
+_assert("P4C-2R/3: three Action strip cells remain unconditionally unresolved",
+        _action_ui.count("pending: unresolved },") == 3,
+        f"{_action_ui.count('pending: unresolved },')} unconditional cells")
+_assert("P4C-3: and Bet this week is unresolved only when no week is bound",
+        "pending: unresolved && betThisWeek === null" in _action_ui,
+        "bound to the authoritative week when one exists")
 
 # AND `pending` NOW MEANS ONE THING. Season Bet Record was the first pending
 # cell carrying `text`, and the shared component printed it — struck through as

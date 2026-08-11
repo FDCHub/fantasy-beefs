@@ -19,6 +19,12 @@ import { formatCredits } from './credits.js';
 import { ILLUSTRATIVE, LEAGUE_IDENTITY } from './demo-state.js';
 import { OPPONENTS, POOLS, allMatchups, poolBadge } from './data/league-data.js';
 import { matchupCard } from './wagercard.js';
+import {
+  LEAGUE_MODE_DEMO, currentWeek, leagueMode, leagueName,
+} from './league-model.js';
+import {
+  boundAvailableCents, boundWeeklyMinLiveCents,
+} from './ledger-model.js';
 
 /**
  * @returns {string}
@@ -26,13 +32,38 @@ import { matchupCard } from './wagercard.js';
 export function buildLeaguePanel() {
   const composer = new PanelComposer('league');
 
+  // PRODUCTION IDENTITY, OR NONE. `CULV APPRECIATION SOCIETY` is the fixture's
+  // league and was shown to every signed-in GM regardless of which league they
+  // are actually in. The bound name is `leagues.name` — the PROVIDER's name for
+  // the league once a refresh has bound it, and a locally-chosen one otherwise.
+  const production = leagueMode() !== LEAGUE_MODE_DEMO;
+  const boundName = leagueName();
+  const week = currentWeek();
+
   composer.add(tabHeader({
-    title: LEAGUE_IDENTITY.name,
-    sub: LEAGUE_IDENTITY.week,
-    asideValue: ILLUSTRATIVE.kickoffCountdown,
+    title: production ? (boundName || 'LEAGUE UNAVAILABLE')
+                      : LEAGUE_IDENTITY.name,
+    // THE WEEK, WHEN THE PROVIDER HAS STATED ONE. `Week 5 · Regular Season`
+    // was a fixture string; a league in week 9 read week 5. Where no refresh
+    // has stated a week the label drops the claim rather than guessing.
+    sub: production ? weekLabel(week) : LEAGUE_IDENTITY.week,
+    // FIRST KICKOFF has no authoritative source: the gateway captures matchups
+    // and finality, not a countdown to the next game.
+    asideValue: production ? PENDING_FIGURE : ILLUSTRATIVE.kickoffCountdown,
     asideLabel: 'FIRST KICKOFF',
   }));
 
+  // THE STRIP SPLITS THREE WAYS, and each cell is treated on its own evidence.
+  //
+  //   Wallet / Weekly Min Left / Available  AUTHORITATIVE — the bound Ledger
+  //       already serves all three, and reading them from the same model the
+  //       Ledger tab totals from is what stops the two tabs disagreeing.
+  //
+  //   Net Winnings + rank                   UNRESOLVED — P3 proved season
+  //       winnings has no posted door, and the rank is a standings position the
+  //       provider gateway does not expose. Neither is derivable, and the
+  //       illustrative +$126 / 1st was being shown as this GM's own.
+  const unresolved = production;
   composer.addStrip({
     id: 'fs-strip-league',
     label: 'League summary',
@@ -41,11 +72,21 @@ export function buildLeaguePanel() {
         label: 'Net Winnings',
         cents: ILLUSTRATIVE.netWinningsCents,
         signed: true,
-        context: ILLUSTRATIVE.netWinningsRank,
+        context: production ? '' : ILLUSTRATIVE.netWinningsRank,
+        pending: unresolved,
       },
-      { label: 'Wallet', cents: ILLUSTRATIVE.walletCents },
-      { label: 'Weekly Min Left', cents: ILLUSTRATIVE.weeklyMinLeftCents },
-      { label: 'Available', cents: ILLUSTRATIVE.availableCents, anchor: true },
+      { label: 'Wallet',
+        cents: production ? (boundWalletFigure() ?? 0) : ILLUSTRATIVE.walletCents,
+        pending: production && boundWalletFigure() === null },
+      { label: 'Weekly Min Left',
+        cents: production ? (boundWeeklyMinLiveCents() ?? 0)
+                          : ILLUSTRATIVE.weeklyMinLeftCents,
+        pending: production && boundWeeklyMinLiveCents() === null },
+      { label: 'Available',
+        cents: production ? (boundAvailableCents() ?? 0)
+                          : ILLUSTRATIVE.availableCents,
+        anchor: true,
+        pending: production && boundAvailableCents() === null },
     ],
   });
 
@@ -59,6 +100,34 @@ export function buildLeaguePanel() {
   );
 
   return composer.toHTML();
+}
+
+/**
+ * `Week N · Regular Season`, or the unresolved treatment.
+ *
+ * @param {number|null} week
+ * @returns {string}
+ */
+function weekLabel(week) {
+  if (week === null) return 'Week unavailable';
+  const phase = 'Regular Season';
+  return `Week ${week} · ${phase}`;
+}
+
+/**
+ * Wallet alone, derived from the two bound terms the Ledger publishes.
+ *
+ * Available is spendable = wallet + live weekly minimum, so wallet is their
+ * difference. A SUBTRACTION OF TWO AUTHORITATIVE FIGURES, not a new source —
+ * and null whenever either term is missing, so it can never be half-real.
+ *
+ * @returns {number|null}
+ */
+function boundWalletFigure() {
+  const available = boundAvailableCents();
+  const weeklyMin = boundWeeklyMinLiveCents();
+  if (available === null || weeklyMin === null) return null;
+  return available - weeklyMin;
 }
 
 function betsZone() {

@@ -28,9 +28,11 @@ import {
   ACTION_MODE_UNAVAILABLE,
   actionIsEmpty,
   actionMode,
+  committedCentsForWeek,
   sectionCards,
   sectionCount,
 } from './action-model.js';
+import { currentWeek } from './league-model.js';
 import { moneyFigure, wagerCard } from './wagercard.js';
 import { onActivate } from './interaction.js';
 
@@ -53,7 +55,16 @@ export const ACTION_HEADER = 'WEEK 5 · REGULAR SEASON ACTION';
  * @returns {string}
  */
 export function actionHeader() {
-  return actionMode() === 'demo' ? ACTION_HEADER : 'REGULAR SEASON ACTION';
+  if (actionMode() === 'demo') return ACTION_HEADER;
+  // S8-P4C-3: THE WEEK IS AUTHORITATIVE NOW, so the header may state it again.
+  // P4C-2R dropped it because `WEEK 5` was a fixture constant with no source;
+  // the provider has always stated its current week and the gateway now
+  // persists it. Where no refresh has stated one the header still drops the
+  // claim rather than guessing — the repair is not undone, it is satisfied.
+  const week = currentWeek();
+  return week === null
+    ? 'REGULAR SEASON ACTION'
+    : `WEEK ${week} · REGULAR SEASON ACTION`;
 }
 
 /**
@@ -96,30 +107,53 @@ export function buildActionPanel() {
   // is no third option yet. Every one of these four figures is week-scoped or
   // season-scoped:
   //
-  //   Season Bet Record  needs a season W/L history read — no authoritative
-  //                      source exists anywhere in the backend today;
-  //   Bet this week      needs an authoritative CURRENT WEEK to scope to, and
-  //   Upside left        the same, plus a payout figure that a Dynamic wager
-  //                      does not have until Final Lock;
-  //   Settled            the same current week.
+  // REVISITED IN S8-P4C-3, FIELD BY FIELD, now that the current week is
+  // authoritative. Each was unresolved for its own reason and each was re-asked
+  // on its own evidence — a new source for one of them does not resolve the
+  // others.
   //
-  // The current week is a Week/League-domain fact and P4C-3 owns binding it, so
-  // Action cannot source these without reaching into work this package was told
-  // not to do. What it CAN do is stop presenting fixture arithmetic as the
-  // signed-in GM's own money — which is what these were doing, computed from
-  // `data/action-data.js`'s illustrative CARDS.
+  //   Bet this week      BOUND. It needed a current week to scope to, and now
+  //                      there is one. Every other input was already served:
+  //                      the GM's own stake, the week, and whether the wager is
+  //                      still open. Summed in the model from served fields.
   //
-  // `pending` is the same approved unresolved treatment the Ledger's
-  // Awards / Adj. cell uses: the cell keeps its place and its label, and draws
-  // — instead of a number nobody measured.
+  //   Season Bet Record  STILL UNRESOLVED. This is the GM's WAGER record —
+  //                      how many bets they have won and lost — not their
+  //                      fantasy matchup record. P4C-3 bound the latter, and
+  //                      substituting it here would put a different number
+  //                      under this label. No settled-wager history read
+  //                      exists.
+  //
+  //   Upside left        STILL UNRESOLVED, and not for want of a week. It is
+  //                      what open wagers can still return, which needs a
+  //                      payout figure per wager — and a Dynamic wager has no
+  //                      Derived stake until Final Lock, so the total is
+  //                      unknowable while any Dynamic wager is open. A figure
+  //                      that silently meant "Locked wagers only" would be
+  //                      worse than none.
+  //
+  //   Settled            STILL UNRESOLVED. `net_cents` is served per settled
+  //                      card, so a sum is available — but the label means THIS
+  //                      WEEK's settled wagers, and a settled wager's card
+  //                      carries the week it was FOR. That is sourceable and is
+  //                      left to the package that owns settled-wager history
+  //                      rather than added here on the last day.
+  //
+  // `pending` is the approved unresolved treatment the Ledger's Awards / Adj.
+  // cell uses: the cell keeps its place and its label, and draws — instead of a
+  // number nobody measured.
   const unresolved = actionMode() !== 'demo';
+  const betThisWeek = unresolved
+    ? committedCentsForWeek(currentWeek())
+    : betThisWeekCents();
   composer.addStrip({
     id: 'fs-strip-action',
     label: 'Action summary',
     cells: [
       { label: 'Season Bet Record', text: seasonRecordLabel(),
         pending: unresolved },
-      { label: 'Bet this week', cents: betThisWeekCents(), pending: unresolved },
+      { label: 'Bet this week', cents: betThisWeek ?? 0,
+        pending: unresolved && betThisWeek === null },
       { label: 'Upside left', cents: upsideLeftCents(), signed: true,
         pending: unresolved },
       { label: 'Settled', cents: settledCents(), signed: true, anchor: true,

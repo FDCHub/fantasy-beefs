@@ -132,6 +132,23 @@ class League(Base):
     # playoff_start_week.
     season_final_week   = Column(Integer, nullable=True)
     playoff_start_week  = Column(Integer, nullable=True)
+    # ── Sprint 8 P4C-3: the provider's own current week ───────────────────────
+    #
+    # WHY THIS COLUMN EXISTS. `ProviderLeague.current_week` has always been
+    # parsed from the Yahoo payload and carried through the DTO, but it was used
+    # for exactly one thing — the §6 ingestion horizon in providers/yahoo/
+    # persist.py — and then dropped. Nothing persisted it, so no read route
+    # could serve it, and every production surface that needed "which week is
+    # it" fell back to a hard-coded 5.
+    #
+    # The source was never missing; only the storage was. This records the
+    # provider's statement so the application can stop guessing.
+    #
+    # NULLABLE, and NULL is meaningful: it means no provider refresh has ever
+    # stated a week for this league. Surfaces render that as unresolved rather
+    # than substituting a number — a default here would be the hard-coded 5
+    # again, wearing a column name.
+    provider_current_week = Column(Integer, nullable=True)
     # ── Sprint 6 provider identity (S6-R1) ────────────────────────────────────
     #
     # The provider-native stable league identity. `provider` names the gateway

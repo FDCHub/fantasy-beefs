@@ -70,6 +70,26 @@ async function optional(promise) {
  * @returns {Promise<object>} the snapshot
  */
 export async function loadProductionData({ leagueId, week }) {
+  // ── THE WEEK COMES FIRST, AND IT COMES FROM THE BACKEND ──────────────────
+  //
+  // S8-P4C-3 inverted this function's shape. It used to take `week` from the
+  // caller, and the caller took it from `data/week-data.js` — an illustrative
+  // constant — so every week-scoped production read asked for week 5 no matter
+  // what week the league was actually in.
+  //
+  // The context read is now awaited BEFORE the week-scoped ones, because their
+  // request URLs depend on its answer. A `week` argument is still accepted and
+  // still wins when supplied, so component suites and any caller with a
+  // specific week in mind are unaffected — but production passes none and gets
+  // the provider's own.
+  //
+  // NULL SURVIVES. If no provider refresh has stated a week, `resolvedWeek`
+  // stays null and the week-scoped reads are NOT issued: asking for "week null"
+  // would 404, and asking for week 5 would be the bug this replaced.
+  const context = await optional(apiFetch(`/league/${leagueId}/context/me`));
+  const resolvedWeek = (week !== undefined && week !== null)
+    ? week
+    : (context && context.week_resolved ? context.current_week : null);
   const identity = currentIdentity();
   const isCommissioner = Boolean(
     identity && identity.capabilities
@@ -77,13 +97,13 @@ export async function loadProductionData({ leagueId, week }) {
     && identity.capabilities.commissioner_league_ids.includes(leagueId),
   );
 
-  const [ledger, settings, slate, positions, reconciliation, action]
-      = await Promise.all([
+  const [ledger, settings, slate, positions, reconciliation, action,
+         weekMatchups] = await Promise.all([
     optional(apiFetch(`/league/${leagueId}/ledger/me`)),
     optional(apiFetch(`/league/${leagueId}/settings`)),
-    week === undefined
+    resolvedWeek === null
       ? Promise.resolve(null)
-      : optional(apiFetch(`/league/${leagueId}/pool/slate/${week}`)),
+      : optional(apiFetch(`/league/${leagueId}/pool/slate/${resolvedWeek}`)),
     // Asked for only when the server has already said this user holds
     // commissioner authority here. Requesting it regardless would work — the
     // route would refuse — but it would mean every GM's page load generated a
@@ -95,11 +115,17 @@ export async function loadProductionData({ leagueId, week }) {
     // The GM's own Action tab. Team-less by design — the route resolves the
     // acting team from the session, so there is no id here to substitute.
     optional(apiFetch(`/league/${leagueId}/action/me`)),
+    // The provider-backed matchups for the authoritative week.
+    resolvedWeek === null
+      ? Promise.resolve(null)
+      : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek}/matchups`)),
   ]);
 
   snapshot = Object.freeze({
     leagueId,
-    week: week ?? null,
+    context,
+    week: resolvedWeek,
+    weekMatchups,
     ledger,
     settings,
     slate,

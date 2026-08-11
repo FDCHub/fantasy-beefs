@@ -55,6 +55,9 @@ from betting.bet_engine import (
 )
 from betting.exceptions import NotFoundError, BetValidationError
 from betting.settlement_engine import settle_week, SettlementReport
+from reports.league_read_model import (
+    LeagueReadError, league_context, season_record, week_matchups,
+)
 from reports.action_read_model import (
     SECTIONS as ACTION_SECTIONS, ActionReadError, gm_action_state,
 )
@@ -3966,6 +3969,179 @@ def ledger_me(
                                        league_id=league_id).as_dict())
     except LedgerReadModelError as e:
         raise _read_model_error(e)
+
+
+# ── League and Week read models (S8-P4C-3) ───────────────────────────────────
+
+class LeagueContextOut(BaseModel):
+    league_id:   int
+    league_name: str
+    season:      int
+
+    #: The provider's own current week, or null. NULL IS AN ANSWER — no refresh
+    #: has stated one — and the surfaces render it as unresolved rather than
+    #: substituting a number.
+    current_week:   Optional[int]
+    week_resolved:  bool
+
+    provider:            Optional[str]
+    provider_league_key: Optional[str]
+    provider_state:      str
+
+    acting_team_id:           int
+    acting_team_name:         str
+    acting_team_owner:        str
+    acting_provider_team_key: Optional[str]
+
+    season_final_week:  Optional[int]
+    playoff_start_week: Optional[int]
+
+    #: The acting GM's season W/L, from decided matchups only.
+    record_resolved: bool
+    wins:            Optional[int]
+    losses:          Optional[int]
+    ties:            Optional[int]
+    decided:         int
+    record_label:    Optional[str]
+
+
+class MatchupSideOut(BaseModel):
+    team_id:           int
+    team_name:         str
+    owner:             str
+    provider_team_key: Optional[str]
+    points:            Optional[float]
+    is_acting_team:    bool
+
+
+class WeekMatchupOut(BaseModel):
+    matchup_id:           int
+    week:                 int
+    provider_matchup_key: Optional[str]
+    home:                 MatchupSideOut
+    away:                 MatchupSideOut
+    final:                bool
+    finalized_at:         Optional[str]
+    winner_team_id:       Optional[int]
+    refreshed_at:         Optional[str]
+    involves_acting_team: bool
+    acting_side:          Optional[str]
+
+
+class WeekStateOut(BaseModel):
+    league_id: int
+    week:      int
+    empty:     bool
+    matchups:  list[WeekMatchupOut]
+
+
+@app.get("/league/{league_id}/context/me", response_model=LeagueContextOut)
+def league_context_me(
+    league_id:    int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """The acting GM's league identity, current week and season record.
+
+    THE ONE PLACE THE APPLICATION LEARNS WHAT WEEK IT IS. Before this, the
+    production shell imported `CURRENT_WEEK` from an illustrative fixture and
+    used it for the Pool slate request, the Action header and every week-scoped
+    figure — so a real league in week 9 was served week 5. The provider has
+    always stated its current week; nothing persisted it until S8-P4C-3.
+
+    The team is resolved from the session, never from a parameter.
+    """
+    team_id = _member_team_id(current_user, league_id, db)
+    if team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    try:
+        context = league_context(db, team_id=team_id, league_id=league_id)
+        record = season_record(db, team_id=team_id, league_id=league_id)
+    except LeagueReadError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return LeagueContextOut(
+        league_id=context.league_id,
+        league_name=context.league_name,
+        season=context.season,
+        current_week=context.current_week,
+        week_resolved=context.week_resolved,
+        provider=context.provider,
+        provider_league_key=context.provider_league_key,
+        provider_state=context.provider_state,
+        acting_team_id=context.acting_team_id,
+        acting_team_name=context.acting_team_name,
+        acting_team_owner=context.acting_team_owner,
+        acting_provider_team_key=context.acting_provider_team_key,
+        season_final_week=context.season_final_week,
+        playoff_start_week=context.playoff_start_week,
+        record_resolved=record.resolved,
+        wins=record.wins,
+        losses=record.losses,
+        ties=record.ties,
+        decided=record.decided,
+        record_label=record.label,
+    )
+
+
+@app.get("/league/{league_id}/week/{week}/matchups",
+         response_model=WeekStateOut)
+def league_week_matchups(
+    league_id:    int,
+    week:         int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """The provider-backed matchups for one league-week.
+
+    LEAGUE-SCOPED, unlike the legacy `/league/matchups/{week}`, which queries
+    every matchup in the database regardless of league and would disclose
+    another league's scores to anyone who asked.
+
+    AN EMPTY WEEK IS A SUCCESSFUL READ. `empty: true` means the provider has
+    published nothing for this week yet — an ordinary state, and a different
+    one from a read that failed.
+    """
+    if not 1 <= week <= 22:
+        raise HTTPException(status_code=400, detail="week must be 1-22")
+    team_id = _member_team_id(current_user, league_id, db)
+    if team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    try:
+        state = week_matchups(db, league_id=league_id, week=week,
+                              acting_team_id=team_id)
+    except LeagueReadError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    def side(s) -> MatchupSideOut:
+        return MatchupSideOut(**{f: getattr(s, f)
+                                 for f in MatchupSideOut.model_fields})
+
+    return WeekStateOut(
+        league_id=state.league_id,
+        week=state.week,
+        empty=state.empty,
+        matchups=[
+            WeekMatchupOut(
+                matchup_id=m.matchup_id, week=m.week,
+                provider_matchup_key=m.provider_matchup_key,
+                home=side(m.home), away=side(m.away),
+                final=m.final, finalized_at=m.finalized_at,
+                winner_team_id=m.winner_team_id, refreshed_at=m.refreshed_at,
+                involves_acting_team=m.involves_acting_team,
+                acting_side=m.acting_side,
+            )
+            for m in state.matchups
+        ],
+    )
 
 
 # ── Action read model (S8-P4C-2) ─────────────────────────────────────────────

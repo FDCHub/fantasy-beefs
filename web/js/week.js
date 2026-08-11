@@ -23,6 +23,13 @@
 import { PanelComposer, escapeHtml, note, sectionHeading } from './components.js';
 import { formatCredits } from './credits.js';
 import { CURRENT_WEEK, PAST_WEEK, WEEKS, weekBets, weekPools, yahooMatchups } from './data/week-data.js';
+import {
+  LEAGUE_MODE_DEMO, LEAGUE_MODE_UNAVAILABLE, currentWeek, leagueMode,
+  weekMatchups,
+} from './league-model.js';
+import {
+  ACTION_MODE_UNAVAILABLE, SECTIONS, actionMode, sectionCards,
+} from './action-model.js';
 import { poolBadge } from './data/league-data.js';
 import {
   SLATE_MODE_DEMO,
@@ -156,17 +163,113 @@ export function yahooCard(m) {
 }
 
 function yahooModule() {
-  const matchups = yahooMatchups(selectedWeek);
-  const cards = matchups
-    .map((m) => `<div class="fs-vcar__item" role="listitem">${yahooCard(m)}</div>`)
-    .join('');
+  const production = leagueMode() !== LEAGUE_MODE_DEMO;
+  const body = production ? providerMatchupBody() : demoMatchupBody();
 
   return (
     '<section class="fs-wkmod" data-module="yahoo">' +
     sectionHeading('YAHOO LEAGUE MATCHUPS · SWIPE ↕') +
-    `<div class="fs-vcar" id="fs-yahoo-carousel" role="list">${cards}</div>` +
+    `<div class="fs-vcar" id="fs-yahoo-carousel" role="list">${body}</div>` +
     '</section>'
   );
+}
+
+function demoMatchupBody() {
+  return yahooMatchups(selectedWeek)
+    .map((m) => `<div class="fs-vcar__item" role="listitem">${yahooCard(m)}</div>`)
+    .join('');
+}
+
+/**
+ * The provider-backed matchups, or an honest statement that there are none.
+ *
+ * FOUR OUTCOMES, AND THEY ARE NOT THE SAME SENTENCE:
+ *
+ *   unavailable  the context read failed — say so, and never draw a fixture
+ *                matchup in its place. An illustrative Yahoo card is the worst
+ *                possible thing to show here: it looks exactly like the real
+ *                one and names real-sounding teams and scores.
+ *   no week      no provider refresh has stated a current week, so there is
+ *                nothing to scope a matchup read to.
+ *   not read     this week has not been fetched (only the current week is).
+ *   empty        the read succeeded and the provider published nothing —
+ *                an authoritative answer, not a failure.
+ */
+function providerMatchupBody() {
+  if (leagueMode() === LEAGUE_MODE_UNAVAILABLE) {
+    return weekNote('unavailable',
+      'Your league’s matchups could not be loaded.');
+  }
+  if (currentWeek() === null) {
+    return weekNote('no-week',
+      'No fantasy week has been published for this league yet.');
+  }
+  const rows = weekMatchups(selectedWeek);
+  if (rows === null) {
+    return weekNote('not-read',
+      `Week ${selectedWeek} has not been loaded.`);
+  }
+  if (!rows.length) {
+    return weekNote('empty',
+      `No matchups have been published for week ${selectedWeek}.`);
+  }
+  return rows
+    .map((m) => `<div class="fs-vcar__item" role="listitem">`
+      + `${providerMatchupCard(m)}</div>`)
+    .join('');
+}
+
+function weekNote(state, text) {
+  return `<p class="fs-wkmod__note" data-week-state="${state}">`
+    + `${escapeHtml(text)}</p>`;
+}
+
+/**
+ * One provider-backed matchup card.
+ *
+ * WHAT IT DOES NOT DRAW, and this is the point of the function existing
+ * separately from `yahooCard`: no market row. The illustrative card carries
+ * ML / SPR / O/U cells, and the fixture MANUFACTURES all three from
+ * projections — `spread = opponentFigure - subjectFigure`,
+ * `total = subjectFigure + opponentFigure`. The provider gateway captures no
+ * betting lines of any kind; the only `total` anywhere in the corpus is a
+ * player's fantasy points. Deriving a market from fantasy scores would be
+ * inventing a line, so production shows the scores it has and no market at all.
+ *
+ * FINALITY IS `finalized_at`, not "the week looks over" and not "the score
+ * stopped moving". ORIENTATION is the served home/away, decided from sorted
+ * provider team keys, so a mirrored payload cannot flip the card.
+ */
+function providerMatchupCard(m) {
+  const score = (side) => (side.points === null
+    ? PENDING_FIGURE : side.points.toFixed(1));
+
+  const figures = m.final
+    ? [{ label: 'Final',
+         value: `${score(m.home)} — ${score(m.away)}` }]
+    : [{ label: 'Live',
+         value: `${score(m.home)} — ${score(m.away)}` }];
+
+  const winner = m.winnerTeamId === m.home.teamId ? m.home.name
+    : (m.winnerTeamId === m.away.teamId ? m.away.name : null);
+
+  return wagerCard({
+    identity: `${m.home.name} vs ${m.away.name}`,
+    context: m.involvesActingTeam ? `You are ${m.actingSide}` : '',
+    markets: null,
+    interactiveMarkets: false,
+    figures,
+    badge: 'YAHOO',
+    badgeTone: m.involvesActingTeam ? 'gold' : 'neutral',
+    accent: m.final ? 'done' : '',
+    footLabel: m.final
+      ? (winner ? `FINAL · ${winner} won` : 'FINAL')
+      : 'IN PROGRESS',
+    footValue: '',
+    tapAction: '',
+    tapId: `provider-${m.matchupId}`,
+    className: 'fs-wcard--yahoo',
+  });
 }
 
 /* ── Module 2 · FantasyStakes bets ──────────────────────────────────────────*/
@@ -175,19 +278,54 @@ function betsModule() {
   // At most four, because that is what the locked heading says this module
   // presents. A week holding fewer real wagers draws fewer cards — the shortfall
   // is never made up by inventing a wager that no protocol record supports.
-  const bets = weekBets(selectedWeek).slice(0, BETS_SHOWN);
-  const cards = bets
-    .map((card) => (
-      `<div class="fs-vcar__item is-compact" role="listitem">${lifecycleCard(card)}</div>`
-    ))
-    .join('');
+  const production = actionMode() !== 'demo';
+  const body = production ? versusBody() : demoBetsBody();
 
   return (
     '<section class="fs-wkmod" data-module="bets">' +
     sectionHeading(BETS_HEADING) +
-    `<div class="fs-vcar is-compact" id="fs-week-bets" role="list">${cards}</div>` +
+    `<div class="fs-vcar is-compact" id="fs-week-bets" role="list">${body}</div>` +
     '</section>'
   );
+}
+
+function demoBetsBody() {
+  return weekBets(selectedWeek).slice(0, BETS_SHOWN)
+    .map((card) => (
+      `<div class="fs-vcar__item is-compact" role="listitem">${lifecycleCard(card)}</div>`
+    ))
+    .join('');
+}
+
+/**
+ * The GM's own wagers for the selected week — from the ACTION read contract.
+ *
+ * NO SECOND WAGER READ MODEL. `reports/action_read_model.py` already classifies
+ * this GM's proposals and wagers and serves opponent, stake, mode, terms,
+ * finality and net outcome. A Week-specific reader would be a second answer to
+ * the same question — and the two would agree until the day one of them was
+ * corrected. Versus therefore filters the SAME served cards by week.
+ *
+ * Rendered with `lifecycleCard`, the same component the Action rails use, so a
+ * wager cannot look like one thing on Action and another here.
+ */
+function versusBody() {
+  if (actionMode() === ACTION_MODE_UNAVAILABLE) {
+    return weekNote('unavailable', 'Your wagers could not be loaded.');
+  }
+  const rows = SECTIONS
+    .flatMap((section) => sectionCards(section))
+    .filter((card) => card.week === `WK ${selectedWeek}`)
+    .slice(0, BETS_SHOWN);
+
+  if (!rows.length) {
+    return weekNote('empty', `No wagers for week ${selectedWeek}.`);
+  }
+  return rows
+    .map((card) => (
+      `<div class="fs-vcar__item is-compact" role="listitem">${lifecycleCard(card)}</div>`
+    ))
+    .join('');
 }
 
 /* ── Module 3 · FantasyStakes Pools ─────────────────────────────────────────*/

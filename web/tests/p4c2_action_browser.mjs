@@ -119,13 +119,37 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
   `));
   report.check('the Action strip has its four cells', strip.length === 4,
     String(strip.length));
-  report.check('none of them shows an illustrative figure',
-    strip.every((c) => c.value === '—'),
-    JSON.stringify(strip.map((c) => `${c.label}=${c.value}`)));
-  report.check('and none carries exact cents behind it',
-    strip.every((c) => c.exact === null),
-    JSON.stringify(strip.map((c) => c.exact)));
-  report.check('the Season Bet Record cell shows no record',
+
+  // REVISED BY S8-P4C-3, cell by cell. P4C-2R asserted all four were
+  // unresolved, which was the honest state THEN: every one is week-scoped or
+  // season-scoped and no authoritative current week existed. P4C-3 persists the
+  // provider's own current week, so the cells were re-asked individually — a
+  // new source for one does not resolve the others.
+  //
+  // The invariant being protected never changed: no cell may show an
+  // ILLUSTRATIVE figure. That is what is asserted, per cell, on its own basis.
+  const cell = (label) => strip.find((c) => c.label === label);
+
+  // BOUND — the week resolved it, and every other input was already served.
+  const betThisWeek = cell('Bet this week');
+  const servedCommitted = Object.values(served.sections).flat()
+    .filter((c) => c.week === (served.week ?? null)
+      || ['offered', 'countered', 'accepted'].includes(c.protocol_state))
+    .filter((c) => !c.settled)
+    .reduce((sum, c) => sum + (c.your_stake_cents || 0), 0);
+  report.check('Bet this week is a real figure, not the fixture’s',
+    betThisWeek && betThisWeek.exact !== null
+    && Number(betThisWeek.exact) === servedCommitted,
+    `${betThisWeek ? betThisWeek.exact : 'missing'} vs served ${servedCommitted}`);
+
+  // STILL UNRESOLVED — none of the three gained a source.
+  for (const label of ['Season Bet Record', 'Upside left', 'Settled']) {
+    const c = cell(label);
+    report.check(`${label} is still unresolved`,
+      c && c.value === '—' && c.exact === null,
+      c ? `${c.value} / ${c.exact}` : 'cell missing');
+  }
+  report.check('the Season Bet Record cell shows no fixture record',
     !strip.some((c) => c.value.includes('14')),
     JSON.stringify(strip.map((c) => c.value)));
 
@@ -151,8 +175,26 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
       + '#panel-action .fs-tabhdr__title, #panel-action h1, #panel-action h2');
     return h ? h.textContent.trim() : null;
   `));
-  report.check('the authenticated Action header asserts no week',
-    header !== null && !/WEEK\s*\d/i.test(header), String(header));
+  // REVISED BY S8-P4C-3. P4C-2R required the header to assert NO week, because
+  // `WEEK 5` was a fixture constant with no source. The provider states its own
+  // current week and the gateway now persists it, so the header may name it
+  // again — and must still drop the claim where no refresh has stated one. The
+  // invariant is unchanged: no week is asserted without a source.
+  const servedWeek = await evaluate(asyncProbe(`
+    const r = await fetch('/league/' + ${identity.league} + '/context/me',
+      { credentials: 'same-origin' });
+    if (!r.ok) return null;
+    const b = await r.json();
+    return b.week_resolved ? b.current_week : null;
+  `));
+  if (servedWeek === null) {
+    report.check('with no provider week, the header asserts none',
+      header !== null && !/WEEK\s*\d/i.test(header), String(header));
+  } else {
+    report.check('the header states the AUTHORITATIVE week',
+      header !== null && header.includes(`WEEK ${servedWeek}`),
+      `${header} vs served week ${servedWeek}`);
+  }
   report.check('while still naming the tab',
     header !== null && /ACTION/i.test(header), String(header));
 
