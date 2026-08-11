@@ -150,8 +150,13 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
   check('the detail names its governing source',
     /economy_config/.test(settingSheetState.text));
   check('the detail offers no editor', settingSheetState.inputs === 0);
-  check('the detail says why it is read-only',
-    /Read-only/.test(settingSheetState.text));
+  // GOVERNED REVISION, S8-P4B-3. Bound to real settings, a row says WHY it
+  // cannot change rather than that no command exists — the B2 ruling, not a
+  // missing implementation. This session is an ordinary GM, so even the one
+  // mutable row offers no editor, which the assertion above still checks.
+  check('the detail says why the row cannot be changed',
+    /Read-only|Fixed for the season|commissioner authority|Frozen/
+      .test(settingSheetState.text), settingSheetState.text.slice(0, 140));
 
   /* ── Commissioner order ───────────────────────────────────────────────── */
 

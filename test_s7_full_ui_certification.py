@@ -413,7 +413,7 @@ _assert("pending holds are excluded from settlement, not counted as liabilities"
 #        reaches the server through it
 #
 #   WAS  no form is submitted
-#   NOW  the only form in the application is the sign-in gate
+#   NOW  every form is enumerated and governed (gate + Pool Bet)
 #
 #   WAS  no storage is written
 #   NOW  no credential enters script-readable persistent storage: no
@@ -451,8 +451,21 @@ _assert("no websocket or event-source is opened",
         not re.search(r"new WebSocket|EventSource", APP_RENDERED_SOURCE))
 
 _FORMS = re.findall(r"<form\b[^>]*", APP_RENDERED_SOURCE + INDEX)
-_assert("the only form in the application is the sign-in gate",
-        len(_FORMS) == 1 and "fs-gate-form" in _FORMS[0], str(_FORMS))
+# GOVERNED REVISION, S8-P4B-3. P1 replaced "no form is submitted" with "the
+# only form is the sign-in gate", because at that point authentication was the
+# application's only write. The B2 ruling then made Standard Pool Bet the one
+# governed settings mutation in MVP, so a second form is correct — and the
+# invariant's substance is unchanged: EVERY form is enumerated, and each is
+# either the sign-in gate or a governed, authenticated, server-authorised
+# mutation. A form that is neither is what this still refuses.
+_GOVERNED_FORMS = {"fs-gate-form", "fs-pool-entry-form"}
+_assert("every form in the application is enumerated and governed",
+        len(_FORMS) == len(_GOVERNED_FORMS)
+        and all(any(name in f for f in _FORMS) for name in _GOVERNED_FORMS),
+        str(_FORMS))
+_assert("the mutating form targets the governed command, not the legacy route",
+        "/settings/pool-entry" in APP_SOURCE
+        and "'/pool/config'" not in APP_SOURCE)
 
 print("\nNo browser credential enters script-readable storage")
 

@@ -19,8 +19,16 @@
  * a defensive banner on every screen was the treatment this supersedes.
  * ========================================================================== */
 
-import { PanelComposer, escapeHtml, sectionHeading, tabHeader } from './components.js';
+import { PanelComposer, escapeHtml, note, sectionHeading, tabHeader } from './components.js';
 import { LEGAL_LINE, RULE_GROUPS, SETTINGS, SETTINGS_SEAM } from './data/rules-data.js';
+import {
+  SETTINGS_MODE_AUTHORITATIVE,
+  SETTINGS_MODE_UNAVAILABLE,
+  poolEntryEditable,
+  settingsMode,
+  settingsRows,
+} from './settings-model.js';
+import { explainRefusal, updatePoolEntry } from './settings-command.js';
 import { LEAGUE_IDENTITY } from './demo-state.js';
 import { bindCommissioner, commissionerArea } from './commissioner.js';
 
@@ -103,9 +111,16 @@ function settingRow(setting) {
 
 function settingsRegion() {
   return (
-    '<section class="fs-rulesec" data-region="settings">' +
-    sectionHeading('LEAGUE SETTINGS', 'read-only') +
-    `<div class="fs-settings" id="fs-settings">${SETTINGS.map(settingRow).join('')}</div>` +
+    `<section class="fs-rulesec" data-region="settings" ` +
+    `data-state="${escapeHtml(settingsMode())}">` +
+    sectionHeading('LEAGUE SETTINGS',
+                   settingsMode() === SETTINGS_MODE_UNAVAILABLE ? '' : 'read-only') +
+    (settingsMode() === SETTINGS_MODE_UNAVAILABLE
+      ? note('League settings could not be read for this session. The figures '
+             + 'below are not shown rather than shown wrongly — a league’s '
+             + 'rules are not something to guess at.', { pending: true })
+      : `<div class="fs-settings" id="fs-settings">` +
+        `${settingsRows().map(settingRow).join('')}</div>`) +
     // Stated on the surface, not only in the model: a row that looks editable
     // and is not should say why.
     // S8-P4 CORRECTION. This said no governed configuration command existed.
@@ -134,14 +149,99 @@ export function settingSheet(setting) {
   return {
     title: setting.label,
     sub: 'League configuration',
+    onMount: SETTING_SHEET_MOUNT,
     body:
       '<div class="fs-prev__row"><span class="fs-prev__label">Current</span>' +
       `<span class="fs-prev__value fs-money"${exact}>${escapeHtml(setting.value)}</span></div>` +
       `<div class="fs-rule__body">${escapeHtml(setting.detail)}</div>` +
       `<div class="fs-rule__src">${escapeHtml(setting.source)}</div>` +
-      `<div class="fs-note is-warn">Read-only. ${escapeHtml(SETTINGS_SEAM.needs)}. ` +
-      'This surface implements no configuration path of its own.</div>',
+      settingControl(setting),
   };
+}
+
+/**
+ * The per-row control.
+ *
+ * EXACTLY ONE ROW IS MUTABLE, and the server says which. `editable` comes from
+ * the settings response, and `poolEntryEditable()` additionally requires the
+ * acting session to hold commissioner authority — but neither decides
+ * anything: the command is refused server-side for anyone without league
+ * authority, and after the season's first collection freezes it. The control
+ * is drawn disabled rather than offered and then refused, which is a courtesy,
+ * not a permission.
+ *
+ * @param {object} setting a row from `settingsRows()`
+ * @returns {string}
+ */
+function settingControl(setting) {
+  if (settingsMode() !== SETTINGS_MODE_AUTHORITATIVE) {
+    return `<div class="fs-note is-warn">Read-only. `
+      + `${escapeHtml(SETTINGS_SEAM.needs)}. `
+      + 'This surface implements no configuration path of its own.</div>';
+  }
+
+  if (setting.id !== 'pool-bet') {
+    // Fixed for the season — the B2 ruling, not a missing implementation.
+    return '<div class="fs-note">Fixed for the season. Changing it would '
+      + 're-price obligations GMs have already funded, so no command exists '
+      + 'to change it mid-season.</div>';
+  }
+
+  if (setting.frozen) {
+    return '<div class="fs-note is-warn">Frozen for this season — the first '
+      + 'Pool week has been collected, and the entry is fixed from that point. '
+      + 'The server refuses a change whatever this surface shows.</div>';
+  }
+
+  if (!poolEntryEditable(COMMISSIONER_CAPABILITY)) {
+    return '<div class="fs-note">Set by the league commissioner. Your session '
+      + 'does not hold commissioner authority for this league.</div>';
+  }
+
+  return (
+    '<form class="fs-setform" id="fs-pool-entry-form">' +
+    '<label class="fs-setform__label" for="fs-pool-entry">Standard Pool Bet</label>' +
+    // `min`/`max`/`step` come from the SERVER's governed bounds. They are a
+    // convenience for the input, not the enforcement: an out-of-bounds value
+    // is refused by `betting/pool_funding.configure_pool_weekly_entry`, and
+    // nothing here clamps silently.
+    `<input class="fs-setform__input" id="fs-pool-entry" type="number" ` +
+    `min="${setting.minCents / 100}" max="${setting.maxCents / 100}" ` +
+    `step="0.01" value="${setting.exactCents / 100}" ` +
+    `data-min-cents="${setting.minCents}" data-max-cents="${setting.maxCents}">` +
+    '<button type="submit" class="fs-btn fs-btn--gold fs-setform__save" ' +
+    'id="fs-pool-entry-save">Save</button>' +
+    '<p class="fs-setform__error" id="fs-pool-entry-error" role="alert" ' +
+    'aria-live="polite"></p>' +
+    '</form>'
+  );
+}
+
+/**
+ * Whether the acting session holds commissioner authority for this league.
+ *
+ * Set by the shell from /auth/me before the panel is built. Presentation only.
+ */
+let COMMISSIONER_CAPABILITY = false;
+
+/** @param {boolean} value from /auth/me capabilities */
+export function setCommissionerCapability(value) {
+  COMMISSIONER_CAPABILITY = Boolean(value);
+}
+
+/**
+ * The settings sheet's mount hook.
+ *
+ * Set by the shell, which is the only thing that knows the acting league and
+ * how to re-render after a save. Left null in demo mode, where there is no
+ * league to write to and the form is never drawn.
+ * @type {((host: HTMLElement, api: object) => void)|null}
+ */
+let SETTING_SHEET_MOUNT = null;
+
+/** @param {((host: HTMLElement, api: object) => void)|null} fn */
+export function setSettingSheetMount(fn) {
+  SETTING_SHEET_MOUNT = fn;
 }
 
 /* ── D · Legal ──────────────────────────────────────────────────────────────*/
@@ -191,10 +291,62 @@ export function bindRules(panel, api) {
 
   panel.querySelectorAll('[data-setting]').forEach((el) => {
     el.addEventListener('click', () => {
-      const setting = SETTINGS.find((s) => s.id === el.dataset.setting);
+      const setting = settingsRows().find((s) => s.id === el.dataset.setting);
       if (setting) api.openSheet(settingSheet(setting));
     });
   });
 
   bindCommissioner(panel, api);
+}
+
+/**
+ * Bind the Standard Pool Bet form, wherever it is rendered.
+ *
+ * The form lives inside the settings SHEET, which is created after the panel
+ * is bound, so this is called from the sheet's own mount rather than from
+ * `bindRules`.
+ *
+ * @param {HTMLElement} host the sheet element
+ * @param {{leagueId: number, onSaved: (settings: object) => void}} ctx
+ */
+export function bindPoolEntryForm(host, ctx) {
+  const form = host.querySelector('#fs-pool-entry-form');
+  if (!form) return;
+
+  const input = form.querySelector('#fs-pool-entry');
+  const save = form.querySelector('#fs-pool-entry-save');
+  const error = form.querySelector('#fs-pool-entry-error');
+  let inFlight = false;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (inFlight) return;
+
+    // Dollars in, exact cents out. Rounded ONCE here, at the input boundary,
+    // because a float dollar figure cannot be sent to a cents API without
+    // deciding where the rounding happens — and nothing downstream may round.
+    const cents = Math.round(Number(input.value) * 100);
+    error.textContent = '';
+
+    if (!Number.isFinite(cents)) {
+      error.textContent = 'Enter an amount.';
+      return;
+    }
+
+    inFlight = true;
+    save.disabled = true;
+    save.textContent = 'Saving…';
+    try {
+      // NOT CLAMPED. An out-of-bounds value is sent and the server's refusal
+      // is shown, so the bound stays in the setter that owns it.
+      const settings = await updatePoolEntry(ctx.leagueId, cents);
+      ctx.onSaved(settings);
+    } catch (refusal) {
+      error.textContent = explainRefusal(refusal);
+    } finally {
+      inFlight = false;
+      save.disabled = false;
+      save.textContent = 'Save';
+    }
+  });
 }

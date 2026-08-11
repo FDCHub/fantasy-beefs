@@ -20,10 +20,17 @@
  * strip — and therefore no Credits disclaimer, which appears only under one.
  * ========================================================================== */
 
-import { PanelComposer, escapeHtml, sectionHeading } from './components.js';
+import { PanelComposer, escapeHtml, note, sectionHeading } from './components.js';
 import { formatCredits } from './credits.js';
 import { CURRENT_WEEK, PAST_WEEK, WEEKS, weekBets, weekPools, yahooMatchups } from './data/week-data.js';
 import { poolBadge } from './data/league-data.js';
+import {
+  SLATE_MODE_DEMO,
+  SLATE_MODE_DRAWN,
+  SLATE_MODE_UNDRAWN,
+  slateMode,
+  slateRows,
+} from './pool-slate-model.js';
 import { lifecycleCard, wagerSheet } from './action.js';
 import { poolSheet } from './league.js';
 import { previewSheet } from './preview.js';
@@ -210,10 +217,41 @@ function poolRow(pool) {
   );
 }
 
+/**
+ * The week's Pools.
+ *
+ * WHICH POOLS A WEEK HAS IS THE SLATE'S ANSWER, not this module's. In demo
+ * mode the POR's four illustrative Pools are drawn so the cards stay
+ * reviewable in isolation; in production the authoritative slate is drawn, and
+ * when no slate has been drawn the row says so rather than inventing four.
+ *
+ * The Rev1.3 selector requires four definitions passing BOTH gates, and gate 2
+ * is a per-league, per-provider source measurement that is unsatisfied without
+ * provider access. An undrawn week is therefore ordinary, not a fault — and
+ * falling back to the launch cards would present a retired fixed set as this
+ * week's governed draw.
+ */
 function poolsModule() {
-  const pools = weekPools(selectedWeek);
+  const mode = slateMode();
+  const pools = mode === SLATE_MODE_DEMO ? weekPools(selectedWeek) : slateRows();
+
+  if (mode === SLATE_MODE_UNDRAWN || mode === 'unavailable') {
+    const reason = mode === SLATE_MODE_UNDRAWN
+      ? 'No Pool slate has been drawn for this week yet. Four definitions must '
+        + 'pass both catalog gates before a week can be drawn, and the '
+        + 'league’s provider source readiness is not yet confirmed.'
+      : 'This week’s Pool slate could not be read for this session.';
+    return (
+      `<section class="fs-wkmod" data-module="pools" data-state="${escapeHtml(mode)}">` +
+      sectionHeading('FANTASYSTAKES POOLS') +
+      '<div class="fs-poolrows" id="fs-week-pools"></div>' +
+      note(reason, { pending: true }) +
+      '</section>'
+    );
+  }
+
   return (
-    '<section class="fs-wkmod" data-module="pools">' +
+    `<section class="fs-wkmod" data-module="pools" data-state="${escapeHtml(mode)}">` +
     sectionHeading(`FANTASYSTAKES POOLS · ${pools.length} THIS WEEK`) +
     `<div class="fs-poolrows" id="fs-week-pools">${pools.map(poolRow).join('')}</div>` +
     '</section>'
@@ -277,7 +315,8 @@ export function bindWeek(panel, api) {
     });
   });
 
-  const pools = weekPools(selectedWeek);
+  const pools = slateMode() === SLATE_MODE_DEMO
+    ? weekPools(selectedWeek) : slateRows();
   panel.querySelectorAll('[data-pool]').forEach((el) => {
     el.addEventListener('click', () => {
       const pool = pools.find((p) => String(p.catalogNumber) === el.dataset.pool);

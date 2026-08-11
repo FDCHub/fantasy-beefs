@@ -58,6 +58,13 @@ import {
   bindCommissioner, markCommissionerUnavailable, unbindCommissioner,
 } from './commissioner-model.js';
 import { CURRENT_WEEK } from './data/week-data.js';
+import {
+  bindSettings, markSettingsUnavailable, unbindSettings,
+} from './settings-model.js';
+import {
+  bindSlate, markSlateUnavailable, unbindSlate,
+} from './pool-slate-model.js';
+import { bindPoolEntryForm, setCommissionerCapability, setSettingSheetMount } from './rules.js';
 
 /* ── Masthead ───────────────────────────────────────────────────────────── */
 
@@ -344,6 +351,36 @@ async function bindAuthoritativeData() {
 
   if (data && data.positions) bindCommissioner(data.positions, data.reconciliation);
   else markCommissionerUnavailable();
+
+  if (data && data.settings) bindSettings(data.settings);
+  else markSettingsUnavailable();
+
+  if (data && data.slate) bindSlate(data.slate);
+  else markSlateUnavailable();
+
+  // Presentation capability, from the server's own answer. It decides what is
+  // DRAWN; the command is refused server-side regardless.
+  const identity = currentIdentity();
+  const caps = (identity && identity.capabilities) || {};
+  setCommissionerCapability(
+    Array.isArray(caps.commissioner_league_ids)
+    && caps.commissioner_league_ids.includes(leagueId));
+
+  // The settings sheet needs a league to write to and a way to re-render after
+  // a save. Both are the shell's to know, so the hook is installed here rather
+  // than reached for from inside the sheet.
+  setSettingSheetMount((host, api) => {
+    bindPoolEntryForm(host, {
+      leagueId,
+      onSaved: (settings) => {
+        // The command returns the whole settings body, so this IS the
+        // authoritative refresh — no second read to fall out of step with.
+        bindSettings(settings);
+        api.rerender();
+        mountApplication();
+      },
+    });
+  });
 }
 
 /**
@@ -358,6 +395,10 @@ function clearAuthoritativeData() {
   clearProductionData();
   unbindLedgerModel();
   unbindCommissioner();
+  unbindSettings();
+  unbindSlate();
+  setCommissionerCapability(false);
+  setSettingSheetMount(null);
 }
 
 /* ── Mount ──────────────────────────────────────────────────────────────── */
