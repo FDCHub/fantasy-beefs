@@ -37,11 +37,26 @@ import { escapeHtml, sheet } from './components.js';
 
 import { ILLUSTRATIVE, MASTHEAD } from './demo-state.js';
 import { bindLeague, buildLeaguePanel } from './league.js';
-import { bindAction, buildActionPanel } from './action.js';
+import { bindAction, buildActionPanel, setRespondHook } from './action.js';
+// ALIASED, because `action.js` already exports a `bindAction` that wires the
+// PANEL while this one binds the DATA. Importing both under one name is a
+// syntax error, and the near-miss is exactly how the Ledger pair broke in P4B.
+import {
+  bindAction as bindActionModel,
+  markActionUnavailable,
+  unbindAction as unbindActionModel,
+} from './action-model.js';
 import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
 import { bindRules, buildRulesPanel } from './rules.js';
-import { beginSession, composerSheet, endSession } from './composer.js';
+import {
+  beginSession, composerSheet, endSession, setIssueHook,
+} from './composer.js';
+import {
+  ActionCommandError,
+  acceptChallenge, counterChallenge, declineChallenge,
+  explainRefusal as explainActionRefusal, issueChallenge, readActionState,
+} from './action-command.js';
 import { bindGate, bindIdentityBlock, buildGate, buildIdentityBlock } from './auth-view.js';
 import {
   currentIdentity, isAuthenticated, onIdentityChange, refreshIdentity,
@@ -58,6 +73,7 @@ import {
   bindCommissioner, markCommissionerUnavailable, unbindCommissioner,
 } from './commissioner-model.js';
 import { CURRENT_WEEK } from './data/week-data.js';
+import { matchup } from './data/league-data.js';
 import {
   bindSettings, markSettingsUnavailable, unbindSettings,
 } from './settings-model.js';
@@ -149,6 +165,47 @@ export function buildPanelContent(destinationId) {
   throw new Error(`no panel content defined for "${destinationId}"`);
 }
 
+/**
+ * Ask for a counter stake, in exact cents.
+ *
+ * `window.prompt` deliberately: a counter is a stake entry the approved Rev 4.2
+ * Response Card composition does not include a field for, and inventing one
+ * would be a product change this package does not own. The value is parsed
+ * strictly and sent unclamped — the server owns every bound, and a client that
+ * quietly adjusted the number would report success for a stake the GM did not
+ * choose.
+ *
+ * @param {object} card
+ * @returns {Promise<number|null>} exact cents, or null if cancelled
+ */
+async function promptCounterStake(card) {
+  const raw = window.prompt(
+    `Counter ${card.opponent} with what stake, in Credits?`, '');
+  if (raw === null) return null;
+  const trimmed = String(raw).trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+    throw new ActionCommandError(400, 'invalid_stake',
+      'Enter a stake like 25 or 25.50.');
+  }
+  return Math.round(Number(trimmed) * 100);
+}
+
+/**
+ * Redraw the Action panel from current model state.
+ *
+ * ONLY THE ACTION PANEL. A command changes what Action shows; re-mounting the
+ * whole application would also tear down the sheet stack the GM is standing in
+ * and lose their place. The Ledger figures a wager moves arrive on the next
+ * full load — Ledger is never written locally, which is the rule that keeps
+ * accounting single-sourced.
+ */
+function redrawActionPanel() {
+  const panel = document.getElementById('panel-action');
+  if (!panel) return;
+  panel.innerHTML = buildPanelContent('action');
+  bindAction(panel, { openSheet });
+}
+
 /* ── Pop-out / bottom sheet ─────────────────────────────────────────────── */
 
 /**
@@ -234,9 +291,51 @@ export function openComposer(spec) {
   beginSession({
     matchupId: spec.matchupId,
     marketId: spec.marketId ?? null,
-    availableCents: ILLUSTRATIVE.availableCents,
+    // THE STAKE CEILING THE COMPOSER VALIDATES AGAINST, from the bound Ledger
+    // when there is one. The illustrative figure is a fixture number and would
+    // let a production GM compose a stake their wallet cannot cover — the
+    // server refuses it either way, but being told after sending is worse than
+    // being told while typing.
+    availableCents: boundAvailableCents() ?? ILLUSTRATIVE.availableCents,
+    // THE AUTHORITATIVE TARGET, matched by name against the served opponent
+    // list. The League tab is still illustrative until P4C-3, so the matchup
+    // this was opened from carries a fixture identity; resolving the real team
+    // here is what lets the issue command name a real GM. Null when no match
+    // exists, and the composer then has no live hook to send with.
+    opponentTeamId: resolveOpponentTeamId(spec.matchupId),
   });
   openSheet(() => composerSheet());
+}
+
+/**
+ * The acting GM's spendable Credits, when the Ledger is bound.
+ * @returns {number|null}
+ */
+function boundAvailableCents() {
+  const data = productionData();
+  if (!data || !data.ledger) return null;
+  const cents = data.ledger.available_cents;
+  return Number.isInteger(cents) ? cents : null;
+}
+
+/**
+ * Resolve a composer target to a real team id.
+ *
+ * BY NAME, and only against the SERVED opponent list — so the id can never come
+ * from the fixture, which is the failure this guards: a fixture id that happened
+ * to be a valid team number would have addressed a stranger. No match means no
+ * authoritative target, and `null` disables the live send rather than guessing.
+ *
+ * @param {string} matchupId
+ * @returns {number|null}
+ */
+function resolveOpponentTeamId(matchupId) {
+  const data = productionData();
+  if (!data || !data.action || !Array.isArray(data.action.opponents)) return null;
+  const m = matchup(matchupId);
+  if (!m) return null;
+  const found = data.action.opponents.find((o) => o.team_name === m.name);
+  return found ? found.team_id : null;
 }
 
 function bindSheet() {
@@ -333,6 +432,7 @@ async function bindAuthoritativeData() {
   if (leagueId === null) {
     markLedgerUnavailable();
     markCommissionerUnavailable();
+    markActionUnavailable();
     return;
   }
 
@@ -341,6 +441,7 @@ async function bindAuthoritativeData() {
   } catch {
     markLedgerUnavailable();
     markCommissionerUnavailable();
+    markActionUnavailable();
     return;
   }
 
@@ -363,10 +464,59 @@ async function bindAuthoritativeData() {
   if (data && data.slate) bindSlate(data.slate);
   else markSlateUnavailable();
 
-  // Presentation capability, from the server's own answer. It decides what is
-  // DRAWN; the command is refused server-side regardless.
+  // AN EMPTY ACTION TAB IS STILL A BOUND ONE. The read returns four empty
+  // sections for a GM with no wagers, which is an answer; only a failed or
+  // refused read is unavailable. Testing the body rather than its contents is
+  // what keeps those two apart.
+  if (data && data.action) bindActionModel(data.action);
+  else markActionUnavailable();
+
+  // ── The live Action commands ──────────────────────────────────────────
+  //
+  // INSTALLED ONLY WHEN THE READ BOUND. If the Action state is unavailable the
+  // hooks stay null and the surfaces draw no controls: a GM whose state could
+  // not be read must not be offered an Accept button, because neither they nor
+  // the page knows what they would be accepting.
   const identity = currentIdentity();
   const caps = (identity && identity.capabilities) || {};
+  const actingTeamId = (!caps.acting_context_ambiguous
+    && typeof caps.acting_team_id === 'number') ? caps.acting_team_id : null;
+
+  if (data && data.action && actingTeamId !== null) {
+    const refreshAction = async () => {
+      // ONE WAY TO LEARN WHAT IS TRUE. Every command ends here, and so does a
+      // plain page load — a second refresh path is a second chance to disagree.
+      try {
+        bindActionModel(await readActionState(leagueId));
+      } catch {
+        markActionUnavailable();
+      }
+      redrawActionPanel();
+    };
+
+    setIssueHook({
+      leagueId,
+      actingTeamId,
+      week: CURRENT_WEEK,
+      issue: issueChallenge,
+      refresh: refreshAction,
+      explain: explainActionRefusal,
+    });
+    setRespondHook({
+      accept: acceptChallenge,
+      decline: declineChallenge,
+      counter: counterChallenge,
+      refresh: refreshAction,
+      explain: explainActionRefusal,
+      promptStake: promptCounterStake,
+    });
+  } else {
+    setIssueHook(null);
+    setRespondHook(null);
+  }
+
+  // Presentation capability, from the server's own answer. It decides what is
+  // DRAWN; the command is refused server-side regardless.
   setCommissionerCapability(
     Array.isArray(caps.commissioner_league_ids)
     && caps.commissioner_league_ids.includes(leagueId));
@@ -399,6 +549,11 @@ async function bindAuthoritativeData() {
 function clearAuthoritativeData() {
   clearProductionData();
   unbindLedgerModel();
+  unbindActionModel();
+  // The commands go with the session. Leaving them installed after sign-out
+  // would leave a signed-out page holding a live wagering command.
+  setIssueHook(null);
+  setRespondHook(null);
   unbindCommissioner();
   unbindSettings();
   unbindSlate();

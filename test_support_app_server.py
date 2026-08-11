@@ -92,6 +92,115 @@ with SessionLocal() as db:
     db.commit()
 '''
 
+#: S8-P4C-2 — put the GM's team into one specific Action situation.
+#:
+#: SEEDED THROUGH THE GOVERNED PATH, not by writing rows. Each shape below is
+#: produced by the same funded lifecycle calls the HTTP routes make, so a
+#: browser assertion about a countered wager is an assertion about what the
+#: real protocol produces rather than about what this fixture imagined.
+#:
+#: The Rev 4.2 season already leaves ONE open week-6 challenge from the GM to
+#: the opponent. Shapes that need a clean slate decline it first, through the
+#: lifecycle, so the money returns the way it really would.
+_SEED_ACTION = """
+    import uuid as _uuid
+    from beefs import proposal_lifecycle as _spec1
+    from economy import challenge_funding as _cf
+    from db.schema import BeefChallenge as _BC, Matchup as _M, Player as _P
+    from db.schema import Projection as _Pr, Roster as _R, Wallet as _W
+
+    _shape = {shape!r}
+
+    # THE EMPTY GM IS A THIRD TEAM, seeded with nothing. Declining the Rev 4.2
+    # fixture's own opening challenge would leave a terminal record, and a GM
+    # whose wagers ENDED is not the same as one who never had any — the empty
+    # rails claim is about the latter, so it needs a GM with no history at all.
+    if _shape == "empty":
+        from db.schema import Team as _T2, User as _U2, Wallet as _W2
+        _fresh = _T2(team_name="Fresh Start", owner="A. Newcomer",
+                     email="empty@certification.test", league_id=league.id)
+        db.add(_fresh); db.flush()
+        db.add(_U2(email="empty@certification.test", hashed_password=hashed,
+                   team_id=_fresh.id, role="gm"))
+        db.add(_W2(team_id=_fresh.id, balance=0.0))
+        db.flush()
+
+    # Rosters, projections and a shared matchup: the live route prices a locked
+    # wager by Monte Carlo over real starters, and acceptance refuses to create
+    # a Bet for a team with no matchup.
+    for _t, _nfl in ((gm_team, "KC"), (comm_team, "PHI")):
+        if not db.query(_R).filter(_R.team_id == _t.id).first():
+            for _i in range(9):
+                _pl = _P(name=_t.team_name[:4] + "-P" + str(_i),
+                         position="WR", nfl_team=_nfl)
+                db.add(_pl); db.flush()
+                db.add(_R(team_id=_t.id, player_id=_pl.id))
+                db.add(_Pr(player_id=_pl.id, week=5, season=2026,
+                           projected_points=12.0 + _i, source="fixture"))
+        if not db.query(_W).filter(_W.team_id == _t.id).first():
+            db.add(_W(team_id=_t.id, balance=0.0))
+    db.flush()
+    if not db.query(_M).filter(_M.league_id == league.id, _M.week == 5).first():
+        db.add(_M(league_id=league.id, week=5, home_team_id=gm_team.id,
+                  away_team_id=comm_team.id, home_score=0.0, away_score=0.0))
+    db.flush()
+
+    # The opponent needs spendable Credits to fund a Derived stake.
+    from economy.current_settle import DOOR_APPROVED_TOPOFF as _DOOR
+    from economy.economy_events import wallet_account as _wallet
+    from ledger.ledger import post as _post
+    _post([(_wallet(comm_team.id), 50_000), ("world", -50_000)],
+          door=_DOOR, session=db)
+    db.flush()
+
+    # A CLEAN SLATE, through the protocol. The fixture's own open challenge is
+    # declined rather than deleted, so the escrow unwinds by real reverse legs.
+    for _open in db.query(_BC).filter(
+            _BC.response_status.in_(_spec1.OPEN_STATES)).all():
+        _cf.decline_funded_challenge(
+            event_id=_uuid.uuid4(), challenge_id=_open.id,
+            actor_team_id=_open.challenged_team_id, db=db)
+
+    def _terms(cents, dynamic=False):
+        return _spec1.ProposalTerms(
+            anchor_stake_cents=cents,
+            quoted_derived_stake_cents=None if dynamic else cents,
+            quoted_funded_pot_cents=None if dynamic else cents * 2,
+            anchor_odds=1.909, derived_odds=1.909,
+            anchor_moneyline=-110, derived_moneyline=-110,
+            anchor_win_probability=0.5, derived_win_probability=0.5,
+            pricing_model_id="dynamic" if dynamic else "locked",
+        )
+
+    if _shape != "empty":
+        _mode = _spec1.MODE_DYNAMIC if _shape == "dynamic" else _spec1.MODE_LOCKED
+        # 'recipient' is the one shape where the GM must RECEIVE the offer.
+        _from, _to = ((comm_team.id, gm_team.id) if _shape == "recipient"
+                      else (gm_team.id, comm_team.id))
+        _issued = _cf.issue_funded_challenge(
+            event_id=_uuid.uuid4(), league_id=league.id, week=5,
+            challenger_team_id=_from, challenged_team_id=_to,
+            wager_type="straight",
+            terms=_terms(2_000, dynamic=(_shape == "dynamic")),
+            db=db, challenge_mode=_mode)
+        _ch = _issued.challenge_id
+
+        if _shape == "countered":
+            # The OPPONENT counters, handing the decision back to the GM — the
+            # case where direction stops predicting the section.
+            _cf.counter_funded_challenge(
+                event_id=_uuid.uuid4(), challenge_id=_ch,
+                actor_team_id=comm_team.id, terms=_terms(2_600), db=db)
+        elif _shape == "accepted":
+            _cf.accept_funded_challenge(
+                event_id=_uuid.uuid4(), challenge_id=_ch,
+                actor_team_id=comm_team.id, db=db)
+        elif _shape == "declined":
+            _cf.decline_funded_challenge(
+                event_id=_uuid.uuid4(), challenge_id=_ch,
+                actor_team_id=comm_team.id, db=db)
+"""
+
 #: Opt-in seed steps. Kept OUT of the default fixture on purpose: every existing
 #: suite runs against the plain league, and silently giving it a drawn Pool slate
 #: would change what those suites are certifying.
@@ -152,7 +261,8 @@ class AppServer:
     """
 
     def __init__(self, *, seed_pool_slate: bool = False,
-                 freeze_pool_entry: bool = False) -> None:
+                 freeze_pool_entry: bool = False,
+                 action_shape: str | None = None) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
         self.origin: str = ""
@@ -160,6 +270,10 @@ class AppServer:
         # against is byte-identical to the one they were certified on.
         self._seed_pool_slate = seed_pool_slate
         self._freeze_pool_entry = freeze_pool_entry
+        # S8-P4C-2: which Action situation the GM's team should be in. None
+        # leaves the fixture exactly as every earlier suite was certified on —
+        # the Rev 4.2 season already carries one open challenge and no more.
+        self._action_shape = action_shape
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -232,6 +346,8 @@ class AppServer:
             extra += _SEED_POOL_SLATE
         if self._freeze_pool_entry:
             extra += _SEED_FROZEN_POOL_ENTRY
+        if self._action_shape:
+            extra += _SEED_ACTION.format(shape=self._action_shape)
 
         script = _SEED_SCRIPT.format(db_url=db_url, root=ROOT, gm=GM_EMAIL,
                                      comm=COMMISSIONER_EMAIL, password=PASSWORD,

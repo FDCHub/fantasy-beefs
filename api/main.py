@@ -55,6 +55,9 @@ from betting.bet_engine import (
 )
 from betting.exceptions import NotFoundError, BetValidationError
 from betting.settlement_engine import settle_week, SettlementReport
+from reports.action_read_model import (
+    SECTIONS as ACTION_SECTIONS, ActionReadError, gm_action_state,
+)
 from feed.league_feed import get_league_feed, get_week_feed, FeedPage, FeedEventOut
 from wallet.wallet_manager import (
     deposit     as wm_deposit,
@@ -1377,6 +1380,13 @@ def wallet_history(
 
 class ChallengeRequest(BaseModel):
     challenger_team_id: int
+    # S8-P4C-2: THE GOVERNED MODE, using the proposal lifecycle's own enum
+    # values rather than a parallel vocabulary. Defaulted to Locked so every
+    # caller written before Dynamic was exposed keeps its exact behaviour —
+    # P4C-1R certified that those requests produce Locked challenges, and a
+    # required field would have changed that silently.
+    challenge_mode:     str   = Field(default="locked",
+                                      description="locked | dynamic")
     challenged_team_id: int
     week:               int   = Field(..., ge=1, le=17)
     bet_type:           str   = Field(..., description="straight | spread | over_under | prop")
@@ -1443,6 +1453,13 @@ class FundedChallengeOut(BaseModel):
     detail:          str = ""
     anchor_bet_id:   Optional[int] = None
     derived_bet_id:  Optional[int] = None
+    # DYNAMIC ONLY, and absent on every Locked response rather than zeroed. A
+    # Locked wager has no ceiling because nothing about it can move; reporting
+    # `0` would read as "the Derived side may not move at all", which is a
+    # different and false claim.
+    issuer_ceiling_cents:   Optional[int] = None
+    opponent_ceiling_cents: Optional[int] = None
+    model_version_id:       Optional[str] = None
 
 
 def _funded_out(result) -> FundedChallengeOut:
@@ -1456,6 +1473,34 @@ def _funded_out(result) -> FundedChallengeOut:
         detail=result.detail,
         anchor_bet_id=result.anchor_bet_id,
         derived_bet_id=result.derived_bet_id,
+    )
+
+
+def _handshake_out(db: Session, handshake) -> "FundedChallengeOut":
+    """Shape a Dynamic Handshake into the shared response.
+
+    THE CEILINGS ARE THE POINT OF THE RESPONSE. A Dynamic acceptance commits the
+    Anchor and establishes how far the Derived side may move at Final Lock; the
+    caller needs those bounds to render honest terms, and they are the only
+    numbers that distinguish this from a Locked accept.
+
+    `escrow_cents` reports the Anchor the Handshake fixed. Bet ids stay None
+    because no Bet exists yet — Final Lock creates them once the Derived price
+    is known, and reporting a placeholder would imply a wager that is not there.
+    """
+    challenge = db.query(BeefChallenge).filter(
+        BeefChallenge.id == handshake.challenge_id).first()
+    return FundedChallengeOut(
+        challenge_id=handshake.challenge_id,
+        event_id=str(handshake.event_id),
+        response_status=(challenge.response_status if challenge else "accepted"),
+        result_code="ok",
+        escrow_cents=handshake.anchor_cents,
+        replayed=handshake.replayed,
+        detail=handshake.detail or "dynamic handshake complete",
+        issuer_ceiling_cents=handshake.issuer_ceiling_cents,
+        opponent_ceiling_cents=handshake.opponent_ceiling_cents,
+        model_version_id=handshake.model_version_id,
     )
 
 
@@ -1536,31 +1581,53 @@ def beef_challenge(
     # here to avoid the import would be the "new business logic" §2 forbids, and
     # would silently reprice every locked wager in the product.
     try:
-        anchor_dec, anchor_ml, derived_dec, derived_ml = _compute_odds(
+        (anchor_dec, anchor_ml, derived_dec, derived_ml,
+         anchor_p, derived_p) = _compute_odds(
             req.bet_type, challenger, challenged, req.week, db,
             req.line, req.side, req.player_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    if req.challenge_mode not in spec1.VALID_MODES:
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "unknown_challenge_mode",
+            "message": f"challenge_mode must be one of {list(spec1.VALID_MODES)}.",
+        })
+
     stake_cents = _to_cents(req.amount)
+    dynamic = req.challenge_mode == spec1.MODE_DYNAMIC
+
+    # THE DERIVED STAKE IS QUOTED ONLY IN LOCKED, at issue exactly as at
+    # counter. In Dynamic the opponent's side is priced at Final Lock, so a
+    # quote here would assert a number the protocol never fixes — and it would
+    # be the number the card showed the opponent while they decided.
     terms = spec1.ProposalTerms(
         line=req.line,
         side=req.side,
         player_id=req.player_id,
         anchor_stake_cents=stake_cents,
+        # FROZEN WIN PROBABILITIES. A Dynamic challenge cannot be handshaken
+        # without them — the opponent's Derived ceiling is derived from the
+        # proposal's frozen probabilities, and the lifecycle refuses a proposal
+        # that carries none. They are frozen for Locked too: the same simulation
+        # produced them, and recording what a quote was based on costs nothing
+        # and makes the two modes' provenance identical.
+        anchor_win_probability=anchor_p,
+        derived_win_probability=derived_p,
         # BOTH SIDES STAKE THE SAME AMOUNT in locked mode — the single `amount`
         # on the request is each side's stake, exactly as the legacy path placed
         # both sides at `effective_amount`. This is a translation of the existing
         # product rule into the proposal's vocabulary, not a new one.
-        quoted_derived_stake_cents=stake_cents,
-        quoted_funded_pot_cents=stake_cents * 2,
+        quoted_derived_stake_cents=None if dynamic else stake_cents,
+        quoted_funded_pot_cents=None if dynamic else stake_cents * 2,
         quoted_anchor_payout_cents=round(stake_cents * anchor_dec),
-        quoted_derived_payout_cents=round(stake_cents * derived_dec),
+        quoted_derived_payout_cents=(None if dynamic
+                                     else round(stake_cents * derived_dec)),
         anchor_odds=anchor_dec,
         derived_odds=derived_dec,
         anchor_moneyline=anchor_ml,
         derived_moneyline=derived_ml,
-        pricing_model_id=spec1.MODE_LOCKED,
+        pricing_model_id=req.challenge_mode,
     )
 
     try:
@@ -1573,7 +1640,11 @@ def beef_challenge(
             wager_type=req.bet_type,
             terms=terms,
             db=db,
-            challenge_mode=spec1.MODE_LOCKED,
+            # THE MODE GOES STRAIGHT THROUGH. `issue_funded_challenge` already
+            # forwards it to `spec1.issue_proposal_challenge`, which is what
+            # makes Dynamic issuance a routing question rather than a new
+            # capability — the lifecycle has always been able to create one.
+            challenge_mode=req.challenge_mode,
         )
     except ChallengeFundingError as e:
         raise _funding_refusal(e)
@@ -1596,9 +1667,14 @@ def beef_respond(
     original issuer does, because a counter hands the decision back.
     """
     import uuid as _uuid
-    from beefs.proposal_lifecycle import COUNTERED, OPEN_STATES
+    from beefs.proposal_lifecycle import (
+        COUNTERED, MODE_DYNAMIC as spec1_MODE_DYNAMIC, OPEN_STATES,
+    )
     from economy.challenge_funding import (
         ChallengeFundingError, accept_funded_challenge, decline_funded_challenge,
+    )
+    from economy.dynamic_challenge import (
+        DynamicChallengeError, handshake_dynamic_challenge,
     )
 
     challenge = db.query(BeefChallenge).filter(
@@ -1632,10 +1708,36 @@ def beef_respond(
                 detail="Access denied: this challenge is not yours")
         responder = current_user.team_id
 
-    call = accept_funded_challenge if req.accept else decline_funded_challenge
     try:
-        result = call(event_id=_uuid.uuid4(), challenge_id=req.challenge_id,
-                      actor_team_id=responder, db=db)
+        if not req.accept:
+            # DECLINE IS MODE-BLIND. Both modes escrow only the issuer's Anchor
+            # while a proposal is open, so the reverse-leg refund is the same act
+            # either way and the funded decline owns it for both.
+            result = decline_funded_challenge(
+                event_id=_uuid.uuid4(), challenge_id=req.challenge_id,
+                actor_team_id=responder, db=db)
+        elif challenge.challenge_mode == spec1_MODE_DYNAMIC:
+            # DYNAMIC ACCEPTANCE IS THE HANDSHAKE, and it is a different act from
+            # Locked acceptance rather than a variant of it — which is why the
+            # lifecycle keeps them in separate functions and why this dispatches
+            # rather than passing a flag. `accept_funded_challenge` refuses a
+            # Dynamic challenge outright, so routing it there would surface a
+            # mode error instead of doing the governed thing.
+            #
+            # WHAT THE HANDSHAKE DOES NOT DO is create the Bet rows. It fixes the
+            # Anchor and computes both ceilings; the Derived side is priced at
+            # Final Lock, which is the whole point of the mode. So the response
+            # carries no bet ids, and that absence is accurate rather than a gap.
+            handshake = handshake_dynamic_challenge(
+                event_id=_uuid.uuid4(), challenge_id=req.challenge_id,
+                actor_team_id=responder, db=db)
+            return _handshake_out(db, handshake)
+        else:
+            result = accept_funded_challenge(
+                event_id=_uuid.uuid4(), challenge_id=req.challenge_id,
+                actor_team_id=responder, db=db)
+    except DynamicChallengeError as e:
+        raise _funding_refusal(e)
     except ChallengeFundingError as e:
         raise _funding_refusal(e)
     except ValueError as e:
@@ -1679,7 +1781,8 @@ def beef_counter(
     # is unchanged, so the non-price terms come from the challenge itself — a
     # counter negotiates the stake, not the bet.
     try:
-        anchor_dec, anchor_ml, derived_dec, derived_ml = _compute_odds(
+        (anchor_dec, anchor_ml, derived_dec, derived_ml,
+         anchor_p, derived_p) = _compute_odds(
             challenge.wager_type or challenge.bet_type, challenger, challenged,
             challenge.week, db, challenge.line, challenge.side,
             challenge.player_id)
@@ -1687,20 +1790,39 @@ def beef_counter(
         raise HTTPException(status_code=400, detail=str(e))
 
     stake_cents = _to_cents(req.countered_amount)
+    dynamic = challenge.challenge_mode == spec1.MODE_DYNAMIC
+
+    # THE DERIVED STAKE IS QUOTED ONLY IN LOCKED. A counter cannot change the
+    # mode (Spec 1 §5), so a countered Dynamic challenge is still Dynamic — and
+    # in Dynamic the Derived side is priced at Final Lock, not now. Quoting one
+    # here would assert a price the protocol never fixes, and would make the
+    # funded counter validate the countering team against a stake that will not
+    # be the stake. The Handshake reads the frozen PROBABILITIES and the Anchor;
+    # it never reads a quoted Derived stake, so leaving it unquoted is following
+    # the protocol rather than omitting something.
+    #
+    # The opponent's real exposure in Dynamic is bounded by the ceiling the
+    # Handshake computes, which is where that check belongs.
     terms = spec1.ProposalTerms(
         line=challenge.line,
         side=challenge.side,
         player_id=challenge.player_id,
         anchor_stake_cents=stake_cents,
-        quoted_derived_stake_cents=stake_cents,
-        quoted_funded_pot_cents=stake_cents * 2,
+        quoted_derived_stake_cents=None if dynamic else stake_cents,
+        quoted_funded_pot_cents=None if dynamic else stake_cents * 2,
         quoted_anchor_payout_cents=round(stake_cents * anchor_dec),
-        quoted_derived_payout_cents=round(stake_cents * derived_dec),
+        quoted_derived_payout_cents=(None if dynamic
+                                     else round(stake_cents * derived_dec)),
+        # Re-frozen on the new version, because the Handshake derives the
+        # opponent's ceiling from THIS version's probabilities and a counter
+        # creates a new one.
+        anchor_win_probability=anchor_p,
+        derived_win_probability=derived_p,
         anchor_odds=anchor_dec,
         derived_odds=derived_dec,
         anchor_moneyline=anchor_ml,
         derived_moneyline=derived_ml,
-        pricing_model_id=spec1.MODE_LOCKED,
+        pricing_model_id=challenge.challenge_mode,
     )
 
     try:
@@ -3844,6 +3966,110 @@ def ledger_me(
                                        league_id=league_id).as_dict())
     except LedgerReadModelError as e:
         raise _read_model_error(e)
+
+
+# ── Action read model (S8-P4C-2) ─────────────────────────────────────────────
+
+class ActionCardOut(BaseModel):
+    challenge_id:   int
+    section:        str
+    status:         str
+    protocol_state: str
+    mode:           str
+    week:           int
+
+    opponent_team_id: int
+    opponent_name:    str
+    direction:        str
+
+    decision_team_id: Optional[int]
+    viewer_decides:   bool
+    controls:         list[str]
+
+    wager_type:        Optional[str]
+    line:              Optional[float]
+    side:              Optional[str]
+    player_id:         Optional[int]
+    your_stake_cents:  int
+    their_stake_cents: Optional[int]
+    pot_cents:         Optional[int]
+    your_odds:         Optional[float]
+    their_odds:        Optional[float]
+    your_moneyline:    Optional[int]
+    their_moneyline:   Optional[int]
+
+    escrow_cents:          int
+    derived_ceiling_cents: Optional[int] = None
+    derived_repriced:      bool = False
+
+    settled:   bool = False
+    net_cents: Optional[int] = None
+
+    created_at:     Optional[str] = None
+    expires_at:     Optional[str] = None
+    version_number: Optional[int] = None
+
+
+class ActionOpponentOut(BaseModel):
+    team_id:   int
+    team_name: str
+    owner:     str
+
+
+class ActionStateOut(BaseModel):
+    """The whole Action tab, sections already decided by the backend."""
+    team_id:   int
+    league_id: int
+    counts:    dict[str, int]
+    sections:  dict[str, list[ActionCardOut]]
+    opponents: list[ActionOpponentOut]
+
+
+@app.get("/league/{league_id}/action/me", response_model=ActionStateOut)
+def action_me(
+    league_id:    int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """The acting GM's own Action tab.
+
+    THE TEAM IS NOT A PARAMETER, exactly as on the Ledger route, and for the
+    same reason: this discloses a GM's open negotiating positions and stakes, so
+    there must be no id for a caller to substitute. A commissioner reads their
+    own Action here and nobody else's — P4C-1R settled that holding the role is
+    not a way of being a participant.
+
+    SECTIONS ARE SERVED, NOT SUGGESTED. The response carries the four rails
+    already populated and the counts already taken, because the classification
+    is a protocol statement and the browser is not the place to re-derive one.
+    """
+    team_id = _member_team_id(current_user, league_id, db)
+    if team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    try:
+        state = gm_action_state(db, team_id=team_id, league_id=league_id)
+    except ActionReadError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    def out(card) -> ActionCardOut:
+        payload = {f: getattr(card, f) for f in ActionCardOut.model_fields
+                   if f != "controls"}
+        return ActionCardOut(**payload, controls=list(card.controls))
+
+    return ActionStateOut(
+        team_id=state.team_id,
+        league_id=state.league_id,
+        counts=state.counts,
+        sections={name: [out(c) for c in state.section(name)]
+                  for name in ACTION_SECTIONS},
+        opponents=[ActionOpponentOut(team_id=o.team_id, team_name=o.team_name,
+                                     owner=o.owner)
+                   for o in state.opponents],
+    )
 
 
 @app.get("/league/{league_id}/ledger/positions", response_model=list[GmLedgerOut])

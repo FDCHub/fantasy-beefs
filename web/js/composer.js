@@ -31,6 +31,7 @@ import {
   createComposerState,
   dynamicCeilingNote,
   lockedFreezeNote,
+  marketById,
   parseStakeInput,
   selectMarket,
   selectMode,
@@ -46,6 +47,35 @@ import {
 let session = null;
 
 /** @returns {object|null} the current composer state, for tests and callers. */
+/* ── The production command hook ────────────────────────────────────────── */
+
+/**
+ * How the composer reaches the live issue command.
+ *
+ * INSTALLED BY THE SHELL, not reached for from in here. The composer would
+ * otherwise need to know the acting league, the acting team and how to refresh
+ * the Action tab — three pieces of session knowledge that belong to the shell,
+ * and that a sheet has no business discovering for itself.
+ *
+ * Null in `demo`: the component suites render and validate the composer without
+ * a server, and a hook that defaulted to issuing would make every isolated
+ * render one click away from posting real escrow.
+ */
+let ISSUE_HOOK = null;
+
+/**
+ * @param {null|{leagueId: number, actingTeamId: number, issue: Function,
+ *               refresh: Function}} hook
+ */
+export function setIssueHook(hook) {
+  ISSUE_HOOK = hook;
+}
+
+/** @returns {boolean} whether a live issue command is installed. */
+export function issueBound() {
+  return ISSUE_HOOK !== null;
+}
+
 export function currentSession() {
   return session;
 }
@@ -65,7 +95,10 @@ export function beginSession(spec) {
   session = {
     matchup: m,
     state: createComposerState({
-      opponent: { id: m.id, name: m.name },
+      // `teamId` IS THE AUTHORITATIVE TARGET and is undefined in demo, where
+      // there is no server to send to. The issue hook is likewise absent there,
+      // so the two are never half-present: either both are real or neither is.
+      opponent: { id: m.id, name: m.name, teamId: spec.opponentTeamId ?? null },
       marketId: spec.marketId ?? null,
       mode: MODE_LOCKED,
       availableCents: spec.availableCents,
@@ -252,6 +285,36 @@ function bindComposer(host, api) {
       }
       session.state = setStakeCents(session.state, parsed.cents);
       refreshDerived(host);
+    });
+  }
+
+  const send = host.querySelector('[data-composer-send]');
+  if (send && ISSUE_HOOK) {
+    send.addEventListener('click', async () => {
+      const { state } = session;
+      // DISABLED FOR THE DURATION, so a second click cannot issue a second
+      // funded challenge. Escrow posts at issue now: a double-send is two real
+      // stakes, not two harmless rows.
+      send.disabled = true;
+      const why = host.querySelector('[data-send-why]');
+      if (why) why.textContent = 'Sending…';
+      try {
+        await ISSUE_HOOK.issue({
+          challengerTeamId: ISSUE_HOOK.actingTeamId,
+          challengedTeamId: state.opponent.teamId,
+          week: ISSUE_HOOK.week,
+          wagerType: marketById(state.marketId).persisted,
+          amountCents: state.stakeCents,
+          mode: state.mode,
+        });
+        // THE AUTHORITATIVE REFRESH IS THE SUCCESS PATH. Nothing here writes a
+        // card or moves a figure — the tab re-reads and draws what is true.
+        await ISSUE_HOOK.refresh();
+        api.close();
+      } catch (error) {
+        send.disabled = false;
+        if (why) why.textContent = ISSUE_HOOK.explain(error);
+      }
     });
   }
 

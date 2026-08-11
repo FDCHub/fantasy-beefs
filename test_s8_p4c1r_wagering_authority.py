@@ -485,17 +485,50 @@ _request_fields = {
     for t in n.body if isinstance(t, ast.AnnAssign)
     if isinstance(t.target, ast.Name)
 }
-_assert("§8: the request schema carries NO challenge mode",
-        not any("mode" in f for f in _request_fields), str(sorted(_request_fields)))
+# SUPERSEDED BY S8-P4C-2, NOT LOOSENED. This asserted that the request schema
+# carried no mode, which was the honest description of a surface that could not
+# express Dynamic — but it was never the claim being made. The claim was that
+# THE CUTOVER HAD NOT SILENTLY CONVERTED ANYTHING: locked was what callers got
+# because locked was all there was, not because a mode had been discarded.
+#
+# P4C-2 exposed Dynamic through the governing lifecycle, so the invariant is now
+# stated directly: the mode is an explicit, governed field, and it DEFAULTS to
+# locked so that every caller written before it existed keeps its exact
+# behaviour.
+_assert("§8: the request schema carries an explicit governed mode",
+        "challenge_mode" in _request_fields, str(sorted(_request_fields)))
+
+from beefs.proposal_lifecycle import VALID_MODES  # noqa: E402
+
+_mode_field = next(
+    (n for cls in ast.walk(_api_tree)
+     if isinstance(cls, ast.ClassDef) and cls.name == "ChallengeRequest"
+     for n in cls.body
+     if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", None)
+     == "challenge_mode"), None)
+_assert("§8: and it defaults to locked, so no existing caller is converted",
+        _mode_field is not None and "locked" in ast.unparse(_mode_field),
+        ast.unparse(_mode_field) if _mode_field else "field missing")
+_assert("§8: the modes are the lifecycle's own, not a parallel vocabulary",
+        VALID_MODES == ("locked", "dynamic"), str(VALID_MODES))
 
 _api_imports = {
     node.module
     for node in ast.walk(_api_tree) if isinstance(node, ast.ImportFrom)
     if node.module
 }
-_assert("§8: no API module imports the Dynamic lifecycle",
-        not any("dynamic_challenge" in m for m in _api_imports),
-        "economy/dynamic_challenge.py is unreachable from HTTP")
+# ALSO SUPERSEDED. "The API does not import the Dynamic lifecycle" described a
+# fence; what it protected was that no layer above the lifecycle would
+# REIMPLEMENT Dynamic. P4C-2 removed the fence deliberately and kept the
+# protection: the API reaches the governed Handshake and reproduces none of it.
+_assert("§8: the API reaches the GOVERNED Dynamic lifecycle",
+        any("dynamic_challenge" in m for m in _api_imports),
+        "handshake_dynamic_challenge is the only Dynamic entry point used")
+_PRICING_INTERNALS = ("_run_official_simulation", "RefreshQuote", "p_issuer",
+                      "p_opponent", "derived_raw_cents", "_signed_american")
+_leaked = [sym for sym in _PRICING_INTERNALS if sym in _api_src]
+_assert("§8: and reproduces none of its pricing internals", not _leaked,
+        f"leaked: {_leaked}" if _leaked else "carried, never computed")
 
 # NOT A REGRESSION, AND THIS IS THE PART WORTH PROVING. There was no Dynamic
 # HTTP path to break: at 1d5ea8d the legacy route reached `issue_challenge`,
@@ -511,7 +544,11 @@ with SessionLocal() as db:
     modes = {row[0] for row in db.query(BeefChallenge.challenge_mode).all()}
     handshakes = db.query(BeefChallenge).filter(
         BeefChallenge.dynamic_handshake_at.isnot(None)).count()
-_assert("§8: every HTTP-issued challenge is explicitly Locked",
+# THIS SUITE ISSUES ONLY LOCKED CHALLENGES, so every row here is Locked — and
+# the point is that they are EXPLICITLY so. Dynamic reachability is P4C-2's
+# suite to prove; what matters here is that a caller who asked for nothing got
+# locked rather than an unset mode.
+_assert("§8: a request that names no mode produces an explicitly Locked row",
         modes == {"locked"}, str(sorted(modes)))
 _assert("§8: and none carries a Dynamic handshake", handshakes == 0,
         f"{handshakes} handshakes")

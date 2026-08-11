@@ -77,7 +77,8 @@ export async function loadProductionData({ leagueId, week }) {
     && identity.capabilities.commissioner_league_ids.includes(leagueId),
   );
 
-  const [ledger, settings, slate, positions, reconciliation] = await Promise.all([
+  const [ledger, settings, slate, positions, reconciliation, action]
+      = await Promise.all([
     optional(apiFetch(`/league/${leagueId}/ledger/me`)),
     optional(apiFetch(`/league/${leagueId}/settings`)),
     week === undefined
@@ -91,6 +92,9 @@ export async function loadProductionData({ leagueId, week }) {
                    : Promise.resolve(null),
     isCommissioner ? optional(apiFetch(`/league/${leagueId}/ledger/reconciliation`))
                    : Promise.resolve(null),
+    // The GM's own Action tab. Team-less by design — the route resolves the
+    // acting team from the session, so there is no id here to substitute.
+    optional(apiFetch(`/league/${leagueId}/action/me`)),
   ]);
 
   snapshot = Object.freeze({
@@ -101,6 +105,7 @@ export async function loadProductionData({ leagueId, week }) {
     slate,
     positions,
     reconciliation,
+    action,
   });
   return snapshot;
 }

@@ -313,8 +313,26 @@ def _compute_odds_from_inputs(
     week:     int,
     line:     float | None = None,
     side:     str | None   = None,
-) -> tuple[float, int, float, int]:
-    """Pure Monte Carlo math — no database access. Returns (dec_ch, ml_ch, dec_cd, ml_cd)."""
+) -> tuple[float, int, float, int, float, float]:
+    """Pure Monte Carlo math — no database access.
+
+    Returns (dec_ch, ml_ch, dec_cd, ml_cd, p_ch, p_cd).
+
+    S8-P4C-2 ADDED THE TWO PROBABILITIES, and added nothing else. They were
+    already computed here and then discarded at the return statement; a Dynamic
+    proposal has to FREEZE them, because the Handshake derives the opponent's
+    Derived ceiling from the proposal's frozen probabilities and refuses a
+    proposal that carries none.
+
+    THE ALTERNATIVE WOULD HAVE BEEN TO RECONSTRUCT THEM. Recovering p from the
+    decimal odds is not an identity: the odds pass through
+    `_prob_to_american`, which rounds to an integer moneyline, so inverting it
+    yields a NEARBY probability rather than the one the simulation produced.
+    Freezing a nearby probability would make the Handshake price a Dynamic wager
+    off a number no model ever generated — pricing recreated in the adapter,
+    which is exactly what the ruling forbids. Returning the real one is the
+    thin adapter instead.
+    """
     if bet_type in ("straight", "spread", "over_under"):
         if inputs.shared_matchup_id is not None:
             # Both teams are real scheduled opponents — orient starters to match the
@@ -365,7 +383,7 @@ def _compute_odds_from_inputs(
     p_cd  = 1.0 - p_ch
     ml_ch = _prob_to_american(p_ch)
     ml_cd = _prob_to_american(p_cd)
-    return _ml_to_decimal(ml_ch), ml_ch, _ml_to_decimal(ml_cd), ml_cd
+    return _ml_to_decimal(ml_ch), ml_ch, _ml_to_decimal(ml_cd), ml_cd, p_ch, p_cd
 
 
 def _compute_odds(
@@ -793,7 +811,7 @@ def issue_challenge(
 
     player = db.query(Player).filter(Player.id == player_id).first() if player_id else None
 
-    dec_ch, ml_ch, dec_cd, ml_cd = _compute_odds(
+    dec_ch, ml_ch, dec_cd, ml_cd, _p_ch, _p_cd = _compute_odds(
         bet_type, challenger_team, challenged_team, week, db, line, side, player_id
     )
 
@@ -1000,7 +1018,7 @@ def respond_to_challenge(
 
     # Recompute odds from live data on the shared path — overwrites the preview odds
     # stored at issue time so both Bet rows receive the final locked line.
-    dec_ch, ml_ch, dec_cd, ml_cd = _compute_odds_from_inputs(
+    dec_ch, ml_ch, dec_cd, ml_cd, _p_ch, _p_cd = _compute_odds_from_inputs(
         challenge.bet_type, live_inputs, week, challenge.line, challenge.side
     )
     challenge.challenger_odds      = dec_ch

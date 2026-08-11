@@ -194,6 +194,47 @@ def in_play_cents(db, team_id: int) -> int:
             total += by_team.get(team_id, 0)
             continue
 
+        # Layer 1b — S8-P4C-2: the Dynamic per-side ANCHOR escrow.
+        #
+        # WHY IT NEEDS ITS OWN LAYER. At the Handshake the pooled challenge
+        # escrow migrates to `escrow:challenge:{id}:anchor`, and
+        # `economy/dynamic_challenge.py` deliberately writes NO funding leg for
+        # that move: a `reverse` leg means money went back to its funding
+        # source, and this money went onward. That is correct for reversibility
+        # accounting and it leaves this account with no leg naming it — so
+        # Layer 1 cannot see it and, before this layer existed, the whole read
+        # failed with UNATTRIBUTABLE_ESCROW the moment any Dynamic wager was
+        # handshaken.
+        #
+        # It was invisible until P4C-2 because Dynamic had no HTTP path; nothing
+        # about the money moved changed, only whether it could be reached.
+        #
+        # OWNERSHIP IS READ FROM THE GOVERNED HELPER, not inferred. The Anchor
+        # is the ORIGINAL ISSUER by protocol (A4/§12) regardless of who authored
+        # the accepted version, and `anchor_team_id` is where that rule lives.
+        # The Derived side needs nothing here: the opponent funds it through the
+        # normal `_fund` path, so it carries real legs and Layer 1 attributes it.
+        if account.startswith("escrow:challenge:") and account.endswith(":anchor"):
+            from db.schema import BeefChallenge, BeefProposal
+            from economy.challenge_funding import anchor_team_id
+
+            try:
+                challenge_id = int(account.split(":")[2])
+            except (IndexError, ValueError):
+                challenge_id = None
+            if challenge_id is not None:
+                challenge = (db.query(BeefChallenge)
+                             .filter(BeefChallenge.id == challenge_id).first())
+                if challenge is not None:
+                    proposal = (db.query(BeefProposal).filter(
+                        BeefProposal.id == (challenge.accepted_proposal_id
+                                            or challenge.active_proposal_id))
+                        .first())
+                    if proposal is not None:
+                        if anchor_team_id(challenge, proposal) == team_id:
+                            total += balance
+                        continue
+
         # Layer 2 — a plain wager's escrow, owned by the betting wallet.
         if account.startswith("escrow:") and account.count(":") == 1:
             suffix = account.split(":", 1)[1]
