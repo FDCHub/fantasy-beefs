@@ -146,9 +146,18 @@ _assert("the whole seeded ledger conserves",
         trial_balance() == 0, f"imbalance {trial_balance()}")
 
 
-# ── 2 · Held is zero, and nothing was fabricated to make it so ───────────────
+# ── 2 · Held is real, and every cent of it has recorded provenance ───────────
+#
+# SUPERSEDED BY S8-P4C-1, NOT LOOSENED. This section used to assert Held == 0
+# and zero funding legs. That was never a claim that Held OUGHT to be zero — it
+# was the only honest reading of a fixture whose reachable path posted no
+# challenge escrow, and the point of it was that no row had been fabricated to
+# make the Rev 4.2 number appear. P4C-1 cut the application over to the funded
+# lifecycle, so the fixture now issues a real challenge and the underlying
+# invariant is stated directly: every cent of Held is backed by legs the funded
+# path wrote, and Held is exactly the escrow those legs moved.
 
-_section("2 · Held is 0 because no reachable path creates challenge escrow")
+_section("2 · Held is derived from real funding provenance")
 
 from economy.challenge_escrow_view import team_open_challenge_escrow_cents  # noqa: E402
 
@@ -156,11 +165,28 @@ with SessionLocal() as db:
     held = team_open_challenge_escrow_cents(db, GM_TEAM_ID)
     leg_count = db.query(ChallengeFundingLeg).count()
 
-_assert("held_open_challenges_cents is 0", held == 0, str(held))
-_assert("NO ChallengeFundingLeg row was fabricated", leg_count == 0,
-        f"{leg_count} legs exist")
-_assert("so Held is a structural zero, not a coincidence of this fixture",
-        held == 0 and leg_count == 0)
+from economy.challenge_funding import challenge_escrow_account  # noqa: E402
+from ledger.ledger import _balance_of_in_session  # noqa: E402
+from test_support_rev42_fixture import OPEN_CHALLENGE_CENTS  # noqa: E402
+
+with SessionLocal() as db:
+    legs = db.query(ChallengeFundingLeg).all()
+    open_challenge_ids = {leg.challenge_id for leg in legs}
+    escrowed = sum(_balance_of_in_session(db, challenge_escrow_account(cid))
+                   for cid in open_challenge_ids)
+
+_assert("held_open_challenges_cents is the seeded open stake",
+        held == OPEN_CHALLENGE_CENTS, str(held))
+_assert("every cent of Held is backed by a ChallengeFundingLeg",
+        leg_count > 0 and sum(l.amount_cents for l in legs) == held,
+        f"{leg_count} legs summing to {sum(l.amount_cents for l in legs)}")
+_assert("and the legs are attributed to the GM, not split or guessed",
+        all(leg.team_id == GM_TEAM_ID for leg in legs))
+# THE LEGS AND THE MONEY AGREE. Provenance that did not match the ledger would
+# let Held report a number the escrow account does not hold — the exact failure
+# `in_play_cents` refuses with UNATTRIBUTABLE_ESCROW rather than guess through.
+_assert("Held equals the balance actually sitting in challenge escrow",
+        escrowed == held, f"escrow {escrowed} vs held {held}")
 
 
 # ── 3 · No season-winnings accounting was invented ───────────────────────────
@@ -178,6 +204,10 @@ with SessionLocal() as db:
 GOVERNED_DOORS = {
     "season_allocation", "approved_bab_topoff", "weekly_minimum_release",
     "weekly_minimum_expiry", "wager_placed", "wager_settled",
+    # S8-P4C-1: the funded issue's own door. Added because the fixture now
+    # posts real challenge escrow, and this set exists to catch an INVENTED
+    # door — `challenge_issued` is one the production path opens.
+    "challenge_issued",
 }
 _assert("every door used is a governing production door",
         doors <= GOVERNED_DOORS, f"unexpected: {sorted(doors - GOVERNED_DOORS)}")
@@ -187,7 +217,7 @@ _assert("no award/winnings account exists",
         not any("award" in a or "winning" in a for a in accounts),
         str(sorted(a for a in accounts if "award" in a or "winning" in a)))
 _assert("the GM's gain sits in the wallet, where the accounting puts it",
-        settle.wallet_cents == 5_500)
+        settle.wallet_cents == FIXTURE_EXPECTED["wallet_cents"])
 
 
 # ── 4 · The opening split comes from the Economy Stop ────────────────────────
@@ -266,9 +296,30 @@ bad_revise = [r[0] for r in EXPECTATION_MAP
 _assert("KEEP EXACT rows really are unchanged", bad_keep == [], str(bad_keep))
 _assert("REVISE EXACT rows really did change", bad_revise == [], str(bad_revise))
 
-_assert("exactly two rows are revised, and they are Held and Current Settle",
+# THE REVISED SET IS NAMED, NOT COUNTED. What this guards is that no cell drifts
+# quietly — so it pins the exact membership, and changing the membership means
+# changing this line and saying why.
+#
+# S8-P4C-1 rewrote it. Held LEFT the revised set: activating the funded
+# lifecycle gave it a real source and it now agrees with the prototype exactly.
+# Wallet, Available and In Play JOINED it, all for the same single reason — the
+# challenge stake really leaves the wallet at issue now, so it sits in In Play
+# instead. Current Settle stays revised and stays at -$69, because that
+# reallocation is between two asset terms and cannot move the total.
+_assert("the revised set is exactly the cells the funded stake moved between",
         sorted(r[0] for r in EXPECTATION_MAP if r[4] == "REVISE EXACT")
-        == ["Current Settle", "Held"])
+        == ["Available", "Current Settle", "In Play", "Wallet"],
+        str(sorted(r[0] for r in EXPECTATION_MAP if r[4] == "REVISE EXACT")))
+_assert("Held is no longer a revised cell — it has an authoritative source",
+        next(r[4] for r in EXPECTATION_MAP if r[0] == "Held") == "KEEP EXACT")
+# THE REALLOCATION IS EXACT. Wallet fell by precisely what In Play gained, which
+# is the arithmetic reason Current Settle did not move.
+_wallet = next(r for r in EXPECTATION_MAP if r[0] == "Wallet")
+_in_play = next(r for r in EXPECTATION_MAP if r[0] == "In Play")
+_assert("what the wallet lost, In Play gained, to the cent",
+        _wallet[2] - _wallet[3] == _in_play[3] - _in_play[2],
+        f"wallet -{_wallet[2] - _wallet[3]} vs in_play "
+        f"+{_in_play[3] - _in_play[2]}")
 _assert("exactly one row is unresolved, and it is Awards / Adj.",
         [r[0] for r in EXPECTATION_MAP if r[4] == "UNRESOLVED"] == ["Awards / Adj."])
 _assert("an UNRESOLVED row carries no seeded number",

@@ -59,10 +59,24 @@ await withPage({ port: 9363, settleMs: 1400 }, async ({ evaluate }) => {
     };
   `));
 
-  // KEEP EXACT — every one of these is unchanged from Sprint 7 and is now
-  // proven from posted ledger state rather than from a JavaScript constant.
-  const WEEK = [['Available', '$65', '6500'], ['In Play', '$28', '2800'],
-                ['Held', '$0', '0'], ['Weekly Min Left', '$10', '1000']];
+  // REVISED BY S8-P4C-1, AND HELD IS WHY. P4B certified this strip against a
+  // fixture whose challenges posted no money, so Held drew $0 and In Play saw
+  // only bet escrow. The application now issues through the funded lifecycle:
+  // the fixture's open $25 challenge really escrows, so Held draws the Rev 4.2
+  // figure at last — and In Play grows by the same $25, because Held is a
+  // SUBSET of it rather than a term beside it. Available falls by $25 for the
+  // same single reason: the stake left the wallet.
+  //
+  // Weekly Min Left is UNCHANGED at $10, and that is deliberate. Funding is
+  // min-first, so the fixture issues its challenge in week 6 where there is no
+  // released minimum to consume — this cell belongs to a different claim and
+  // P4C-1 had no business moving it.
+  //
+  // Current Settle below is unchanged at −$69: the money moved between two
+  // asset terms, so the total cannot move. That is the check that this whole
+  // revision is a reallocation and not a gain.
+  const WEEK = [['Available', '$40', '4000'], ['In Play', '$53', '5300'],
+                ['Held', '$25', '2500'], ['Weekly Min Left', '$10', '1000']];
   for (const [i, [label, value, exact]] of WEEK.entries()) {
     report.check(`My Week ${label} draws ${value}`,
       ledger.week[i].label === label && ledger.week[i].value === value
@@ -88,10 +102,18 @@ await withPage({ port: 9363, settleMs: 1400 }, async ({ evaluate }) => {
   report.check('and the Current Settle card agrees',
     ledger.settleExact === -6900, String(ledger.settleExact));
 
+  // AND HELD IS INSIDE IN PLAY, not added to it — the served figures have to
+  // agree with that or the strip is quietly double-counting the GM's own money.
+  report.check('Held is a subset of In Play in the served figures',
+    ledger.served.held_open_challenges_cents > 0
+    && ledger.served.held_open_challenges_cents < ledger.served.in_play_cents,
+    `held ${ledger.served.held_open_challenges_cents}, `
+    + `in_play ${ledger.served.in_play_cents}`);
+
   report.check('the served terms are the drawn terms',
-    ledger.served.available_cents === 6500
-    && ledger.served.in_play_cents === 2800
-    && ledger.served.held_open_challenges_cents === 0
+    ledger.served.available_cents === 4000
+    && ledger.served.in_play_cents === 5300
+    && ledger.served.held_open_challenges_cents === 2500
     && ledger.served.min_reserve_cents === 9000
     && ledger.served.expired_min_cents === 800
     && ledger.served.season_advance_cents === 22000

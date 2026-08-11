@@ -955,11 +955,32 @@ check("L7-11: P1-L4 is CONTAINED — the challenge escrow lifecycle lives in its
       and "escrow:challenge:" not in (REPO / "ledger" / "ledger.py").read_text(encoding="utf-8")
       and "escrow:challenge:" not in (REPO / "betting" / "bet_engine.py").read_text(encoding="utf-8"))
 
-section("L7-12: _challenge_reserved not retired; issue still posts no money")
+section("L7-12: the soft reservation's retirement was not P1-L7's doing")
 
-check("L7-12: _challenge_reserved is still the issue-stage reservation mechanism "
-      "(its retirement is P1-L4's, not P1-L7's)",
-      "_challenge_reserved" in src_beef)
+# REVISED BY S8-P4C-1. This assertion used to read "_challenge_reserved is still
+# the issue-stage reservation mechanism", and its purpose was SCOPE CONTAINMENT:
+# P1-L7 added a wallet-row mutex, and the point was that it had not quietly
+# taken the reservation's retirement with it. The retirement has since happened
+# — in S8-P4C-1, where the application was cut over to the funded lifecycle and
+# the gate was removed because real escrow replaced it.
+#
+# So the assertion is inverted rather than deleted, and it still guards the same
+# thing: the gate is gone, and P1-L7's own surface is why we can say it went
+# somewhere else. Deleting it would have retired the containment claim along
+# with the mechanism it was about.
+# EXECUTABLE CODE, NOT A SUBSTRING SCAN. beef_engine.py still explains in prose
+# where the gate went, and a raw `in src_beef` test would match that comment and
+# report the retirement as incomplete.
+import ast as _ast
+
+_beef_tree = _ast.parse(src_beef)
+_beef_refs = ({n.id for n in _ast.walk(_beef_tree) if isinstance(n, _ast.Name)}
+              | {n.attr for n in _ast.walk(_beef_tree)
+                 if isinstance(n, _ast.Attribute)}
+              | {a.name for n in _ast.walk(_beef_tree)
+                 if isinstance(n, _ast.ImportFrom) for a in n.names})
+check("L7-12: the issue-stage soft-reservation gate is retired",
+      "_challenge_reserved" not in _beef_refs)
 
 issue_body = func_source(REPO / "beefs" / "beef_engine.py", "issue_challenge")
 check("L7-12: issue_challenge() still makes ZERO ledger postings — P1-L7 added a "

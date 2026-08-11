@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -54,11 +55,6 @@ from betting.bet_engine import (
 )
 from betting.exceptions import NotFoundError, BetValidationError
 from betting.settlement_engine import settle_week, SettlementReport
-from beefs.beef_engine import (
-    issue_challenge, respond_to_challenge, counter_challenge,
-    get_pending_challenges,
-    AcceptResult, ChallengeOut,
-)
 from feed.league_feed import get_league_feed, get_week_feed, FeedPage, FeedEventOut
 from wallet.wallet_manager import (
     deposit     as wm_deposit,
@@ -1403,140 +1399,391 @@ class CounterRequest(BaseModel):
     trash_talk:       Optional[str] = None
 
 
-class ChallengeOut_API(BaseModel):
-    challenge_id:         int
-    direction:            str
-    challenger_team_id:   int
-    challenger_name:      str
-    challenger_owner:     str
-    challenged_team_id:   int
-    challenged_name:      str
-    challenged_owner:     str
-    week:                 int
-    bet_type:             str
-    amount:               float
-    description:          str
-    challenger_moneyline: int
-    challenged_moneyline: int
-    status:               str
-    expires_at:           str
-    created_at:           str
-    responded_at:         Optional[str]
-    challenger_bet_id:    Optional[int]
-    challenged_bet_id:    Optional[int]
-    countered_amount:     Optional[float] = None
-    schedule_not_ready:   bool = False
+# ── Funded proposal lifecycle (S8-P4C-1) ─────────────────────────────────────
+#
+# THE CUTOVER. These four routes were the last live entry into
+# `beefs/beef_engine.py`'s legacy challenge path — the one that posted no escrow
+# at issue and held a SOFT RESERVATION instead. They now enter the approved
+# Spec-2 lifecycle: `beefs/proposal_lifecycle.py` owns negotiation STATE and
+# `economy/challenge_funding.py` owns the money, exactly as Spec 1 §1 and
+# Spec 2 §8 assign them.
+#
+# WHY NOW, AND ON WHAT AUTHORITY. Spec 1 Rev 3 §1 fenced the new model — "New
+# model issuance/response flows stay unreachable ... UNTIL SPEC 2 SUPPLIES
+# ESCROW." Spec 2 supplies it, and has since P1-L4. The fence was conditional
+# and its condition is met, so leaving the live path on the superseded model was
+# no longer a deferral; it was a divergence.
+#
+# THIN ADAPTATION, NOT NEW BUSINESS LOGIC. Every route below resolves authority,
+# converts the request into the lifecycle's own vocabulary, calls exactly one
+# governed entry point, and shapes its result. No capacity rule, no pricing, no
+# state transition and no posting is written here — all of that stays in the two
+# governing modules, which are the only places it can be reviewed as a whole.
+#
+# ONE PATH, NOT A HYBRID. There is no legacy fallback and no feature flag. A
+# mutation either goes through the funded lifecycle or it does not happen.
+
+class FundedChallengeOut(BaseModel):
+    """The result of one funded lifecycle call.
+
+    A DIFFERENT SHAPE FROM THE LEGACY `ChallengeOut`, deliberately. The funded
+    lifecycle produces facts the legacy path had no concept of — how much real
+    escrow is now committed, which negotiation state the challenge is in, and
+    whether this call was a replay of an event already committed. Flattening
+    those back into the old shape would have hidden exactly the information the
+    cutover exists to produce.
+    """
+    challenge_id:    int
+    event_id:        str
+    response_status: str
+    result_code:     str
+    escrow_cents:    int
+    replayed:        bool
+    detail:          str = ""
+    anchor_bet_id:   Optional[int] = None
+    derived_bet_id:  Optional[int] = None
 
 
-class AcceptResultOut(BaseModel):
-    challenge_id:          int
-    challenger_bet_id:     int
-    challenged_bet_id:     int
-    challenger_team:       str
-    challenged_team:       str
-    amount:                float
-    description:           str
-    staleness_warning:     bool
-    accepted:              bool = True
-    final_challenger_odds: float
-    final_challenged_odds: float
+def _funded_out(result) -> FundedChallengeOut:
+    return FundedChallengeOut(
+        challenge_id=result.challenge_id,
+        event_id=str(result.event_id),
+        response_status=result.response_status,
+        result_code=result.result_code,
+        escrow_cents=result.escrow_cents,
+        replayed=result.replayed,
+        detail=result.detail,
+        anchor_bet_id=result.anchor_bet_id,
+        derived_bet_id=result.derived_bet_id,
+    )
 
 
-def _challenge_out(c: ChallengeOut) -> ChallengeOut_API:
-    return ChallengeOut_API(**vars(c))
+def _funding_refusal(e: Exception) -> HTTPException:
+    """Map a governed funding refusal to a status code.
+
+    NARROW BY DESIGN. Capacity and reconciliation failures are 409 — the request
+    is well-formed and authorized, and the league's state is what refuses it.
+    Everything else that is a `ValueError` subclass is a 400. Nothing broader is
+    caught: `LedgerImbalanceError` and friends must surface as 500s, because a
+    conservation failure is the loudest event this system can produce and a tidy
+    4xx would stop it paging.
+    """
+    from economy.challenge_funding import (
+        AcceptanceCapacityError, EscrowReconciliationError,
+        InsufficientFundingCapacityError, MissingProposalError,
+    )
+    if isinstance(e, (InsufficientFundingCapacityError, AcceptanceCapacityError,
+                      EscrowReconciliationError)):
+        return HTTPException(status_code=409, detail=str(e))
+    if isinstance(e, MissingProposalError):
+        return HTTPException(status_code=404, detail=str(e))
+    return HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/beef/challenge", response_model=ChallengeOut_API, status_code=201)
+def _team_league_id(db: Session, team_id: int) -> int:
+    """The league a team belongs to.
+
+    Resolved server-side from the team row. The league is never taken from the
+    request — P2's rule that the real league being acted upon must be identified
+    authoritatively applies to a wager exactly as it does to a settlement.
+    """
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if team is None:
+        raise HTTPException(status_code=404, detail=f"Team {team_id} not found")
+    return team.league_id
+
+
+@app.post("/beef/challenge", response_model=FundedChallengeOut, status_code=201)
 def beef_challenge(
     req:          ChallengeRequest,
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_season_allocation_gate),
 ):
+    """Issue a funded challenge — real Anchor escrow posts immediately.
+
+    THE STAKE LEAVES THE WALLET NOW. Under the legacy path a challenge held a
+    soft reservation and the money stayed put until acceptance; under Spec 2 the
+    issuer's Anchor is posted to `escrow:challenge:{id}` in the same transaction
+    that creates the challenge. That is what makes an open challenge visible to
+    `in_play_cents` and to `team_open_challenge_escrow_cents` — Held stops being
+    a latent property and becomes a real one.
+    """
+    import uuid as _uuid
+    from beefs import proposal_lifecycle as spec1
+    from beefs.beef_engine import _compute_odds
+    from economy.challenge_funding import ChallengeFundingError, issue_funded_challenge
+
     assert_own_team(req.challenger_team_id, current_user)
+
+    league_id = _team_league_id(db, req.challenger_team_id)
+    if _team_league_id(db, req.challenged_team_id) != league_id:
+        # Cross-league wagering is not a thing the protocol defines, and the
+        # funding path would happily post escrow for it. Refused here, before
+        # any money moves.
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "cross_league_challenge",
+            "message": "Both teams must belong to the same league.",
+        })
+
+    challenger = db.query(Team).filter(Team.id == req.challenger_team_id).one()
+    challenged = db.query(Team).filter(Team.id == req.challenged_team_id).one()
+
+    # THE LOCKED QUOTE, from the pricing model that already governs locked mode.
+    # `_compute_odds` is the Monte Carlo pricing the legacy route used, and it is
+    # PRICING, not the legacy money path — what P4C-1 retires is the soft
+    # reservation and the unfunded issue, not the odds model. Reimplementing it
+    # here to avoid the import would be the "new business logic" §2 forbids, and
+    # would silently reprice every locked wager in the product.
     try:
-        result = issue_challenge(
-            challenger_team_id = req.challenger_team_id,
-            challenged_team_id = req.challenged_team_id,
-            week               = req.week,
-            bet_type           = req.bet_type,
-            amount             = req.amount,
-            db                 = db,
-            line               = req.line,
-            side               = req.side,
-            player_id          = req.player_id,
-            trash_talk         = req.trash_talk,
-        )
+        anchor_dec, anchor_ml, derived_dec, derived_ml = _compute_odds(
+            req.bet_type, challenger, challenged, req.week, db,
+            req.line, req.side, req.player_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return _challenge_out(result)
+
+    stake_cents = _to_cents(req.amount)
+    terms = spec1.ProposalTerms(
+        line=req.line,
+        side=req.side,
+        player_id=req.player_id,
+        anchor_stake_cents=stake_cents,
+        # BOTH SIDES STAKE THE SAME AMOUNT in locked mode — the single `amount`
+        # on the request is each side's stake, exactly as the legacy path placed
+        # both sides at `effective_amount`. This is a translation of the existing
+        # product rule into the proposal's vocabulary, not a new one.
+        quoted_derived_stake_cents=stake_cents,
+        quoted_funded_pot_cents=stake_cents * 2,
+        quoted_anchor_payout_cents=round(stake_cents * anchor_dec),
+        quoted_derived_payout_cents=round(stake_cents * derived_dec),
+        anchor_odds=anchor_dec,
+        derived_odds=derived_dec,
+        anchor_moneyline=anchor_ml,
+        derived_moneyline=derived_ml,
+        pricing_model_id=spec1.MODE_LOCKED,
+    )
+
+    try:
+        result = issue_funded_challenge(
+            event_id=_uuid.uuid4(),
+            league_id=league_id,
+            week=req.week,
+            challenger_team_id=req.challenger_team_id,
+            challenged_team_id=req.challenged_team_id,
+            wager_type=req.bet_type,
+            terms=terms,
+            db=db,
+            challenge_mode=spec1.MODE_LOCKED,
+        )
+    except ChallengeFundingError as e:
+        raise _funding_refusal(e)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _funded_out(result)
 
 
-@app.post("/beef/respond", status_code=200)
+@app.post("/beef/respond", response_model=FundedChallengeOut, status_code=200)
 def beef_respond(
     req:          RespondRequest,
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_gm),
 ):
-    challenge = db.query(BeefChallenge).filter(BeefChallenge.id == req.challenge_id).first()
+    """Accept or decline a funded challenge.
+
+    WHO MAY RESPOND depends on the negotiation state, and the state is read from
+    `response_status` — the Spec-1 field — rather than the legacy `status`
+    column. On an offered proposal the recipient responds; on a countered one the
+    original issuer does, because a counter hands the decision back.
+    """
+    import uuid as _uuid
+    from beefs.proposal_lifecycle import COUNTERED, OPEN_STATES
+    from economy.challenge_funding import (
+        ChallengeFundingError, accept_funded_challenge, decline_funded_challenge,
+    )
+
+    challenge = db.query(BeefChallenge).filter(
+        BeefChallenge.id == req.challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
-    # Pending: the challenged team responds. Countered: the original challenger responds.
-    if challenge.status == "countered":
-        assert_own_team(challenge.challenger_team_id, current_user)
+
+    parties = (challenge.challenger_team_id, challenge.challenged_team_id)
+    if challenge.response_status in OPEN_STATES:
+        # While the negotiation is open exactly one side holds the decision, and
+        # a counter hands it back to the issuer.
+        responder = (challenge.challenger_team_id
+                     if challenge.response_status == COUNTERED
+                     else challenge.challenged_team_id)
+        assert_own_team(responder, current_user)
     else:
-        assert_own_team(challenge.challenged_team_id, current_user)
+        # ALREADY CLOSED. Asking "whose turn is it" of a settled negotiation has
+        # no answer, and deriving one anyway produced a 403 that blamed the
+        # caller's identity for what is really a terminal-state condition. Both
+        # teams are parties to their own challenge, so authorize on THAT and let
+        # the protocol give the honest answer — "already accepted" — which is
+        # also what makes a retried request idempotent rather than forbidden.
+        if current_user.role != "commissioner" and current_user.team_id not in parties:
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: this challenge is not yours")
+        responder = (current_user.team_id if current_user.team_id in parties
+                     else challenge.challenged_team_id)
+
+    call = accept_funded_challenge if req.accept else decline_funded_challenge
     try:
-        result = respond_to_challenge(req.challenge_id, req.accept, db,
-                                      trash_talk=req.trash_talk)
+        result = call(event_id=_uuid.uuid4(), challenge_id=req.challenge_id,
+                      actor_team_id=responder, db=db)
+    except ChallengeFundingError as e:
+        raise _funding_refusal(e)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    if isinstance(result, AcceptResult):
-        return AcceptResultOut(
-            challenge_id          = result.challenge_id,
-            challenger_bet_id     = result.challenger_bet_id,
-            challenged_bet_id     = result.challenged_bet_id,
-            challenger_team       = result.challenger_team,
-            challenged_team       = result.challenged_team,
-            amount                = result.amount,
-            description           = result.description,
-            staleness_warning     = result.staleness_warning,
-            accepted              = True,
-            final_challenger_odds = result.final_challenger_odds,
-            final_challenged_odds = result.final_challenged_odds,
-        )
-    return _challenge_out(result)
+    return _funded_out(result)
 
 
-@app.post("/beef/counter", response_model=ChallengeOut_API, status_code=200)
+@app.post("/beef/counter", response_model=FundedChallengeOut, status_code=200)
 def beef_counter(
     req:          CounterRequest,
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_gm),
 ):
-    challenge = db.query(BeefChallenge).filter(BeefChallenge.id == req.challenge_id).first()
+    """Counter a funded challenge — Refresh & Relock.
+
+    NO MONEY MOVES ON A COUNTER (Spec 2 §10). A counter freezes a NEW proposal
+    version and validates that both sides could fund it; it reserves nothing and
+    posts nothing. The issuer's original Anchor stays exactly where it is, which
+    is why only the DEFICIENCY is validated against them rather than the whole
+    new stake.
+    """
+    import uuid as _uuid
+    from beefs import proposal_lifecycle as spec1
+    from beefs.beef_engine import _compute_odds
+    from economy.challenge_funding import ChallengeFundingError, counter_funded_challenge
+
+    challenge = db.query(BeefChallenge).filter(
+        BeefChallenge.id == req.challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
     assert_own_team(challenge.challenged_team_id, current_user)
+
+    challenger = db.query(Team).filter(
+        Team.id == challenge.challenger_team_id).one()
+    challenged = db.query(Team).filter(
+        Team.id == challenge.challenged_team_id).one()
+
+    # RELOCK MEANS REPRICE. A counter freezes a new proposal version, and a
+    # version that carried the FIRST version's odds at a different stake would
+    # quote a payout the pricing model never produced. The subject of the wager
+    # is unchanged, so the non-price terms come from the challenge itself — a
+    # counter negotiates the stake, not the bet.
     try:
-        result = counter_challenge(req.challenge_id, req.countered_amount, db,
-                                   trash_talk=req.trash_talk)
+        anchor_dec, anchor_ml, derived_dec, derived_ml = _compute_odds(
+            challenge.wager_type or challenge.bet_type, challenger, challenged,
+            challenge.week, db, challenge.line, challenge.side,
+            challenge.player_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return _challenge_out(result)
+
+    stake_cents = _to_cents(req.countered_amount)
+    terms = spec1.ProposalTerms(
+        line=challenge.line,
+        side=challenge.side,
+        player_id=challenge.player_id,
+        anchor_stake_cents=stake_cents,
+        quoted_derived_stake_cents=stake_cents,
+        quoted_funded_pot_cents=stake_cents * 2,
+        quoted_anchor_payout_cents=round(stake_cents * anchor_dec),
+        quoted_derived_payout_cents=round(stake_cents * derived_dec),
+        anchor_odds=anchor_dec,
+        derived_odds=derived_dec,
+        anchor_moneyline=anchor_ml,
+        derived_moneyline=derived_ml,
+        pricing_model_id=spec1.MODE_LOCKED,
+    )
+
+    try:
+        result = counter_funded_challenge(
+            event_id=_uuid.uuid4(),
+            challenge_id=req.challenge_id,
+            actor_team_id=challenge.challenged_team_id,
+            terms=terms,
+            db=db,
+        )
+    except ChallengeFundingError as e:
+        raise _funding_refusal(e)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _funded_out(result)
 
 
-@app.get("/beef/pending/{team_id}", response_model=list[ChallengeOut_API])
+class ProposalOut(BaseModel):
+    """One challenge in the Spec-1 negotiation vocabulary."""
+    challenge_id:       int
+    direction:          str     # "sent" | "received"
+    response_status:    str     # offered | countered | accepted | declined | …
+    challenge_mode:     str
+    challenger_team_id: int
+    challenged_team_id: int
+    week:               int
+    wager_type:         Optional[str]
+    anchor_stake_cents: Optional[int]
+    escrow_cents:       int
+    created_at:         Optional[str]
+
+
+@app.get("/beef/pending/{team_id}", response_model=list[ProposalOut])
 def beef_pending(
     team_id:      int,
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_gm),
 ):
+    """Open proposals involving this team, classified by `response_status`.
+
+    READ REPOINTED WITH THE WRITES. The legacy reader classified from the
+    `status` column, which the new model writes only for NOT NULL compatibility
+    — a funded proposal would have been either invisible or mislabelled by it.
+    `response_status` is the Spec-1 negotiation state and is what the four
+    Response Card states are derived from.
+
+    OPEN ONLY. Terminal states are history and belong to a different surface;
+    this is the inbox.
+    """
+    from beefs.proposal_lifecycle import OPEN_STATES
+    from economy.challenge_funding import challenge_escrow_balance
+    from db.schema import BeefProposal
+
     assert_own_team(team_id, current_user)
-    team = db.query(Team).filter(Team.id == team_id).first()
-    if not team:
+    if db.query(Team).filter(Team.id == team_id).first() is None:
         raise HTTPException(status_code=404, detail=f"Team {team_id} not found")
-    challenges = get_pending_challenges(team_id, db)
-    return [_challenge_out(c) for c in challenges]
+
+    rows = (db.query(BeefChallenge)
+            .filter(BeefChallenge.response_status.in_(OPEN_STATES),
+                    or_(BeefChallenge.challenger_team_id == team_id,
+                        BeefChallenge.challenged_team_id == team_id))
+            .order_by(BeefChallenge.id)
+            .all())
+
+    out: list[ProposalOut] = []
+    for c in rows:
+        # THE ACTIVE VERSION, NOT THE LATEST ROW. Proposals are immutable and
+        # versioned, so "latest" and "in force" are different questions — a
+        # counter that failed validation can leave a higher version_number
+        # behind. `active_proposal_id` is the pointer the lifecycle maintains,
+        # and it is the one the negotiation is actually about.
+        proposal = (db.query(BeefProposal)
+                    .filter(BeefProposal.id == c.active_proposal_id).first()
+                    if c.active_proposal_id else None)
+        out.append(ProposalOut(
+            challenge_id=c.id,
+            direction="sent" if c.challenger_team_id == team_id else "received",
+            response_status=c.response_status,
+            challenge_mode=c.challenge_mode,
+            challenger_team_id=c.challenger_team_id,
+            challenged_team_id=c.challenged_team_id,
+            week=c.week,
+            wager_type=c.wager_type,
+            anchor_stake_cents=proposal.anchor_stake_cents if proposal else None,
+            escrow_cents=challenge_escrow_balance(db, c.id),
+            created_at=c.created_at.isoformat() if c.created_at else None,
+        ))
+    return out
 
 
 # ── Feed endpoints ────────────────────────────────────────────────────────────

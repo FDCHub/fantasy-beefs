@@ -69,17 +69,22 @@ from economy.economy_events import min_account
 # is opened here to create one. The GM's settled wager gain is ordinary wallet
 # balance, which is where the accounting puts it.
 
+#: The open challenge S8-P4C-1 adds. Week 6 because funding is min-first and
+#: week 5's live minimum belongs to a different cell — see step 7.
+OPEN_CHALLENGE_WEEK = 6
+OPEN_CHALLENGE_CENTS = 2_500
+
 #: Exact-cent expectations for the seeded position. These are the values
 #: `economy/current_settle.py` must produce, and the P4B-1 suite asserts every
 #: one of them against a real backend call.
 FIXTURE_EXPECTED = {
-    "wallet_cents":               5_500,
+    "wallet_cents":               3_000,
     "weekly_min_live_cents":      1_000,
-    "available_cents":            6_500,
+    "available_cents":            4_000,
     "min_reserve_cents":          9_000,
     "expired_min_cents":            800,
-    "in_play_cents":              2_800,
-    "held_open_challenges_cents":     0,
+    "in_play_cents":              5_300,
+    "held_open_challenges_cents": 2_500,
     "receivable_cents":               0,
     "assets_cents":              19_100,
     "season_advance_cents":      22_000,
@@ -100,6 +105,10 @@ FIXTURE_OPENING_SPLIT = {
 
 def _seed_accounting_fixture(db, league, gm_team, opponent_team) -> None:
     """Post the season described above. Does not commit — the caller owns that."""
+    import uuid
+
+    from beefs import proposal_lifecycle as spec1
+    from economy.challenge_funding import issue_funded_challenge
     from economy.current_settle import DOOR_APPROVED_TOPOFF, DOOR_SEASON_ALLOCATION
     from economy.economy_events import min_reserve_account, wallet_account
     from economy.weekly_minimum import expire_weekly_minimum, release_weekly_minimum
@@ -197,6 +206,66 @@ def _seed_accounting_fixture(db, league, gm_team, opponent_team) -> None:
     # the scan either way. Left as-is deliberately: renaming it would imply a
     # bet row that never existed.
 
+    # 7 — S8-P4C-1: THE OPEN CHALLENGE, issued through the governed funded path.
+    #
+    #     This is what P4B-1 could not seed. On the then-reachable path a
+    #     challenge posted nothing, so `held_open_challenges_cents` was
+    #     structurally 0 and the map recorded it as REVISE EXACT rather than
+    #     fabricate rows. P4C-1 cut the application over to the funded
+    #     lifecycle, so the money is now real and the fixture posts it the way
+    #     the application does — via `issue_funded_challenge`, which writes the
+    #     escrow AND the `ChallengeFundingLeg` provenance that Held is derived
+    #     from. Hand-writing those legs would reproduce the number while proving
+    #     nothing about the path that has to produce it.
+    #
+    #     WEEK 6, AND THE WEEK IS LOAD-BEARING. Funding is min-first: it spends
+    #     the use-it-or-lose-it weekly minimum before it touches wallet money.
+    #     Issued in week 5 this challenge would have consumed the $10 the season
+    #     describes as still live, and "Weekly Min Left" would have gone to $0 —
+    #     changing a cell that has nothing to do with this package. Week 6 has
+    #     had no release, so min-first finds nothing there and the whole $25
+    #     comes from the wallet, exactly as the narrative says.
+    #
+    #     $25 IS NOT RESTORED, IT IS PRODUCED. The figure matches Rev 4.2's Held
+    #     cell because this fixture exists to be the Rev 4.2 reference position
+    #     and the stake is now genuinely posted — not because the number was
+    #     wanted. What P4B-1 refused was asserting $25 with nothing behind it;
+    #     what makes it assertable now is the escrow and the legs, which the
+    #     P4C-1 suite checks independently of this value.
+    #
+    #     THIS STEP COMMITS. `issue_funded_challenge` owns its own transaction,
+    #     as every governed money path does, so it is placed last and the
+    #     caller's own commit becomes a no-op for it.
+    opponent_wallet = db.query(Wallet).filter(Wallet.team_id == opp).first()
+    if opponent_wallet is None:
+        db.add(Wallet(team_id=opp, balance=0.0))
+        db.flush()
+
+    issue_funded_challenge(
+        event_id=uuid.uuid4(),
+        league_id=league.id,
+        week=OPEN_CHALLENGE_WEEK,
+        challenger_team_id=gm,
+        challenged_team_id=opp,
+        wager_type="straight",
+        terms=spec1.ProposalTerms(
+            anchor_stake_cents=OPEN_CHALLENGE_CENTS,
+            quoted_derived_stake_cents=OPEN_CHALLENGE_CENTS,
+            quoted_funded_pot_cents=OPEN_CHALLENGE_CENTS * 2,
+            # A FIXED QUOTE, not a simulated one. The live route prices locked
+            # wagers through Monte Carlo over real starters; a fixture that ran
+            # the simulation would make an ACCOUNTING position depend on a
+            # projection model, and every figure below would move whenever the
+            # model did. The stake is what the accounting reads, and the stake
+            # is exact.
+            anchor_odds=1.909, derived_odds=1.909,
+            anchor_moneyline=-110, derived_moneyline=-110,
+            pricing_model_id=spec1.MODE_LOCKED,
+        ),
+        db=db,
+        challenge_mode=spec1.MODE_LOCKED,
+    )
+
 
 # ── The Rev 4.2 expectation map (S8-P4B-1) ───────────────────────────────────
 #
@@ -215,26 +284,38 @@ def _seed_accounting_fixture(db, league, gm_team, opponent_team) -> None:
 
 EXPECTATION_MAP = (
     # (cell, source, illustrative, seeded, status, note)
-    ("Wallet", "wallet:{team} balance", 5_500, 5_500, "KEEP EXACT",
-     "Top-Off $40 + settled return $43 - open stake $28."),
+    ("Wallet", "wallet:{team} balance", 5_500, 3_000, "REVISE EXACT",
+     "Top-Off $40 + settled return $43 - open stake $28 - open CHALLENGE stake "
+     "$25. S8-P4C-1: the challenge stake really leaves the wallet at issue "
+     "now, so a wallet that still held it was describing the soft-reservation "
+     "model. The money is not lost — it moved to In Play below."),
 
     ("Weekly Min Left", "min:{team}:{week} live balance", 1_000, 1_000,
      "KEEP EXACT", "Week 5 released and unspent."),
 
-    ("Available", "wallet + live weekly minimum", 6_500, 6_500, "KEEP EXACT",
-     "Grouping of two authoritative terms."),
+    ("Available", "wallet + live weekly minimum", 6_500, 4_000, "REVISE EXACT",
+     "Grouping of two authoritative terms; moves with Wallet above. The weekly "
+     "minimum term is UNCHANGED at $10 — the open challenge was issued in week "
+     "6, where min-first funding finds nothing to spend, so week 5's live "
+     "minimum is untouched by it."),
 
-    ("In Play", "in_play_cents — escrow:{bet_id}, attributed via Bet.wallet",
-     2_800, 2_800, "KEEP EXACT",
-     "One open wager. Equals the whole of in_play because Held is 0."),
+    ("In Play", "in_play_cents — escrow:{bet_id} via Bet.wallet, PLUS "
+     "escrow:challenge:{id} via ChallengeFundingLeg",
+     2_800, 5_300, "REVISE EXACT",
+     "One open wager ($28) plus one open challenge ($25). The illustrative $28 "
+     "counted only bet escrow, which made Held look like a term BESIDE In Play; "
+     "the read model makes it a SUBSET of it. Both are unresolved escrow the GM "
+     "funded, and counting the challenge only under Held would leave $25 of the "
+     "GM's own money in no asset line at all."),
 
     ("Held", "held_open_challenges_cents — ChallengeFundingLeg, open states",
-     2_500, 0, "REVISE EXACT",
-     "P4B-0: the reachable path (beefs/beef_engine.py) uses a soft "
-     "reservation and posts no challenge escrow, so no ChallengeFundingLeg "
-     "exists and this is structurally 0. Fabricating rows would manufacture "
-     "state no live path writes. P4C owns Spec-2 activation, after which this "
-     "becomes a non-zero SUBSET of In Play."),
+     2_500, 2_500, "KEEP EXACT",
+     "S8-P4C-1 closed P4B-0's carry-forward. The application now issues through "
+     "the funded lifecycle, so the fixture posts a real $25 Anchor escrow and "
+     "Held reads it back from the legs that moved it. The figure agrees with "
+     "the prototype's because this fixture exists to BE the Rev 4.2 position "
+     "and the money is now genuinely posted — not because the number was "
+     "wanted. What P4B-1 refused was asserting $25 with nothing behind it."),
 
     ("Weekly Reserve Not Released", "min_reserve:{team} balance", 9_000, 9_000,
      "KEEP EXACT", "$140 opening less $50 released over five weeks."),
@@ -273,7 +354,11 @@ EXPECTATION_MAP = (
      -4_500, -6_900, "REVISE EXACT",
      "Moves by exactly the unsourced +$24 that is no longer invented. This is "
      "the authoritative figure for the seeded position and P4B-2 must assert "
-     "it exactly."),
+     "it exactly. UNCHANGED BY S8-P4C-1, and that is a result rather than a "
+     "coincidence: issuing a funded challenge moves money from one asset term "
+     "(Wallet) to another (In Play), so assets and therefore Current Settle "
+     "cannot move. If activating real escrow HAD shifted this figure, "
+     "something would have been double-counted."),
 )
 
 #: Rev 4.2 cells that stay illustrative in P4B because they belong to a

@@ -227,27 +227,35 @@ E4 = _make_team(L4, "E4", column_dollars=100.00, ledger_cents=10000)  # ledger $
 F4 = _make_team(L4, "F4", column_dollars=100.00, ledger_cents=0)
 now = datetime.now(timezone.utc)
 with SessionLocal() as db:
-    # A PENDING BeefChallenge issued by E4 — reserves $60, but has no Bet row and
-    # no escrow posting (the challenge-preview stage). ledger balance stays $100.
+    # An OPEN challenge issued by E4, in the shape the funded lifecycle leaves
+    # behind: a challenge row carrying its Spec-1 negotiation state, and the
+    # Anchor stake really posted to that challenge's escrow account.
     ch = BeefChallenge(
         challenger_team_id=E4, challenged_team_id=F4, week=1, bet_type="straight",
-        amount=60.0, line=None, side=None, player_id=None, description="fr712 chres",
+        amount=60.0, line=None, side=None, player_id=None, description="fr712 open challenge",
         challenger_odds=1.9, challenged_odds=1.9, challenger_moneyline=-110, challenged_moneyline=-110,
-        status="pending", expires_at=now + timedelta(hours=24), created_at=now,
+        status="pending", response_status="offered",
+        expires_at=now + timedelta(hours=24), created_at=now,
         projection_snapshot=None, staleness_warning=0,
     )
     db.add(ch); db.commit()
+    ch_id = ch.id
 
-_assert("F4: ledger balance still $100 (challenge stage posts nothing) (fixture check)", balance_of(f"wallet:{E4}") == 10000, f"got {balance_of(f'wallet:{E4}')}")
+ledger_post([(f"wallet:{E4}", -6000), (f"escrow:challenge:{ch_id}", 6000)],
+            door="challenge_issued")
+
+_assert("F4: the stake really left the wallet — ledger is $40, not $100 (fixture check)",
+        balance_of(f"wallet:{E4}") == 4000, f"got {balance_of(f'wallet:{E4}')}")
 
 raised_4 = False
 try:
     with SessionLocal() as db:
-        # $60 fits the raw $100 ledger, but not $100 - $60 reserved = $40.
+        # $60 no longer fits, and nothing had to model why: the $60 is sitting
+        # in challenge escrow where the balance read can already see it gone.
         _verify_wallet_available(E4, 60.0, db)
 except ValueError:
     raised_4 = True
-_assert("F4: $60 wager rejected — fits raw $100 ledger but not (ledger - $60 ch_reserved) (ch_reserved is the sole guard now)", raised_4)
+_assert("F4: $60 wager rejected — the open challenge's stake is escrowed, so the ledger balance alone refuses it", raised_4)
 
 
 # ── Trial balance smoke check ──────────────────────────────────────────────────

@@ -68,7 +68,7 @@ N_START           = 9
 from config import CURRENT_SEASON as SEASON
 from config import LOCK_SEASON
 SOURCE            = "fantasypros"
-from wallet.wallet_manager import MIN_BET, _challenge_reserved
+from wallet.wallet_manager import MIN_BET
 from betting.pool_engine import _nfl_lock_time
 from betting.exceptions import ScheduleNotReadyError
 from betting.per_bet_lock import is_bet_locked_for_gm
@@ -652,10 +652,9 @@ def _place_beef_side(
 
 
 def _verify_wallet_available(
-    team_id:              int,
-    effective_amount:     float,
-    db:                   Session,
-    exclude_challenge_id: int | None = None,
+    team_id:          int,
+    effective_amount: float,
+    db:               Session,
 ) -> Wallet:
     """
     Confirm team_id's bet wallet can cover effective_amount right now —
@@ -667,18 +666,27 @@ def _verify_wallet_available(
     # session/transaction, compared in integer cents. bet_exposure is dropped
     # entirely — pending bets' stakes have already left wallet:{team_id} in the
     # ledger via the wager_placed escrow debit, so the ledger balance already
-    # reflects them; subtracting bet_exposure again would double-count. ch_reserved
-    # is retained — a pending/countered BeefChallenge has no ledger posting yet.
+    # reflects them; subtracting bet_exposure again would double-count.
+    #
+    # S8-P4C-1: ch_reserved is dropped for the SAME REASON, now that it is true
+    # of challenges too. The soft reservation existed only because the legacy
+    # issue stage posted nothing, so an open challenge's stake was invisible to
+    # the ledger and had to be modelled alongside it. Under the funded lifecycle
+    # the Anchor is posted to `escrow:challenge:{id}` at issue, so an open
+    # challenge has ALREADY left this wallet — subtracting a reservation on top
+    # would double-count exactly as bet_exposure did.
+    #
+    # The ledger balance is now the whole of available capacity. That is the
+    # invariant `_challenge_reserved` was standing in for, and it is now enforced
+    # by the money itself rather than by a parallel model of it.
     wallet          = db.query(Wallet).filter(Wallet.team_id == team_id).first()
-    ledger_cents    = _balance_of_in_session(db, f"wallet:{team_id}")
-    ch_reserved     = _challenge_reserved(team_id, db, exclude_challenge_id)
-    available_cents = ledger_cents - _to_cents(ch_reserved)
+    available_cents = _balance_of_in_session(db, f"wallet:{team_id}")
     if available_cents < _to_cents(effective_amount):
         raise ValueError(
             f"Team {team_id}'s wallet has insufficient funds: "
             f"${effective_amount:.2f} needed, ${available_cents / 100:.2f} available "
-            f"(${ledger_cents / 100:.2f} wallet balance, "
-            f"${ch_reserved:.2f} in challenge reservations)"
+            f"(${available_cents / 100:.2f} wallet balance, open challenge stakes "
+            f"already escrowed)"
         )
     return wallet
 
@@ -751,12 +759,13 @@ def issue_challenge(
         raise ValueError(f"Amount ${amount:.2f} is below the minimum ${MIN_BET:.2f}")
 
     # P1-L7: take the challenger's Wallet-row mutex before the capacity read
-    # below, held to this function's db.commit(). Issue posts no money today —
-    # the stake is soft-reserved through _challenge_reserved — but the read it
-    # gates is still balance-sensitive: two concurrent issues by one team each
-    # see the same ledger balance and the same (not-yet-committed) reservation
-    # set, so both pass and the team ends up reserved beyond its balance. This is
-    # the "two racing issues by one team cannot both pass the funds check"
+    # below, held to this function's db.commit(). The mutex outlived the reason
+    # first given for it: S8-P4C-1 retired the soft reservation this comment used
+    # to cite, but the read it gates is still balance-sensitive, so the mutex is
+    # not merely retained — it is now the ONLY thing serialising it. Two
+    # concurrent issues by one team would otherwise both see the same
+    # not-yet-committed balance, both pass, and commit the team beyond it. This
+    # is the "two racing issues by one team cannot both pass the funds check"
     # obligation in Foundation Correction Plan §4.
     #
     # Ordered ahead of the wallet lookup so the mutex is the first statement of
@@ -769,17 +778,17 @@ def issue_challenge(
     challenger_wallet = db.query(Wallet).filter(Wallet.team_id == challenger_team_id).first()
     if not challenger_wallet:
         raise ValueError(f"No wallet found for team {challenger_team_id}")
-    # FR-7.12: ledger-sourced, in-session, integer-cents funds check. bet_exposure
-    # dropped (already reflected in the ledger balance via wager_placed escrow
-    # debits); challenge_reserved retained (no ledger posting at challenge stage).
-    ledger_cents       = _balance_of_in_session(db, f"wallet:{challenger_team_id}")
-    challenge_reserved = _challenge_reserved(challenger_team_id, db)
-    available_cents    = ledger_cents - _to_cents(challenge_reserved)
+    # FR-7.12 / S8-P4C-1: ledger-sourced, in-session, integer-cents funds check.
+    # Both correction terms are now dropped — bet_exposure because placed stakes
+    # already left the wallet via wager_placed, challenge_reserved because open
+    # challenge stakes now do too, via the issue-stage Anchor escrow. The ledger
+    # balance is the whole of available capacity.
+    available_cents = _balance_of_in_session(db, f"wallet:{challenger_team_id}")
     if available_cents < _to_cents(amount):
         raise ValueError(
             f"Challenger wallet has insufficient available funds: "
-            f"${available_cents / 100:.2f} available (${ledger_cents / 100:.2f} balance, "
-            f"${challenge_reserved:.2f} reserved for pending challenges)"
+            f"${available_cents / 100:.2f} available — open challenge stakes are "
+            f"already escrowed and excluded from this balance"
         )
 
     player = db.query(Player).filter(Player.id == player_id).first() if player_id else None
@@ -975,7 +984,6 @@ def respond_to_challenge(
         # Challenger excludes the current challenge from its reservation (it's about to settle).
         challenger_wallet = _verify_wallet_available(
             challenge.challenger_team_id, effective_amount, db,
-            exclude_challenge_id=challenge.id,
         )
         challenged_wallet = _verify_wallet_available(
             challenge.challenged_team_id, effective_amount, db,
@@ -985,7 +993,6 @@ def respond_to_challenge(
         # Challenger excludes the current challenge from its reservation (it's about to settle).
         challenger_wallet = _verify_wallet_available(
             challenge.challenger_team_id, effective_amount, db,
-            exclude_challenge_id=challenge.id,
         )
         challenged_wallet = _verify_wallet_available(
             challenge.challenged_team_id, effective_amount, db,
@@ -1080,12 +1087,10 @@ def counter_challenge(
         )
 
     # P1-L7: the countering team's Wallet-row mutex, held to db.commit() below.
-    # A counter posts no money, but it writes a reservation-bearing state
-    # (status 'countered' + countered_amount) that _challenge_reserved() counts
-    # against this same scope, and it decides to write it from a balance read.
-    # Two concurrent counters by one team — or a counter racing that team's own
-    # issue — would otherwise both read the pre-reservation balance and both
-    # pass. Single scope: the countering team is the only one committing capacity
+    # A counter posts no money and, since S8-P4C-1, reserves none either — but it
+    # still DECIDES from a balance read, and that is what the mutex protects. Two
+    # concurrent counters by one team, or a counter racing that team's own issue,
+    # would otherwise both read the same balance and both pass. Single scope: the countering team is the only one committing capacity
     # here; the challenger's exposure is unchanged by a counter.
     lock_funding_scopes(db, challenge.challenged_team_id)
     # Check CHALLENGED team's available balance for countered_amount.
@@ -1093,17 +1098,14 @@ def counter_challenge(
     cd_wallet = db.query(Wallet).filter(Wallet.team_id == challenge.challenged_team_id).first()
     if not cd_wallet:
         raise ValueError(f"No wallet found for team {challenge.challenged_team_id}")
-    # FR-7.12: ledger-sourced, in-session, integer-cents funds check. bet_exposure
-    # dropped (already in the ledger balance via wager_placed escrow debits);
-    # challenge_reserved retained (no ledger posting at challenge stage).
-    cd_ledger_cents       = _balance_of_in_session(db, f"wallet:{challenge.challenged_team_id}")
-    cd_challenge_reserved = _challenge_reserved(challenge.challenged_team_id, db)
-    cd_available_cents    = cd_ledger_cents - _to_cents(cd_challenge_reserved)
+    # FR-7.12 / S8-P4C-1: ledger-sourced, in-session, integer-cents funds check,
+    # with no reservation term — see _verify_wallet_available().
+    cd_available_cents = _balance_of_in_session(db, f"wallet:{challenge.challenged_team_id}")
     if cd_available_cents < _to_cents(countered_amount):
         raise ValueError(
             f"Challenged wallet has insufficient funds to propose a ${countered_amount:.2f} counter: "
-            f"${cd_available_cents / 100:.2f} available (${cd_ledger_cents / 100:.2f} balance, "
-            f"${cd_challenge_reserved:.2f} in challenge reservations)"
+            f"${cd_available_cents / 100:.2f} available — open challenge stakes are "
+            f"already escrowed and excluded from this balance"
         )
 
     challenge.countered_amount = countered_amount
