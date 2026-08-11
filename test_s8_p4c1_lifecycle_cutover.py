@@ -419,14 +419,22 @@ status, _ = gm.request("POST", "/beef/challenge", {
 _assert("§11: a GM cannot issue a challenge AS another team",
         status == 403, f"status {status}")
 
-# DISCLOSED, NOT ASSERTED AS DESIRABLE. `assert_own_team` has always let a
-# commissioner act as any team in their league, and this package did not change
-# that rule — but it changed what the rule COSTS. Before the cutover, a
-# commissioner issuing "as" another GM created an unfunded pending row; now the
-# same call debits that GM's real wallet and escrows their money. Recorded here
-# so the consequence lives in a suite rather than only in a report, and so a
-# later decision to narrow the rule has a test to change.
-from auth.jwt_auth import assert_own_team as _assert_own_team  # noqa: E402
+# CLOSED BY S8-P4C-1R. This block used to DISCLOSE that `assert_own_team` let a
+# commissioner act as any team, and that the cutover had turned that from a
+# harmless unfunded row into a debit of another GM's real Credits. It was a
+# finding, not a specification — so the repair replaced it rather than the suite
+# outliving it, and the invariant it was standing in for is now asserted
+# directly: commissioner status confers no wagering authority.
+#
+# The lenient helper still exists and still exempts commissioners, because
+# administrative READS legitimately rely on that. What changed is that no
+# wagering route consults it. Both halves are asserted, because "we tightened
+# wagering" and "we did not break commissioner oversight" are separate claims
+# and only one of them is about this package's success.
+from auth.jwt_auth import (  # noqa: E402
+    assert_own_team as _lenient_guard,
+    assert_wagering_team_owner as _strict_guard,
+)
 from fastapi import HTTPException as _HTTPException  # noqa: E402
 
 
@@ -434,19 +442,24 @@ class _FakeCommissioner:
     role, team_id = "commissioner", OPP_TEAM
 
 
-_commissioner_may_act_as_any_team = True
-try:
-    _assert_own_team(GM_TEAM, _FakeCommissioner())
-except _HTTPException:
-    _commissioner_may_act_as_any_team = False
-_assert("§11: DISCLOSED — a commissioner may still act as any team, and that "
-        "now moves real money",
-        _commissioner_may_act_as_any_team,
-        "pre-existing rule; the cutover raises its consequence — narrowing it "
-        "is a POR decision, not a P4C-1 change")
+def _permits(guard, team_id) -> bool:
+    try:
+        guard(team_id, _FakeCommissioner())
+        return True
+    except _HTTPException:
+        return False
 
-status, _ = gm.request("POST", "/beef/respond",
-                       {"challenge_id": CH, "accept": True})
+
+_assert("§11: commissioner status confers NO wagering authority",
+        not _permits(_strict_guard, GM_TEAM),
+        "assert_wagering_team_owner refuses a commissioner acting as another GM")
+_assert("§11: and a commissioner may still wager for their OWN team",
+        _permits(_strict_guard, OPP_TEAM),
+        "ownership, not rank, is what the strict guard reads")
+_assert("§11: the lenient guard is untouched for administrative reads",
+        _permits(_lenient_guard, GM_TEAM),
+        "commissioner oversight of records is deliberately preserved")
+
 _assert("§11: the ISSUER cannot accept their own offered challenge",
         status == 403, f"status {status}")
 

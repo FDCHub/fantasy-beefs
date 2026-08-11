@@ -64,6 +64,7 @@ from wallet.wallet_manager import (
 from auth.jwt_auth import (
     authenticate_user,
     assert_own_team,
+    assert_wagering_team_owner,
     assert_own_wallet,
     create_access_token,
     get_current_gm,
@@ -1513,7 +1514,7 @@ def beef_challenge(
     from beefs.beef_engine import _compute_odds
     from economy.challenge_funding import ChallengeFundingError, issue_funded_challenge
 
-    assert_own_team(req.challenger_team_id, current_user)
+    assert_wagering_team_owner(req.challenger_team_id, current_user)
 
     league_id = _team_league_id(db, req.challenger_team_id)
     if _team_league_id(db, req.challenged_team_id) != league_id:
@@ -1612,7 +1613,7 @@ def beef_respond(
         responder = (challenge.challenger_team_id
                      if challenge.response_status == COUNTERED
                      else challenge.challenged_team_id)
-        assert_own_team(responder, current_user)
+        assert_wagering_team_owner(responder, current_user)
     else:
         # ALREADY CLOSED. Asking "whose turn is it" of a settled negotiation has
         # no answer, and deriving one anyway produced a 403 that blamed the
@@ -1620,12 +1621,16 @@ def beef_respond(
         # teams are parties to their own challenge, so authorize on THAT and let
         # the protocol give the honest answer — "already accepted" — which is
         # also what makes a retried request idempotent rather than forbidden.
-        if current_user.role != "commissioner" and current_user.team_id not in parties:
+        # PARTICIPANT IDENTITY, STILL REQUIRED — and commissioner status is not
+        # a way of being a participant. S8-P4C-1R: this branch briefly carried a
+        # commissioner exemption, which would have let a commissioner drive
+        # another GM's terminal-state retries; the idempotency it protects is
+        # the participating GM's, not an administrator's.
+        if current_user.team_id not in parties:
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: this challenge is not yours")
-        responder = (current_user.team_id if current_user.team_id in parties
-                     else challenge.challenged_team_id)
+        responder = current_user.team_id
 
     call = accept_funded_challenge if req.accept else decline_funded_challenge
     try:
@@ -1661,7 +1666,7 @@ def beef_counter(
         BeefChallenge.id == req.challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=404, detail="Challenge not found")
-    assert_own_team(challenge.challenged_team_id, current_user)
+    assert_wagering_team_owner(challenge.challenged_team_id, current_user)
 
     challenger = db.query(Team).filter(
         Team.id == challenge.challenger_team_id).one()
@@ -1749,7 +1754,12 @@ def beef_pending(
     from economy.challenge_funding import challenge_escrow_balance
     from db.schema import BeefProposal
 
-    assert_own_team(team_id, current_user)
+    # A GM'S OWN INBOX. Strict, because no governing read authority grants a
+    # commissioner another GM's personal negotiation queue — and the queue
+    # discloses open positions and stakes that are the GM's to hold. League
+    # oversight reads the League Reconciliation surface, which is authorized on
+    # its own terms rather than by borrowing this one.
+    assert_wagering_team_owner(team_id, current_user)
     if db.query(Team).filter(Team.id == team_id).first() is None:
         raise HTTPException(status_code=404, detail=f"Team {team_id} not found")
 

@@ -190,11 +190,49 @@ def require_commissioner(user: User = Depends(get_current_user)) -> User:
 # ── Team ownership guard ──────────────────────────────────────────────────────
 
 def assert_own_team(team_id: int, current_user: User) -> None:
-    """Raise 403 unless current_user owns team_id or is commissioner."""
+    """Raise 403 unless current_user owns team_id or is commissioner.
+
+    ADMINISTRATIVE AUTHORITY, AND ONLY THAT. The commissioner exemption here is
+    deliberate and is still relied on by oversight surfaces that READ a team's
+    records. It must never be used to authorize spending a team's Credits — see
+    `assert_wagering_team_owner`, which is the guard for that and takes no role
+    into account at all.
+    """
     if current_user.role != "commissioner" and current_user.team_id != team_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Access denied: team {team_id} is not yours",
+        )
+
+
+def assert_wagering_team_owner(team_id: int, current_user: User) -> None:
+    """Raise 403 unless current_user IS the GM of team_id. No role exemption.
+
+    WAGERING IDENTITY IS OWNERSHIP, NOT RANK. A wager commits a specific team's
+    Credits, so the only person who may act for that team is the GM whose money
+    it is. `assert_own_team` cannot serve here: its commissioner exemption was
+    written for administrative reads, and under the funded lifecycle it would
+    let a commissioner move another GM's real money into escrow.
+
+    THE DEFECT THIS CLOSES was latent before S8-P4C-1 and became live with it.
+    On the legacy path a commissioner issuing "as" another GM created an
+    unfunded row that reserved nothing; once issuance posts real escrow, the
+    same call debits that GM's wallet. The authorization rule did not change —
+    what changed was the cost of it being wrong.
+
+    A COMMISSIONER IS NOT DISADVANTAGED. They wager for their own team on
+    exactly these terms, because they are that team's GM. What they lose is only
+    the ability to wager as someone else, which was never an administrative
+    capability.
+
+    Cross-league authority needs no separate test: a GM owns one team, so a team
+    in another league can never satisfy this equality.
+    """
+    if current_user.team_id != team_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(f"Access denied: only team {team_id}'s own GM may wager "
+                    f"with its Credits"),
         )
 
 
