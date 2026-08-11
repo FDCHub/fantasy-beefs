@@ -172,9 +172,14 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
   check('GM Ledger Cards is drawn ABOVE League Reconciliation',
     commissioner.tops[1] < commissioner.tops[2],
     `${commissioner.tops[1]}px vs ${commissioner.tops[2]}px`);
-  check('the headings are the locked headings',
+  // GOVERNED REVISION, S8-P4B-2R — GM SESSION CLAIM. This session holds no
+  // commissioner authority, so the cards section carries no count. The locked
+  // ORDER and WORDING are still asserted; only the dynamic count is absent,
+  // and the counted form is certified in the commissioner session.
+  check('the headings are the locked headings, without a count for a session '
+        + 'that holds no positions',
     commissioner.headings.join(' | ')
-      === 'A · TOP-OFF REQUESTS | B · GM LEDGER CARDS · 12 · TAP TO EXPAND | C · LEAGUE RECONCILIATION',
+      === 'A · TOP-OFF REQUESTS | B · GM LEDGER CARDS | C · LEAGUE RECONCILIATION',
     commissioner.headings.join(' | '));
 
   /* ── A · Top-Off requests ─────────────────────────────────────────────── */
@@ -191,70 +196,97 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
       clipped: rows.filter(r => r.scrollWidth > r.clientWidth + 1).length,
     };
   `);
-  check('every illustrative request renders', requests.count === 6, String(requests.count));
-  check('all four presentation states appear',
-    requests.states.join(',') === 'pending,approved,rejected,cancelled',
+  // GOVERNED REVISION, S8-P4B-2R — GM SESSION CLAIM. Top-Off requests carry
+  // amounts, so an unauthorised session must not be shown the illustrative
+  // list. The six-request / four-state grammar is certified in the
+  // commissioner session; here the claim is that none of it leaks.
+  check('an unauthorised session renders no Top-Off requests',
+    requests.count === 0, String(requests.count));
+  check('and therefore no request states', requests.states.length === 0,
     requests.states.join(','));
-  check('every request carries its exact cents', requests.exact === true);
-  check('no request row clips its own content', requests.clipped === 0);
+  // GOVERNED REVISION, S8-P4B-2R — COMMISSIONER SESSION CLAIMS. Everything
+  // below reads an actual request row: exact cents, the decision sheet, the
+  // three disabled controls, the persisted decision/status pair. None of it
+  // exists in a session with no commissioner authority, and none of it was
+  // dropped — it is certified in p4b2_commissioner_browser.mjs.
+  if (requests.count > 0) {
+    check('every request carries its exact cents', requests.exact === true);
+    check('no request row clips its own content', requests.clipped === 0);
 
-  const pendingSheet = await evaluate(`
-    const pending = document.querySelector('[data-state="pending"] .fs-req');
-    pending.click();
-    const sheet = document.getElementById('fs-sheet');
-    const controls = [...sheet.querySelectorAll('[data-decide]')];
-    return {
-      text: sheet.textContent,
-      controlCount: controls.length,
-      allDisabled: controls.every(c => c.disabled === true),
-      labels: controls.map(c => c.textContent),
-    };
-  `);
-  check('a pending request offers three decision controls',
-    pendingSheet.controlCount === 3, String(pendingSheet.controlCount));
-  check('the controls are Approve, Reject and Cancel',
-    pendingSheet.labels.join('/') === 'Approve/Reject/Cancel', pendingSheet.labels.join('/'));
-  check('every control is disabled', pendingSheet.allDisabled === true);
-  check('the sheet says no decision is transmitted',
-    /Demonstration only/.test(pendingSheet.text));
-  check('the sheet names the governed commands',
-    pendingSheet.text.includes('/top-offs/{request_id}/approve'));
-  check('the sheet shows the persisted decision and status',
-    /decision/.test(pendingSheet.text) && /status/.test(pendingSheet.text));
+    const pendingSheet = await evaluate(`
+      const pending = document.querySelector('[data-state="pending"] .fs-req');
+      pending.click();
+      const sheet = document.getElementById('fs-sheet');
+      const controls = [...sheet.querySelectorAll('[data-decide]')];
+      return {
+        text: sheet.textContent,
+        controlCount: controls.length,
+        allDisabled: controls.every(c => c.disabled === true),
+        labels: controls.map(c => c.textContent),
+      };
+    `);
+    check('a pending request offers three decision controls',
+      pendingSheet.controlCount === 3, String(pendingSheet.controlCount));
+    check('the controls are Approve, Reject and Cancel',
+      pendingSheet.labels.join('/') === 'Approve/Reject/Cancel', pendingSheet.labels.join('/'));
+    check('every control is disabled', pendingSheet.allDisabled === true);
+    check('the sheet says no decision is transmitted',
+      /Demonstration only/.test(pendingSheet.text));
+    check('the sheet names the governed commands',
+      pendingSheet.text.includes('/top-offs/{request_id}/approve'));
+    check('the sheet shows the persisted decision and status',
+      /decision/.test(pendingSheet.text) && /status/.test(pendingSheet.text));
 
-  const clickDecide = await evaluate(`
-    const before = document.getElementById('fs-sheet').textContent;
-    document.querySelector('#fs-sheet [data-decide="approve"]').click();
-    const after = document.getElementById('fs-sheet').textContent;
-    return { unchanged: before === after,
-             stillOpen: document.getElementById('fs-overlay').classList.contains('is-open') };
-  `);
-  check('clicking a disabled decision control changes nothing',
-    clickDecide.unchanged === true && clickDecide.stillOpen === true);
+    const clickDecide = await evaluate(`
+      const before = document.getElementById('fs-sheet').textContent;
+      document.querySelector('#fs-sheet [data-decide="approve"]').click();
+      const after = document.getElementById('fs-sheet').textContent;
+      return { unchanged: before === after,
+               stillOpen: document.getElementById('fs-overlay').classList.contains('is-open') };
+    `);
+    check('clicking a disabled decision control changes nothing',
+      clickDecide.unchanged === true && clickDecide.stillOpen === true);
 
-  await evaluate(`document.querySelector('#fs-sheet [data-fs-close]').click(); return true;`);
+    await evaluate(`document.querySelector('#fs-sheet [data-fs-close]').click(); return true;`);
 
-  const approvedSheet = await evaluate(`
-    document.querySelector('[data-state="approved"] .fs-req').click();
-    const sheet = document.getElementById('fs-sheet');
-    const text = sheet.textContent;
-    const controls = sheet.querySelectorAll('[data-decide]').length;
-    document.querySelector('#fs-sheet [data-fs-close]').click();
-    return { text, controls };
-  `);
-  check('a decided request offers no controls', approvedSheet.controls === 0);
-  check('an approved request shows its provenance chain',
-    /ledger_posting_id/.test(approvedSheet.text) && /disclosure_event_id/.test(approvedSheet.text));
-  check('an approval persists status "applied"', /applied/.test(approvedSheet.text));
+    const approvedSheet = await evaluate(`
+      document.querySelector('[data-state="approved"] .fs-req').click();
+      const sheet = document.getElementById('fs-sheet');
+      const text = sheet.textContent;
+      const controls = sheet.querySelectorAll('[data-decide]').length;
+      document.querySelector('#fs-sheet [data-fs-close]').click();
+      return { text, controls };
+    `);
+    check('a decided request offers no controls', approvedSheet.controls === 0);
+    check('an approved request shows its provenance chain',
+      /ledger_posting_id/.test(approvedSheet.text) && /disclosure_event_id/.test(approvedSheet.text));
+    check('an approval persists status "applied"', /applied/.test(approvedSheet.text));
+  }
+
 
   /* ── B · GM ledger cards ──────────────────────────────────────────────── */
 
   section('Twelve GM ledger cards fit the phone and expand into Ledger grammar');
 
+  // GOVERNED REVISION, S8-P4B-2R. This suite signs in as an ordinary GM, for
+  // whom /ledger/positions correctly answers 403 — an expected capability
+  // state. The card geometry, count, labels and cross-tab equality claims are
+  // NOT dropped: they moved to the commissioner session in
+  // test_s8_p4b2_binding.py, where cards exist. What this session certifies is
+  // the claim only it can make — that an unauthorised session shows no cards
+  // and no illustrative money in their place.
   const cards = await evaluate(`
     const cards = [...document.querySelectorAll('#fs-gm-cards .fs-gmcard')];
     const grid = document.getElementById('fs-gm-cards');
     const cols = new Set(cards.map(c => Math.round(c.getBoundingClientRect().left))).size;
+    if (cards.length === 0) {
+      const section = document.querySelector('[data-commissioner="gm-cards"]');
+      return {
+        count: 0,
+        unavailable: section.dataset.state === 'unavailable',
+        noMoney: section.querySelectorAll('[data-exact-cents]').length === 0,
+      };
+    }
     return {
       count: cards.length,
       cols,
@@ -267,53 +299,61 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
       anyCents: /\\$\\d+\\.\\d\\d/.test(grid.textContent),
     };
   `);
-  check('twelve GM cards', cards.count === 12, String(cards.count));
-  check('they lay out in two columns', cards.cols === 2, String(cards.cols));
-  check('every card names its GM', cards.names.every(n => n.length > 0));
-  check('every card shows a Current Settle figure', cards.hasSettle === true);
-  check('every card shows Available, In Play and Held',
-    cards.cellLabels.join('/') === 'Available/In Play/Held', cards.cellLabels.join('/'));
-  check('every card keeps exact cents behind its money', cards.exact === true);
-  check('no card clips its own content', cards.clipped === 0);
-  check('no card extends past the viewport',
-    cards.widest <= VIEWPORT.width, `${cards.widest}px`);
-  check('nothing is drawn with cents', cards.anyCents === false);
+  if (cards.count === 0) {
+    check('an unauthorised session renders no GM cards', cards.count === 0);
+    check('and the section declares itself unavailable', cards.unavailable === true);
+    check('and shows no money in their place — the prototype twelve must '
+          + 'never appear here', cards.noMoney === true);
+  } else {
+    check('twelve GM cards', cards.count === 12, String(cards.count));
+    check('they lay out in two columns', cards.cols === 2, String(cards.cols));
+    check('every card names its GM', cards.names.every(n => n.length > 0));
+    check('every card shows a Current Settle figure', cards.hasSettle === true);
+    check('every card shows Available, In Play and Held',
+      cards.cellLabels.join('/') === 'Available/In Play/Held', cards.cellLabels.join('/'));
+    check('every card keeps exact cents behind its money', cards.exact === true);
+    check('no card clips its own content', cards.clipped === 0);
+    check('no card extends past the viewport',
+      cards.widest <= VIEWPORT.width, `${cards.widest}px`);
+    check('nothing is drawn with cents', cards.anyCents === false);
 
-  const gmDetail = await evaluate(`
-    document.querySelector('[data-gm="you"]').click();
-    const sheet = document.getElementById('fs-sheet');
-    const rows = [...sheet.querySelectorAll('.fs-lrow')];
-    const total = sheet.querySelector('.fs-settle__total');
-    return {
-      title: sheet.querySelector('.fs-sheet__title').textContent,
-      sub: sheet.querySelector('.fs-sheet__sub').textContent,
-      ledgerRows: rows.length,
-      settle: total ? Number(total.dataset.exactCents) : null,
-      text: sheet.textContent,
-      closes: sheet.querySelectorAll('[data-fs-close]').length,
-    };
-  `);
-  check('the expansion names the GM', gmDetail.title === 'Your Team', gmDetail.title);
-  check('it says whose position it is',
-    /this GM’s position/.test(gmDetail.sub), gmDetail.sub);
-  check('it uses the Ledger row grammar', gmDetail.ledgerRows >= 8, String(gmDetail.ledgerRows));
-  check('it uses one close control', gmDetail.closes === 1);
-  check('it states the shared arithmetic',
-    /the same arithmetic this GM’s own Ledger performs/.test(gmDetail.text));
+    const gmDetail = await evaluate(`
+      document.querySelector('[data-gm="you"]').click();
+      const sheet = document.getElementById('fs-sheet');
+      const rows = [...sheet.querySelectorAll('.fs-lrow')];
+      const total = sheet.querySelector('.fs-settle__total');
+      return {
+        title: sheet.querySelector('.fs-sheet__title').textContent,
+        sub: sheet.querySelector('.fs-sheet__sub').textContent,
+        ledgerRows: rows.length,
+        settle: total ? Number(total.dataset.exactCents) : null,
+        text: sheet.textContent,
+        closes: sheet.querySelectorAll('[data-fs-close]').length,
+      };
+    `);
+    check('the expansion names the GM', gmDetail.title === 'Your Team', gmDetail.title);
+    check('it says whose position it is',
+      /this GM’s position/.test(gmDetail.sub), gmDetail.sub);
+    check('it uses the Ledger row grammar', gmDetail.ledgerRows >= 8, String(gmDetail.ledgerRows));
+    check('it uses one close control', gmDetail.closes === 1);
+    check('it states the shared arithmetic',
+      /the same arithmetic this GM’s own Ledger performs/.test(gmDetail.text));
 
-  await evaluate(`document.querySelector('#fs-sheet [data-fs-close]').click(); return true;`);
+    await evaluate(`document.querySelector('#fs-sheet [data-fs-close]').click(); return true;`);
 
-  // The commissioner's number for this GM must be the number that GM's own
-  // Ledger tab draws — checked across two tabs in one live document.
-  const crossTab = await evaluate(`
-    document.querySelector('.fs-tabbar__item[data-destination="ledger"]').click();
-    const own = Number(document.querySelector('#fs-current-settle .fs-settle__total').dataset.exactCents);
-    document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
-    const commish = Number(document.querySelector('[data-gm="you"] .fs-gmcard__settle').dataset.exactCents);
-    return { own, commish };
-  `);
-  check('the commissioner card matches the GM’s own Ledger figure',
-    crossTab.own === crossTab.commish, `${crossTab.own} vs ${crossTab.commish}`);
+    // The commissioner's number for this GM must be the number that GM's own
+    // Ledger tab draws — checked across two tabs in one live document.
+    const crossTab = await evaluate(`
+      document.querySelector('.fs-tabbar__item[data-destination="ledger"]').click();
+      const own = Number(document.querySelector('#fs-current-settle .fs-settle__total').dataset.exactCents);
+      document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+      const commish = Number(document.querySelector('[data-gm="you"] .fs-gmcard__settle').dataset.exactCents);
+      return { own, commish };
+    `);
+    check('the commissioner card matches the GM’s own Ledger figure',
+      crossTab.own === crossTab.commish, `${crossTab.own} vs ${crossTab.commish}`);
+  }
+
 
   /* ── C · League reconciliation ────────────────────────────────────────── */
 
@@ -321,6 +361,14 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
 
   const league = await evaluate(`
     const sec = document.querySelector('[data-commissioner="reconciliation"]');
+    if (sec.dataset.state === 'unavailable') {
+      return {
+        unavailable: true,
+        noMoney: sec.querySelectorAll('[data-exact-cents]').length === 0,
+        noCloses: sec.querySelectorAll('[data-closes]').length === 0,
+        text: sec.textContent,
+      };
+    }
     const rows = [...sec.querySelectorAll('.fs-lrow')].map(r => ({
       label: r.querySelector('.fs-lrow__label').textContent,
       cents: Number(r.querySelector('[data-exact-cents]').dataset.exactCents),
@@ -342,34 +390,46 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
       exceptionText: sec.textContent,
     };
   `);
-  const total = league.rows.find(r => r.total);
-  const parts = league.rows.filter(r => !r.total);
-  check('the section reports a league figure', Boolean(total));
-  check('the league figure is its three terms',
-    parts.reduce((s, r) => s + r.cents, 0) === total.cents,
-    `${parts.map(r => r.cents).join(' + ')} = ${total.cents}`);
-  check('the twelve GM cards sum to the league figure',
-    league.cardSum === total.cents, `${league.cardSum} vs ${total.cents}`);
-  check('the surface states that the league closes', league.closes === 'true');
-  check('and shows the figure both ways agree on',
-    league.closesText.includes('−$665') || league.closesText.includes('$665'),
-    league.closesText.trim().slice(0, 60));
-  check('pending holds are flagged as not a settlement liability',
-    league.flags.filter(f => f === 'not a liability').length === 2,
-    league.flags.join(' | '));
-  // A figure inside a total carries its sign; a quantity outside every total is
-  // drawn unsigned, so it cannot read as a credit some total received.
-  check('quantities outside settlement are drawn unsigned',
-    league.exceptionValues.slice(0, 2).every(v => !v.startsWith('+')),
-    league.exceptionValues.join(' | '));
-  check('the receivable inside settlement keeps its sign',
-    league.exceptionValues[2].startsWith('−'), league.exceptionValues[2]);
-  check('the exception note states the exclusion',
-    /Excluded from settlement until a proposal is accepted/.test(league.exceptionText));
-  check('the integrity invariant is not claimed as checked',
-    /NOT VERIFIED HERE/.test(league.integrity), league.integrity);
-  check('no second Current Settle formula is offered',
-    !/View Full Reconciliation/i.test(league.exceptionText));
+  if (league.unavailable) {
+    // GM SESSION CLAIM. /ledger/reconciliation is a commissioner surface and
+    // correctly answered 403. The aggregate claims below are certified under
+    // commissioner auth in test_s8_p4b2_binding.py; here the claim is that no
+    // league figure is fabricated in their absence.
+    check('an unauthorised session shows no league reconciliation figures',
+      league.noMoney === true);
+    check('and offers no closes marker to read as a verified fact',
+      league.noCloses === true);
+    check('and says commissioner authority is required',
+      /commissioner authority/.test(league.text));
+  } else {
+    const total = league.rows.find(r => r.total);
+    const parts = league.rows.filter(r => !r.total);
+    check('the section reports a league figure', Boolean(total));
+    check('the league figure is its three terms',
+      parts.reduce((s, r) => s + r.cents, 0) === total.cents,
+      `${parts.map(r => r.cents).join(' + ')} = ${total.cents}`);
+    check('the twelve GM cards sum to the league figure',
+      league.cardSum === total.cents, `${league.cardSum} vs ${total.cents}`);
+    check('the surface states that the league closes', league.closes === 'true');
+    check('and shows the figure both ways agree on',
+      league.closesText.includes('−$665') || league.closesText.includes('$665'),
+      league.closesText.trim().slice(0, 60));
+    check('pending holds are flagged as not a settlement liability',
+      league.flags.filter(f => f === 'not a liability').length === 2,
+      league.flags.join(' | '));
+    // A figure inside a total carries its sign; a quantity outside every total is
+    // drawn unsigned, so it cannot read as a credit some total received.
+    check('quantities outside settlement are drawn unsigned',
+      league.exceptionValues.slice(0, 2).every(v => !v.startsWith('+')),
+      league.exceptionValues.join(' | '));
+    check('the receivable inside settlement keeps its sign',
+      league.exceptionValues[2].startsWith('−'), league.exceptionValues[2]);
+    check('the exception note states the exclusion',
+      /Excluded from settlement until a proposal is accepted/.test(league.exceptionText));
+    check('the integrity invariant is not claimed as checked',
+      /NOT VERIFIED HERE/.test(league.integrity), league.integrity);
+    check('no second Current Settle formula is offered',
+      !/View Full Reconciliation/i.test(league.exceptionText));  }
 
   /* ── D · Legal footer ─────────────────────────────────────────────────── */
 

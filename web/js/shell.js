@@ -43,7 +43,21 @@ import { bindLedger, buildLedgerPanel } from './ledger.js';
 import { bindRules, buildRulesPanel } from './rules.js';
 import { beginSession, composerSheet, endSession } from './composer.js';
 import { bindGate, bindIdentityBlock, buildGate, buildIdentityBlock } from './auth-view.js';
-import { isAuthenticated, onIdentityChange, refreshIdentity } from './session.js';
+import {
+  currentIdentity, isAuthenticated, onIdentityChange, refreshIdentity,
+} from './session.js';
+import { clearProductionData, loadProductionData, productionData } from './production-data.js';
+// Aliased: `bindLedger` above is the Ledger PANEL's event binder; these are the
+// MODEL's data binders. Two different jobs that wanted the same name.
+import {
+  bindLedger as bindLedgerModel,
+  markLedgerUnavailable,
+  unbindLedger as unbindLedgerModel,
+} from './ledger-model.js';
+import {
+  bindCommissioner, markCommissionerUnavailable, unbindCommissioner,
+} from './commissioner-model.js';
+import { CURRENT_WEEK } from './data/week-data.js';
 
 /* ── Masthead ───────────────────────────────────────────────────────────── */
 
@@ -272,6 +286,80 @@ function bindNavigation() {
 
 /* ── Interactions defined by the POR ────────────────────────────────────── */
 
+/* ── Authoritative data (S8-P4B-2) ──────────────────────────────────────── */
+
+/**
+ * The league this session acts in, from the server's own answer.
+ *
+ * NO FALLBACK, DELIBERATELY. An earlier attempt defaulted to League 1 when
+ * /auth/me did not publish a league. P2's rule is that the real league being
+ * acted upon must be identified authoritatively, and that applies to reads as
+ * much as to writes. /auth/me now derives `acting_league_id` from the user's
+ * own team row, so there is a real answer to read — and `null` is also a real
+ * answer, meaning this account has no acting context. Guessing League 1 would
+ * have shown someone a stranger's money.
+ *
+ * @returns {number|null}
+ */
+export function currentLeagueId() {
+  const identity = currentIdentity();
+  if (!identity || !identity.capabilities) return null;
+  const caps = identity.capabilities;
+  if (caps.acting_context_ambiguous) return null;
+  return typeof caps.acting_league_id === 'number' ? caps.acting_league_id : null;
+}
+
+/**
+ * Load the authoritative slices and put every model into a DEFINITE mode.
+ *
+ * THE INVARIANT: after this returns, no model is in demo mode. Each is either
+ * bound to a real read or explicitly marked unavailable. That is what stops a
+ * refused or failed request from revealing the prototype's money underneath —
+ * there is no "unbound" state left to fall through to.
+ *
+ * A commissioner read returning 403 is an EXPECTED CAPABILITY STATE for an
+ * ordinary GM, not a failure, and lands in the same unavailable mode as a
+ * transport error. The GM's own Ledger is unaffected either way.
+ */
+async function bindAuthoritativeData() {
+  const leagueId = currentLeagueId();
+  if (leagueId === null) {
+    markLedgerUnavailable();
+    markCommissionerUnavailable();
+    return;
+  }
+
+  try {
+    await loadProductionData({ leagueId, week: CURRENT_WEEK });
+  } catch {
+    markLedgerUnavailable();
+    markCommissionerUnavailable();
+    return;
+  }
+
+  const data = productionData();
+
+  if (data && data.ledger) bindLedgerModel(data.ledger, data.settings);
+  else markLedgerUnavailable();
+
+  if (data && data.positions) bindCommissioner(data.positions, data.reconciliation);
+  else markCommissionerUnavailable();
+}
+
+/**
+ * Drop every authoritative figure and return the models to demo.
+ *
+ * Sign-out must leave no trace of the previous user. The models return to DEMO
+ * rather than UNAVAILABLE because the next thing rendered is the gate, which
+ * draws no money at all, and a component suite importing these modules
+ * afterwards should find them in their documented default.
+ */
+function clearAuthoritativeData() {
+  clearProductionData();
+  unbindLedgerModel();
+  unbindCommissioner();
+}
+
 /* ── Mount ──────────────────────────────────────────────────────────────── */
 
 function mountPoints() {
@@ -374,12 +462,24 @@ export async function mount() {
   // all arrive here, so they cannot diverge.
   onIdentityChange((identity) => {
     rendered = true;
-    if (identity) mountApplication();
-    else mountGate();
+    if (identity) {
+      // A sign-in mid-session. The application mounts from the promise so the
+      // panels are never built against a half-bound source, and the models are
+      // put into a definite mode first on either outcome.
+      bindAuthoritativeData().then(mountApplication, mountApplication);
+    } else {
+      clearAuthoritativeData();
+      mountGate();
+    }
   });
 
   try {
     await refreshIdentity();
+    // BEFORE THE FIRST AUTHORITATIVE PAINT. Panels are built synchronously from
+    // the view models, so binding must complete before the first render —
+    // otherwise the first frame is prototype money that is then replaced,
+    // which is worse than a moment of loading.
+    if (isAuthenticated()) await bindAuthoritativeData();
   } catch {
     // A transport failure is not an identity. The gate is the honest state:
     // we could not establish who is acting, so nothing is shown as though we

@@ -89,6 +89,24 @@ function requestRow(request) {
 }
 
 export function topOffSection() {
+  // The same capability state as the two sections below. The request list is
+  // illustrative, and a signed-in GM whose league reads were refused must not
+  // be shown fabricated Top-Off requests with real-looking amounts — that is
+  // exactly the "no illustrative money leak" property, and this section
+  // carries amounts too.
+  if (commissionerMode() === COMM_MODE_UNAVAILABLE) {
+    return (
+      '<section class="fs-comsec" data-commissioner="topoffs" ' +
+      'data-state="unavailable">' +
+      sectionHeading(TOPOFF_HEADING) +
+      '<div class="fs-reqs" id="fs-topoff-requests"></div>' +
+      note('Top-Off requests are not available to this session. Reviewing a ' +
+           'league’s requests requires commissioner authority for it.',
+           { pending: true }) +
+      '</section>'
+    );
+  }
+
   const groups = requestsByState();
   const open = groups.find((g) => g.state.id === 'pending').requests;
 
@@ -304,6 +322,27 @@ export function gmSheet(position) {
 /* ── C · League Reconciliation ──────────────────────────────────────────────*/
 
 export function reconciliationSection() {
+  // UNAVAILABLE IS A CAPABILITY STATE, NOT AN ERROR. `/ledger/reconciliation`
+  // is a commissioner surface; an ordinary GM's session correctly receives 403.
+  // What must not happen is a fall-through to the illustrative league, which
+  // would show a GM twelve fabricated positions summing to a fabricated
+  // league figure — money that reconciles perfectly and describes nobody.
+  //
+  // Rendered with NO figures at all: no aggregate rows, no closes marker, no
+  // exception rows. A `$0` here would be worse than nothing, because a league
+  // total of zero that "closes" reads as a verified fact.
+  if (commissionerMode() === COMM_MODE_UNAVAILABLE) {
+    return (
+      '<section class="fs-comsec" data-commissioner="reconciliation" ' +
+      'data-state="unavailable">' +
+      sectionHeading(RECONCILIATION_HEADING) +
+      note('League-wide reconciliation is not available to this session. ' +
+           'Aggregating every GM’s position requires commissioner authority ' +
+           'for this league.', { pending: true }) +
+      '</section>'
+    );
+  }
+
   const r = leagueReconciliation();
   const ex = r.exceptions;
 

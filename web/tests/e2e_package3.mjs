@@ -339,8 +339,20 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       }));
     return { week: read('fs-strip-ledger'), season: read('fs-strip-season') };
   `);
+  // GOVERNED REVISION, S8-P4B-2R — Held only. This suite now drives the
+  // PRODUCTION build against the P4B-1 authoritative fixture, so these are
+  // posted ledger figures rather than prototype constants.
+  //
+  //   Available $65, In Play $28, Weekly Min Left $10 — KEEP EXACT. Unchanged,
+  //   and now proven end-to-end from economy/current_settle.py.
+  //
+  //   Held $25 -> $0 — REVISE EXACT. P4B-0 established that the reachable
+  //   path (beefs/beef_engine.py) uses a soft reservation and posts no
+  //   challenge escrow, so no ChallengeFundingLeg exists and
+  //   held_open_challenges_cents is structurally 0. P4C activates the Spec-2
+  //   successor, after which this becomes a non-zero SUBSET of In Play.
   const weekExpected = [['Available', '$65', '6500'], ['In Play', '$28', '2800'],
-    ['Held', '$25', '2500'], ['Weekly Min Left', '$10', '1000']];
+    ['Held', '$0', '0'], ['Weekly Min Left', '$10', '1000']];
   for (const [i, [label, value, exact]] of weekExpected.entries()) {
     check(`week strip cell ${i + 1} is ${label} ${value}`,
       strips.week[i].label === label && strips.week[i].value === value,
@@ -349,8 +361,19 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       String(strips.week[i].exact));
   }
 
+  // GOVERNED REVISION, S8-P4B-2R — two cells.
+  //
+  //   Awards / Adj. +$32 -> unresolved. P3 proved season winnings has no
+  //   authoritative source. Two of the cell's three components ARE sourced,
+  //   which is the trap: printing +$8 would put a partial subtotal under a
+  //   label meaning the whole, and $0 would assert a zero nobody measured.
+  //
+  //   Current Settle −$45 -> −$69. Moves by exactly the unsourced +$24 that is
+  //   no longer invented. Asserted exactly, not loosely.
+  //
+  //   Bet Record and Versus + Pools are P4C-owned domains, untouched.
   const seasonExpected = [['Bet Record', '14–7'], ['Versus + Pools', '+$126'],
-    ['Awards / Adj.', '+$32'], ['Current Settle', '−$45']];
+    ['Awards / Adj.', '—'], ['Current Settle', '−$69']];
   for (const [i, [label, value]] of seasonExpected.entries()) {
     check(`My Season cell ${i + 1} is ${label} ${value}`,
       strips.season[i].label === label && strips.season[i].value === value,
@@ -482,14 +505,14 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     };
   `);
   check('the card shows its three inputs', settle.rows.length === 3, String(settle.rows.length));
-  check('183 + 32 − 260 reconciles to −45 on screen',
+  check('the three inputs reconcile to the drawn total on screen',
     settle.rows.reduce((s, r) => s + r.cents, 0) === settle.total,
     `${settle.rows.map(r => r.cents).join(' + ')} = ${settle.total}`);
-  check('Current Settle draws as −$45', settle.drawn === '−$45', settle.drawn);
+  check('Current Settle draws as −$69', settle.drawn === '−$69', settle.drawn);
   check('Total Virtual Stakes is shown as a subtraction',
     settle.rows[0].cents === -26000, String(settle.rows[0].cents));
   check('the card matches the My Season strip figure',
-    String(settle.total) === '-4500');
+    String(settle.total) === '-6900', String(settle.total));
 
   section('The Current Settle card is inert, and promises no other page');
 
