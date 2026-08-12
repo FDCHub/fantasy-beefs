@@ -5111,6 +5111,198 @@ def settle_governed_pool_week(
     )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# WP3 — SEASON CLOSE
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# THE GAP THIS CLOSES. `economy/season_close_orchestrator.close_season_economy`
+# is the certified sixteen-step close: nine pure-read preconditions, then the
+# reserve sweep, Skunk, the 60/30/10 Championship distribution, the expired
+# Weekly Minimum reconciliation, the derived Current Settle, the account-level
+# zero assertions, the global trial balance and finally the irreversible
+# `close_season()` stamp. Every step was certified by test_s5_p3_season_close_pg
+# — and NOTHING CALLED IT. `economy/season_close.py` says so in its own scope
+# fence: "routes — nothing in this module is registered in api/main.py". So a
+# league could reach the end of its season and had no way to close it: the money
+# in `championship:{league_id}` was unreachable and the expired Weekly Minimum
+# sat in `expired_min:{team}` forever.
+#
+# WP3 ADDS THE COMMISSIONER ACTION AND NOTHING ELSE. No step is added, removed,
+# reordered or weakened; no precondition is relaxed; no arithmetic is
+# reimplemented. This route is a caller.
+#
+# TWO INPUTS ARE DELIBERATELY NOT ACCEPTED FROM THE CLIENT, and each would be a
+# real money defect if they were:
+#
+#   final_week       decides `cutoff` inside verify_preconditions, which decides
+#                    WHICH WEEKS are checked for Weekly Minimum expiry and Skunk
+#                    assessment. A commissioner who passed final_week=1 would
+#                    skip every later week's checks and close over unsettled
+#                    money. It is read from the league's own
+#                    `season_final_week`.
+#
+#   standings_order  decides who receives 60% of the Championship pot. Accepting
+#                    it from the caller would let a commissioner name themselves
+#                    first. It is left None so the orchestrator derives it from
+#                    posted results via `default_standings_order`.
+#
+# THE OPERATOR IS THE AUTHENTICATED COMMISSIONER. §9.2 requires the close writer
+# to report operator identity in its return value and defines no audit table for
+# it; the identity passed here is the caller's own, never a constant.
+
+
+class SeasonCloseChampionshipPlacementOut(BaseModel):
+    place:   int
+    team_id: int
+    pct:     int
+    cents:   int
+
+
+class SeasonCloseOut(BaseModel):
+    """Mirrors `SeasonCloseReport` field for field, plus the close stamp.
+
+    `closed_now` and `replayed` are BOTH reported and they are different facts:
+    `closed_now` means this call wrote the timestamp, `replayed` means the season
+    was already closed when the call arrived and the orchestrator returned
+    without re-posting. A single boolean could not distinguish them.
+    """
+    league_id:                  int
+    season:                     int
+    closed_now:                 bool
+    replayed:                   bool
+    season_closed_at:           Optional[str]
+    operator:                   str
+    final_week:                 int
+    reserve_swept_cents:        int
+    legacy_consolidated_cents:  int
+    skunk_distributed_cents:    int
+    championship_pot_cents:     int
+    championship_placements:    list[SeasonCloseChampionshipPlacementOut]
+    expired_min_returned_cents: int
+    zero_assertions:            dict[str, int]
+    current_settle:             dict[str, dict]
+
+
+@app.post("/league/{league_id}/season/close", response_model=SeasonCloseOut)
+def close_league_season(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    comm:      User    = Depends(require_league_commissioner),
+):
+    """Close one league's season — the terminal commissioner economic action.
+
+    LEAGUE-SCOPED AUTHORIZATION, exactly as the Pool and Week routes use it.
+    `require_league_commissioner` binds `league_id` from the path and refuses
+    before any route work, so a commissioner of another league gets 403 and
+    cannot use this route to learn whether a league exists, let alone close it.
+
+    IT CANNOT CLOSE PREMATURELY, AND THIS ROUTE IS NOT WHAT STOPS IT.
+    `verify_preconditions` runs all nine checks as pure reads before a single
+    posting, and refuses naming the FIRST unmet one. Restating any of them here
+    would put a second, weaker opinion about readiness in front of the real one.
+
+    IDEMPOTENT BY THE STAMP, NOT BY A FLAG THIS ROUTE KEEPS.
+    `close_season_economy` returns early when `is_season_closed` is already true,
+    so a repeated close re-posts nothing and re-derives the per-GM position from
+    posted state. `close_season()` additionally takes the League row FOR UPDATE
+    as its first statement, so two concurrent closes cannot both stamp.
+
+    TRANSACTION OWNERSHIP FOLLOWS THE ORCHESTRATOR'S CONTRACT. Steps 10-15 are
+    written into this session and `close_season()` — called last — commits them
+    together with the stamp. This route therefore does not commit on success; it
+    rolls back on every refusal, which is safe because every refusal happens
+    either before any posting (steps 1-9) or inside a step that raised before
+    completing.
+    """
+    from betting.pool_season_boundary import season_final_week
+    from economy.season_close import (
+        LeagueNotFoundError, SeasonCloseConflictError,
+    )
+    from economy.season_close_orchestrator import (
+        SeasonClosePreconditionError, close_season_economy,
+    )
+    from economy.season_reconciliation import SeasonReconciliationError
+    from economy.skunk import SkunkError
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        # Not reachable through a granted authority — LeagueCommissioner.league_id
+        # is a foreign key, so nobody holds authority for a league that is not
+        # there. Named anyway rather than left to surface as an AttributeError.
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    final_week = season_final_week(league)
+    operator = comm.email
+
+    try:
+        report = close_season_economy(db, league_id=league_id,
+                                      final_week=final_week, operator=operator)
+    except SeasonClosePreconditionError as exc:
+        # THE STEP NAME IS THE REASON CODE, passed through rather than restated.
+        # `exc.step` is already the orchestrator's own vocabulary — versus_terminal,
+        # pool_settled, escrow_resolved, weekly_minimum_expiry, results_not_ready,
+        # skunk_assessed, pool_rollover, pool_zero, provider_conflict,
+        # conservation, trial_balance — and it exists precisely so an operator is
+        # told WHAT TO FINISH. Collapsing eleven distinct causes into one route-
+        # local string would throw that away.
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": exc.step,
+            "message": str(exc),
+            "league_id": league_id,
+            "final_week": final_week})
+    except SeasonCloseConflictError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "season_close_conflict", "message": str(exc)})
+    except LeagueNotFoundError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found", "message": str(exc)})
+    except (SeasonReconciliationError, SkunkError) as exc:
+        # A reconciliation refusal that the orchestrator did not absorb — an
+        # ambiguous legacy pot, an incomplete ranking, a placed team with no
+        # wallet. Governed and named, so it maps like the rest rather than
+        # falling through to the bare re-raise below.
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": exc.reason, "message": str(exc)})
+    except Exception:
+        db.rollback()
+        raise
+
+    # Read the committed stamp back rather than reporting the instant this
+    # process generated: on the replay path the authoritative timestamp is the
+    # ORIGINAL close's, which this call never held.
+    db.expire_all()
+    closed_at = (db.query(League).filter(League.id == league_id).first()
+                 .season_closed_at)
+
+    return SeasonCloseOut(
+        league_id=report.league_id,
+        season=report.season,
+        closed_now=report.closed_now,
+        replayed=report.replayed,
+        season_closed_at=closed_at.isoformat() if closed_at else None,
+        operator=operator,
+        final_week=final_week,
+        reserve_swept_cents=report.reserve_swept_cents,
+        legacy_consolidated_cents=report.legacy_consolidated_cents,
+        skunk_distributed_cents=report.skunk_distributed_cents,
+        championship_pot_cents=report.championship_pot_cents,
+        championship_placements=[
+            SeasonCloseChampionshipPlacementOut(
+                place=place, team_id=team_id, pct=pct, cents=cents)
+            for place, team_id, pct, cents in report.championship_placements
+        ],
+        expired_min_returned_cents=report.expired_min_returned_cents,
+        zero_assertions={k: int(v) for k, v in report.zero_assertions.items()},
+        current_settle={str(k): v for k, v in report.current_settle.items()},
+    )
+
+
 # ── Decision Engine health routes ─────────────────────────────────────────────
 
 from api.health_routes import router as health_router  # noqa: E402
