@@ -1,6 +1,32 @@
-"""P1-L2 RED — mock create_bet_topup issues no BAB (mock-no-credit). Fails against 77fd23c.
-Target (hardened mock): mock creates ONE pending FaabTransaction, credits nothing.
-Current defect: mock branch calls wm_deposit, credits the wallet, marks 'applied'."""
+"""P1-L2 — legacy bet top-up is RETIRED and credits nothing.
+
+WHAT THIS SUITE WAS, AND WHY IT CHANGED (WP5).
+
+It began as a RED spec against 77fd23c: `create_bet_topup`'s mock branch called
+`wm_deposit`, credited the wallet and marked the row 'applied', so the target was
+"create ONE pending FaabTransaction, credit nothing" and the suite exited 1 on
+purpose while that defect stood.
+
+THE DEFECT WAS NOT FIXED — THE WHOLE PATH WAS RETIRED. B6 replaced legacy bet
+top-ups with the governed issuance service behind
+`POST /league/{league_id}/top-offs`, and `create_bet_topup` now refuses outright
+with `TopUpsUnavailableError`. So the RED target became unreachable: there is no
+longer a pending FaabTransaction to inspect, because there is no longer a
+request-creation path at all.
+
+Left as it was, this suite died on an uncaught `TopUpsUnavailableError` — a
+crash that read as a broken test rather than as the retirement working.
+
+THE ECONOMIC PROPERTY IS UNCHANGED AND IS STILL ASSERTED HERE: calling the
+legacy entry point issues NO Credits. It is now proved the stronger way — the
+call is refused, and nothing at all is written — which is the same shape
+`test_p1l2_transfer_retirement_red.py` uses for the retired transfer path.
+
+REPLACEMENT COVERAGE for the governed path this refusal points at:
+    test_b6_group_e_issuance_pg.py        balanced issuance on approval
+    test_commissioner_genesis_and_grant_pg.py  who may approve
+    test_s8_p3_read_models.py             what the approved issuance reports
+"""
 import os, sys, tempfile
 
 # Stripe is removed from the MVP; STRIPE_SECRET_KEY is irrelevant and unset here.
@@ -11,14 +37,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from db.schema import (Base, engine, SessionLocal, League, Team, Wallet,
                        FaabWallet, Transaction, FaabTransaction)
-from wallet.faab_wallet import create_bet_topup
+from ledger.ledger import create_ledger_table, trial_balance
+from wallet.faab_wallet import TopUpsUnavailableError, create_bet_topup
 
 Base.metadata.create_all(engine)
+create_ledger_table()
 _failures: list[str] = []
+
 
 def _assert(label, condition, detail=""):
     print(f"  [{'PASS' if condition else 'FAIL'}] {label}{f' — {detail}' if detail else ''}")
-    if not condition: _failures.append(label)
+    if not condition:
+        _failures.append(label)
+
 
 def _make():
     with SessionLocal() as db:
@@ -31,6 +62,7 @@ def _make():
         db.commit()
         return t.id
 
+
 def _state(tid):
     with SessionLocal() as db:
         w = db.query(Wallet).filter(Wallet.team_id == tid).first()
@@ -38,7 +70,10 @@ def _state(tid):
         faab_rows = db.query(FaabTransaction).filter(FaabTransaction.team_id == tid).all()
         return w.balance, wallet_tx, faab_rows
 
-print("=" * 52); print("P1-L2 RED — mock create_bet_topup no-credit"); print("=" * 52)
+
+print("=" * 60)
+print("P1-L2 — legacy bet top-up is retired and issues nothing")
+print("=" * 60)
 
 _assert("SETUP: no payment rail exists — create_bet_topup has a single path",
         not hasattr(__import__("wallet.faab_wallet", fromlist=["x"]), "MOCK_MODE"),
@@ -46,40 +81,45 @@ _assert("SETUP: no payment rail exists — create_bet_topup has a single path",
 
 tid = _make()
 bal_b, wtx_b, faab_b = _state(tid)
+tb_b = trial_balance()
 
+raised = None
 with SessionLocal() as db:
-    result = create_bet_topup(tid, 25.00, db)   # mock branch
+    try:
+        create_bet_topup(tid, 25.00, db)
+    except TopUpsUnavailableError as exc:      # noqa: PERF203 — one call, one catch
+        raised = exc
 
 bal_a, wtx_a, faab_a = _state(tid)
 
-_assert("MOCK: create_bet_topup does not mutate Wallet.balance (no BAB issued)",
-        bal_a == bal_b,
-        f"Wallet.balance before={bal_b}, after={bal_a}; expected unchanged "
-        f"(current mock branch calls wm_deposit at faab_wallet.py:420)")
-_assert("MOCK: create_bet_topup writes no wallet Transaction row",
-        wtx_a == wtx_b,
-        f"wallet Transaction count before={wtx_b}, after={wtx_a}; expected unchanged")
-_assert("MOCK: create_bet_topup creates exactly one FaabTransaction",
-        len(faab_a) == len(faab_b) + 1,
-        f"FaabTransaction count before={len(faab_b)}, after={len(faab_a)}; expected +1")
-if faab_a:
-    newest = faab_a[-1]
-    _assert("MOCK: the FaabTransaction is status='pending'",
-            newest.status == "pending",
-            f"status={newest.status!r}; expected 'pending' (current mock marks it 'applied')")
-    _assert("MOCK: the FaabTransaction has applied_at=None (not yet approved)",
-            newest.applied_at is None,
-            f"applied_at={newest.applied_at!r}; expected None (current mock sets applied_at=_now())")
-    _assert("MOCK: the returned result reports status 'pending', not 'applied'",
-            result.status == "pending",
-            f"result.status={result.status!r}; expected 'pending'")
-else:
-    _assert("MOCK: a FaabTransaction exists to inspect", False, "no FaabTransaction row found")
+_assert("RETIRED: create_bet_topup refuses rather than creating a request",
+        raised is not None,
+        "expected TopUpsUnavailableError; the legacy request path is retired")
+_assert("RETIRED: and the refusal names the governed replacement",
+        raised is not None and "/top-offs" in str(raised),
+        str(raised)[:120] if raised else "no exception raised")
+_assert("RETIRED: the refusal states that nothing was written",
+        raised is not None and "Nothing was written" in str(raised),
+        str(raised)[:120] if raised else "no exception raised")
 
-print("\n" + "=" * 52)
+# THE ORIGINAL RED TARGET, kept verbatim in substance: no Credits are issued.
+_assert("NO CREDIT: Wallet.balance is unchanged (no BAB issued)",
+        bal_a == bal_b, f"before={bal_b}, after={bal_a}")
+_assert("NO CREDIT: no wallet Transaction row was written",
+        wtx_a == wtx_b, f"before={wtx_b}, after={wtx_a}")
+# STRONGER THAN THE ORIGINAL. The RED target allowed exactly ONE pending
+# FaabTransaction. The retired path writes none at all, which is a superset of
+# "credits nothing" — there is no request row to approve later either.
+_assert("NO CREDIT: not even a pending FaabTransaction is created",
+        len(faab_a) == len(faab_b) == 0,
+        f"before={len(faab_b)}, after={len(faab_a)}")
+_assert("NO CREDIT: the ledger is untouched and still balances",
+        trial_balance() == tb_b == 0, f"{tb_b} -> {trial_balance()}")
+
+print("\n" + "=" * 60)
 if _failures:
-    print(f"RED PHASE OK — {len(_failures)} target assertion(s) FAILED (expected)")
-    for f in _failures: print(f"  - {f}")
+    print(f"FAILED: {len(_failures)} assertion(s)")
+    for f in _failures:
+        print(f"  - {f}")
     sys.exit(1)
-else:
-    print("All PASSED — NOT red. Investigate.")
+print("P1-L2 LEGACY TOP-UP RETIREMENT — all assertions PASSED")

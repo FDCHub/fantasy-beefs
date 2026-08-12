@@ -1,31 +1,61 @@
-"""P1-L2 RED — confirm_topup owns the sole commit (sole-commit). Fails against 77fd23c.
-Target (hardened): deposit() does NOT commit; confirm_topup's commit is the ONLY one on
-the passed session, persisting wallet credit + deposit audit row + pending->applied together.
-Current defect: deposit() self-commits at :148 AND confirm_topup commits at :558 -> 2 commits.
+"""P1-L2 — the legacy confirm_topup credit path is RETIRED, at two levels.
 
-Direct commit-count spy on the passed session (both functions commit the same session).
-No fault injection, no cross-session probe, no import-alias patching."""
+WHAT THIS SUITE WAS, AND WHY IT CHANGED (WP5).
+
+It began as a RED spec against 77fd23c. `deposit()` self-committed and
+`confirm_topup()` committed again, so the passed session saw TWO commit
+boundaries and a wallet credit could persist without the audit row and the
+status change that belonged with it. The target was "confirm_topup owns exactly
+one commit boundary", and the suite exited 1 on purpose while that stood.
+
+THE BOUNDARY WAS NOT REPAIRED IN PLACE — THE WRITER WAS RETIRED. B6 §11.5
+replaced it: `confirm_topup()` now raises `TopUpsUnavailableError` as its FIRST
+executable statement, and the replacement — `approve_top_off()` behind
+`POST /league/{id}/top-offs/{id}/approve` — posts two balanced legs, mirrors the
+Wallet from the ledger's own post-state, writes the disclosure and commits ONCE,
+under three row locks. That is the sole-commit property the RED target wanted,
+achieved by a writer that also fixes what the original could not.
+
+THE FIXTURE ITSELF STOPPED BEING CONSTRUCTIBLE, which is why this suite crashed
+rather than failed: it seeded a pending `topup_bet` FaabTransaction with a NULL
+decision, and `ck_faab_tx_topup_bet_lifecycle` now refuses that row outright. An
+IntegrityError during setup reads like a broken test; it was the schema doing
+its job.
+
+SO THE PROPERTY IS ASSERTED WHERE IT NOW LIVES, at both levels the retirement
+uses — the writer refuses, and the row shape it depended on is unrepresentable.
+
+REPLACEMENT COVERAGE for the governed writer:
+    test_b6_group_e_issuance_pg.py      balanced issuance, one commit, locked
+    test_b6_group_d_authority_lock_pg.py  the locks that make it safe
+    test_b6_group_c_provenance_disclosure_pg.py  the disclosure it writes
+"""
 import os, sys, tempfile
-from unittest import mock
 
 os.environ.pop("STRIPE_SECRET_KEY", None)
 _TMP_DIR = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(_TMP_DIR, 'p1l2_solecommit.db')}"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from sqlalchemy.exc import IntegrityError
+
 from db.schema import (Base, engine, SessionLocal, League, Team, Wallet,
                        FaabWallet, FaabTransaction, Transaction)
-from wallet.faab_wallet import confirm_topup, _log_tx
+from ledger.ledger import create_ledger_table, trial_balance
+from wallet.faab_wallet import TopUpsUnavailableError, confirm_topup
 
 Base.metadata.create_all(engine)
+create_ledger_table()
 _failures: list[str] = []
+
 
 def _assert(label, condition, detail=""):
     print(f"  [{'PASS' if condition else 'FAIL'}] {label}{f' — {detail}' if detail else ''}")
-    if not condition: _failures.append(label)
+    if not condition:
+        _failures.append(label)
 
-def _make_pending():
-    """Team + wallets + a pending topup_bet FaabTransaction (as real-mode create would leave it)."""
+
+def _make_team():
     with SessionLocal() as db:
         lg = League(season=2025, name="P1L2 sole", projection_source="fantasypros")
         db.add(lg); db.flush()
@@ -33,52 +63,89 @@ def _make_pending():
         db.add(t); db.flush()
         db.add(Wallet(team_id=t.id, balance=0.0))
         db.add(FaabWallet(team_id=t.id, league_id=lg.id, waiver_balance=0.0))
-        tx = _log_tx(db, lg.id, t.id, "topup_bet", 25.00,
-                     wallet_from="stripe", wallet_to="bet", status="pending",
-                     note="pending for sole-commit test")
         db.commit()
-        return t.id, tx.id
+        return lg.id, t.id
 
-print("=" * 52); print("P1-L2 RED — confirm_topup sole-commit boundary"); print("=" * 52)
 
-tid, tx_id = _make_pending()
+print("=" * 60)
+print("P1-L2 — legacy confirm_topup credit path is retired")
+print("=" * 60)
 
-# Spy on THIS session's commit only, during confirm_topup. Both deposit() and
-# confirm_topup() call commit() on this same passed session, so the count is the
-# ownership contract: 2 today (deposit self-commits + confirm commits), 1 once hardened.
+league_id, tid = _make_team()
+
+# ── Level 1 · the ROW SHAPE the legacy lifecycle needed is unrepresentable ────
+#
+# This is what the old fixture tried to seed. `ck_faab_tx_topup_bet_lifecycle`
+# requires a topup_bet row to carry a decision paired with its status, so a
+# pending row with a NULL decision — exactly what legacy creation produced —
+# cannot exist. The legacy lifecycle is therefore not merely unreachable; it is
+# unrepresentable, which is the stronger of the two.
+refused = False
 with SessionLocal() as db:
-    with mock.patch.object(db, "commit", wraps=db.commit) as commit_spy:
-        result = confirm_topup(tx_id, db)
-    commit_count = commit_spy.call_count
+    db.add(FaabTransaction(
+        league_id=league_id, team_id=tid, type="topup_bet", amount=25.00,
+        wallet_from="stripe", wallet_to="bet", status="pending",
+        note="the legacy pending row the RED fixture used to seed"))
+    try:
+        db.flush()
+    except IntegrityError:
+        refused = True
+        db.rollback()
 
-_assert("confirm_topup owns exactly one commit boundary",
-        commit_count == 1,
-        f"commit count={commit_count}; expected 1 "
-        f"(current deposit() commits internally at :148 and confirm_topup commits again at :558)")
+_assert("SCHEMA: a legacy pending topup_bet row with no decision is refused",
+        refused,
+        "ck_faab_tx_topup_bet_lifecycle — the legacy lifecycle is "
+        "unrepresentable, not merely unreachable")
 
-# Final-state assertions: after confirm_topup, all three are persisted together.
+# ── Level 2 · the WRITER refuses before it can move anything ──────────────────
+
 with SessionLocal() as db:
-    w = db.query(Wallet).join(Team, Wallet.team_id == Team.id).filter(Team.id == tid).first()
-    faab = db.query(FaabTransaction).filter(FaabTransaction.id == tx_id).first()
-    wallet_tx = db.query(Transaction).filter(Transaction.wallet_id == w.id).count()
+    rows_before = db.query(FaabTransaction).count()
+    wallet_before = db.query(Wallet).filter(Wallet.team_id == tid).first().balance
+    tx_before = db.query(Transaction).count()
+tb_before = trial_balance()
 
-_assert("after confirm_topup, wallet credit is persisted",
-        w.balance == 25.00,
-        f"Wallet.balance={w.balance}; expected 25.00")
-_assert("after confirm_topup, exactly one deposit audit row is persisted",
-        wallet_tx == 1,
-        f"wallet Transaction count={wallet_tx}; expected 1")
-_assert("after confirm_topup, Top-Off row is 'applied'",
-        faab.status == "applied",
-        f"FaabTransaction.status={faab.status!r}; expected 'applied'")
-_assert("after confirm_topup, applied_at is populated",
-        faab.applied_at is not None,
-        f"applied_at={faab.applied_at!r}; expected a timestamp")
+raised = None
+with SessionLocal() as db:
+    try:
+        # The id is deliberately one that does not exist: B6 §11.5 requires the
+        # refusal to be the FIRST executable statement, BEFORE the lookup. A
+        # writer that raised "not found" instead would have done a database read
+        # on a retired path, and a later edit could have moved money behind it.
+        confirm_topup(999_999, db)
+    except TopUpsUnavailableError as exc:
+        raised = exc
 
-print("\n" + "=" * 52)
+_assert("WRITER: confirm_topup refuses rather than crediting",
+        raised is not None, "expected TopUpsUnavailableError")
+_assert("WRITER: it refuses BEFORE looking the row up — not 'not found'",
+        raised is not None and "not found" not in str(raised).lower(),
+        str(raised)[:120] if raised else "no exception raised")
+_assert("WRITER: and it names the governed replacement",
+        raised is not None and "top-offs" in str(raised).lower(),
+        str(raised)[:120] if raised else "no exception raised")
+
+with SessionLocal() as db:
+    rows_after = db.query(FaabTransaction).count()
+    wallet_after = db.query(Wallet).filter(Wallet.team_id == tid).first().balance
+    tx_after = db.query(Transaction).count()
+
+# THE ORIGINAL RED TARGET'S SUBSTANCE: no partial credit can persist. The old
+# suite proved it by counting commit boundaries; there is now no boundary to
+# count, because nothing is written at all.
+_assert("NO CREDIT: the wallet balance is unchanged",
+        wallet_after == wallet_before, f"{wallet_before} -> {wallet_after}")
+_assert("NO CREDIT: no deposit audit row was written",
+        tx_after == tx_before == 0, f"{tx_before} -> {tx_after}")
+_assert("NO CREDIT: no FaabTransaction row was written",
+        rows_after == rows_before == 0, f"{rows_before} -> {rows_after}")
+_assert("NO CREDIT: the ledger is untouched and still balances",
+        trial_balance() == tb_before == 0, f"{tb_before} -> {trial_balance()}")
+
+print("\n" + "=" * 60)
 if _failures:
-    print(f"RED PHASE OK — {len(_failures)} target assertion(s) FAILED (expected)")
-    for f in _failures: print(f"  - {f}")
+    print(f"FAILED: {len(_failures)} assertion(s)")
+    for f in _failures:
+        print(f"  - {f}")
     sys.exit(1)
-else:
-    print("All PASSED — NOT red. Investigate.")
+print("P1-L2 CONFIRM-TOPUP RETIREMENT — all assertions PASSED")

@@ -211,10 +211,18 @@ function yahooModule() {
   const production = leagueMode() !== LEAGUE_MODE_DEMO;
   const body = production ? providerMatchupBody() : demoMatchupBody();
 
+  // WP5 — `role="list"` ONLY WHEN THE MODULE HOLDS LISTITEMS. An empty or
+  // unavailable module draws an explanatory paragraph instead of cards, and a
+  // `<p>` inside `role="list"` is an ARIA violation — a list may hold only
+  // listitems. Same repair as the Action rails; a bound league reaches this
+  // routinely and the illustrative one never did.
+  const isList = body.includes('role="listitem"');
+
   return (
     '<section class="fs-wkmod" data-module="yahoo">' +
     sectionHeading('YAHOO LEAGUE MATCHUPS · SWIPE ↕') +
-    `<div class="fs-vcar" id="fs-yahoo-carousel" role="list">${body}</div>` +
+    `<div class="fs-vcar" id="fs-yahoo-carousel"`
+    + `${isList ? ' role="list"' : ''}>${body}</div>` +
     '</section>'
   );
 }
@@ -326,10 +334,18 @@ function betsModule() {
   const production = actionMode() !== 'demo';
   const body = production ? versusBody() : demoBetsBody();
 
+  // WP5 — `role="list"` ONLY WHEN THE MODULE HOLDS LISTITEMS. An empty or
+  // unavailable module draws an explanatory paragraph instead of cards, and a
+  // `<p>` inside `role="list"` is an ARIA violation — a list may hold only
+  // listitems. Same repair as the Action rails; a bound league reaches this
+  // routinely and the illustrative one never did.
+  const isList = body.includes('role="listitem"');
+
   return (
     '<section class="fs-wkmod" data-module="bets">' +
     sectionHeading(BETS_HEADING) +
-    `<div class="fs-vcar is-compact" id="fs-week-bets" role="list">${body}</div>` +
+    `<div class="fs-vcar is-compact" id="fs-week-bets"`
+    + `${isList ? ' role="list"' : ''}>${body}</div>` +
     '</section>'
   );
 }

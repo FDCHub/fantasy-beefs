@@ -144,9 +144,16 @@ docker run -d --name fs-pg -e POSTGRES_PASSWORD=devpass -e POSTGRES_USER=fs \
 
 export TEST_DATABASE_URL="postgresql://fs:devpass@127.0.0.1:55432/fantasy_p5_test"
 
-python run_pg_suites.py            # all 42 PG suites, fresh database each
+python run_pg_suites.py            # all 48 PG suites, fresh database each
 python run_pg_suites.py --only spec1     # substring filter
 python test_s8_p5_postgres_hardening.py  # concurrency / double-spend
+
+# Sprint 6 provider certification, C-1 .. C-17. It needs its OWN empty database.
+docker exec fs-pg psql -U fs -d fantasy_p5_test \
+  -c 'DROP DATABASE IF EXISTS fs_s6_certify_test WITH (FORCE);' \
+  -c 'CREATE DATABASE fs_s6_certify_test;'
+TEST_DATABASE_URL="postgresql://fs:devpass@127.0.0.1:55432/fs_s6_certify_test" \
+  python -m providers.certify.run
 
 docker rm -f fs-pg
 ```
@@ -173,12 +180,35 @@ for t in test_s8_p1_session_auth.py test_s8_p2_authorization.py \
 done
 ```
 
-**Known environmental failures**, reproduced identically on the accepted
-baseline — do not chase them:
+**Known environmental skips**, reproduced identically on the accepted baseline:
 
 - `test_yahoo_*`, `test_fantasypros_historical` — need network/provider access
-- the S7 `e2e_package*.mjs` browser-layout suites — Chrome launch flakiness
-- `test_s4_pool_engine_unit.py`
+
+**Corrected at WP5.** This list previously also named the S7 `e2e_package*.mjs`
+browser suites ("Chrome launch flakiness") and `test_s4_pool_engine_unit.py`.
+Neither was environmental and neither was flaky:
+
+- The browser suites failed because `browser-harness.mjs` falls back to a static
+  file server when `FS_TEST_ORIGIN` is unset, and since S8-P1 the shell asks
+  `/auth/me` before it draws anything — so a static server produced the sign-in
+  gate and every selector dereferenced null. The four S7 package suites now call
+  `test_support_s7_harness.ensure_authenticated_app()`, which starts a real
+  application when one is not already supplied. They run standalone.
+- Behind that failure, four Sprint 8 packages had left assertions pinned to
+  superseded copy and to prototype figures. Those were invisible for as long as
+  the suites were red for the harness reason, which is the actual cost of
+  carrying a "known failure" on a list. See the WP5 report.
+- `test_s4_pool_engine_unit.py` passes (18 tests) and always did under pytest;
+  it collects nothing when run as a plain script.
+
+**Run the S7 suites standalone** — each starts its own application:
+
+```bash
+python test_s7_p1_ui_shell.py
+python test_s7_p2_league_action.py
+python test_s7_p3_week_ledger.py
+python test_s7_p4_rules_commissioner.py
+```
 
 On Windows, set `PYTHONIOENCODING=utf-8` before running suites that print `→`
 or `−`, or they die with a `UnicodeEncodeError` that looks like a real failure.

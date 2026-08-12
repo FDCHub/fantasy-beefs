@@ -7,18 +7,29 @@ WHAT THIS PROVES, and why it is the most important suite in the package. Spec 1
 stub is a path that exists and fails; unreachability is the absence of a path.
 This suite asserts the absence.
 
-    G1  no Proposal Lifecycle route is registered
+    G1  no Proposal Lifecycle route is registered      [SUPERSEDED — WP5]
     G2  no module reachable from api.main imports beefs.proposal_lifecycle
+                                                       [SUPERSEDED — WP5]
     G3  the service contains ZERO commit() calls — it cannot create committed
         lifecycle state on its own, so acceptance cannot become economically
         live without Package 2B owning the transaction (§10)
     G4  no wallet / ledger / escrow / Stripe mutation surface is reachable
     G5  the legacy beef path is untouched
 
-ORDER IS LOAD-BEARING IN G2. api.main is imported FIRST and sys.modules is asked
-whether the service came with it. This suite never imports
-beefs.proposal_lifecycle at all — every other check reads its SOURCE. Importing
-it would put it in sys.modules and destroy the very evidence G2 depends on.
+G1 AND G2 EXPIRED ON THEIR OWN TERMS. §1 gated the lifecycle "until Spec 2
+supplies escrow"; Spec 2 supplied it, and S8-P4C-1 cut the application over to
+the funded path. Both are now inverted into SUPERSEDED-CHECKs that fail if the
+application ever stops reaching it, and their original property is covered by
+test_s8_p4c1_lifecycle_cutover.py and test_p1_l4_challenge_escrow_pg.py. See the
+block above G2 in the body. G3, G4 and G5 are unaffected and still run — G3
+especially, because the service owning no transaction of its own is what made
+the cutover safe.
+
+ORDER WAS LOAD-BEARING IN G2 while it asserted absence: api.main was imported
+first and sys.modules asked whether the service came with it, and this suite
+never imported beefs.proposal_lifecycle itself because doing so would have
+destroyed the evidence. The inverted check reads the same signal, so the order
+is preserved.
 
 SCANS RUN ON EXECUTABLE TOKENS, not raw text. The service documents its own
 prohibitions in prose — "no ledger posting", "IT NEVER COMMITS" — and a grep
@@ -66,21 +77,64 @@ def main(tdb) -> None:
     MODULE  = "beefs.proposal_lifecycle"
 
     # ══════════════════════════════════════════════════════════════════════
-    # G2 — reachability, asked of the runtime, BEFORE anything else
+    # G2 — SUPERSEDED AT WP5, ON THIS SUITE'S OWN TERMS
     # ══════════════════════════════════════════════════════════════════════
-    print("\nG2   nothing reachable from api.main imports the lifecycle service")
-    _assert("G2 PRECONDITION: the service is not already in sys.modules",
-            MODULE not in sys.modules,
-            "this suite must never import it — see the module docstring")
+    #
+    # THE REQUIREMENT WAS CONDITIONAL AND THE CONDITION HAS BEEN MET. This
+    # file's own docstring states it: "Spec 1 §1 requires the new lifecycle stay
+    # unreachable UNTIL SPEC 2 SUPPLIES ESCROW". Spec 2 supplied it —
+    # `economy/challenge_funding.py` posts real escrow at issue (P1-L4), binds
+    # accepted terms (P1-L4A), and S8-P4C-1 cut the application over to that
+    # funded lifecycle deliberately. `api/main.py` therefore imports
+    # `beefs.proposal_lifecycle` on purpose, at five call sites.
+    #
+    # SO G1 AND G2 NOW ASSERT THE OPPOSITE OF THE SHIPPED DESIGN. Leaving them
+    # red would be exactly the "known failure" that hid four packages' worth of
+    # drift until WP5; deleting them would erase the record of why the gate
+    # existed. They are marked superseded HERE, with their replacement named.
+    #
+    # WHAT COVERS THE PROPERTY NOW — unreachability was a proxy for "acceptance
+    # cannot become economically live without an owner for the money". That is
+    # now asserted directly, against the live path rather than its absence:
+    #
+    #   test_s8_p4c1_lifecycle_cutover.py   the application's proposal path IS
+    #                                       the funded lifecycle, end to end
+    #   test_p1_l4_challenge_escrow_pg.py   issuing posts real escrow
+    #   test_p1_l4a_accepted_terms_revive_pg.py  acceptance binds the terms
+    #   test_s8_p4c1r_wagering_authority.py wagering authority on that path
+    #
+    # G3, G4 and G5 BELOW ARE NOT SUPERSEDED and still run. G3 in particular —
+    # the service commits nothing of its own — is the invariant that made the
+    # cutover safe, and it must keep holding now that the path is live.
+    print("\nG2   SUPERSEDED — the lifecycle is deliberately reachable since "
+          "S8-P4C-1")
+    print("     Spec 1 §1 gated it 'until Spec 2 supplies escrow'; Spec 2 did.")
+    print("     Replacement coverage: test_s8_p4c1_lifecycle_cutover.py, "
+          "test_p1_l4_challenge_escrow_pg.py")
 
     import api.main                                   # noqa: F401 — imported for the graph
-    _assert("G2 importing the whole application does NOT pull in "
-            "beefs.proposal_lifecycle",
-            MODULE not in sys.modules,
+    # The supersession is asserted, not assumed: if the application ever STOPPED
+    # reaching the funded lifecycle, that would be a real regression and this
+    # must fail rather than quietly agreeing with a build that had lost it.
+    _assert("G2 SUPERSEDED-CHECK: the application does reach the funded "
+            "lifecycle, as S8-P4C-1 intended",
+            MODULE in sys.modules,
             str([m for m in sys.modules if "proposal_lifecycle" in m]))
+    # THE CONTROL, RE-ANCHORED AT WP5. It used to name `beefs.beef_engine`,
+    # which api.main no longer pulls in at import time — another consequence of
+    # the S8-P4C-1 cutover, since the legacy engine stopped being the reachable
+    # path. Anchoring the control to a module that is no longer loaded made it
+    # fail while proving nothing. It now names the settlement engine, which the
+    # application does load, and asserts a breadth of app modules rather than
+    # one name so a single future import change cannot silently hollow it out.
+    _app_modules = [m for m in sys.modules
+                    if m.startswith(("betting.", "economy.", "beefs."))]
     _assert("G2 CONTROL: importing api.main really did load the app's own "
             "modules, so the check above is not vacuous",
-            "beefs.beef_engine" in sys.modules and "api.main" in sys.modules)
+            "api.main" in sys.modules
+            and "betting.settlement_engine" in sys.modules
+            and len(_app_modules) >= 5,
+            f"{len(_app_modules)} app module(s) loaded with api.main")
 
     from api.main import app
 
@@ -118,14 +172,23 @@ def main(tdb) -> None:
             "exclusion above hides nothing",
             LEGACY_BEEF_PATHS == {p for p, _ in beef_routes}, str(beef_routes))
 
-    # A handler could in principle import the service lazily inside its body,
-    # which sys.modules would not reveal until it ran. Assert no route module
-    # names it at all.
-    for rel in ("api/main.py", "api/pool_routes.py", "api/war_room_routes.py",
+    # SUPERSEDED AT WP5, with G2 above and for the same reason. `api/main.py`
+    # names the lifecycle deliberately since S8-P4C-1; the other three route
+    # modules still must not, because the cutover was to the Versus path only
+    # and a Pool, war-room or health route reaching the negotiation service
+    # would be a genuine scope breach. So the claim narrows rather than
+    # disappears: exactly one route module may name it, and it is the one that
+    # was authorised to.
+    for rel in ("api/pool_routes.py", "api/war_room_routes.py",
                 "api/health_routes.py"):
         src = (REPO / rel).read_text(encoding="utf-8")
         _assert(f"G1 {rel} never names proposal_lifecycle, even lazily",
                 "proposal_lifecycle" not in src)
+
+    _main_src = (REPO / "api/main.py").read_text(encoding="utf-8")
+    _assert("G1 SUPERSEDED-CHECK: api/main.py names the lifecycle, as the "
+            "S8-P4C-1 cutover requires",
+            "proposal_lifecycle" in _main_src)
 
     # ══════════════════════════════════════════════════════════════════════
     # Source scans — executable tokens only

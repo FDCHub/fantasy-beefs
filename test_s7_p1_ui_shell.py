@@ -46,6 +46,19 @@ for _stream in (sys.stdout, sys.stderr):
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(ROOT, "web")
 
+# ── The application under certification (WP5) ────────────────────────────────
+#
+# Run through `test_s7_full_ui_certification.py`, an application is already
+# running and `FS_TEST_ORIGIN` already names it — this is then a no-op. Run
+# DIRECTLY, as the RUNBOOK's fast-feedback tiers tell a developer to, this
+# starts one, because since S8-P1 the shell asks who is acting before it draws
+# anything and a static file server answers 404 to that. Without this the suite
+# certifies the sign-in gate and dies dereferencing a control the application
+# would have rendered.
+from test_support_s7_harness import ensure_authenticated_app  # noqa: E402
+
+ensure_authenticated_app()
+
 _failures: list[str] = []
 
 

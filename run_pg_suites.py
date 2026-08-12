@@ -83,6 +83,29 @@ def main() -> int:
 
     suites = sorted(os.path.basename(p)
                     for p in glob.glob(os.path.join(ROOT, "test_*_pg.py")))
+
+    # WP5 — THREE SUITES NEED THIS HARNESS AND DO NOT CARRY THE `_pg` SUFFIX.
+    # The glob above is a naming convention, and these three predate or sit
+    # outside it while calling `setup_postgres_test_db()` exactly like the rest.
+    # Left out, they were invisible to the one command the RUNBOOK gives for
+    # "run the PostgreSQL suites" — so a developer could run this, see every
+    # suite pass, and never learn that three of them had not been run at all.
+    #
+    # Named rather than detected by grepping for the import: an explicit list
+    # fails loudly when a file is renamed, where a scan would silently find
+    # nothing and report success.
+    for extra in ("test_spec1_2a_gate.py",
+                  "test_b6_group_f_legacy_closure.py",
+                  "test_s8_p5_postgres_hardening.py"):
+        path = os.path.join(ROOT, extra)
+        if not os.path.isfile(path):
+            sys.exit(f"{extra} is named as a PostgreSQL suite but is missing. "
+                     f"Fix the list in run_pg_suites.py rather than dropping "
+                     f"the suite from the gate.")
+        if extra not in suites:
+            suites.append(extra)
+    suites = sorted(suites)
+
     if args.only:
         suites = [s for s in suites if args.only in s]
     if not suites:

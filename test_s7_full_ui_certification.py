@@ -316,15 +316,44 @@ MODE_COPY = APP.get("modeCopy", {})
 _assert("one Locked explanation exists in the build",
         APP_SOURCE.count("Terms freeze the moment you send this.") == 1,
         str(APP_SOURCE.count("Terms freeze the moment you send this.")))
+# GOVERNED REVISION, WP5, FOLLOWING S8-P4C-2R2. This pinned the Dynamic
+# headline "Both lineups and the odds stay live and lock in at kickoff." That
+# sentence was CORRECTED on explicit authorisation: GE-901 / AP-212 fire Final
+# Lock immediately before the earliest covered kickoff across EITHER lineup, so
+# "at kickoff" invited a GM to picture their own Sunday start while a covered
+# Thursday starter had already locked the wager. P4C-2R2 revised the copy and
+# the component suites; this assertion was left pinned to the superseded phrase
+# and went unnoticed because the suite it lives in was already failing.
+#
+# THE REQUIREMENT IS "EXACTLY ONE", NOT "THIS WORDING" — one explanation of each
+# mode in the build, so the rules sheet and the composer cannot drift apart. The
+# wording itself is owned by test_s8_p4c2r2_final_lock_copy.py, which certifies
+# the trigger the sentence describes.
 _assert("one Dynamic explanation exists in the build",
-        APP_SOURCE.count("Both lineups and the odds stay live and lock in at kickoff.") == 1)
+        APP_SOURCE.count(
+            "Lineups and odds stay live until Final Lock, just before the "
+            "first ") == 1,
+        "the single governed Dynamic headline")
 _assert("the rules sheet quotes that copy rather than restating it",
         "MODE_COPY" in _read("js", "data", "rules-data.js"))
 _assert("the retired 'flex up or down' draft appears nowhere",
         "flex up" not in APP_RENDERED_SOURCE)
 
+# GOVERNED REVISION, WP5. This counted the engine's own words, LOCKED and
+# DYNAMIC, on the Action panel. `action.js modeLabel()` draws FIXED or FLOATING
+# instead — a deliberate choice recorded in that function: "a GM should be able
+# to tell the two apart without knowing what an Anchor is". The engine's names
+# still label the mode inside the detail sheet.
+#
+# THE REQUIREMENT IS RULING §4 — the Locked/Dynamic distinction is visible on
+# the card, before a GM acts, rather than in fine print. That is unchanged and
+# is what is asserted; only the vocabulary it looks for is the product's.
+_LIFECYCLE_CARDS = PANELS.get("action", "").count("fs-wcard--lifecycle")
+_MODE_LABELS = (PANELS.get("action", "").count("FIXED")
+                + PANELS.get("action", "").count("FLOATING"))
 _assert("Locked or Dynamic is visible on every lifecycle card",
-        PANELS.get("action", "").count("LOCKED") + PANELS.get("action", "").count("DYNAMIC") >= 11)
+        _LIFECYCLE_CARDS > 0 and _MODE_LABELS >= _LIFECYCLE_CARDS,
+        f"{_MODE_LABELS} mode label(s) across {_LIFECYCLE_CARDS} lifecycle card(s)")
 
 print("\nA Yahoo fixture never presents as a FantasyStakes wager")
 
@@ -672,10 +701,29 @@ _assert("the Stripe removal regression is green",
 # is an environmental exclusion: it is neither a pass nor an implementation
 # failure, and reporting it as either would be false.
 if os.environ.get("TEST_DATABASE_URL"):
+    # WP5 — RUN AS THE SCRIPT IT IS, not through pytest. This suite guards its
+    # own environment and calls `sys.exit(2)` AT IMPORT when the database is not
+    # a disposable empty `_test` one. Under pytest that exit happens during
+    # collection, which pytest reports as INTERNALERROR — so the assertion
+    # failed whenever a database WAS supplied, and passed only by never running.
+    # The Stripe regression a few lines above is invoked as a script for exactly
+    # this reason and carries the same note.
+    #
+    # THE SUITE ALSO NEEDS ITS OWN EMPTY DATABASE, which `run_pg_suites.py`
+    # provides when it is the caller. Here the operator's TEST_DATABASE_URL is
+    # used as given; a non-empty one produces the harness's own refusal, which
+    # is reported rather than being mistaken for a season-close failure.
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "test_s5_p3_season_close_pg.py", "-q"],
+        [sys.executable, os.path.join(ROOT, "test_s5_p3_season_close_pg.py")],
         capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
-    _assert("the PostgreSQL economy suite is green", proc.returncode == 0)
+    if proc.returncode == 2:
+        _exclude("the PostgreSQL economy suite",
+                 "the supplied TEST_DATABASE_URL is not an empty disposable "
+                 "database; run it through run_pg_suites.py")
+    else:
+        _assert("the PostgreSQL economy suite is green",
+                proc.returncode == 0 and "[FAIL]" not in proc.stdout,
+                f"exit {proc.returncode}")
 else:
     _exclude("PostgreSQL-backed protocol suites",
              "TEST_DATABASE_URL is not set in this environment")

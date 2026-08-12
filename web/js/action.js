@@ -165,13 +165,28 @@ export function buildActionPanel() {
 
   composer.add(
     `<div class="fs-rails" data-action-mode="${actionMode()}">` +
-    RAILS.map((rail) => (
-      `<section class="fs-railsec" data-rail="${rail}">` +
-      sectionHeading(railHeading(rail)) +
-      `<div class="fs-rail is-stretch" role="list">` +
-      railBody(rail) +
-      '</div></section>'
-    )).join('') +
+    RAILS.map((rail) => {
+      const body = railBody(rail);
+      // WP5 — `role="list"` ONLY WHEN THE RAIL HOLDS LISTITEMS. An empty or
+      // unavailable rail draws an explanatory paragraph instead of cards, and a
+      // `<p>` inside `role="list"` is an ARIA violation: a list may hold only
+      // listitems, so a screen reader is handed a list whose one child it
+      // cannot place. The prototype never reached this because the illustrative
+      // league always had cards in all four rails; a bound league routinely has
+      // empty ones.
+      //
+      // An empty LIST is fine; a list with a non-listitem child is not. So the
+      // role is dropped in exactly the case where there is nothing to list, and
+      // the note is then an ordinary paragraph, which is what it is.
+      const isList = body.includes('role="listitem"');
+      return (
+        `<section class="fs-railsec" data-rail="${rail}">` +
+        sectionHeading(railHeading(rail)) +
+        `<div class="fs-rail is-stretch"${isList ? ' role="list"' : ''}>` +
+        body +
+        '</div></section>'
+      );
+    }).join('') +
     '</div>',
   );
 

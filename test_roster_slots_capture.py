@@ -112,9 +112,24 @@ Base.metadata.create_all(engine)
 with SessionLocal() as _db:
     # Three leagues: L0 fillers (consume ids 1-10 so capture ids land at 11+),
     # L1 capture teams (scrambled Yahoo mapping), L2 settlement/helper teams.
-    l0 = League(season=SEASON, name="Filler",     projection_source="fantasypros")
-    l1 = League(season=SEASON, name="Capture",    projection_source="fantasypros")
-    l2 = League(season=SEASON, name="Settlement", projection_source="fantasypros")
+    # WP5 — THE LEAGUES CARRY A PROVIDER KEY, because S6-R1 made identity
+    # resolution read persisted provider keys ONLY. Before that, capture fell
+    # back to the YAHOO_LEAGUE_ID environment variable; S6-R1 removed that
+    # fallback on the grounds that an environment variable is not identity, and
+    # the ingestion path now refuses a league that carries no key rather than
+    # guessing which league it is looking at.
+    #
+    # This fixture predates that ruling and created keyless leagues, so capture
+    # refused — correctly — and fourteen assertions failed against a working
+    # guard. Binding the key is what a real league has; nothing here weakens the
+    # guard, and S6-R1's own refusal is certified by
+    # providers/certify/run.py (C-2) and test_s6_provider_gateway_pg.py.
+    l0 = League(season=SEASON, name="Filler",     projection_source="fantasypros",
+                provider="yahoo", provider_league_key="461.l.fr57filler")
+    l1 = League(season=SEASON, name="Capture",    projection_source="fantasypros",
+                provider="yahoo", provider_league_key="461.l.fr57capture")
+    l2 = League(season=SEASON, name="Settlement", projection_source="fantasypros",
+                provider="yahoo", provider_league_key="461.l.fr57settle")
     _db.add_all([l0, l1, l2]); _db.flush()
 
     # 10 filler teams in L0 → team ids 1..10
@@ -132,6 +147,20 @@ with SessionLocal() as _db:
     cap_y2 = Team(league_id=l1.id, team_name="Cap Y2", owner="c2", email=_email(2))
     _db.add_all([cap_y3, cap_y1, cap_y2]); _db.flush()
 
+    # WP5 — THE SCRAMBLED MAPPING IS NOW PERSISTED IDENTITY, WHICH IS THE POINT.
+    # This scenario exists to prove capture routes by RESOLVER and not by +10
+    # arithmetic. Since S6-R1 the resolver reads persisted provider identity and
+    # refuses a partial one, so the mapping has to live on the rows rather than
+    # being implied by insertion order. Binding it here states the same
+    # scrambled mapping the comment above describes — Yahoo 3 -> DB 11,
+    # Yahoo 1 -> DB 12, Yahoo 2 -> DB 13 — and makes the +10 answer wrong in
+    # exactly the way the test intends.
+    for _team, _yahoo_ordinal in ((cap_y3, 3), (cap_y1, 1), (cap_y2, 2)):
+        _team.provider = "yahoo"
+        _team.provider_team_key = f"461.l.fr57capture.t.{_yahoo_ordinal}"
+        _team.provider_team_id = _yahoo_ordinal
+    _db.flush()
+
     # Players the fake rosters reference. Capture now resolves by yahoo_id, so
     # each carries the yahoo_id its fake roster player will report.
     cap_players = [
@@ -147,6 +176,13 @@ with SessionLocal() as _db:
     t_div = Team(league_id=l2.id, team_name="Divergence", owner="d", email=_email(4))
     t_pa  = Team(league_id=l2.id, team_name="PlayerActual", owner="p", email=_email(5))
     _db.add_all([t_div, t_pa]); _db.flush()
+
+    # Bound for the same reason as L1's teams: a resolver is all-or-nothing.
+    for _team, _yahoo_ordinal in ((t_div, 4), (t_pa, 5)):
+        _team.provider = "yahoo"
+        _team.provider_team_key = f"461.l.fr57settle.t.{_yahoo_ordinal}"
+        _team.provider_team_id = _yahoo_ordinal
+    _db.flush()
 
     # Players for test 1/2 (X, Y) and test 4 (A1..A10)
     px = Player(name="Div X", position="WR")
@@ -229,10 +265,15 @@ with SessionLocal() as _db:
     # These exercise capture with pre-fetched rosters + resolution by yahoo_id.
     # Key fixture: a DB name that DIVERGES from the Yahoo full_name (Joshua vs
     # Josh Palmer), same yahoo_id — proving resolution is by id, not name.
-    l3 = League(season=SEASON, name="Capture-YID", projection_source="fantasypros")
+    l3 = League(season=SEASON, name="Capture-YID", projection_source="fantasypros",
+                provider="yahoo", provider_league_key="461.l.fr57yid")
     _db.add(l3); _db.flush()
     t_yid = Team(league_id=l3.id, team_name="YID Team", owner="y", email=_email(7))
     _db.add(t_yid); _db.flush()
+    t_yid.provider = "yahoo"
+    t_yid.provider_team_key = "461.l.fr57yid.t.1"
+    t_yid.provider_team_id = 1
+    _db.flush()
     p_palmer = Player(name="Joshua Palmer", position="WR",  yahoo_id="33465")   # Yahoo: "Josh Palmer"
     p_ravens = Player(name="Ravens",        position="DEF", yahoo_id="100033")  # Yahoo: "Ravens"
     p_sync   = Player(name="Sync Guy",      position="RB",  yahoo_id="5000")

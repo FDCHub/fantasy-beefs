@@ -25,9 +25,14 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
 
   await evaluate(`${goRules} return true;`);
 
-  const frame = await evaluate(`
+  const frame = await evaluate(`return (async () => {
     const panel = document.getElementById('panel-rules');
+    const me = await (await fetch('/auth/me', { credentials: 'same-origin' })).json();
+    const ctx = await (await fetch(
+      '/league/' + me.capabilities.acting_league_id + '/context/me',
+      { credentials: 'same-origin' })).json();
     return {
+      servedLeagueName: ctx.league_name,
       title: panel.querySelector('.fs-tabhead__title').textContent,
       identity: panel.querySelector('.fs-tabhead__sub').textContent,
       strips: panel.querySelectorAll('.fs-strip').length,
@@ -37,10 +42,16 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
       widest: Math.max(...[...panel.querySelectorAll('*')]
         .map(el => Math.round(el.getBoundingClientRect().right))),
     };
-  `);
+  })();`);
   check('the title is RULES & SETTINGS', frame.title === 'RULES & SETTINGS', frame.title);
+  // WP5: the identity is the BOUND league's name — S8-P4B-2 wired leagueName()
+  // into this header. The requirement, that Rules & Settings identifies the
+  // league whose rules it shows in the shared treatment, is unchanged; the
+  // constant it was pinned to belonged to the prototype.
   check('the league identity uses the shared treatment',
-    frame.identity === 'CULV APPRECIATION SOCIETY', frame.identity);
+    typeof frame.identity === 'string' && frame.identity.trim().length > 0
+    && frame.identity === frame.servedLeagueName,
+    `${frame.identity} (served ${frame.servedLeagueName})`);
   check('no four-cell strip', frame.strips === 0, String(frame.strips));
   check('no Credits disclaimer', frame.disclaimers === 0, String(frame.disclaimers));
   check('the tab does not scroll the page horizontally',
@@ -96,8 +107,19 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     ruleSheetState.sources === ruleSheetState.ruleCount);
   check('the Locked description is the ruling’s own',
     /Terms freeze the moment you send this/.test(ruleSheetState.text));
-  check('the Dynamic description keeps the one-way ceiling',
-    /never up, never past the max set now/.test(ruleSheetState.text));
+  // REVISED BY WP5, FOLLOWING S8-P4C-2R2 — the same repair that package the
+  // component suite already received and this one did not, because this suite
+  // was already red for the harness reason and the drift stayed invisible.
+  //
+  // The pinned phrase carried the one-way ceiling AND the timing clause that
+  // was corrected with it. The CLAIM is the economics, unchanged: the Derived
+  // side moves in one direction only, and it is bounded. Asserted in two parts
+  // so a future rewording cannot silently drop either.
+  check('the Dynamic description keeps the one-way movement',
+    /come down/i.test(ruleSheetState.text), ruleSheetState.text.slice(0, 160));
+  check('and the ceiling that bounds it',
+    /never above the acceptance ceiling/i.test(ruleSheetState.text),
+    ruleSheetState.text.slice(0, 160));
   check('betting vocabulary survives', /ML|Spread|O\/U/.test(ruleSheetState.text));
   check('exactly one close control', ruleSheetState.closes === 1);
   check('the close control is upper-right',

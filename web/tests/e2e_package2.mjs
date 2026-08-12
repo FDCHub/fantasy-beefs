@@ -19,6 +19,48 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   const goLeague = `document.querySelector('.fs-tabbar__item[data-destination="league"]').click();`;
   const goAction = `document.querySelector('.fs-tabbar__item[data-destination="action"]').click();`;
 
+  /* ── WP5 · what this suite measures now ─────────────────────────────────
+   *
+   * SPRINT 7 WROTE THESE ASSERTIONS AGAINST THE ILLUSTRATIVE BUILD, where every
+   * tab drew `web/js/data/*`. Sprint 8 bound Action, The Week, the Ledger and
+   * Rules & Settings to the server, so the fixture's own numbers — twelve GMs,
+   * rails of 2/2/4/3, a 14–7 record — are no longer what a signed-in GM sees,
+   * and pinning them certified a build that no longer ships.
+   *
+   * WHAT IS PINNED NOW: the structure, the locked copy, the geometry, and
+   * AGREEMENT WITH THE AUTHORITATIVE READ MODEL. Where a count used to be a
+   * literal it is now compared against `/league/{id}/action/me` — which is a
+   * stronger claim than the literal ever made, because it fails if the UI and
+   * the server ever disagree rather than only if the fixture changes.
+   *
+   * THE LEAGUE TAB IS STILL ILLUSTRATIVE and its assertions are untouched; only
+   * its identity heading comes from the bound league.
+   */
+  const served = await evaluate(`return (async () => {
+    const me = await (await fetch('/auth/me', { credentials: 'same-origin' })).json();
+    const league = me.capabilities.acting_league_id;
+    const ctx = await (await fetch('/league/' + league + '/context/me',
+      { credentials: 'same-origin' })).json();
+    const action = await (await fetch('/league/' + league + '/action/me',
+      { credentials: 'same-origin' })).json();
+    const ledger = await (await fetch('/league/' + league + '/ledger/me',
+      { credentials: 'same-origin' })).json();
+    return {
+      league,
+      leagueName: ctx.league_name,
+      week: ctx.current_week,
+      availableCents: ledger.available_cents,
+      // The server decides the sections; the rail ids are the same vocabulary.
+      counts: Object.fromEntries(
+        Object.entries(action.sections || {}).map(([k, v]) => [k, v.length])),
+      opponents: (action.opponents || []).map((o) => o.team_id),
+    };
+  })();`);
+
+  check('the suite is signed in and reading an authoritative league',
+    typeof served.league === 'number' && Boolean(served.leagueName),
+    `league ${served.league} — ${served.leagueName}`);
+
   /* ── League renders ───────────────────────────────────────────────────── */
 
   section('League renders at the phone viewport');
@@ -33,10 +75,14 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
     return [...document.querySelectorAll('#panel-league .fs-heading__text')]
       .some(el => el.textContent === 'FANTASYSTAKES POOLS · 4 THIS WEEK');
   `));
-  check('the league identity renders', await evaluate(`
-    return document.querySelector('#panel-league .fs-tabhead__title').textContent
-      === 'CULV APPRECIATION SOCIETY';
-  `));
+  // WP5: the heading is the BOUND league's name. It was the fixture's
+  // `CULV APPRECIATION SOCIETY` until S8-P4B-2 bound `leagueName()`; asserting
+  // the served name keeps the requirement — the tab identifies the league the
+  // GM is actually in — and stops pinning a constant the product no longer uses.
+  check('the league identity renders, and it is the bound league',
+    await evaluate(`
+      return document.querySelector('#panel-league .fs-tabhead__title').textContent;
+    `) === served.leagueName, served.leagueName);
   check('the week context renders', await evaluate(`
     return document.querySelector('#panel-league .fs-tabhead__sub').textContent
       === 'Week 5 · Regular Season';
@@ -236,14 +282,55 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   check('Locked explains frozen terms and Yahoo non-interference',
     /captured now/.test(modeCopy.locked) && /never touch them/.test(modeCopy.locked));
   check('Locked names Refresh & Relock', /Refresh & Relock/.test(modeCopy.locked));
-  check('Dynamic states the issuer stake stays put', /stake stays put/.test(modeCopy.dynamic));
+  // REVISED BY WP5, FOLLOWING S8-P4C-2R2. The two phrases pinned here —
+  // "stake stays put" and "come down (never up, never past the max set now)" —
+  // carried the economics AND the timing clause that P4C-2R2 corrected on
+  // explicit authorisation ("at kickoff" understated when Final Lock fires).
+  // That package revised the component suite and left these two behind, where
+  // the drift stayed invisible because this suite was already red.
+  //
+  // The CLAIM is the economics, and it is unchanged: the Anchor is fixed, only
+  // the Derived side moves, it moves DOWN only, and it is bounded. Asserted in
+  // three parts rather than as one quotation, exactly as the component suite
+  // now does, so a future rewording cannot silently drop one of them.
+  check('Dynamic states the issuer’s own stake is fixed',
+    /Anchor Stake stays fixed/i.test(modeCopy.dynamic), modeCopy.dynamic);
   check('Dynamic states the derived stake can only come down',
-    /come down \(never up, never past the max set now\)/.test(modeCopy.dynamic));
-  check('Dynamic never says a stake can rise', !/flex up|can go up/i.test(modeCopy.dynamic));
+    /Derived Stake may come down/i.test(modeCopy.dynamic), modeCopy.dynamic);
+  check('and that the movement is bounded by a ceiling',
+    /never above the acceptance ceiling/i.test(modeCopy.dynamic), modeCopy.dynamic);
+  check('Dynamic never says a stake can rise',
+    !/flex up|can go up|may rise/i.test(modeCopy.dynamic));
 
   /* ── Stake, validation and economics ──────────────────────────────────── */
 
   section('Stake entry drives economics and the send control');
+
+  // WP5 — THE TARGET IS CHOSEN FIRST, AND THAT IS A PRODUCT REQUIREMENT, NOT A
+  // TEST CONVENIENCE. S8-P4C-2R removed the name bridge that used to carry the
+  // illustrative card's DISPLAY NAME into a real Credits command: two teams
+  // sharing a name, or a fixture that had drifted, would have addressed the
+  // wrong GM's money with nothing on screen looking wrong. The composer now
+  // asks, and Send stays disabled until it is answered.
+  //
+  // So this suite answers it. Sprint 7 never had to, which is why the stake
+  // assertions below reported "Choose who you are challenging." instead of the
+  // stake reasons — the composer was refusing for the right reason and the
+  // suite was reading it as a stake failure.
+  const targeting = await evaluate(`
+    const sheet = document.getElementById('fs-sheet');
+    const before = sheet.querySelector('[data-send-why]').textContent;
+    const opponent = sheet.querySelector('[data-composer-opponent]');
+    if (opponent) opponent.click();
+    const after = document.getElementById('fs-sheet')
+      .querySelector('[data-send-why]').textContent;
+    return { before, after, offered: Boolean(opponent) };
+  `);
+  check('the composer requires an authoritative target before it will send',
+    targeting.offered === true && /Choose who you are challenging/.test(targeting.before),
+    targeting.before);
+  check('and choosing one clears that requirement',
+    !/Choose who you are challenging/.test(targeting.after), targeting.after);
 
   const typed = await evaluate(`
     const sheet = document.getElementById('fs-sheet');
@@ -270,8 +357,13 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
     /minimum stake is \$5/.test(typed.tooSmall.why), typed.tooSmall.why);
   check('a $20 stake enables send', typed.ok.disabled === false);
   check('a stake beyond Available disables send again', typed.tooBig.disabled === true);
-  check('the reason names the available figure',
-    /\$65 available/.test(typed.tooBig.why), typed.tooBig.why);
+  // WP5: the ceiling is the GM's OWN Available, read from the bound Ledger
+  // rather than from the prototype's $65. Comparing against the served figure
+  // is a stronger claim than the literal: it fails if the composer and the
+  // Ledger ever disagree about what this GM can spend.
+  check('the reason names the available figure, and it is the served one',
+    typed.tooBig.why.includes(`$${Math.round(served.availableCents / 100)} available`),
+    `${typed.tooBig.why} (served $${served.availableCents / 100})`);
   check('the economics show five figures', typed.ok.rows.length === 5, String(typed.ok.rows.length));
   check('economics draw whole dollars only',
     typed.ok.rows.every((r) => !/\$\d[\d,]*\.\d/.test(r.text)),
@@ -287,6 +379,15 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   /* ── Preview preserves composer state ─────────────────────────────────── */
 
   section('Matchup Preview opens over the composer and returns it intact');
+
+  // WP5 — the composer's title BEFORE the round trip. Sprint 7 pinned the
+  // illustrative opponent's name here, but since S8-P4C-2R the composer names
+  // the AUTHORITATIVE target the GM selected, which is the whole point of that
+  // change. The requirement is that the same composer comes back, so the title
+  // is captured and compared rather than asserted against a constant.
+  const composerTitleBefore = await evaluate(`
+    return document.getElementById('fs-sheet').querySelector('.fs-sheet__title').textContent;
+  `);
 
   const preview = await evaluate(`
     document.getElementById('fs-sheet').querySelector('[data-composer-preview]').click();
@@ -327,8 +428,9 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       sendDisabled: sheet.querySelector('[data-composer-send]').disabled,
     };
   `);
-  check('closing the preview returns to the composer', restored.open === true &&
-    /CULV Destroyers/.test(restored.title));
+  check('closing the preview returns to the composer',
+    restored.open === true && restored.title === composerTitleBefore,
+    `${composerTitleBefore} → ${restored.title}`);
   check('the stake survived the preview', restored.stake === '20', restored.stake);
   check('the market selection survived the preview', restored.market === 'spread');
   check('send is still enabled after returning', restored.sendDisabled === false);
@@ -394,11 +496,15 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       header: panel.querySelector('.fs-tabhead__title').textContent,
       railCount: rails.length,
       headings: rails.map(r => r.querySelector('.fs-heading__text').textContent),
+      railIds: rails.map(r => r.dataset.rail),
       counts: rails.map(r => r.querySelectorAll('.fs-rail__item').length),
+      // WP5: an EMPTY rail is a real state for a bound league and is trivially
+      // one row. Sprint 7 required exactly one distinct top offset, which
+      // reported an empty rail as multi-row — the opposite of the claim.
       singleRow: rails.map(r => {
         const items = [...r.querySelectorAll('.fs-rail__item')];
         const tops = new Set(items.map(el => Math.round(el.getBoundingClientRect().top)));
-        return tops.size === 1;
+        return tops.size <= 1;
       }),
       horizontal: rails.map(r => getComputedStyle(r.querySelector('.fs-rail')).overflowX),
       strip: [...panel.querySelectorAll('.fs-strip__value')].map(el => el.textContent.trim()),
@@ -415,19 +521,40 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   `);
 
   check('the Action header is the locked wording',
-    action.header === 'WEEK 5 · REGULAR SEASON ACTION', action.header);
+    action.header === `WEEK ${served.week} · REGULAR SEASON ACTION`, action.header);
   check('exactly four rails', action.railCount === 4, String(action.railCount));
-  check('rail headings match the locked wording',
-    action.headings.join(' | ') ===
-      'ACTION REQUIRED 2 | WAITING 2 | LIVE 4 | COMPLETED · 14–7 SEASON',
+
+  // WP5 — THE LOCKED ORDER AND WORDING, WITHOUT THE FIXTURE'S COUNTS. Sprint 7
+  // pinned "ACTION REQUIRED 2 | WAITING 2 | LIVE 4 | COMPLETED · 14–7 SEASON",
+  // which fixed the four headings AND the illustrative league's tallies in one
+  // string. The heading grammar is the requirement; the tallies belong to
+  // whatever league is bound.
+  check('the four rails are in the locked order',
+    action.railIds.join(',') === 'action,waiting,live,completed',
+    action.railIds.join(','));
+  check('rail headings keep the locked wording',
+    action.headings[0].startsWith('ACTION REQUIRED')
+    && action.headings[1].startsWith('WAITING')
+    && action.headings[2].startsWith('LIVE')
+    && action.headings[3].startsWith('COMPLETED'),
     action.headings.join(' | '));
-  check('the rails hold 2, 2, 4 and 3 cards',
-    action.counts.join(',') === '2,2,4,3', action.counts.join(','));
+
+  // AND THE COUNTS AGREE WITH THE SERVER. This replaces the literal 2,2,4,3
+  // with a cross-check the literal could never make: the rendered rails and
+  // `/league/{id}/action/me` must describe the same wagers.
+  check('every rail holds exactly the wagers the server served',
+    action.railIds.every((id, i) => action.counts[i] === served.counts[id]),
+    `rendered ${action.counts.join(',')} vs served `
+    + action.railIds.map((id) => served.counts[id]).join(','));
+
   check('every rail is a single row', action.singleRow.every(Boolean));
   check('every rail scrolls horizontally',
     action.horizontal.every((o) => o === 'auto'), action.horizontal.join(' '));
-  check('the strip carries the four locked figures',
-    action.strip.join(' | ') === '14–7 | $129 | +$129 | +$20', action.strip.join(' | '));
+  // The strip's SHAPE is the locked requirement — four cells, and only four.
+  // Its figures are the bound league's and are certified against the read model
+  // by test_s8_p4c2_action.py rather than pinned to the prototype's here.
+  check('the strip carries exactly four cells',
+    action.strip.length === 4, action.strip.join(' | '));
   check('Action does not scroll the page horizontally',
     action.docWidth <= VIEWPORT.width, `${action.docWidth}px`);
   check('no Action element outside a rail extends past the viewport',
@@ -446,18 +573,32 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       // textContent, so the label reads as authored — the uppercase is CSS.
       completedHaveNet: [...panel.querySelectorAll('[data-rail="completed"] .fs-wcard')]
         .every(el => el.textContent.includes('Net')),
+      // WP5: the card says FIXED or FLOATING. modeLabel() in action.js chose
+      // plain words over the engine's names deliberately — a GM should be able
+      // to tell the two apart without knowing what an Anchor is — so the
+      // requirement (ruling section 4: the distinction is visible before a GM
+      // acts, not in fine print) is met in the product's vocabulary rather than
+      // the engine's. LOCKED/DYNAMIC still names the mode in the detail sheet.
       modeShown: cards.every(el =>
-        /LOCKED|DYNAMIC/.test(el.querySelector('.fs-wcard__context').textContent)),
+        /FIXED|FLOATING/.test(el.querySelector('.fs-wcard__context').textContent)),
+      modeContexts: cards.map(el => el.querySelector('.fs-wcard__context').textContent),
       clipped: cards.filter(el => el.scrollHeight > el.clientHeight + 1).length,
       exact: cards.every(el => el.querySelectorAll('[data-exact-cents]').length >= 3),
     };
   `);
+  // A BOUND LEAGUE MAY HOLD FEW WAGERS, AND ZERO IS A REAL ANSWER — but a
+  // grammar claim over an empty set is vacuous, so the suite says which it made.
+  check('the Action tab drew the wagers the server served',
+    grammar.total === Object.values(served.counts).reduce((a, b) => a + b, 0),
+    `${grammar.total} card(s)`);
+
   check('every Action card uses the shared wager-card grammar',
     grammar.allShared === true, `${grammar.total} cards`);
   check('every card names its opponent', grammar.haveIdentity === true);
   check('every card carries market and mode context', grammar.haveContext === true);
-  check('Locked or Dynamic is visible on every card, not in fine print',
-    grammar.modeShown === true);
+  check('the Fixed/Floating distinction is on every card, not in fine print',
+    grammar.total > 0 && grammar.modeShown === true,
+    grammar.modeContexts.join(' | ') || 'no cards to check');
   check('every card carries both stakes and the pot', grammar.haveStakes === true);
   check('completed cards add the net result', grammar.completedHaveNet === true);
   check('every card keeps exact cents behind its money', grammar.exact === true);
@@ -494,14 +635,27 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
 
   section('An Action card opens its detail in the shared sheet');
 
+  // WP5 — THE CARD IS FOUND, NOT ASSUMED. Sprint 7 clicked
+  // `[data-rail="live"] .fs-wcard`, which existed because the illustrative
+  // league always had four live wagers. A bound league need not, and the
+  // hard-coded selector turned an empty rail into a null-dereference that
+  // killed the suite mid-run — taking every assertion after it with it.
+  //
+  // The claim was never "the LIVE rail specifically": it is that tapping an
+  // Action card opens its detail in the shared sheet, showing persisted
+  // protocol state. So the suite takes whichever card the bound league has.
   const detail = await evaluate(`
     ${goAction}
-    document.querySelector('[data-rail="live"] .fs-wcard').click();
+    const card = document.querySelector('#panel-action [data-rail] .fs-wcard');
+    if (!card) return { noCards: true };
+    card.click();
     const sheet = document.getElementById('fs-sheet');
     const close = sheet.querySelector('[data-fs-close]');
     const s = sheet.getBoundingClientRect();
     const c = close.getBoundingClientRect();
     return {
+      noCards: false,
+      rail: card.closest('[data-rail]').dataset.rail,
       open: document.getElementById('fs-overlay').classList.contains('is-open'),
       body: sheet.textContent,
       fromRight: s.right - c.right,
@@ -509,10 +663,22 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       fromTop: c.top - s.top,
     };
   `);
+  check('the bound league has at least one Action card to open',
+    detail.noCards === false,
+    detail.noCards ? 'no wagers in any rail — the tap path is uncertified'
+                   : `from the ${detail.rail} rail`);
   check('the card opens a sheet', detail.open === true);
+  // THE PERSISTED STATE, whatever it is. Sprint 7 asserted `accepted` because
+  // the illustrative LIVE rail always held accepted wagers. The requirement is
+  // that the sheet reports the PROTOCOL's own state rather than the display
+  // name of the rail the card was sitting in — so the label must be there and
+  // the value must come from the lifecycle's vocabulary, not the rail's.
+  const PROTOCOL_STATES =
+    /Protocol state\s*(offered|countered|accepted|declined|expired|settled|withdrawn|retired)/i;
   check('the sheet shows the persisted protocol state, not a rail name',
-    /Protocol state/.test(detail.body) && /accepted/.test(detail.body));
-  check('the sheet names the Response Card', /Response card/.test(detail.body));
+    PROTOCOL_STATES.test((detail.body || '').replace(/\s+/g, ' ')),
+    (detail.body || '').replace(/\s+/g, ' ').slice(0, 140));
+  check('the sheet names the Response Card', /Response card/.test(detail.body || ''));
   check('the sheet uses the shared upper-right close control',
     detail.fromRight >= 0 && detail.fromRight < detail.fromLeft && detail.fromTop >= 0,
     `${detail.fromRight.toFixed(1)}px from right, ${detail.fromTop.toFixed(1)}px from top`);

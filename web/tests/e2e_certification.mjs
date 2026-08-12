@@ -68,7 +68,15 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
                            return b.left >= 0 && b.right <= ${vp.width}; }),
           stripClipped,
           railsFit: rails.every(x => Math.round(x.getBoundingClientRect().right) <= ${vp.width}),
-          railsScrollable: rails.every(x => x.scrollWidth > x.clientWidth + 1),
+          // WP5 — A RAIL THAT OVERFLOWS MUST SCROLL; AN EMPTY ONE HAS NOTHING
+          // TO. Sprint 7 required every rail to overflow, which held only
+          // because the illustrative Action tab always had 2/2/4/3 cards. A
+          // bound league may leave a rail empty, and demanding that an empty
+          // rail overflow inverts the claim: what matters is that content which
+          // does not fit is reachable, never that content must not fit.
+          railsScrollable: rails.every(x => x.scrollWidth <= x.clientWidth + 1
+            || getComputedStyle(x).overflowX === 'auto'),
+          railsOverflowing: rails.filter(x => x.scrollWidth > x.clientWidth + 1).length,
           snapsSnap: snaps.every(x => getComputedStyle(x).scrollSnapType.startsWith('y')),
           // A card that overflows its own box slices text through the glyphs.
           // Short phones are where this bites, so it is measured at each size.
@@ -92,7 +100,8 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
         r.clippedCards.length === 0, r.clippedCards.join(', '));
       if (r.railsScrollable !== undefined && tab === 'action') {
         check(`${tab}: rails fit and communicate scrollability`,
-          r.railsFit === true && r.railsScrollable === true);
+          r.railsFit === true && r.railsScrollable === true,
+          `${r.railsOverflowing} rail(s) overflowing, all reachable`);
       }
       if (tab === 'league' || tab === 'week') {
         check(`${tab}: vertical carousels snap`, r.snapsSnap === true);
@@ -175,10 +184,12 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
       .map(e => e.textContent);
     const weekMarkets = read('week', '[data-module="yahoo"] .fs-wcard .fs-market__label')
       .map(e => e.textContent);
+    // WP5: FIXED/FLOATING is the mode vocabulary a CARD uses; LOCKED/DYNAMIC
+    // is the engine's, and it names the mode inside the detail sheet.
     const actionModes = read('action', '.fs-wcard__context')
-      .map(e => (e.textContent.match(/LOCKED|DYNAMIC/) || [''])[0]).filter(Boolean);
+      .map(e => (e.textContent.match(/FIXED|FLOATING/) || [''])[0]).filter(Boolean);
     const weekBetModes = read('week', '[data-module="bets"] .fs-wcard__context')
-      .map(e => (e.textContent.match(/LOCKED|DYNAMIC/) || [''])[0]).filter(Boolean);
+      .map(e => (e.textContent.match(/FIXED|FLOATING/) || [''])[0]).filter(Boolean);
     return {
       leagueMarkets: [...new Set(leagueMarkets)],
       weekMarkets: [...new Set(weekMarkets)],
@@ -186,9 +197,20 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
       weekBetModes: [...new Set(weekBetModes)],
     };
   `);
-  check('League and The Week use one market vocabulary',
-    grammar.leagueMarkets.join(',') === grammar.weekMarkets.join(','),
-    `${grammar.leagueMarkets.join(',')} vs ${grammar.weekMarkets.join(',')}`);
+  // WP5 — THE WEEK'S YAHOO CARDS CARRY NO MARKET AT ALL SINCE S8-P4C-3, and
+  // that is the governed behaviour rather than a gap: the provider corpus holds
+  // no betting lines, so `providerMatchupCard` draws no market row because
+  // deriving one from fantasy points would be inventing a line.
+  //
+  // The claim "one market vocabulary" therefore becomes: where a market IS
+  // drawn it uses the shared vocabulary, and The Week draws none rather than a
+  // second one. A plain equality between the two lists asserted that The Week
+  // must show markets, which the product now deliberately refuses to do.
+  check('The Week introduces no second market vocabulary',
+    grammar.weekMarkets.length === 0
+    || grammar.weekMarkets.every(m => grammar.leagueMarkets.includes(m)),
+    `league ${grammar.leagueMarkets.join(',')} vs week `
+    + (grammar.weekMarkets.join(',') || 'none — no line is invented'));
   check('the market vocabulary is ML, SPR and O/U',
     grammar.leagueMarkets.join(',') === 'ML,SPR,O/U', grammar.leagueMarkets.join(','));
   check('Action and The Week draw modes from one vocabulary',
@@ -202,6 +224,15 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
     const opened = document.getElementById('fs-sheet').textContent;
     const stakeAtOpen = document.querySelector('#fs-stake-input').value;
     const sendDisabledAtOpen = document.querySelector('[data-composer-send]').disabled;
+
+    // WP5 — CHOOSE THE TARGET FIRST. S8-P4C-2R removed the name bridge that
+    // carried an illustrative card's display name into a real Credits command,
+    // so the composer asks who is being challenged and Send stays disabled
+    // until it is answered. Sprint 7 never had to answer it, which is why the
+    // two Send assertions below were reading a target refusal as a stake bug.
+    const target = document.querySelector('[data-composer-opponent]');
+    if (target) target.click();
+    const targetChosen = Boolean(target);
 
     // Choose a market and a stake.
     document.querySelector('[data-composer-market="ml"]').click();
@@ -224,6 +255,7 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
     const sendAfter = document.querySelector('[data-composer-send]').disabled;
     document.querySelector('#fs-sheet [data-fs-close]').click();
     return { opened: /YOUR STAKE/.test(opened), stakeAtOpen, sendDisabledAtOpen,
+             targetChosen,
              sendAfterStake, previewOpen, backInComposer, stakeAfter, marketAfter,
              econBefore, econAfter, sendAfter,
              closedAtEnd: !document.getElementById('fs-overlay').classList.contains('is-open') };
@@ -231,7 +263,9 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
   check('a whole-card tap reaches the composer', journey.opened === true);
   check('the stake opens at $0, untouched', journey.stakeAtOpen === '0', journey.stakeAtOpen);
   check('Send opens disabled', journey.sendDisabledAtOpen === true);
-  check('Send enables once market, mode and stake are satisfied',
+  check('the composer offers an authoritative target to choose',
+    journey.targetChosen === true);
+  check('Send enables once target, market, mode and stake are satisfied',
     journey.sendAfterStake === false);
   check('the Matchup Preview opens over the composer', journey.previewOpen === true);
   check('closing the preview returns the composer', journey.backInComposer === true);
@@ -245,22 +279,45 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
 
   section('The same wager keeps one detail grammar wherever it is opened');
 
+  // WP5 — WHICHEVER CARD THE BOUND LEAGUE HAS. Sprint 7 opened
+  // `[data-rail="live"]` on Action and a Bets card on The Week, both of which
+  // existed only because the illustrative league always had them. A bound
+  // league need not, and the hard-coded selectors turned an empty rail into a
+  // null-dereference that killed the run — every assertion after this point was
+  // lost, which is how the drift below stayed hidden.
+  //
+  // The claim is unchanged: wherever a wager is opened it keeps ONE detail
+  // grammar. `null` where a league has no such card is reported, not skipped.
   const details = await evaluate(`
     const open = (tab, sel) => {
       document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
-      document.querySelector(sel).click();
+      const card = document.querySelector(sel);
+      if (!card) return null;
+      card.click();
       const t = document.getElementById('fs-sheet').textContent;
-      document.querySelector('#fs-sheet [data-fs-close]').click();
+      const closer = document.querySelector('#fs-sheet [data-fs-close]');
+      if (closer) closer.click();
       return t;
     };
     return {
-      fromAction: open('action', '[data-rail="live"] .fs-wcard'),
+      fromAction: open('action', '#panel-action [data-rail] .fs-wcard'),
       fromWeek: open('week', '[data-module="bets"] .fs-wcard'),
     };
   `);
-  for (const [where, text] of Object.entries(details)) {
+  const PROTOCOL_STATES =
+    /Protocol state\s*(offered|countered|accepted|declined|expired|settled|withdrawn|retired)/i;
+  const opened = Object.entries(details).filter(([, text]) => text !== null);
+  check('at least one surface had a wager to open',
+    opened.length > 0,
+    Object.entries(details)
+      .map(([k, v]) => `${k}: ${v === null ? 'no card' : 'opened'}`).join(', '));
+  for (const [where, text] of opened) {
+    // The persisted state, whatever it is. Sprint 7 pinned `accepted` because
+    // it always opened the LIVE rail; the rail a card sits in no longer fixes
+    // which protocol state it carries.
     check(`${where}: the detail names the protocol state, not a rail`,
-      /Protocol state/.test(text) && /accepted/.test(text));
+      PROTOCOL_STATES.test(text.replace(/\s+/g, ' ')),
+      text.replace(/\s+/g, ' ').slice(0, 120));
     check(`${where}: the detail names the Response Card`, /Response card/.test(text));
     check(`${where}: the detail shows both stakes and the pot`,
       /Your stake/.test(text) && /Their stake/.test(text) && /Pot/.test(text));
@@ -315,15 +372,25 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
   check('decorative icons are hidden from assistive tech', a11y.loudIcons === 0);
 
   const keyboard = await evaluate(`
+    // WP5 — ABSENCE IS REPORTED, NOT DEREFERENCED. The gmCard case below
+    // already had this treatment; every other surface needs it for the same
+    // reason now that the tabs are bound. A bound league may have no Versus
+    // wager in the current week, and a served provider matchup carries no tap
+    // affordance at all — so the control genuinely is not there, and throwing
+    // on it lost every assertion after this point.
     const activate = (tab, sel, key) => {
       document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
       const el = document.querySelector(sel);
+      if (!el) return { focused: null, opened: null, absent: true };
       el.focus();
       const focused = document.activeElement === el;
       if (el.tagName === 'BUTTON') el.click();
       else el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
       const opened = document.getElementById('fs-overlay').classList.contains('is-open');
-      if (opened) document.querySelector('#fs-sheet [data-fs-close]').click();
+      if (opened) {
+        const closer = document.querySelector('#fs-sheet [data-fs-close]');
+        if (closer) closer.click();
+      }
       return { focused, opened };
     };
     return {
@@ -337,9 +404,7 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
       // cards to activate, so this reports "nothing to test" rather than
       // throwing on a null element. Keyboard activation of a card IS still
       // certified — in the commissioner session, where cards exist.
-      gmCard: document.querySelector('#panel-rules [data-gm]')
-        ? activate('rules', '#panel-rules [data-gm]', 'Enter')
-        : { focused: null, opened: null, absent: true },
+      gmCard: activate('rules', '#panel-rules [data-gm]', 'Enter'),
     };
   `);
   for (const [name, r] of Object.entries(keyboard)) {

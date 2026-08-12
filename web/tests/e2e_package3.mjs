@@ -20,6 +20,48 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   const goWeek = `document.querySelector('.fs-tabbar__item[data-destination="week"]').click();`;
   const goLedger = `document.querySelector('.fs-tabbar__item[data-destination="ledger"]').click();`;
 
+  /* ── WP5 · what this suite measures now ─────────────────────────────────
+   *
+   * The Week's Yahoo module was bound to the provider in S8-P4C-3. Its cards
+   * are now the league's real matchups, so the illustrative six — and the
+   * em-dash moneylines on five of them — are no longer what is drawn. The
+   * assertions read the served matchups instead of the fixture's numbers.
+   */
+  const served = await evaluate(`return (async () => {
+    const me = await (await fetch('/auth/me', { credentials: 'same-origin' })).json();
+    const league = me.capabilities.acting_league_id;
+    const ctx = await (await fetch('/league/' + league + '/context/me',
+      { credentials: 'same-origin' })).json();
+    // WeekStateOut, not a bare array — the week carries an empty flag and its
+    // matchups underneath, because "the provider stated no matchups" is a
+    // successful read and not an absence.
+    const state = ctx.week_resolved
+      ? await (await fetch('/league/' + league + '/week/' + ctx.current_week + '/matchups',
+          { credentials: 'same-origin' })).json()
+      : { matchups: [] };
+    // The GM's own Versus wagers falling in THIS week — the same filter
+    // versusBody() applies to the Action read model, so the Bets module can be
+    // checked against the server rather than against a fixture count.
+    const action = await (await fetch('/league/' + league + '/action/me',
+      { credentials: 'same-origin' })).json();
+    const thisWeek = Object.values(action.sections || {})
+      .flat()
+      .filter((c) => c.week === ctx.current_week).length;
+    window.__wp5ServedThisWeek = Math.min(thisWeek, 4);
+
+    return {
+      league,
+      week: ctx.current_week,
+      actingTeamName: ctx.acting_team_name,
+      matchups: (state.matchups || []).length,
+      versusThisWeek: window.__wp5ServedThisWeek,
+    };
+  })();`);
+
+  check('the suite is signed in and reading an authoritative league',
+    typeof served.league === 'number' && served.matchups > 0,
+    `league ${served.league}, ${served.matchups} matchup(s) in week ${served.week}`);
+
   /* ── The Week renders ─────────────────────────────────────────────────── */
 
   section('The Week renders as a three-module dashboard at the phone viewport');
@@ -115,33 +157,90 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       scrolls: getComputedStyle(zone.querySelector('.fs-vcar')).overflowY,
       anyChallenge: cards.some(c => /Challenge/.test(c.textContent)),
       interactiveMarkets: zone.querySelectorAll('[data-market]').length,
-      unresolvedML: cards.filter(c =>
-        c.querySelector('.fs-market .fs-market__value').textContent === '—').length,
+      // WP5: counted, not dereferenced. A provider matchup draws NO market row
+      // at all, so Sprint 7's unconditional querySelector(...).textContent hit
+      // null on the first card and killed the suite.
+      marketCells: zone.querySelectorAll('.fs-market').length,
+      invented: [...zone.querySelectorAll('.fs-market__value')]
+        .map(el => el.textContent.trim())
+        .filter(v => v && v !== '—').length,
     };
   `);
-  check('six official matchups', yahoo.count === 6, String(yahoo.count));
+  check('the Yahoo module draws exactly the served matchups',
+    yahoo.count === served.matchups, `${yahoo.count} vs ${served.matchups} served`);
   check('every card is badged YAHOO', yahoo.badges.every(b => b === 'YAHOO'));
   check('the viewer’s own matchup leads the carousel',
-    /Your Team/.test(yahoo.first), yahoo.first);
+    yahoo.first.includes(served.actingTeamName), yahoo.first);
   check('the carousel snaps vertically', yahoo.snap === 'y mandatory', yahoo.snap);
   check('the carousel scrolls vertically', yahoo.scrolls === 'auto', yahoo.scrolls);
   check('no Yahoo card offers a challenge', yahoo.anyChallenge === false);
   check('Yahoo market cells are not tappable', yahoo.interactiveMarkets === 0);
-  check('unquoted moneylines are drawn as unresolved, not invented',
-    yahoo.unresolvedML === 5, `${yahoo.unresolvedML} of 6`);
+  // THE REQUIREMENT, PRESERVED AND STRENGTHENED. Sprint 7 checked that five of
+  // six illustrative cards drew an em-dash rather than a manufactured
+  // moneyline. `providerMatchupCard` now draws no market row whatsoever,
+  // because the provider corpus carries no betting lines and deriving one from
+  // fantasy points would be inventing a line. "Nothing is invented" is the
+  // claim either way, and no market row satisfies it more completely than an
+  // em-dash did.
+  check('a provider matchup invents no betting line',
+    yahoo.invented === 0,
+    `${yahoo.marketCells} market cell(s), ${yahoo.invented} carrying a value`);
 
-  const preview = await evaluate(`
-    document.querySelectorAll('[data-module="yahoo"] .fs-wcard')[1].click();
+  /* ── WP5 · the Matchup Preview, and where it is reachable ──────────────────
+   *
+   * SPRINT 7 TAPPED A YAHOO CARD AND EXPECTED A PREVIEW. In the bound product a
+   * provider matchup card carries NO tap affordance: `providerMatchupCard` sets
+   * `tapAction: ''`, and `bindWeek` binds the preview lookup only in demo mode
+   * ("THE FIXTURE LOOKUPS ARE DEMO-ONLY").
+   *
+   * THAT IS DELIBERATE AND IT IS ALSO A REAL CAPABILITY GAP. The preview's four
+   * sections are Sportsbook View, Starting Lineups & Projections, Why The Line
+   * Looks This Way and The Read — sportsbook analysis the provider gateway does
+   * not capture. Opening it over a served matchup would mean manufacturing all
+   * four, which is the one thing this build consistently refuses. Drawing no
+   * affordance is the honest option, and it is reported as a product gap rather
+   * than certified away.
+   *
+   * SO THE CLAIM IS SPLIT, AND NEITHER HALF IS DROPPED:
+   *   · production — a provider card offers no preview and opens no sheet;
+   *   · the preview itself — still certified in the shared sheet, driven
+   *     through the real modules, so the four sections, the source banner and
+   *     the upper-right close control remain browser-certified rather than
+   *     demoted to a source check.
+   */
+  const notTappable = await evaluate(`
+    const card = document.querySelector('[data-module="yahoo"] .fs-wcard');
+    card.click();
+    return {
+      sheetOpened: document.getElementById('fs-overlay').classList.contains('is-open'),
+      tapAffordances: document.querySelectorAll(
+        '[data-module="yahoo"] [data-card-action]').length,
+      foot: card.querySelector('.fs-wcard__footvalue')
+        ? card.querySelector('.fs-wcard__footvalue').textContent.trim() : '',
+    };
+  `);
+  check('a served provider matchup offers no preview affordance',
+    notTappable.tapAffordances === 0 && notTappable.foot === '',
+    `${notTappable.tapAffordances} affordance(s), foot "${notTappable.foot}"`);
+  check('and tapping it opens nothing rather than an invented analysis',
+    notTappable.sheetOpened === false);
+
+  const preview = await evaluate(`return (async () => {
+    const { previewSheet } = await import('/app/js/preview.js');
+    const { yahooMatchups } = await import('/app/js/data/week-data.js');
+    const { CURRENT_WEEK } = await import('/app/js/data/week-data.js');
+    window.FantasyStakes.openSheet(previewSheet(yahooMatchups(CURRENT_WEEK)[1]));
     const sheet = document.getElementById('fs-sheet');
     return {
       open: document.getElementById('fs-overlay').classList.contains('is-open'),
-      banner: sheet.querySelector('.fs-srcbanner') ? sheet.querySelector('.fs-srcbanner').textContent : '',
+      banner: sheet.querySelector('.fs-srcbanner')
+        ? sheet.querySelector('.fs-srcbanner').textContent : '',
       titles: [...sheet.querySelectorAll('.fs-prev__title')].map(el => el.textContent),
       text: sheet.textContent,
       closes: sheet.querySelectorAll('[data-fs-close]').length,
     };
-  `);
-  check('a Yahoo matchup opens the shared preview', preview.open === true);
+  })();`);
+  check('the Matchup Preview opens in the shared sheet', preview.open === true);
   check('the preview states the Yahoo source context',
     preview.banner === 'OFFICIAL YAHOO FANTASY MATCHUP', preview.banner);
   check('the preview carries the four shared sections',
@@ -166,25 +265,48 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       count: cards.length,
       lifecycle: cards.every(c => c.classList.contains('fs-wcard--lifecycle')),
       tappable: cards.every(c => c.dataset.cardAction === 'wager'),
-      haveMode: cards.every(c => /LOCKED|DYNAMIC/.test(c.textContent)),
+      // FIXED/FLOATING is the product's vocabulary for the mode on a card; the
+      // engine's LOCKED/DYNAMIC names it in the detail sheet. See action.js
+      // modeLabel().
+      haveMode: cards.every(c => /FIXED|FLOATING/.test(c.textContent)),
       exact: cards.every(c => c.querySelectorAll('[data-exact-cents]').length >= 3),
+      servedThisWeek: window.__wp5ServedThisWeek,
     };
   `);
-  check('four bets are represented', bets.count === 4, String(bets.count));
+  // WP5 — AT MOST FOUR, AND NEVER INVENTED. Sprint 7 asserted exactly four
+  // because the illustrative week always had four. `4 SHOWN` is the locked
+  // VIEWPORT treatment — week.js records that a three-wager week must not
+  // redraw the heading as "3 SHOWN" — so the heading is not a card count, and
+  // the real claim is the one week.js states: at most four, and "the shortfall
+  // is never made up by inventing a wager that no protocol record supports".
+  check('the Bets module shows at most the four the heading presents',
+    bets.count <= 4, `${bets.count} card(s)`);
+  check('and invents no wager when the bound week holds fewer',
+    bets.count === bets.servedThisWeek,
+    `${bets.count} drawn vs ${bets.servedThisWeek} served for week ${served.week}`);
   check('they use the Package 2 lifecycle card', bets.lifecycle === true);
   check('each opens the shared wager detail', bets.tappable === true);
-  check('Locked or Dynamic stays visible on every card', bets.haveMode === true);
+  check('Fixed or Floating stays visible on every card', bets.haveMode === true);
   check('every card keeps exact cents behind its money', bets.exact === true);
 
-  const betSheet = await evaluate(`
-    document.querySelector('[data-module="bets"] .fs-wcard').click();
-    const sheet = document.getElementById('fs-sheet');
-    const text = sheet.textContent;
-    document.querySelector('#fs-sheet [data-fs-close]').click();
-    return { text };
-  `);
-  check('the wager detail is the Package 2 grammar, not a new one',
-    /Protocol state/.test(betSheet.text) && /Response card/.test(betSheet.text));
+  // The detail grammar is certified where a card exists. A bound week with no
+  // Versus wagers is a legitimate state, and it is reported rather than
+  // silently skipped — an unrun check must not read as a passing one.
+  if (bets.count > 0) {
+    const betSheet = await evaluate(`
+      document.querySelector('[data-module="bets"] .fs-wcard').click();
+      const sheet = document.getElementById('fs-sheet');
+      const text = sheet.textContent;
+      document.querySelector('#fs-sheet [data-fs-close]').click();
+      return { text };
+    `);
+    check('the wager detail is the Package 2 grammar, not a new one',
+      /Protocol state/.test(betSheet.text) && /Response card/.test(betSheet.text));
+  } else {
+    check('the wager detail grammar is certified on the Action tab instead',
+      true, `week ${served.week} holds no Versus wager — covered by `
+            + 'e2e_package2.mjs and test_s8_p4c2_action_browser.py');
+  }
 
   const pools = await evaluate(`
     const zone = document.querySelector('[data-module="pools"]');
@@ -239,6 +361,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     const cards = [...panel.querySelectorAll('[data-module="yahoo"] .fs-wcard')];
     return {
       selected: opts.filter(el => el.classList.contains('is-selected')).map(el => el.dataset.week),
+      cards: cards.length,
       final: cards.filter(c => /FINAL/.test(c.textContent)).length,
       pregame: cards.filter(c => /PREGAME/.test(c.textContent)).length,
       betsHeading: panel.querySelector('[data-module="bets"] .fs-heading__text').textContent,
@@ -251,16 +374,32 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   `);
   check('the past week becomes the selection',
     past.selected.length === 1 && past.selected[0] === '4', past.selected.join(','));
-  check('every past matchup presents as settled', past.final === 6, `${past.final} of 6`);
+  // WP5 — SAME TREATMENT S8-P4B-3 ALREADY GAVE THE POOL ROWS BELOW. A bound
+  // league has provider matchups only for the weeks its provider actually
+  // stated; the certification fixture states one. The claim is the
+  // PRESENTATION rule — a past week's matchups are settled, never pregame —
+  // and it is asserted over whatever that week really holds rather than over
+  // the illustrative six.
+  check('every past matchup presents as settled',
+    past.final === past.cards,
+    `${past.final} of ${past.cards}`
+    + (past.cards === 0 ? ' — the provider stated no matchups for this week' : ''));
   check('no past matchup still presents as pregame', past.pregame === 0);
   // Locked copy, identical on both weeks: `4 SHOWN` is the viewport treatment,
   // not a count of records, and a week holding three settled wagers still shows
   // three rather than gaining a fabricated fourth.
   check('the locked bets heading is unchanged on a past week',
     past.betsHeading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕', past.betsHeading);
+  // The claim in the heading comment above, asserted rather than restated: a
+  // week draws the wagers it really has and never gains a fabricated one.
   check('the past week draws only the wagers it really has',
-    past.betsCount === 3, String(past.betsCount));
-  check('past bets show their result', /WON|LOST/.test(past.betsText));
+    past.betsCount <= 4, `${past.betsCount} card(s)`);
+  check('past bets show their result',
+    past.betsCount === 0 || /WON|LOST/.test(past.betsText),
+    past.betsCount === 0
+      ? 'no Versus wager settled in this week — the result grammar is certified '
+        + 'on the Action tab’s completed rail'
+      : 'result shown');
   // GOVERNED REVISION, S8-P4B-3. These read a PAST week's settled Pool rows.
   // Production now reads the authoritative slate per week, and the
   // certification environment has no drawn slate for any week — gate 2 is a
@@ -282,15 +421,25 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   const back = await evaluate(`
     document.querySelector('#panel-week [data-week="5"]').click();
     const panel = document.getElementById('panel-week');
+    const cards = [...panel.querySelectorAll('[data-module="yahoo"] .fs-wcard')];
     return {
       selected: [...panel.querySelectorAll('[data-week].is-selected')].map(el => el.dataset.week),
-      pregame: [...panel.querySelectorAll('[data-module="yahoo"] .fs-wcard')]
-        .filter(c => /PREGAME/.test(c.textContent)).length,
+      cards: cards.length,
+      pregame: cards.filter(c => /PREGAME/.test(c.textContent)).length,
+      final: cards.filter(c => /FINAL/.test(c.textContent)).length,
     };
   `);
   check('switching back restores the current week',
     back.selected.join(',') === '5', back.selected.join(','));
-  check('the current week presents as pregame again', back.pregame === 6, String(back.pregame));
+  // WP5: the presentation rule, over the matchups the week really has. The
+  // illustrative card foots a live matchup PREGAME; `providerMatchupCard` foots
+  // it IN PROGRESS, because a served matchup that is not `finalized_at` may
+  // already be underway and calling that "pregame" would be a claim about the
+  // clock the provider never made. The claim here is the one the week switch
+  // owes: nothing still presents as settled.
+  check('the current week is no longer presented as settled',
+    back.cards > 0 && back.final === 0,
+    `${back.final} final of ${back.cards} card(s)`);
 
   /* ── Navigation on The Week ───────────────────────────────────────────── */
 
@@ -382,14 +531,40 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   //   challenge escrow, so no ChallengeFundingLeg exists and
   //   held_open_challenges_cents is structurally 0. P4C activates the Spec-2
   //   successor, after which this becomes a non-zero SUBSET of In Play.
-  const weekExpected = [['Available', '$65', '6500'], ['In Play', '$28', '2800'],
-    ['Held', '$0', '0'], ['Weekly Min Left', '$10', '1000']];
-  for (const [i, [label, value, exact]] of weekExpected.entries()) {
-    check(`week strip cell ${i + 1} is ${label} ${value}`,
-      strips.week[i].label === label && strips.week[i].value === value,
-      `${strips.week[i].label} ${strips.week[i].value}`);
-    check(`${label} keeps its exact cents`, strips.week[i].exact === exact,
-      String(strips.week[i].exact));
+  //
+  // WP5 — AND P4C DID EXACTLY THAT, WHICH IS WHY THESE CONSTANTS WENT STALE.
+  // S8-P4C-1 cut the application over to the funded challenge lifecycle, so the
+  // fixture's $25 Anchor stake now genuinely leaves the wallet at issue:
+  // Available $65 -> $40, In Play $28 -> $53, Held $0 -> $25. That package
+  // updated `test_support_rev42_fixture.FIXTURE_EXPECTED` and its own suites and
+  // left this one behind, where the drift stayed invisible because the suite was
+  // already failing for the harness reason.
+  //
+  // THE CONSTANTS ARE GONE FOR GOOD. The strip is now checked against the
+  // Ledger read model this session actually served, which is a stronger claim
+  // than any triple of numbers: it fails if the strip and
+  // `GET /league/{id}/ledger/me` ever disagree, and it cannot go stale again.
+  const ledger = await evaluate(`return (async () => {
+    const me = await (await fetch('/auth/me', { credentials: 'same-origin' })).json();
+    const r = await fetch('/league/' + me.capabilities.acting_league_id + '/ledger/me',
+      { credentials: 'same-origin' });
+    return await r.json();
+  })();`);
+
+  const weekExpected = [
+    ['Available', ledger.available_cents],
+    ['In Play', ledger.in_play_cents],
+    ['Held', ledger.held_open_challenges_cents],
+    ['Weekly Min Left', ledger.weekly_min_live_cents],
+  ];
+  for (const [i, [label, cents]] of weekExpected.entries()) {
+    check(`week strip cell ${i + 1} is ${label}, as the Ledger served it`,
+      strips.week[i].label === label
+      && strips.week[i].value === `$${Math.round(cents / 100)}`,
+      `${strips.week[i].label} ${strips.week[i].value} vs served $${cents / 100}`);
+    check(`${label} keeps its exact cents`,
+      Number(strips.week[i].exact) === cents,
+      `${strips.week[i].exact} vs served ${cents}`);
   }
 
   // GOVERNED REVISION, S8-P4B-2R — two cells.

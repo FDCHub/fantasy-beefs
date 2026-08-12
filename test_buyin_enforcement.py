@@ -33,7 +33,7 @@ from fastapi import HTTPException
 
 from db.schema import (
     Base, engine, SessionLocal,
-    League, Team, User, Wallet, Matchup, Player, Roster,
+    League, LeagueCommissioner, Team, User, Wallet, Matchup, Player, Roster,
 )
 from auth.jwt_auth import get_current_gm, get_current_user, hash_password
 from db.deps import get_db
@@ -120,6 +120,21 @@ with SessionLocal() as db:
     comm = User(email="gate_comm@t.com", hashed_password=hash_password("x"),
                 team_id=None, role="commissioner", buy_in_paid=0)
     db.add_all([gm_unpaid, comm])
+
+    # WP5 — LEAGUE-SCOPED COMMISSIONER AUTHORITY. This fixture granted the
+    # GLOBAL role="commissioner" and nothing else, which was sufficient when the
+    # route checked a role. S8-P2 replaced that with league-scoped authority:
+    # the global is_commissioner role is NOT the same question, and conflating
+    # them is the exact confusion S8-P2 exists to remove. The route now refuses
+    # correctly, so the FIXTURE is what was stale — this suite's subject is
+    # buy-in enforcement, not who may act.
+    #
+    # The grant is the real one the product uses, so the 403 branch above still
+    # proves what it always did: authority is required, and it is league-scoped.
+    db.flush()
+    db.add(LeagueCommissioner(league_id=league.id, user_id=comm.id,
+                              source="bootstrap"))
+
 
     db.commit()
     league_id  = league.id
