@@ -256,6 +256,44 @@ _SEED_POOL_SLATE = """
     db.flush()
 """
 
+#: WP6A — a FINALIZED, SKUNK-ASSESSED week 5, for the SKUNK OF THE WEEK callout.
+#:
+#: The scores are the product ruling's own worked example — 132.47 to 101.83, a
+#: margin of 30.64 — so a browser assertion about the differential is an
+#: assertion about the number the ruling specified, and any float that got
+#: truncated between the matchup row and the rendered card shows up as a
+#: mismatch rather than as a plausible-looking figure.
+#:
+#: THE ENGINE IS CALLED, NOT IMITATED. `assess_weekly_skunk` is the same
+#: certified function Week Close invokes, so the seeded state is the state the
+#: production path produces — the event, the posting and the receivable — rather
+#: than rows hand-written to look like it.
+_SEED_SKUNK_WEEK = """
+    from db.schema import Matchup as _MSk
+    from economy.skunk import assess_weekly_skunk as _assess
+
+    _m = (db.query(_MSk)
+          .filter(_MSk.league_id == league.id, _MSk.week == {slate_week})
+          .order_by(_MSk.id).first())
+    if _m is None:
+        _m = _MSk(league_id=league.id, week={slate_week},
+                  home_team_id=gm_team.id, away_team_id=comm_team.id,
+                  home_score=0.0, away_score=0.0)
+        db.add(_m)
+    # The GM's own team takes the skunk, so the signed-in GM session sees the
+    # callout describing themselves — the case a real league cares about.
+    _m.home_team_id = gm_team.id
+    _m.away_team_id = comm_team.id
+    _m.home_score = 101.83
+    _m.away_score = 132.47
+    _m.finalized_at = datetime.now(timezone.utc)
+    db.flush()
+
+    _assess(db, league_id=league.id, week={slate_week})
+    db.flush()
+"""
+
+
 _SEED_FROZEN_POOL_ENTRY = """
     # The governed frozen state: `pool_weekly_entry_frozen_at` is written once,
     # by the season's first Rev1.3 collection, and `configure_pool_weekly_entry`
@@ -283,6 +321,7 @@ class AppServer:
     def __init__(self, *, seed_pool_slate: bool = False,
                  freeze_pool_entry: bool = False,
                  action_shape: str | None = None,
+                 seed_skunk_week: bool = False,
                  provider_week: int | None = 5) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
@@ -291,6 +330,9 @@ class AppServer:
         # against is byte-identical to the one they were certified on.
         self._seed_pool_slate = seed_pool_slate
         self._freeze_pool_entry = freeze_pool_entry
+        # WP6A: off by default, so every existing suite runs against the
+        # byte-identical fixture it was certified on.
+        self._seed_skunk_week = seed_skunk_week
         # S8-P4C-2: which Action situation the GM's team should be in. None
         # leaves the fixture exactly as every earlier suite was certified on —
         # the Rev 4.2 season already carries one open challenge and no more.
@@ -382,6 +424,9 @@ class AppServer:
         if self._action_shape:
             extra += _SEED_ACTION.format(shape=self._action_shape,
                                          slate_week=slate_week)
+        # LAST, so it finalizes whichever matchup the blocks above created.
+        if self._seed_skunk_week:
+            extra += _SEED_SKUNK_WEEK.format(slate_week=slate_week)
 
         script = _SEED_SCRIPT.format(db_url=db_url, root=ROOT, gm=GM_EMAIL,
                                      comm=COMMISSIONER_EMAIL, password=PASSWORD,

@@ -461,3 +461,96 @@
 
 .fs-settle__total.is-positive { color: var(--green2); }
 .fs-settle__total.is-negative { color: var(--red); }
+/* ── SKUNK OF THE WEEK (WP6A) ──────────────────────────────────────────────
+ * The week's headline result, above the three modules. Not a module: it has no
+ * rail, no carousel and nothing to tap, and the locked module set is three.
+ *
+ * THE MARGIN IS THE KEY NUMBER and the type scale says so — it is the largest
+ * figure on the tab, above the final score rather than beside it. That
+ * hierarchy is the product ruling's, not a styling preference: the differential
+ * is what a GM repeats to the league, and the raw scores are the evidence for
+ * it. Amber rather than gold: a Skunk is not an achievement. */
+
+.fs-skunk {
+  margin-bottom: var(--fs-space-3);
+  padding: var(--fs-space-4);
+  background: var(--card);
+  border: var(--fs-border);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--fs-radius-tile);
+}
+
+.fs-skunk__eyebrow {
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--amber);
+}
+
+.fs-skunk__line {
+  margin-top: var(--fs-space-2);
+  font-size: var(--fs-size-body);
+  line-height: 1.4;
+  color: var(--g1);
+  /* Team names are user data and can be long; the line wraps rather than
+   * forcing the card wider than a 375px viewport. */
+  overflow-wrap: anywhere;
+}
+
+.fs-skunk__loser,
+.fs-skunk__winner {
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+}
+
+/* The margin block: the figure and its unit on one baseline. */
+.fs-skunk__margin {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--fs-space-2);
+  margin-top: var(--fs-space-3);
+}
+
+.fs-skunk__marginvalue {
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+  /* Larger than the four-cell strip value (18px) — this is the biggest number
+   * on The Week, which is the point. */
+  font-size: 26px;
+  line-height: 1.05;
+  font-weight: var(--fs-weight-heavy);
+  color: var(--amber);
+}
+
+.fs-skunk__marginlabel {
+  font-size: var(--fs-size-micro);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--g1);
+}
+
+/* Supporting detail — deliberately quieter than the margin above it. */
+.fs-skunk__final {
+  margin-top: var(--fs-space-1);
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-fine);
+  color: var(--g1);
+}
+
+.fs-skunk__fee {
+  margin-top: var(--fs-space-2);
+  font-size: var(--fs-size-body);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+}
+
+.fs-skunk__note {
+  margin-top: var(--fs-space-2);
+  font-size: var(--fs-size-micro);
+  line-height: 1.45;
+  color: var(--g1);
+  overflow-wrap: anywhere;
+}

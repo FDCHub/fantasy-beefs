@@ -82,6 +82,9 @@ import {
 import {
   bindSlate, markSlateUnavailable, setSlateEntryCents, unbindSlate,
 } from './pool-slate-model.js';
+import {
+  bindSkunk, markSkunkUnavailable, unbindSkunk,
+} from './skunk-model.js';
 import { bindPoolEntryForm, setCommissionerCapability, setSettingSheetMount } from './rules.js';
 import {
   setLifecycleCapability, setLifecycleDispatch, setSeasonBlocker,
@@ -504,6 +507,7 @@ async function bindAuthoritativeData() {
     markLedgerUnavailable();
     markCommissionerUnavailable();
     markActionUnavailable();
+    markSkunkUnavailable();
     markLifecycleUnavailable(null);
     setLifecycleCapability(false);
     setLifecycleDispatch(null);
@@ -521,6 +525,7 @@ async function bindAuthoritativeData() {
     markLedgerUnavailable();
     markCommissionerUnavailable();
     markActionUnavailable();
+    markSkunkUnavailable();
     markLifecycleUnavailable(leagueId);
     setLifecycleDispatch(null);
     setSeasonBlocker(null);
@@ -545,6 +550,12 @@ async function bindAuthoritativeData() {
 
   if (data && data.slate) bindSlate(data.slate);
   else markSlateUnavailable();
+
+  // WP6A — the week's Skunk. An UNASSESSED week is a successful read carrying
+  // `assessed: false`, which the model reports as "no callout" rather than as a
+  // failure; only a refused or failed read is unavailable.
+  if (data && data.skunk) bindSkunk(data.skunk);
+  else markSkunkUnavailable();
 
   // AN EMPTY ACTION TAB IS STILL A BOUND ONE. The read returns four empty
   // sections for a GM with no wagers, which is an answer; only a failed or
@@ -863,6 +874,7 @@ function clearAuthoritativeData() {
   unbindCommissioner();
   unbindSettings();
   unbindSlate();
+  unbindSkunk();
   setCommissionerCapability(false);
   setSettingSheetMount(null);
   // The lifecycle goes with the session, controls and recorded outcomes alike.

@@ -4654,12 +4654,49 @@ class WeekOpenOut(BaseModel):
     already_open:         bool = Field(..., description="True when every team replayed — the week was already open.")
 
 
+class SkunkEntryOut(BaseModel):
+    """One skunked GM and the matchup that skunked them."""
+    team_id:            int
+    team_name:          str
+    score:              float
+    opponent_team_id:   int
+    opponent_team_name: str
+    opponent_score:     float
+    margin:             float
+    cents:              int
+
+
+class WeeklySkunkOut(BaseModel):
+    """One league-week's Skunk outcome, as the product reports it.
+
+    `assessed=False` means Week Close has not run for this week — NOT that
+    nobody was skunked. The two are different facts and a surface that showed
+    "no Skunk" for an unassessed week would be stating a result nobody measured.
+    """
+    league_id:      int
+    season:         int
+    week:           int
+    assessed:       bool
+    classification: Optional[str]
+    amount_cents:   int
+    assessed_at:    Optional[str]
+    entries:        list[SkunkEntryOut]
+    #: True when this Week Close found the assessment already recorded. The
+    #: money did not move again; the outcome reported is the original one.
+    replayed:       bool = False
+
+
 class WeekCloseOut(BaseModel):
     league_id:           int
     week:                int
     teams:               list[WeeklyMinimumTeamOut]
     total_expired_cents: int
     already_closed:      bool = Field(..., description="True when every team replayed — the week was already closed.")
+    #: WP6A — the week's Skunk outcome, assessed as part of this close. Null for
+    #: a week that carries no Skunk obligation at all: a postseason week, or a
+    #: week with no matchups scheduled. Both exclusions are the season-close
+    #: orchestrator's own, not new rules — see the route.
+    skunk:               Optional[WeeklySkunkOut] = None
 
 
 @app.post("/league/{league_id}/week/{week}/open", response_model=WeekOpenOut)
@@ -4718,6 +4755,45 @@ def open_week(
     )
 
 
+@app.get("/league/{league_id}/week/{week}/skunk", response_model=WeeklySkunkOut)
+def league_week_skunk(
+    league_id:    int,
+    week:         int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """One league-week's Skunk outcome — the read behind SKUNK OF THE WEEK.
+
+    READABLE BY ANY MEMBER, not just the commissioner. The Skunk is the week's
+    headline result and every GM in the league sees it; what a GM cannot do is
+    CAUSE one, and that is enforced on Week Close rather than here.
+
+    IT DECIDES NOTHING. The economic decision is the persisted assessment event;
+    this names the teams and scores behind it, from the same finalized matchup
+    rows the engine read. The browser is therefore never in a position to work
+    out who was skunked — it is told.
+    """
+    from reports.weekly_skunk import weekly_skunk_result
+
+    _assert_league_member(current_user, league_id, db)
+
+    if not 1 <= week <= 17:
+        raise HTTPException(status_code=400, detail="week must be 1–17")
+
+    return _skunk_out(weekly_skunk_result(db, league_id=league_id, week=week),
+                      replayed=False)
+
+
+# PLACED IMMEDIATELY ABOVE WEEK CLOSE, and the position is load-bearing for a
+# control rather than for taste. S8-P2 asserts that no GET route changes state
+# by slicing each route decorator to the NEXT one and scanning that slice for
+# mutation verbs. A GET sitting last before a long stretch of module-level code
+# swallows all of it, and the Pool-lifecycle prose further down names several of
+# those verbs while describing them — which reported this pure read as a
+# state-changing GET. Sitting above the close route bounds the slice to this
+# function, which is what the control is actually asking about.
+#
+# The verbs are not repeated here for the same reason.
 @app.post("/league/{league_id}/week/{week}/close", response_model=WeekCloseOut)
 def close_week(
     league_id: int,
@@ -4725,21 +4801,101 @@ def close_week(
     db:        Session = Depends(get_db),
     _comm:     User    = Depends(require_league_commissioner),
 ):
-    """Expire every team's UNSPENT Weekly Minimum for one week — Week Close.
+    """End-of-week reconciliation — assess the Skunk, then expire the minimum.
 
-    Cents already committed to escrow or a Pool left `min:{team}:{week}` when
-    they were spent, so what remains is by construction the unspent balance and
-    committed money is structurally out of reach. Expiry moves it to
-    `expired_min:{team}` rather than sweeping it to championship: the GM has not
-    lost it, it has left circulation, and S5-P3 season close decides its fate.
+    WP6A MADE THIS THE SKUNK'S HOME, AND IT HAS NO OTHER ONE. WP5 proved that
+    `economy.skunk.assess_weekly_skunk` was certified and called by nothing, so a
+    league that actually played a week could never satisfy the season-close
+    precondition `skunk_assessed` — Week Close succeeded, left the week
+    unassessed, and the season was then unclosable with no product path to fix
+    it. The owner ruling is that Skunk is not a separate commissioner chore but
+    part of end-of-week reconciliation, so it is assessed HERE and there is
+    deliberately no ordinary "assess Skunk" button anywhere.
 
-    Idempotent per team on the same deterministic-event-key basis as
-    `open_week`, so a repeated Week Close cannot double-expire.
+    THE ORDER, AND WHY IT IS THIS ORDER:
+
+        authorization              `require_league_commissioner`, before any work
+        week bounds                a malformed week never reaches an engine
+        SKUNK ASSESSMENT           finality-gated; raises before it writes
+        weekly minimum expiry      the existing close work
+        ONE commit                 both effects, or neither
+
+    SKUNK GOES FIRST BECAUSE IT IS THE ONE THAT CAN REFUSE. `determine_skunk_losers`
+    raises RESULTS_NOT_READY on any matchup whose `finalized_at` is NULL, before
+    a single posting. Running expiry first would mean a refused close had already
+    moved every team's unspent minimum out of circulation — the partially closed
+    week the brief forbids. Assessed first, a refusal costs nothing.
+
+    FINALITY IS NOT RE-IMPLEMENTED HERE. The gate is the engine's own, on its own
+    predicate (`finalized_at IS NOT NULL`). This route adds no second opinion
+    about what "final" means, for the same reason the Pool settlement route
+    refuses to: two definitions of final drift apart.
+
+    WHICH WEEKS CARRY A SKUNK AT ALL — MIRRORED FROM THE ORCHESTRATOR, NOT
+    INVENTED. `verify_preconditions` derives its `played_weeks` as the weeks that
+    HAVE matchup rows, at or below `min(final_week, playoff_start_week - 1)`, and
+    demands an assessment for exactly those. So this route assesses exactly
+    those:
+
+        · a POSTSEASON week carries no Skunk — the engine says so itself
+          (NOT_REGULAR_SEASON) and the orchestrator never asks for one;
+        · a week with NO MATCHUPS is not a played week — nothing was scheduled,
+          the orchestrator does not list it, and refusing to close it would
+          strand a league whose provider published no fixtures.
+
+      Both exclusions come from the governed rule that already existed. Widening
+      or narrowing either here would put this route and season close into
+      disagreement about which weeks need assessing, which is precisely the class
+      of defect WP5 found.
+
+    A REPEATED CLOSE MOVES NOTHING TWICE. The assessment carries a deterministic
+    league-week event key, so a second call collides on it. The collision is
+    caught on a SAVEPOINT — the same isolation `release_week` uses per team — so
+    the duplicate posting made inside that savepoint is discarded while the
+    expiry work that follows still proceeds. Reporting the original outcome then
+    costs one read and tells the commissioner what actually stands.
     """
+    from economy.economy_events import DuplicateEconomyEvent
+    from economy.skunk import SkunkError, assess_weekly_skunk
     from economy.weekly_minimum import WeeklyMinimumError, expire_week
+    from reports.weekly_skunk import weekly_skunk_result
 
     if not 1 <= week <= 17:
         raise HTTPException(status_code=400, detail="week must be 1–17")
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    skunk_out: Optional[WeeklySkunkOut] = None
+    if _week_carries_skunk(db, league=league, league_id=league_id, week=week):
+        replayed = False
+        savepoint = db.begin_nested()
+        try:
+            assess_weekly_skunk(db, league_id=league_id, week=week)
+            savepoint.commit()
+        except DuplicateEconomyEvent:
+            # Already assessed. The savepoint discards this call's posting; the
+            # original stands and the close continues.
+            savepoint.rollback()
+            replayed = True
+        except SkunkError as exc:
+            # NOTHING IS PARTIALLY CLOSED. The refusal happens before expiry has
+            # run at all, and the outer rollback discards the whole attempt.
+            savepoint.rollback()
+            db.rollback()
+            raise HTTPException(status_code=409, detail={
+                "reason_code": exc.reason,
+                "message": str(exc),
+                "league_id": league_id,
+                "week": week})
+
+        db.flush()
+        skunk_out = _skunk_out(weekly_skunk_result(db, league_id=league_id,
+                                                   week=week),
+                               replayed=replayed)
 
     try:
         results = expire_week(db, league_id=league_id, week=week)
@@ -4755,6 +4911,41 @@ def close_week(
                                     replayed=r.replayed) for r in results],
         total_expired_cents=sum(r.expired_cents for r in results),
         already_closed=bool(results) and all(r.replayed for r in results),
+        skunk=skunk_out,
+    )
+
+
+def _week_carries_skunk(db: Session, *, league, league_id: int,
+                        week: int) -> bool:
+    """Whether this league-week is one the season close will demand a Skunk for.
+
+    Read from the same two facts `verify_preconditions` uses — the week is
+    regular season, and matchups exist for it — so the two can never disagree
+    about which weeks need assessing.
+    """
+    from betting.pool_season_boundary import playoff_start_week
+    from db.schema import Matchup
+
+    if week >= playoff_start_week(league):
+        return False
+    return (db.query(Matchup)
+            .filter(Matchup.league_id == league_id,
+                    Matchup.week == week).count()) > 0
+
+
+def _skunk_out(result, *, replayed: bool) -> WeeklySkunkOut:
+    """Map the read model to the wire shape. No decision, no arithmetic."""
+    return WeeklySkunkOut(
+        league_id=result.league_id, season=result.season, week=result.week,
+        assessed=result.assessed, classification=result.classification,
+        amount_cents=result.amount_cents, assessed_at=result.assessed_at,
+        entries=[SkunkEntryOut(
+            team_id=e.team_id, team_name=e.team_name, score=e.score,
+            opponent_team_id=e.opponent_team_id,
+            opponent_team_name=e.opponent_team_name,
+            opponent_score=e.opponent_score, margin=e.margin, cents=e.cents,
+        ) for e in result.entries],
+        replayed=replayed,
     )
 
 
@@ -5370,6 +5561,13 @@ class LifecycleWeekOut(BaseModel):
     pool_settled:    int
     collected:       bool
     settled:         bool
+    #: WP6A — whether this week carries a Skunk obligation at all, and whether
+    #: it has been discharged. Derived from the assessment EVENT, never from a
+    #: guess about whether close "probably" ran: `skunk_required` mirrors the
+    #: season-close orchestrator's own scoping, and `skunk_assessed` is the
+    #: presence of the governed event. The browser decides neither.
+    skunk_required:  bool
+    skunk_assessed:  bool
 
 
 class LifecycleSeasonOut(BaseModel):
@@ -5475,6 +5673,25 @@ def league_lifecycle_state(
                          PoolInstance.week == current_week).all())
     settled_instances = [i for i in instances if i.settled]
 
+    # WP6A — the week's Skunk state, from the governed event and the same
+    # scoping season close applies. `skunk_required=False` on a postseason or
+    # unplayed week is an answer, not an omission: the orchestrator will not ask
+    # for an assessment there either.
+    skunk_required = (current_week is not None
+                      and _week_carries_skunk(db, league=league,
+                                              league_id=league_id,
+                                              week=current_week))
+    skunk_assessed = False
+    if current_week is not None:
+        from economy.economy_events import (
+            EVENT_SKUNK_ASSESSMENT as _EV_SKUNK, league_week_key as _lw_key,
+        )
+        skunk_assessed = (db.query(EconomyEvent)
+                          .filter(EconomyEvent.event_key
+                                  == _lw_key(_EV_SKUNK, league_id, season,
+                                             current_week))
+                          .count()) > 0
+
     week_out = LifecycleWeekOut(
         week=current_week,
         week_resolved=current_week is not None,
@@ -5493,6 +5710,8 @@ def league_lifecycle_state(
         pool_settled=len(settled_instances),
         collected=len(instances) > 0,
         settled=len(instances) > 0 and len(settled_instances) == len(instances),
+        skunk_required=skunk_required,
+        skunk_assessed=skunk_assessed,
     )
 
     # ── Season close readiness ──────────────────────────────────────────────

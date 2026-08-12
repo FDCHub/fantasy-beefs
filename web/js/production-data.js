@@ -98,7 +98,7 @@ export async function loadProductionData({ leagueId, week }) {
   );
 
   const [ledger, settings, slate, positions, reconciliation, action,
-         weekMatchups, lifecycle] = await Promise.all([
+         weekMatchups, lifecycle, skunk] = await Promise.all([
     optional(apiFetch(`/league/${leagueId}/ledger/me`)),
     optional(apiFetch(`/league/${leagueId}/settings`)),
     resolvedWeek === null
@@ -127,6 +127,13 @@ export async function loadProductionData({ leagueId, week }) {
     // reads above.
     isCommissioner ? optional(apiFetch(`/league/${leagueId}/lifecycle`))
                    : Promise.resolve(null),
+    // WP6A — the week's Skunk outcome. Read by EVERY member, not only the
+    // commissioner: the Skunk is the week's headline result and the whole
+    // league sees it. What a GM cannot do is CAUSE one, and that is enforced on
+    // Week Close rather than by withholding the read.
+    resolvedWeek === null
+      ? Promise.resolve(null)
+      : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek}/skunk`)),
   ]);
 
   snapshot = Object.freeze({
@@ -141,6 +148,7 @@ export async function loadProductionData({ leagueId, week }) {
     reconciliation,
     action,
     lifecycle,
+    skunk,
   });
   return snapshot;
 }

@@ -43,6 +43,7 @@ import { poolSheet } from './league.js';
 import { previewSheet } from './preview.js';
 import { matchupMarketCells, wagerCard } from './wagercard.js';
 import { onActivate } from './interaction.js';
+import { skunkOfTheWeek, skunkWeek } from './skunk-model.js';
 
 /** Locked Rev 4.2 subtitle. */
 export const WEEK_SUBTITLE = 'Official Yahoo matchups + FantasyStakes action';
@@ -468,8 +469,17 @@ export function buildWeekPanel() {
   composer.add(weekSwitch());
   // No strip, and therefore no Credits disclaimer. Both follow from the locked
   // Rev 4.2 Final POR, not from the work being unfinished.
+  //
+  // THE SKUNK CALLOUT IS NOT A FOURTH MODULE, and that is structural rather
+  // than cosmetic. This file's own header records that the POR fixes the set at
+  // three and gives it "no mechanism for a fourth"; the certification asserts
+  // the three by name. The week's Skunk is a RESULT ANNOUNCEMENT, not a
+  // dashboard module — it has no rail, no carousel and nothing to tap — so it
+  // leads the scroll as a callout above the three, where the week's headline
+  // belongs, and the locked module set is untouched.
   composer.add(
     '<div class="fs-wkscroll">' +
+    skunkCallout() +
     yahooModule() +
     betsModule() +
     poolsModule() +
@@ -477,6 +487,93 @@ export function buildWeekPanel() {
   );
 
   return composer.toHTML();
+}
+
+/**
+ * Decimal places that honour the authoritative values and invent none.
+ *
+ * FantasyStakes scores are fractional and the margin is the product's headline
+ * number, so rounding 30.64 to 31 would throw away the fact the callout exists
+ * to state. Equally, printing 110.5 as 110.50 would claim a precision the
+ * provider did not report.
+ *
+ * The trio is drawn to the WIDEST precision any of the three actually carries,
+ * capped at two: that keeps the three numbers reading as one set while never
+ * adding a digit the source did not have.
+ *
+ * @param {number[]} values
+ * @returns {number} 0, 1 or 2
+ */
+function scorePrecision(values) {
+  let places = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue;
+    // Two decimal places is the scoring grain; anything below it is float
+    // noise from the subtraction, not reported precision.
+    const rounded = Math.round(value * 100) / 100;
+    if (Math.round(rounded * 100) % 10 !== 0) return 2;
+    if (Math.round(rounded * 10) % 10 !== 0) places = Math.max(places, 1);
+  }
+  return places;
+}
+
+/**
+ * SKUNK OF THE WEEK — the week's headline result.
+ *
+ * Drawn ONLY when the server says a GM was skunked. Every other state draws
+ * nothing: an unassessed week (Week Close has not run), a tied week, an
+ * unavailable read, and demo. None of them has a result to announce, and a
+ * placeholder saying so would put the word "Skunk" beside a league that has not
+ * had one.
+ *
+ * THE MARGIN IS THE KEY NUMBER and takes the strongest treatment on the card —
+ * larger than the final score, which sits under it as the supporting detail.
+ * That hierarchy is the ruling's, not a styling preference.
+ *
+ * @returns {string}
+ */
+export function skunkCallout() {
+  const skunk = skunkOfTheWeek();
+  if (!skunk) return '';
+
+  // THE RESULT MUST BELONG TO THE WEEK ON SCREEN. The week switch re-renders
+  // this panel, and a result bound for week 5 drawn under week 4's heading
+  // would attribute a real GM's worst loss to a week they did not have it in.
+  const bound = skunkWeek();
+  if (bound !== null && bound !== activeWeek()) return '';
+
+  const places = scorePrecision([skunk.margin, skunk.score, skunk.opponentScore]);
+  const fmt = (n) => n.toFixed(places);
+
+  return (
+    '<section class="fs-skunk" data-module-aside="skunk" ' +
+    `data-skunk-week="${escapeHtml(String(skunk.week))}">` +
+    '<div class="fs-skunk__eyebrow">SKUNK OF THE WEEK</div>' +
+    '<div class="fs-skunk__line" data-skunk-line>' +
+    `<span class="fs-skunk__loser">${escapeHtml(skunk.teamName)}</span>` +
+    ' got skunked by ' +
+    `<span class="fs-skunk__winner">${escapeHtml(skunk.opponentName)}</span>` +
+    '</div>' +
+    '<div class="fs-skunk__margin" data-skunk-margin>' +
+    `<span class="fs-skunk__marginvalue">${escapeHtml(fmt(skunk.margin))}</span>` +
+    '<span class="fs-skunk__marginlabel">point margin</span>' +
+    '</div>' +
+    '<div class="fs-skunk__final" data-skunk-final>' +
+    `Final: ${escapeHtml(fmt(skunk.opponentScore))}–${escapeHtml(fmt(skunk.score))}` +
+    '</div>' +
+    '<div class="fs-skunk__fee fs-money" data-skunk-fee ' +
+    `data-exact-cents="${skunk.cents}">` +
+    `${escapeHtml(formatCredits(skunk.cents))} Skunk</div>` +
+    (skunk.tied
+      // An exact-margin tie splits the ONE weekly contribution rather than
+      // charging each GM in full. Said plainly, because the fee shown on this
+      // card is then a share and a reader would otherwise assume it was the
+      // whole $10.
+      ? `<div class="fs-skunk__note">${skunk.tiedCount} GMs tied on the same ` +
+        'margin — the week’s single Skunk is split between them.</div>'
+      : '') +
+    '</section>'
+  );
 }
 
 /**
