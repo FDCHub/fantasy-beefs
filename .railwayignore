@@ -15,8 +15,30 @@ data/ingestion/probe_week1_events.py
 # build) and NO *.html (would exclude the served tools/*.html UI).
 *.md
 _incoming/
-spec/
 archive/
+
+# ── WP2C: spec/ is NOT excluded wholesale, because two files in it are RUNTIME
+# DATA, not documentation. betting/pool_catalog.py opens
+# spec/pool_catalog_rev1_3.json and spec/pool_stat_vocabulary_rev1_0.json at
+# import time, so a deploy that dropped them would fail closed the moment the
+# Pool catalog subsystem is reached.
+#
+# WHY PATTERNS RATHER THAN A NEGATION. `spec/` followed by
+# `!spec/pool_catalog_rev1_3.json` does NOT work under gitignore semantics: once
+# a directory is excluded, a later negation cannot re-include a file inside it,
+# because the directory is never descended into. Relying on that would look
+# correct in review and ship an empty spec/ directory. The exclusions are
+# therefore written as explicit patterns that never exclude the two runtime
+# files in the first place.
+#
+# The superseded catalog revisions are named individually rather than caught by
+# a glob, so that adding a future revision is a deliberate decision about
+# whether it is runtime data — the same exact-name convention .gitignore uses.
+spec/*.md
+spec/*.html
+spec/pool_catalog_rev1_0.json
+spec/pool_catalog_rev1_1.json
+spec/pool_catalog_rev1_2.json
 Architecture_Diagram_v12.html
 green_*.txt
 red_*.txt
