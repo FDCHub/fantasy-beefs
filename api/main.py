@@ -4588,6 +4588,151 @@ def league_pool_slate(
     )
 
 
+# ── Week lifecycle — Weekly Minimum release and expiry ────────────────────────
+#
+# WHY THESE ROUTES EXIST. `economy/weekly_minimum.py` was certified at S5-P1 and
+# has carried the whole release/expiry lifecycle since, but nothing outside the
+# test suites ever called it. The consequence was not cosmetic. Season
+# allocation posts a GM's opening 220 Credits to `min_reserve:{team}` (140) and
+# `reserve:{team}` (80) and leaves `wallet:{team}` at zero, and every spend path
+# — challenge funding and Pool entry alike — sources min-first through
+# `economy.spend_sourcing`. With no release, `min:{team}:{week}` is always zero,
+# the spend falls through to an empty Wallet, and a GM cannot fund anything at
+# all. The engine was complete; only the trigger was missing.
+#
+# EXPLICIT COMMISSIONER TRIGGER, NOT A SCHEDULER. The certified design describes
+# release at week open and expiry at week close. No scheduler, job runner or
+# cron surface exists anywhere in this baseline, and inventing one here would be
+# infrastructure work smuggled into a wiring change. These are therefore
+# explicit commissioner actions on the existing authority model. If a scheduler
+# is added later it calls these same service functions; nothing here forecloses
+# that.
+#
+# THE SERVICE FUNCTIONS ARE UNCHANGED. `release_week` and `expire_week` already
+# hold per-team savepoints, deterministic lock ordering and duplicate-event
+# keys, so idempotency, league scoping and no-double-issuance are properties of
+# the certified engine rather than of these routes. The routes add exactly two
+# things the engine deliberately leaves to its caller: authorization and the
+# commit.
+
+class WeeklyMinimumTeamOut(BaseModel):
+    team_id:  int
+    cents:    int
+    replayed: bool = Field(..., description="True when this team was already processed for this week.")
+
+
+class WeekOpenOut(BaseModel):
+    league_id:            int
+    week:                 int
+    teams:                list[WeeklyMinimumTeamOut]
+    total_released_cents: int
+    already_open:         bool = Field(..., description="True when every team replayed — the week was already open.")
+
+
+class WeekCloseOut(BaseModel):
+    league_id:           int
+    week:                int
+    teams:               list[WeeklyMinimumTeamOut]
+    total_expired_cents: int
+    already_closed:      bool = Field(..., description="True when every team replayed — the week was already closed.")
+
+
+@app.post("/league/{league_id}/week/{week}/open", response_model=WeekOpenOut)
+def open_week(
+    league_id: int,
+    week:      int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Release every team's Weekly Minimum for one week of one league.
+
+    Idempotent by construction: each team's release carries a deterministic
+    event key, so a repeated call returns `replayed=True` for teams already
+    released and posts nothing. A partially-completed earlier run resumes
+    cleanly — the teams that succeeded replay, the teams that did not are
+    released now.
+
+    Refuses a postseason week rather than releasing into it. The Weekly Minimum
+    is a regular-season obligation; releasing in week 15+ would hand a GM
+    spendable Credits the season model never allocated.
+    """
+    from db.schema import League
+    from economy.weekly_minimum import (
+        WeeklyMinimumError, is_release_week, release_week,
+    )
+
+    if not 1 <= week <= 17:
+        raise HTTPException(status_code=400, detail="week must be 1–17")
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    if not is_release_week(league, week):
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "not_applicable_week",
+            "message": (f"Week {week} is not a governed regular-season week for "
+                        f"league {league_id}; no Weekly Minimum is released.")})
+
+    try:
+        results = release_week(db, league_id=league_id, week=week)
+    except WeeklyMinimumError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": exc.reason, "message": str(exc)})
+
+    db.commit()
+    return WeekOpenOut(
+        league_id=league_id, week=week,
+        teams=[WeeklyMinimumTeamOut(team_id=r.team_id, cents=r.released_cents,
+                                    replayed=r.replayed) for r in results],
+        total_released_cents=sum(r.released_cents for r in results),
+        already_open=bool(results) and all(r.replayed for r in results),
+    )
+
+
+@app.post("/league/{league_id}/week/{week}/close", response_model=WeekCloseOut)
+def close_week(
+    league_id: int,
+    week:      int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Expire every team's UNSPENT Weekly Minimum for one week — Week Close.
+
+    Cents already committed to escrow or a Pool left `min:{team}:{week}` when
+    they were spent, so what remains is by construction the unspent balance and
+    committed money is structurally out of reach. Expiry moves it to
+    `expired_min:{team}` rather than sweeping it to championship: the GM has not
+    lost it, it has left circulation, and S5-P3 season close decides its fate.
+
+    Idempotent per team on the same deterministic-event-key basis as
+    `open_week`, so a repeated Week Close cannot double-expire.
+    """
+    from economy.weekly_minimum import WeeklyMinimumError, expire_week
+
+    if not 1 <= week <= 17:
+        raise HTTPException(status_code=400, detail="week must be 1–17")
+
+    try:
+        results = expire_week(db, league_id=league_id, week=week)
+    except WeeklyMinimumError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": exc.reason, "message": str(exc)})
+
+    db.commit()
+    return WeekCloseOut(
+        league_id=league_id, week=week,
+        teams=[WeeklyMinimumTeamOut(team_id=r.team_id, cents=r.expired_cents,
+                                    replayed=r.replayed) for r in results],
+        total_expired_cents=sum(r.expired_cents for r in results),
+        already_closed=bool(results) and all(r.replayed for r in results),
+    )
+
+
 # ── Decision Engine health routes ─────────────────────────────────────────────
 
 from api.health_routes import router as health_router  # noqa: E402
