@@ -1,0 +1,23 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "teams",
+  "fixture_id": "yahoo_wp2bc_teams",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "999.l.100001",
+  "notes": "six teams with provider-stable compound keys under the publication-safe 999.l.100001 identity; manager emails present so C-17 proves they are scrubbed",
+  "payload_sha256": "5e398183a68e2bcf771a65907265e89296f6dc606e1bb3cf4c4c68b57aa8d8ca",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [
+    "$.fantasy_content.league[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].teams.2.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].teams.3.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].teams.4.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].teams.5.team[0][3].managers.0.manager[2].email: PII key redacted"
+  ],
+  "season": 2025,
+  "week": null
+}

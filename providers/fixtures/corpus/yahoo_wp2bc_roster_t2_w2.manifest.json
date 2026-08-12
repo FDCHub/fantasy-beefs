@@ -1,0 +1,17 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "roster",
+  "fixture_id": "yahoo_wp2bc_roster_t2_w2",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "999.l.100001",
+  "notes": "week-2 selected_position slots; exactly three governed stat ids (4/6/18) on every starter, no player_points node, and a BENCHED quarterback whose yards must never be counted",
+  "payload_sha256": "d15e8512d49c2296c378b99957acd1b71204d982fd860b63b691e2ecb2f39860",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [],
+  "season": 2025,
+  "team_key": "999.l.100001.t.2",
+  "week": 2
+}

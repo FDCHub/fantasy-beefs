@@ -1,0 +1,299 @@
+{
+  "fantasy_content": {
+    "league": [
+      {
+        "current_week": "2",
+        "league_id": "100001",
+        "league_key": "999.l.100001",
+        "name": "WP2B-C Economic Proof League",
+        "season": "2025"
+      },
+      {
+        "scoreboard": {
+          "0": {
+            "matchups": {
+              "0": {
+                "matchup": [
+                  {
+                    "is_tied": 0,
+                    "status": "midevent",
+                    "week": "2"
+                  },
+                  {
+                    "teams": {
+                      "0": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "999.l.100001.t.1"
+                            },
+                            {
+                              "team_id": "1"
+                            },
+                            {
+                              "name": "Proof Of Concept"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "1"
+                                    },
+                                    {
+                                      "nickname": "GM1"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "130.00"
+                            }
+                          }
+                        ]
+                      },
+                      "1": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "999.l.100001.t.3"
+                            },
+                            {
+                              "team_id": "3"
+                            },
+                            {
+                              "name": "Trial Balance"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "3"
+                                    },
+                                    {
+                                      "nickname": "GM3"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "90.00"
+                            }
+                          }
+                        ]
+                      },
+                      "count": 2
+                    }
+                  }
+                ]
+              },
+              "1": {
+                "matchup": [
+                  {
+                    "is_tied": 0,
+                    "status": "midevent",
+                    "week": "2"
+                  },
+                  {
+                    "teams": {
+                      "0": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "999.l.100001.t.2"
+                            },
+                            {
+                              "team_id": "2"
+                            },
+                            {
+                              "name": "Ledger Legends"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "2"
+                                    },
+                                    {
+                                      "nickname": "GM2"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "100.00"
+                            }
+                          }
+                        ]
+                      },
+                      "1": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "999.l.100001.t.5"
+                            },
+                            {
+                              "team_id": "5"
+                            },
+                            {
+                              "name": "Conservation Law"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "5"
+                                    },
+                                    {
+                                      "nickname": "GM5"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "95.00"
+                            }
+                          }
+                        ]
+                      },
+                      "count": 2
+                    }
+                  }
+                ]
+              },
+              "2": {
+                "matchup": [
+                  {
+                    "is_tied": 0,
+                    "status": "midevent",
+                    "week": "2"
+                  },
+                  {
+                    "teams": {
+                      "0": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "999.l.100001.t.4"
+                            },
+                            {
+                              "team_id": "4"
+                            },
+                            {
+                              "name": "Double Entry"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "4"
+                                    },
+                                    {
+                                      "nickname": "GM4"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "110.00"
+                            }
+                          }
+                        ]
+                      },
+                      "1": {
+                        "team": [
+                          [
+                            {
+                              "team_key": "999.l.100001.t.6"
+                            },
+                            {
+                              "team_id": "6"
+                            },
+                            {
+                              "name": "Settled Science"
+                            },
+                            {
+                              "managers": {
+                                "0": {
+                                  "manager": [
+                                    {
+                                      "manager_id": "6"
+                                    },
+                                    {
+                                      "nickname": "GM6"
+                                    },
+                                    {
+                                      "email": "***REDACTED***"
+                                    }
+                                  ]
+                                },
+                                "count": 1
+                              }
+                            }
+                          ],
+                          {
+                            "team_points": {
+                              "coverage_type": "week",
+                              "total": "105.00"
+                            }
+                          }
+                        ]
+                      },
+                      "count": 2
+                    }
+                  }
+                ]
+              },
+              "count": 3
+            }
+          },
+          "week": "2"
+        }
+      }
+    ]
+  }
+}

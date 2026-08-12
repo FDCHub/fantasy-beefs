@@ -1,0 +1,16 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "league",
+  "fixture_id": "yahoo_wp2bc_league",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "999.l.100001",
+  "notes": "WP2B-C economic-proof league; current_week=2 puts weeks 1 and 2 inside the \u00a76 ingestion horizon and nothing beyond",
+  "payload_sha256": "84981fd2050684b561156b153d96f579082f1c818a4efbac9c32151445e9654c",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [],
+  "season": 2025,
+  "week": null
+}

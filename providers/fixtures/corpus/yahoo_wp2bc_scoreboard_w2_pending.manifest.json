@@ -1,0 +1,23 @@
+{
+  "captured_at": null,
+  "client_library": "synthetic (no client library involved)",
+  "endpoint": "scoreboard",
+  "fixture_id": "yahoo_wp2bc_scoreboard_w2_pending",
+  "http_status": 200,
+  "layer": "L1_RAW",
+  "league_key": "999.l.100001",
+  "notes": "week 2 NOT FINAL: identical scores, midevent status. Identical scores are load-bearing \u2014 a fixture that also changed the score would let a score-watching implementation pass the finality negative",
+  "payload_sha256": "b285c838b988d929ca47aaafaa70bdc3b2c99061720b88b4545c14fd0a373e4d",
+  "provenance": "SYNTHETIC",
+  "replay_now": "2025-09-23T12:00:00+00:00",
+  "scrub_actions": [
+    "$.fantasy_content.league[1].scoreboard.0.matchups.0.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.0.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.1.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.1.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.2.matchup[1].teams.0.team[0][3].managers.0.manager[2].email: PII key redacted",
+    "$.fantasy_content.league[1].scoreboard.0.matchups.2.matchup[1].teams.1.team[0][3].managers.0.manager[2].email: PII key redacted"
+  ],
+  "season": 2025,
+  "week": 2
+}
