@@ -68,6 +68,15 @@ except RuntimeError as e:
 
 from datetime import datetime, timedelta, timezone  # noqa: E402
 
+# WP2B-D extracted the league seed and the corpus assembly helper into a shared
+# support module, so the finality-mapping suite proves its case against the SAME
+# league definition rather than a second copy that could drift from this one.
+# Nothing about the fixtures, the identity or the pinned rotation changed.
+from test_support_wp2bc_league import (  # noqa: E402
+    FROZEN_NOW, LEAGUE_ID, LEAGUE_KEY, SEASON, TEAM_COUNT,
+    seed_economic_league, snapshot_for,
+)
+
 _failures: list[str] = []
 
 
@@ -84,13 +93,6 @@ def _section(title: str) -> None:
 
 
 PASSWORD = "wp2bc-password"
-
-# ── The pinned identity of the economic-proof league ─────────────────────────
-LEAGUE_KEY = "999.l.100001"
-SEASON = 2025
-LEAGUE_ID = 19
-TEAM_COUNT = 6
-FROZEN_NOW = datetime(2025, 9, 23, 12, 0, 0, tzinfo=timezone.utc)
 
 WINNER_KEY = "most_passing_yards"
 ZERO_KEY = "matchups_with_zero_total_turnovers"
@@ -110,90 +112,6 @@ ENTRY_CENTS = 100
 TOTAL_CENTS = ENTRY_CENTS * TEAM_COUNT          # 600
 SHARE_CENTS = TOTAL_CENTS // 4                  # 150
 REMAINDER_CENTS = TOTAL_CENTS % 4               # 0
-
-
-# ── Corpus assembly helpers ──────────────────────────────────────────────────
-
-def snapshot_for(transport, week: int, *, scoreboard_id: str | None = None):
-    """One ProviderWeek from the corpus, through the real parser/normalizer.
-
-    `scoreboard_id` selects a NAMED fixture instead of letting the transport
-    pick by (endpoint, league, week). Week 2 carries two scoreboards — pending
-    and final — and the finality proof needs to ingest a specific one.
-    """
-    from providers.yahoo import normalize, parse
-
-    league = normalize.normalize_league(
-        parse.parse_league(transport.fetch_league(LEAGUE_KEY)))
-    teams = tuple(normalize.normalize_team(t)
-                  for t in parse.parse_teams(transport.fetch_teams(LEAGUE_KEY)))
-
-    raw = (transport.corpus[scoreboard_id].payload if scoreboard_id is not None
-           else transport.fetch_scoreboard(LEAGUE_KEY, week))
-    matchups = normalize.normalize_scoreboard(parse.parse_scoreboard(raw),
-                                              week=week)
-
-    entries: list = []
-    stats: list = []
-    for ordinal in range(1, TEAM_COUNT + 1):
-        e, s = normalize.normalize_roster(
-            parse.parse_roster(transport.fetch_team_roster(
-                LEAGUE_KEY, f"{LEAGUE_KEY}.t.{ordinal}", week)), week=week)
-        entries.extend(e)
-        stats.extend(s)
-
-    return normalize.build_week(
-        league=league, week=week, teams=teams, matchups=matchups,
-        roster_entries=tuple(entries), player_stats=tuple(stats),
-        observed_at=transport.observed_at())
-
-
-def seed_economic_league(db):
-    """The proof league: pinned id, provider identity, wallets, kickoffs.
-
-    IDENTITY IS THE PROVIDER'S COMPOUND KEY, never an email smuggle. Emails here
-    sit in the reserved .invalid TLD and are deliberately not parseable as
-    identity, so team resolution can only be coming from `bind_team_identity`.
-    """
-    from db.schema import League, NflSchedule, Team, Wallet
-    from providers.yahoo.identity import bind_league_identity, bind_team_identity
-
-    league = League(id=LEAGUE_ID, season=SEASON,
-                    name="WP2B-C Economic Proof League",
-                    projection_source="fantasypros",
-                    season_final_week=17, playoff_start_week=15)
-    db.add(league)
-    db.flush()
-
-    teams = []
-    for ordinal in range(1, TEAM_COUNT + 1):
-        team = Team(league_id=league.id, team_name=f"WP2BC Team {ordinal}",
-                    owner=f"Owner {ordinal}",
-                    email=f"wp2bc-team{ordinal}@example.invalid")
-        db.add(team)
-        db.flush()
-        db.add(Wallet(team_id=team.id, balance=0.0))
-        teams.append(team)
-    db.flush()
-
-    bind_league_identity(db, league_id=league.id, league_key=LEAGUE_KEY)
-    for ordinal, team in enumerate(teams, start=1):
-        bind_team_identity(db, team_id=team.id,
-                           team_key=f"{LEAGUE_KEY}.t.{ordinal}",
-                           team_ordinal=ordinal)
-
-    # Kickoffs, so `pool_claims.pool_lock_time` resolves and the pick window is
-    # open during the run. Two days out, at 17:00 UTC — inside the real NFL
-    # kickoff band `_nfl_lock_time` validates against.
-    for week in (1, 2):
-        kickoff = (datetime.now(timezone.utc) + timedelta(days=2 + week)
-                   ).replace(hour=17, minute=0, second=0, microsecond=0,
-                             tzinfo=None)
-        db.add(NflSchedule(season=SEASON, week=week,
-                           home_team=f"WP2BC-H{week}", away_team=f"WP2BC-A{week}",
-                           kickoff_utc=kickoff))
-    db.flush()
-    return league, teams
 
 
 def main() -> None:
@@ -822,18 +740,16 @@ def main() -> None:
           f"{r_neg.status_code}")
     _assert("THE PRODUCTION ROUTE REFUSES a non-final week",
             r_neg.status_code != 200, str(r_neg.status_code))
-    # THE REFUSAL IS CORRECT; ITS HTTP SHAPE IS NOT GOVERNED YET, and this
-    # assertion records that honestly rather than hiding it. `ResultsNotReadyError`
-    # is a plain ValueError, not a member of the `PoolSettlementRefusedError`
-    # family the settle route maps to 409, so the governed refusal currently
-    # surfaces as an unhandled 500. Nothing about the money is affected — the
-    # route rolls back and the assertions above prove zero mutation — but an
-    # operator gets a server error instead of a named reason code. Accepting
-    # either 409 or 500 here means a future decision to map it lands as a
-    # deliberate change, while a 200 still fails loudly.
-    _assert("the refusal surfaces as a refusal (409) or as an unhandled "
-            "governed error (500) — never as a success",
-            r_neg.status_code in (409, 500), str(r_neg.status_code))
+    # WP2B-D pinned this. The refusal was always correct; until WP2B-D it
+    # surfaced as an unhandled 500 because ResultsNotReadyError is a plain
+    # ValueError outside the PoolSettlementRefusedError family the route maps.
+    # It is now a governed 409 carrying the engine's own reason vocabulary.
+    _assert("the refusal is a governed 409, not a server error",
+            r_neg.status_code == 409, str(r_neg.status_code))
+    neg_detail = r_neg.json().get("detail", {}) if r_neg.status_code == 409 else {}
+    _assert("the reason code is the engine's own RESULTS_NOT_READY vocabulary",
+            neg_detail.get("reason_code") == "RESULTS_NOT_READY",
+            str(neg_detail.get("reason_code")))
 
     after_finality = {
         "pool": balance_of(f"pool:{LEAGUE_ID}"),

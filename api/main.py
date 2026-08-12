@@ -54,6 +54,7 @@ from betting.bet_engine import (
     place_prop_bet,
 )
 from betting.exceptions import NotFoundError, BetValidationError
+from betting.finality_gate import ResultsNotReadyError
 from betting.settlement_engine import settle_week, SettlementReport
 from reports.league_read_model import (
     LeagueReadError, league_context, season_record, week_matchups,
@@ -1248,7 +1249,31 @@ def settle(
     if not is_fresh:
         raise HTTPException(status_code=400, detail=reason)
 
-    report = settle_week(week, db, league_id=league_id)
+    # WP2B-D — THE SAME MAPPING, BECAUSE IT IS THE SAME LEAK.
+    #
+    # The freshness gate above reads `refreshed_at` and NOTHING ELSE; the
+    # economic finality gate inside `settle_week` reads `finalized_at` and
+    # nothing else. Those are two different facts on purpose (see
+    # betting/finality_gate.py), and a week the provider has refreshed but not
+    # declared over passes the first and is refused by the second. So this
+    # route leaked the identical governed refusal as an unhandled 500 for the
+    # identical reason. Mapping only the Pool route would have left one
+    # condition with two client-visible shapes.
+    #
+    # The engine refuses BEFORE writing its WeekSettlement claim row (S6 §8),
+    # so the rollback below discards nothing and the week stays cleanly
+    # retryable once results are final.
+    try:
+        report = settle_week(week, db, league_id=league_id)
+    except ResultsNotReadyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": exc.reason,
+            "message": str(exc),
+            "league_id": exc.league_id,
+            "week": exc.week,
+            "unfinalized_matchup_ids": list(exc.unfinalized_matchup_ids),
+        })
     return SettlementOut(
         week             = report.week,
         total_bets       = report.total_bets,
@@ -5021,6 +5046,42 @@ def settle_governed_pool_week(
         result = settle_governed_week(db, league_id=league_id, week=week,
                                       stat_source=stat_source)
         db.commit()
+    except ResultsNotReadyError as exc:
+        # WP2B-D — THE REFUSAL WAS ALWAYS CORRECT; ITS HTTP SHAPE WAS NOT.
+        #
+        # `betting.finality_gate.require_week_final` refuses inside the engine
+        # before any economic work, so a non-final week already moved no money
+        # and left every occurrence unsettled. What it did NOT have was a
+        # client-visible shape: ResultsNotReadyError is a plain ValueError and
+        # not a member of the `PoolSettlementRefusedError` family, so it fell
+        # through to the bare `except Exception: raise` below and surfaced as an
+        # unhandled 500. An operator saw a server error where the server had in
+        # fact made a correct, governed, retryable decision.
+        #
+        # 409 CONFLICT, AND THE REASON CODE IS THE ENGINE'S OWN. `exc.reason` is
+        # the accepted `RESULTS_NOT_READY` vocabulary that economy/skunk.py and
+        # economy/season_close_orchestrator.py already name their refusal after,
+        # and it is passed through rather than restated — exactly as the Week
+        # Open / Week Close and governed collection routes pass through
+        # `exc.reason`. Coining a route-local string here would leave operators
+        # matching on two names for one condition, which is the specific thing
+        # the finality gate's own docstring argues against.
+        #
+        # NOTHING ABOUT FINALITY CHANGES HERE. `finalized_at` remains the sole
+        # predicate, the gate still lives in the engine, and this route still
+        # does not pre-check it — a second, weaker copy of that rule at the
+        # boundary is how two definitions of "final" drift apart.
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": exc.reason,
+            "message": str(exc),
+            "league_id": exc.league_id,
+            "week": exc.week,
+            # The offending rows, so the answer to "why can I not settle?" is
+            # WHICH GAME rather than a generic refusal. The exception already
+            # carries them for exactly this purpose.
+            "unfinalized_matchup_ids": list(exc.unfinalized_matchup_ids),
+        })
     except PoolSettlementError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail={
