@@ -5303,6 +5303,244 @@ def close_league_season(
     )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# WP4 — THE LIFECYCLE READ MODEL
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# WHY A READ EXISTS AT ALL, WHEN WP4 IS A UI PACKAGE. Every lifecycle COMMAND was
+# already mounted — activate, week open, collect, settle, week close, season
+# close. What none of them had was a way to ask what the league's lifecycle state
+# IS without performing the action. That gap is not cosmetic:
+#
+#   · "Pool support: Not measured / Insufficient / Ready" cannot be answered by
+#     POST /pool/activate, because that route CALLS YAHOO and re-measures. Using
+#     it as a read would make merely opening Rules & Settings a provider request
+#     and a database write.
+#   · "disable actions that are clearly already complete" needs to know whether
+#     the week was opened, collected, settled or closed. Nothing published that.
+#   · Season Close must stay unavailable until its governed prerequisites are
+#     satisfied, and the browser must NOT be the thing that decides that. The
+#     only way to have both is for the SERVER to answer the readiness question.
+#
+# NOTHING HERE IS A SECOND OPINION. Pool support is `selectable_definitions` —
+# the same gate the slate builder draws from. Season readiness is
+# `verify_preconditions` — the same nine pure-read checks `close_season_economy`
+# runs, called by the same name, reporting the same `exc.step` vocabulary the
+# close route already passes through. Week state is counted from the
+# `EconomyEvent` rows the weekly-minimum services write and the `PoolInstance`
+# rows the governed collection writes. No rule is restated, and no threshold is
+# invented: if the engine's answer changes, this changes with it.
+#
+# IT WRITES NOTHING. `verify_preconditions` flushes as it reads, so the session
+# is rolled back before returning — a readiness question must not leave a
+# transaction behind it.
+#
+# COMMISSIONER-SCOPED, like every route it describes. A GM has no lifecycle
+# controls, so there is nothing for them to read here, and refusing keeps the
+# authority story identical across the read and the six commands.
+
+
+class LifecyclePoolSupportOut(BaseModel):
+    """Whether the provider's data supports this league's weekly Pool slate.
+
+    `state` is the three-valued product answer, derived rather than stored:
+    NOT_MEASURED means no measurement exists for this league at all, READY means
+    the gate currently yields at least a full slate's worth of definitions, and
+    INSUFFICIENT is a measurement that did not reach that bar — including one
+    that has since gone STALE, which the gate fails closed on by design.
+    """
+    state:              str
+    measured_at:        Optional[str]
+    definitions_ready:  int
+    eligible_for_slate: int
+    required_for_slate: int
+    provider:           str
+
+
+class LifecycleWeekOut(BaseModel):
+    week:            Optional[int]
+    week_resolved:   bool
+    is_release_week: bool
+    teams:           int
+    released_teams:  int
+    expired_teams:   int
+    opened:          bool
+    closed:          bool
+    pool_instances:  int
+    pool_settled:    int
+    collected:       bool
+    settled:         bool
+
+
+class LifecycleSeasonOut(BaseModel):
+    final_week:           Optional[int]
+    closed:               bool
+    closed_at:            Optional[str]
+    ready:                bool
+    blocking_reason_code: Optional[str]
+    blocking_message:     Optional[str]
+
+
+class LeagueLifecycleOut(BaseModel):
+    league_id:    int
+    season:       int
+    pool_support: LifecyclePoolSupportOut
+    week:         LifecycleWeekOut
+    season_close: LifecycleSeasonOut
+
+
+#: The product's three-valued Pool support answer.
+POOL_SUPPORT_NOT_MEASURED = "not_measured"
+POOL_SUPPORT_INSUFFICIENT = "insufficient"
+POOL_SUPPORT_READY = "ready"
+
+
+@app.get("/league/{league_id}/lifecycle", response_model=LeagueLifecycleOut)
+def league_lifecycle_state(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """This league's lifecycle state — a pure read, written by nothing."""
+    from betting.pool_gates import selectable_definitions
+    from betting.pool_rotation import DEFAULT_SLOT_COUNT
+    from betting.pool_season_boundary import PHASE_REGULAR, season_final_week
+    from db.schema import EconomyEvent, PoolInstance, PoolLeagueActivation
+    from economy.economy_events import (
+        EVENT_WEEKLY_MINIMUM_EXPIRY, EVENT_WEEKLY_MINIMUM_RELEASE,
+    )
+    from economy.season_close import is_season_closed
+    from economy.season_close_orchestrator import (
+        SeasonClosePreconditionError, verify_preconditions,
+    )
+    from economy.season_reconciliation import SeasonReconciliationError
+    from economy.skunk import SkunkError
+    from economy.weekly_minimum import is_release_week
+    from providers.yahoo.pool_source import PROVIDER
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    # EVERY SCALAR IS READ OFF THE ROW BEFORE THE ROLLBACK BELOW, which would
+    # otherwise expire the instance and make each later attribute a fresh query
+    # against a session that has just been unwound.
+    season = league.season
+    final_week = season_final_week(league)
+    season_closed = is_season_closed(league)
+    season_closed_at = league.season_closed_at
+    current_week = league.provider_current_week
+
+    # ── Pool support ────────────────────────────────────────────────────────
+    measurements = (db.query(PoolLeagueActivation)
+                    .filter(PoolLeagueActivation.league_id == league_id,
+                            PoolLeagueActivation.provider == PROVIDER).all())
+    ready_rows = [m for m in measurements if m.league_activation_ready]
+    stamps = [m.measured_at for m in measurements if m.measured_at]
+
+    # THE GATE'S OWN ANSWER, not a recount of the rows above. `ready` on a row
+    # is one input; `selectable_definitions` additionally applies Gate 1 and the
+    # staleness window, and it is what the slate builder actually draws from.
+    eligible = selectable_definitions(db, league_id=league_id,
+                                      provider=PROVIDER, phase=PHASE_REGULAR)
+
+    if not measurements:
+        support_state = POOL_SUPPORT_NOT_MEASURED
+    elif len(eligible) >= DEFAULT_SLOT_COUNT:
+        support_state = POOL_SUPPORT_READY
+    else:
+        support_state = POOL_SUPPORT_INSUFFICIENT
+
+    # ── The week ────────────────────────────────────────────────────────────
+    teams = db.query(Team).filter(Team.league_id == league_id).count()
+
+    def _event_teams(event_type: str) -> int:
+        if current_week is None:
+            return 0
+        return (db.query(EconomyEvent)
+                .filter(EconomyEvent.league_id == league_id,
+                        EconomyEvent.season == season,
+                        EconomyEvent.week == current_week,
+                        EconomyEvent.event_type == event_type).count())
+
+    released = _event_teams(EVENT_WEEKLY_MINIMUM_RELEASE)
+    expired = _event_teams(EVENT_WEEKLY_MINIMUM_EXPIRY)
+
+    instances = ([] if current_week is None else
+                 db.query(PoolInstance)
+                 .filter(PoolInstance.league_id == league_id,
+                         PoolInstance.season == season,
+                         PoolInstance.week == current_week).all())
+    settled_instances = [i for i in instances if i.settled]
+
+    week_out = LifecycleWeekOut(
+        week=current_week,
+        week_resolved=current_week is not None,
+        is_release_week=(current_week is not None
+                         and is_release_week(league, current_week)),
+        teams=teams,
+        released_teams=released,
+        expired_teams=expired,
+        # "Opened" means EVERY team was released, which is exactly what
+        # `already_open` reports on the command's own return value. A partially
+        # completed run is not open, and reporting it as open would disable the
+        # control that would finish it.
+        opened=teams > 0 and released >= teams,
+        closed=teams > 0 and expired >= teams,
+        pool_instances=len(instances),
+        pool_settled=len(settled_instances),
+        collected=len(instances) > 0,
+        settled=len(instances) > 0 and len(settled_instances) == len(instances),
+    )
+
+    # ── Season close readiness ──────────────────────────────────────────────
+    #
+    # THE ORCHESTRATOR'S OWN PRECONDITIONS, called rather than described. A
+    # closed season is not "ready" — it is done, which `closed` says and `ready`
+    # must not, or the UI would offer to close it again as though it might.
+    ready = False
+    blocking_code: Optional[str] = None
+    blocking_message: Optional[str] = None
+
+    if not season_closed:
+        try:
+            verify_preconditions(db, league_id=league_id, final_week=final_week)
+            ready = True
+        except SeasonClosePreconditionError as exc:
+            blocking_code, blocking_message = exc.step, str(exc)
+        except (SeasonReconciliationError, SkunkError) as exc:
+            blocking_code, blocking_message = exc.reason, str(exc)
+        finally:
+            # A READ LEAVES NO TRANSACTION. verify_preconditions flushes as it
+            # walks, and an un-rolled-back flush would ride out on the next
+            # commit this session happens to make.
+            db.rollback()
+
+    return LeagueLifecycleOut(
+        league_id=league_id,
+        season=season,
+        pool_support=LifecyclePoolSupportOut(
+            state=support_state,
+            measured_at=(max(stamps).isoformat() if stamps else None),
+            definitions_ready=len(ready_rows),
+            eligible_for_slate=len(eligible),
+            required_for_slate=DEFAULT_SLOT_COUNT,
+            provider=PROVIDER,
+        ),
+        week=week_out,
+        season_close=LifecycleSeasonOut(
+            final_week=final_week,
+            closed=season_closed,
+            closed_at=season_closed_at.isoformat() if season_closed_at else None,
+            ready=ready,
+            blocking_reason_code=blocking_code,
+            blocking_message=blocking_message,
+        ),
+    )
+
+
 # ── Decision Engine health routes ─────────────────────────────────────────────
 
 from api.health_routes import router as health_router  # noqa: E402

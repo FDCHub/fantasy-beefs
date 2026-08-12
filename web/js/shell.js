@@ -83,6 +83,25 @@ import {
   bindSlate, markSlateUnavailable, setSlateEntryCents, unbindSlate,
 } from './pool-slate-model.js';
 import { bindPoolEntryForm, setCommissionerCapability, setSettingSheetMount } from './rules.js';
+import {
+  setLifecycleCapability, setLifecycleDispatch, setSeasonBlocker,
+} from './lifecycle.js';
+import {
+  applyLeague as applyLifecycleLeague,
+  bindLifecycle as bindLifecycleModel,
+  claimAction,
+  markLifecycleUnavailable,
+  recordResult,
+  releaseAction,
+  seasonLifecycle,
+  unbindLifecycle,
+  weekLifecycle,
+} from './lifecycle-model.js';
+import {
+  activatePoolSupport, closeSeason, closeWeek, collectPools,
+  explainPrerequisite, explainRefusal as explainLifecycleRefusal,
+  isWaitingState, openWeek, readLifecycle, settlePools,
+} from './lifecycle-command.js';
 
 /* ── Masthead ───────────────────────────────────────────────────────────── */
 
@@ -206,6 +225,22 @@ function redrawActionPanel() {
   if (!panel) return;
   panel.innerHTML = buildPanelContent('action');
   bindAction(panel, { openSheet });
+}
+
+/**
+ * Redraw Rules & Settings from current model state.
+ *
+ * ONLY THIS PANEL, for the same reason `redrawActionPanel` redraws only its
+ * own: a lifecycle command changes what Rules & Settings shows, and remounting
+ * the application would tear down whatever sheet the commissioner is standing
+ * in. Rebuilding also REBINDS, which is what keeps the freshly drawn controls
+ * live after every redraw.
+ */
+function redrawRulesPanel() {
+  const panel = document.getElementById('panel-rules');
+  if (!panel) return;
+  panel.innerHTML = buildPanelContent('rules');
+  bindRules(panel, { openSheet });
 }
 
 /* ── Pop-out / bottom sheet ─────────────────────────────────────────────── */
@@ -457,10 +492,22 @@ export function currentLeagueId() {
  */
 async function bindAuthoritativeData() {
   const leagueId = currentLeagueId();
+
+  // THE ACTIVE LEAGUE IS APPLIED FIRST, BEFORE ANYTHING IS READ. `applyLeague`
+  // drops the previous league's lifecycle state and every recorded success or
+  // refusal the moment the id differs, so there is no window in which the new
+  // league's heading sits above the old league's answers. Doing it after the
+  // load would leave exactly that window open for the length of a round trip.
+  applyLifecycleLeague(leagueId);
+
   if (leagueId === null) {
     markLedgerUnavailable();
     markCommissionerUnavailable();
     markActionUnavailable();
+    markLifecycleUnavailable(null);
+    setLifecycleCapability(false);
+    setLifecycleDispatch(null);
+    setSeasonBlocker(null);
     return;
   }
 
@@ -474,6 +521,9 @@ async function bindAuthoritativeData() {
     markLedgerUnavailable();
     markCommissionerUnavailable();
     markActionUnavailable();
+    markLifecycleUnavailable(leagueId);
+    setLifecycleDispatch(null);
+    setSeasonBlocker(null);
     return;
   }
 
@@ -561,9 +611,28 @@ async function bindAuthoritativeData() {
 
   // Presentation capability, from the server's own answer. It decides what is
   // DRAWN; the command is refused server-side regardless.
-  setCommissionerCapability(
-    Array.isArray(caps.commissioner_league_ids)
-    && caps.commissioner_league_ids.includes(leagueId));
+  const holdsCommission = Array.isArray(caps.commissioner_league_ids)
+    && caps.commissioner_league_ids.includes(leagueId);
+  setCommissionerCapability(holdsCommission);
+
+  // ── The commissioner lifecycle (WP4) ──────────────────────────────────
+  //
+  // BOUND ONLY FOR A COMMISSIONER OF THIS LEAGUE. The read is refused for
+  // anyone else by design, and asking anyway would put a 403 in the operator's
+  // log on every ordinary GM's page load — noise that hides real refusals,
+  // which is the same reason the positions read is asked for conditionally.
+  setLifecycleCapability(holdsCommission);
+
+  if (holdsCommission && data && data.lifecycle) {
+    bindLifecycleModel(leagueId, data.lifecycle);
+  } else {
+    markLifecycleUnavailable(leagueId);
+  }
+  applySeasonBlocker();
+
+  setLifecycleDispatch(holdsCommission
+    ? (action) => { dispatchLifecycle(leagueId, action); }
+    : null);
 
   // The settings sheet needs a league to write to and a way to re-render after
   // a save. Both are the shell's to know, so the hook is installed here rather
@@ -580,6 +649,198 @@ async function bindAuthoritativeData() {
       },
     });
   });
+}
+
+/* ── The commissioner lifecycle (WP4) ───────────────────────────────────── */
+
+/**
+ * Publish the outstanding season-close prerequisite as a sentence.
+ *
+ * The SERVER decided that the season is not ready and named which prerequisite
+ * is outstanding; this only turns its step name into product language. The raw
+ * code never reaches the page.
+ */
+function applySeasonBlocker() {
+  const season = seasonLifecycle();
+  setSeasonBlocker(season && !season.ready
+    ? explainPrerequisite(season.blocking_reason_code)
+    : null);
+}
+
+/**
+ * Re-read the lifecycle and redraw Rules & Settings.
+ *
+ * ONE WAY TO LEARN WHAT IS TRUE, exactly as the Action panel has: every command
+ * ends here and so does a plain page load, because a second refresh path is a
+ * second chance to disagree with the server about what just happened.
+ *
+ * @param {number} leagueId
+ */
+async function refreshLifecycle(leagueId) {
+  try {
+    // `bindLifecycle` ignores a body whose league is no longer the active one,
+    // so a reply that lands after a switch cannot repaint the old league's
+    // state under the new league's heading.
+    bindLifecycleModel(leagueId, await readLifecycle(leagueId));
+  } catch {
+    markLifecycleUnavailable(leagueId);
+  }
+  applySeasonBlocker();
+  redrawRulesPanel();
+}
+
+/**
+ * What a successful lifecycle call actually did, in the league's language.
+ *
+ * READ OFF THE ROUTE'S OWN RETURN VALUE, never assumed from the fact that it
+ * returned 200. `already_open`, `already_closed`, `replayed` and `all_settled`
+ * are each the difference between "this call did the work" and "the work was
+ * already done" — and a commissioner who pressed a button is entitled to know
+ * which of those happened.
+ *
+ * @param {string} action
+ * @param {object} body
+ * @param {number|null} week
+ * @returns {string}
+ */
+function describeSuccess(action, body, week) {
+  const w = week === null || week === undefined ? 'this week' : `week ${week}`;
+
+  if (action === 'pool-support') {
+    return body.sufficient_for_slate
+      ? 'Checked. Yahoo reports enough for this league to run its weekly Pools.'
+      : 'Checked. Yahoo is not reporting enough for a full weekly Pool slate '
+        + 'yet, so the weekly Pools cannot run.';
+  }
+  if (action === 'week-open') {
+    return body.already_open
+      ? `${capitalise(w)} was already open. Nothing was released twice.`
+      : `${capitalise(w)} is open — every GM’s weekly allowance has been `
+        + 'released.';
+  }
+  if (action === 'pool-collect') {
+    return `${capitalise(w)}’s Pools are open. ${body.teams_charged} GM`
+      + `${body.teams_charged === 1 ? '' : 's'} paid the entry.`;
+  }
+  if (action === 'pool-settle') {
+    return body.all_settled
+      ? `${capitalise(w)}’s Pools are settled and paid out.`
+      : `${body.settled.length} of ${w}’s Pools settled. The rest could not be `
+        + 'settled yet.';
+  }
+  if (action === 'week-close') {
+    return body.already_closed
+      ? `${capitalise(w)} was already closed.`
+      : `${capitalise(w)} is closed. Any unspent allowance has left `
+        + 'circulation.';
+  }
+  if (action === 'season-close') {
+    return body.replayed
+      ? 'The season was already closed. Nothing was paid out again.'
+      : 'The season is closed. The championship has been paid out and every '
+        + 'GM’s final position is settled.';
+  }
+  return 'Done.';
+}
+
+/** @param {string} text @returns {string} */
+function capitalise(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * Send one lifecycle command.
+ *
+ * THE DUPLICATE-CLICK GUARD IS `claimAction`, NOT THE DISABLED ATTRIBUTE. Two
+ * clicks dispatched in the same frame both see an enabled button, so the second
+ * would be sent if the DOM were the guard. `claimAction` returns false for the
+ * second caller and the request never leaves the browser. The routes are safe
+ * to repeat regardless — every one of them is idempotent by construction — but
+ * "the server would have coped" is not a reason to send a command twice.
+ *
+ * THE LEAGUE IS CAPTURED, NOT RE-READ. `leagueId` is the league the command was
+ * sent for, and it is what the result is recorded against; if the active league
+ * changed while the request was in flight, `recordResult` drops the reply
+ * rather than showing one league's outcome under another's heading.
+ *
+ * @param {number} leagueId
+ * @param {string} action
+ */
+async function dispatchLifecycle(leagueId, action) {
+  if (!claimAction(action)) return;
+
+  // Drawn busy immediately, so the control is visibly out of service for the
+  // length of the round trip rather than looking untouched.
+  redrawRulesPanel();
+
+  const week = weekLifecycle() ? weekLifecycle().week : null;
+
+  try {
+    const body = await runLifecycleAction(leagueId, action, week);
+    recordResult(leagueId, action, {
+      status: 'success',
+      message: describeSuccess(action, body, week),
+    });
+  } catch (error) {
+    // RESULTS_NOT_READY IS NOT A FAULT. It is the ordinary state of a week
+    // whose games are still being played, and it is recorded as `waiting` so
+    // the surface draws it as a normal "not yet" rather than as a server error.
+    recordResult(leagueId, action, {
+      status: isWaitingState(error) ? 'waiting' : 'refused',
+      message: explainLifecycleRefusal(error),
+    });
+  } finally {
+    releaseAction(action);
+  }
+
+  await refreshLifecycle(leagueId);
+}
+
+/**
+ * The six governed routes, named once.
+ *
+ * @param {number} leagueId
+ * @param {string} action
+ * @param {number|null} week
+ * @returns {Promise<object>}
+ */
+function runLifecycleAction(leagueId, action, week) {
+  if (action === 'pool-support') return activatePoolSupport(leagueId, week);
+  if (action === 'week-open') return openWeek(leagueId, week);
+  if (action === 'pool-collect') return collectPools(leagueId, week);
+  if (action === 'pool-settle') return settlePools(leagueId, week);
+  if (action === 'week-close') return closeWeek(leagueId, week);
+  if (action === 'season-close') return closeSeason(leagueId);
+  return Promise.reject(new Error(`unknown lifecycle action "${action}"`));
+}
+
+/**
+ * Make another league the active one.
+ *
+ * THE PRODUCT SEAM FOR A LEAGUE SWITCH. There is no switcher control in the
+ * locked Rev 4.2 navigation, and WP4 adds none — but the lifecycle is scoped to
+ * one league, so the switch has to be a real operation rather than an
+ * assumption that a session only ever has one. Everything the previous league
+ * produced is dropped before the new league is read, and the panel is redrawn
+ * from the new state.
+ *
+ * @param {number|null} leagueId
+ * @returns {Promise<void>}
+ */
+export async function switchLeague(leagueId) {
+  // Stale state goes FIRST, so a slow or refused read cannot leave the previous
+  // league's success banner sitting under the new league's name.
+  applyLifecycleLeague(leagueId);
+  setSeasonBlocker(null);
+  redrawRulesPanel();
+
+  if (leagueId === null) {
+    setLifecycleDispatch(null);
+    return;
+  }
+
+  setLifecycleDispatch((action) => { dispatchLifecycle(leagueId, action); });
+  await refreshLifecycle(leagueId);
 }
 
 /**
@@ -604,6 +865,13 @@ function clearAuthoritativeData() {
   unbindSlate();
   setCommissionerCapability(false);
   setSettingSheetMount(null);
+  // The lifecycle goes with the session, controls and recorded outcomes alike.
+  // Leaving a "Week 5 is open" banner or a live dispatch behind a sign-out
+  // would leave a signed-out page holding a commissioner's command.
+  unbindLifecycle();
+  setLifecycleCapability(false);
+  setLifecycleDispatch(null);
+  setSeasonBlocker(null);
 }
 
 /* ── Mount ──────────────────────────────────────────────────────────────── */
@@ -744,7 +1012,9 @@ export async function mount() {
 
 if (typeof document !== 'undefined') {
   // Exposed for manual inspection in the browser console.
-  window.FantasyStakes = { goTo, openSheet, pushSheet, popSheet, closeSheet, openComposer };
+  window.FantasyStakes = {
+    goTo, openSheet, pushSheet, popSheet, closeSheet, openComposer, switchLeague,
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount);

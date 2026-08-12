@@ -98,7 +98,7 @@ export async function loadProductionData({ leagueId, week }) {
   );
 
   const [ledger, settings, slate, positions, reconciliation, action,
-         weekMatchups] = await Promise.all([
+         weekMatchups, lifecycle] = await Promise.all([
     optional(apiFetch(`/league/${leagueId}/ledger/me`)),
     optional(apiFetch(`/league/${leagueId}/settings`)),
     resolvedWeek === null
@@ -119,6 +119,14 @@ export async function loadProductionData({ leagueId, week }) {
     resolvedWeek === null
       ? Promise.resolve(null)
       : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek}/matchups`)),
+    // WP4 — the commissioner lifecycle state. A pure read: it measures nothing,
+    // calls no provider and writes nothing, which is precisely why it can be
+    // loaded on every page load while POST /pool/activate cannot. Asked for
+    // only when the server has already said this session holds commissioner
+    // authority here, on the same "do not manufacture 403s" grounds as the two
+    // reads above.
+    isCommissioner ? optional(apiFetch(`/league/${leagueId}/lifecycle`))
+                   : Promise.resolve(null),
   ]);
 
   snapshot = Object.freeze({
@@ -132,6 +140,7 @@ export async function loadProductionData({ leagueId, week }) {
     positions,
     reconciliation,
     action,
+    lifecycle,
   });
   return snapshot;
 }

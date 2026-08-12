@@ -32,6 +32,7 @@ import { explainRefusal, updatePoolEntry } from './settings-command.js';
 import { LEAGUE_IDENTITY } from './demo-state.js';
 import { leagueName } from './league-model.js';
 import { bindCommissioner, commissionerArea } from './commissioner.js';
+import { bindLifecycle, lifecycleArea } from './lifecycle.js';
 
 /** Locked Rev 4.2 header copy. */
 export const RULES_TITLE = 'RULES & SETTINGS';
@@ -269,10 +270,17 @@ export function buildRulesPanel() {
   }));
 
   // No strip and no disclaimer: this tab summarises no position.
+  //
+  // WP4 PUTS THE LIFECYCLE BETWEEN CONFIGURATION AND REPORTING. League setup
+  // reads as the continuation of LEAGUE SETTINGS above it, and the week's
+  // operations are the thing a commissioner comes to this tab to DO — placing
+  // them after twelve GM ledger cards would bury the routine act behind the
+  // occasional one. The commissioner area's own locked order is untouched.
   composer.add(
     '<div class="fs-rulescroll">' +
     rulesRegion() +
     settingsRegion() +
+    lifecycleArea() +
     commissionerArea() +
     legalFooter() +
     '</div>',
@@ -301,6 +309,7 @@ export function bindRules(panel, api) {
   });
 
   bindCommissioner(panel, api);
+  bindLifecycle(panel);
 }
 
 /**

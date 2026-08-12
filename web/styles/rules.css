@@ -462,3 +462,157 @@
   text-align: center;
   color: var(--g2);
 }
+/* ── Commissioner lifecycle (WP4) ──────────────────────────────────────────
+ * The same card treatment, type scale and section rhythm as the commissioner
+ * area below it. Nothing here introduces a new visual decision — a lifecycle
+ * control is a row on this tab, not a new kind of surface.
+ *
+ * THE ROW WRAPS RATHER THAN SCROLLS. At 375px a title, a blurb and a button
+ * cannot share a line without one of them clipping, so the button drops beneath
+ * the copy and takes the full width. `min-width: 0` on the text column is what
+ * lets a long league or week label wrap instead of forcing the row wider than
+ * the viewport — the single most common cause of horizontal page overflow. */
+
+.fs-lifecycle {
+  margin-top: var(--fs-space-6);
+  padding-top: var(--fs-space-4);
+  border-top: var(--fs-border-edge);
+}
+
+.fs-lifecycle__head {
+  margin-bottom: var(--fs-space-3);
+  font-size: var(--fs-size-fine);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--gold);
+}
+
+/* The state chip: the answer, before any control. */
+.fs-lcstate {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  padding: var(--fs-space-3) var(--fs-space-4);
+  background: var(--tile);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+}
+
+.fs-lcstate__label {
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--g1);
+}
+
+.fs-lcstate__value {
+  font-size: var(--fs-size-body);
+  font-weight: var(--fs-weight-strong);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.fs-lcstate.is-ok      .fs-lcstate__value { color: var(--green2); }
+.fs-lcstate.is-warn    .fs-lcstate__value { color: var(--amber); }
+.fs-lcstate.is-pending .fs-lcstate__value { color: var(--g1); }
+
+.fs-lcstate.is-ok      { border-left: 2px solid var(--green); }
+.fs-lcstate.is-warn    { border-left: 2px solid var(--amber); }
+
+/* One control. */
+.fs-lcrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fs-space-2) var(--fs-space-3);
+  margin-top: var(--fs-space-3);
+  padding: var(--fs-space-3) var(--fs-space-4);
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+}
+
+/* `min-width: 0` and `flex-basis: 100%` together: the copy takes the full row
+ * and the button follows beneath it, so nothing is squeezed to a clip. */
+.fs-lcrow__main {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.fs-lcrow__title {
+  font-size: var(--fs-size-body);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  overflow-wrap: anywhere;
+}
+
+.fs-lcrow__blurb {
+  margin-top: var(--fs-space-1);
+  font-size: var(--fs-size-micro);
+  line-height: 1.4;
+  color: var(--g1);
+  overflow-wrap: anywhere;
+}
+
+.fs-lcrow__btn {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin-top: var(--fs-space-2);
+  /* 44px is the tap target the rest of the app uses; the button label wraps
+   * inside it rather than overflowing the row. */
+  min-height: 44px;
+  padding: var(--fs-space-3) var(--fs-space-4);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.fs-lcrow__btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.fs-lcrow__btn:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 1px;
+}
+
+/* Why a control is unavailable. Always present when it is. */
+.fs-lcwhy {
+  margin: var(--fs-space-2) var(--fs-space-1) 0;
+  padding-left: var(--fs-space-3);
+  border-left: 2px solid var(--line2);
+  font-size: var(--fs-size-micro);
+  line-height: 1.5;
+  color: var(--g1);
+  overflow-wrap: anywhere;
+}
+
+/* What the last attempt did. Three tones: a governed refusal is not a fault,
+ * and "results are not final yet" is not a refusal. */
+.fs-lcresult {
+  margin: var(--fs-space-2) var(--fs-space-1) 0;
+  padding: var(--fs-space-3);
+  border-left: 2px solid var(--line2);
+  border-radius: 0 var(--fs-radius-cell) var(--fs-radius-cell) 0;
+  font-size: var(--fs-size-fine);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fs-lcresult.is-success {
+  border-left-color: var(--green);
+  background: var(--greenbg);
+  color: var(--green2);
+}
+
+.fs-lcresult.is-waiting {
+  border-left-color: var(--amber);
+  color: var(--amber);
+}
+
+.fs-lcresult.is-refused {
+  border-left-color: var(--red);
+  color: var(--red);
+}
