@@ -4733,6 +4733,323 @@ def close_week(
     )
 
 
+# ── Governed Rev1.3 Pool lifecycle — collection and settlement ────────────────
+#
+# WHY BOTH ROUTES. The governed Pool path had NO production entry point at
+# either end. `betting/pool_funding.collect_weekly_entries` and
+# `betting/pool_settlement.settle_week` are certified and tested, and neither
+# had a non-test caller. The only mounted Pool economic routes were the LEGACY
+# `/pool/collect` and `/pool/settle`, which `betting/pool_legacy_guard.py`
+# refuses the moment a league holds any `pool_instance` row. So a league on the
+# governed rotation could neither open a week's Pools nor settle them: the
+# legacy routes fail closed and the governed engine was unreachable. Settlement
+# alone would have been useless — there would be nothing to settle.
+#
+# THE LEGACY ENGINE IS NOT USED HERE, and is not retired here either. These
+# routes call the Rev1.3 chain directly. The legacy interlock is untouched and
+# keeps doing its job for leagues that never crossed over.
+#
+# THE STAT SOURCE IS THE REAL ONE. Settlement reconstructs the week's provider
+# snapshot through the WP2A assembly — transport, parse, normalize, roster
+# fetch — binds the certified identity resolver, and hands
+# `YahooProviderStatSource` to the certified settlement engine. No mock, no
+# synthetic stat object, no direct Yahoo call from settlement code.
+
+#: Transport factory for the settlement path. A seam, not a configuration
+#: surface: production gets the live transport, and the certification suites
+#: substitute FixtureTransport so settlement is provable offline with no
+#: credentials. Same shape tuesday_sync uses for the same reason.
+def _pool_settlement_transport():
+    from providers.yahoo.transport import YahooLiveTransport
+
+    return YahooLiveTransport()
+
+
+class PoolActivationOut(BaseModel):
+    league_id:              int
+    provider:               str
+    week_measured:          int
+    definitions_measured:   int
+    definitions_ready:      int
+    supported_stats:        list[str]
+    eligible_this_phase:    int
+    sufficient_for_slate:   bool
+    measured_at:            Optional[str]
+
+
+@app.post("/league/{league_id}/pool/activate", response_model=PoolActivationOut)
+def activate_league_pool_support(
+    league_id: int,
+    week:      int = Query(..., ge=1, le=17,
+                           description="Provider week to measure support from."),
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Measure and persist this league's Pool source readiness — gate 2.
+
+    LEAGUE SETUP, NOT WEEKLY PLAY. Which governed Pools a league can run depends
+    on what its provider actually reports for it, and that is a property of the
+    league's provider binding rather than of any one week's gameplay. It sits
+    with the other Rules & Settings league configuration.
+
+    IT IS COMMISSIONER-TRIGGERED BECAUSE NOTHING ELSE COULD TRIGGER IT. There is
+    no onboarding pipeline and no scheduler in this baseline. Rather than invent
+    one, this exposes the certified measurement as an explicit action. A future
+    scheduler calls the same function.
+
+    MEASURED SUPPORT ONLY. `measure_league_activation` reads what the snapshot
+    ACTUALLY carried, not what the vocabulary says Yahoo can carry. A payload
+    that arrived with no stat categories measures nothing and produces
+    `ready=False` with the missing stats named — reaching the provider is not
+    readiness. Nothing here weakens that: this route reports the gate's answer
+    and never overrides it.
+    """
+    from betting.pool_gates import selectable_definitions
+    from betting.pool_season_boundary import PHASE_REGULAR
+    from providers.errors import ProviderError
+    from providers.yahoo.identity import build_team_identity_resolver
+    from providers.yahoo.pool_source import PROVIDER, measure_league_activation
+    from providers.yahoo.week_snapshot import fetch_week_snapshot
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+    if not league.provider_league_key:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "no_provider_identity",
+            "message": (f"League {league_id} carries no provider league key, so "
+                        f"its Pool support cannot be measured.")})
+
+    try:
+        snapshot = fetch_week_snapshot(
+            _pool_settlement_transport(),
+            league_key=league.provider_league_key, week=week,
+            with_rosters=True)
+        resolver = build_team_identity_resolver(db, league_id=league_id)
+    except ProviderError as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail={
+            "reason_code": "provider_unavailable",
+            "message": f"{type(exc).__name__}: {exc}"})
+
+    report = measure_league_activation(db, league_id=league_id,
+                                       snapshot=snapshot, resolver=resolver)
+    db.commit()
+
+    # THE RETURN CONTRACT, READ FROM THE IMPLEMENTATION, NOT INFERRED.
+    # measure_league_activation returns a SUMMARY of exactly four keys:
+    #
+    #   measured_at      the instant the measurement is stamped with
+    #   supported_stats  sorted canonical stats this payload actually carried
+    #   definitions      {definition_key: (ready: bool, block_reasons: tuple)}
+    #   ready_count      count of ready definitions
+    #
+    # An earlier draft used len(report) as the definition count and got 4 — the
+    # number of SUMMARY KEYS — and derived readiness by walking the wrong level,
+    # reporting a confident 0. Subscripting the documented keys means a future
+    # change to the contract raises KeyError here instead of quietly producing a
+    # plausible wrong number.
+    definitions = report["definitions"]
+    ready_count = report["ready_count"]
+    measured_at = report["measured_at"]
+
+    eligible = selectable_definitions(db, league_id=league_id,
+                                      provider=PROVIDER, phase=PHASE_REGULAR)
+
+    return PoolActivationOut(
+        league_id=league_id, provider=PROVIDER, week_measured=week,
+        definitions_measured=len(definitions),
+        definitions_ready=ready_count,
+        supported_stats=list(report["supported_stats"]),
+        eligible_this_phase=len(eligible),
+        # POR §4.1: a week's slate needs four fully supported definitions.
+        sufficient_for_slate=len(eligible) >= 4,
+        measured_at=measured_at.isoformat() if measured_at else None,
+    )
+
+
+class PoolCollectionOut(BaseModel):
+    league_id:                       int
+    season:                          int
+    week:                            int
+    weekly_entry_cents:              int
+    teams_charged:                   int
+    total_cents:                     int
+    per_pool_share_cents:            int
+    remainder_to_championship_cents: int
+    rotation_cycle:                  int
+    instance_ids:                    list[int]
+
+
+class PoolInstanceSettlementOut(BaseModel):
+    """Mirrors `betting.pool_settlement.SettlementResult` field for field.
+
+    Read straight off the dataclass rather than through defaulted getattr:
+    a tolerant mapping would have reported a confident 0 for any field whose
+    name drifted, which is the one failure mode a settlement response must not
+    have.
+    """
+    pool_instance_id:            int
+    definition_key:              str
+    classification:              str
+    winning_team_ids:            list[int]
+    pot_cents:                   int
+    distributed_cents:           int
+    rolled_over_cents:           int
+    swept_to_championship_cents: int
+    replayed:                    bool
+
+
+class PoolWeekSettlementOut(BaseModel):
+    league_id:              int
+    week:                   int
+    settled:                list[PoolInstanceSettlementOut]
+    refused:                list[str]
+    week_container_settled: bool
+    all_settled:            bool
+
+
+@app.post("/league/{league_id}/pool/collect/{week}", response_model=PoolCollectionOut)
+def collect_governed_pool_week(
+    league_id: int,
+    week:      int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Open and fund one week's governed Pools — the Rev1.3 collection path.
+
+    Draws the four-occurrence slate from the rotating catalog, debits every
+    wallet once, credits `pool:{league_id}`, moves the indivisible remainder to
+    championship and divides the share across the occurrences — all in one
+    transaction, in the order Scope §E fixes.
+
+    The week claim is atomic, so a repeated call is refused rather than
+    double-charging. Collection also refuses while ANY earlier week is
+    unsettled, which is the engine's own guard against stale money sitting in
+    the shared pool account and polluting later conservation checks.
+    """
+    from betting.pool_funding import PoolFundingError, collect_weekly_entries
+
+    if not 1 <= week <= 17:
+        raise HTTPException(status_code=400, detail="week must be 1–17")
+
+    try:
+        result = collect_weekly_entries(db, league_id=league_id, week=week)
+        db.commit()
+    except PoolFundingError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": getattr(exc, "reason", "pool_funding_refused"),
+            "message": str(exc)})
+
+    return PoolCollectionOut(
+        league_id=result.league_id, season=result.season, week=result.week,
+        weekly_entry_cents=result.weekly_entry_cents,
+        teams_charged=result.teams_charged, total_cents=result.total_cents,
+        per_pool_share_cents=result.per_pool_share_cents,
+        remainder_to_championship_cents=result.remainder_to_championship_cents,
+        rotation_cycle=result.rotation_cycle,
+        instance_ids=list(result.instance_ids),
+    )
+
+
+@app.post("/league/{league_id}/pool/settle/{week}",
+          response_model=PoolWeekSettlementOut)
+def settle_governed_pool_week(
+    league_id: int,
+    week:      int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Settle every governed Pool occurrence of one week.
+
+    THE CHAIN, END TO END: this route -> provider snapshot reconstruction
+    (`fetch_week_snapshot`, with rosters) -> identity binding
+    (`bind_pool_stat_source`) -> `YahooProviderStatSource` ->
+    `betting.pool_settlement.settle_week` -> ledger postings -> persisted
+    `settled` state the slate route already reads.
+
+    FINALITY IS THE ENGINE'S, NOT THIS ROUTE'S. `settle_week` consults
+    `betting/finality_gate.require_week_final`, whose one predicate is
+    `Matchup.finalized_at IS NOT NULL`. This route deliberately does not
+    pre-check finality: a second, weaker copy of that rule here is exactly how
+    two definitions of "final" drift apart.
+
+    IDEMPOTENT BECAUSE THE ENGINE READS PERSISTED STATE. `settle_week` skips
+    instances whose `settled` column is already true and re-marks the week
+    container from the remaining count, so a repeated call settles nothing
+    further and cannot pay twice. Per-instance savepoints mean one governed
+    refusal cannot roll back a sibling that already posted.
+    """
+    from betting.pool_settlement import PoolSettlementError
+    from providers.errors import ProviderError
+    from providers.yahoo.week_snapshot import (
+        bind_pool_stat_source, fetch_week_snapshot,
+    )
+
+    if not 1 <= week <= 17:
+        raise HTTPException(status_code=400, detail="week must be 1–17")
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+    if not league.provider_league_key:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "no_provider_identity",
+            "message": (f"League {league_id} carries no provider league key; "
+                        f"its Pools cannot be settled from provider data.")})
+
+    try:
+        snapshot = fetch_week_snapshot(
+            _pool_settlement_transport(),
+            league_key=league.provider_league_key, week=week,
+            with_rosters=True)
+        stat_source = bind_pool_stat_source(db, snapshot, league_id=league_id)
+    except ProviderError as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail={
+            "reason_code": "provider_unavailable",
+            "message": f"{type(exc).__name__}: {exc}"})
+
+    try:
+        from betting.pool_settlement import settle_week as settle_governed_week
+
+        result = settle_governed_week(db, league_id=league_id, week=week,
+                                      stat_source=stat_source)
+        db.commit()
+    except PoolSettlementError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "pool_settlement_refused", "message": str(exc)})
+    except Exception:
+        db.rollback()
+        raise
+
+    return PoolWeekSettlementOut(
+        league_id=result.league_id, week=result.week,
+        settled=[
+            PoolInstanceSettlementOut(
+                pool_instance_id=s.pool_instance_id,
+                definition_key=s.definition_key,
+                classification=s.classification,
+                winning_team_ids=list(s.winning_team_ids),
+                pot_cents=s.pot_cents,
+                distributed_cents=s.distributed_cents,
+                rolled_over_cents=s.rolled_over_cents,
+                swept_to_championship_cents=s.swept_to_championship_cents,
+                replayed=s.replayed,
+            ) for s in result.settled
+        ],
+        refused=[str(r) for r in result.refused],
+        week_container_settled=result.week_container_settled,
+        all_settled=result.all_settled,
+    )
+
+
 # ── Decision Engine health routes ─────────────────────────────────────────────
 
 from api.health_routes import router as health_router  # noqa: E402
