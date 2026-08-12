@@ -882,9 +882,34 @@ for py in REPO.rglob("*.py"):
 # Phase 2 refunds one, so both take the funding-scope mutex, and both take it
 # AFTER the challenge row lock — the rank L7-9 pins. It is enumerated here rather
 # than allowed by pattern, so a sixth unreviewed consumer is still a failure.
+# S8-P5 UPDATE — TWO POOL CONSUMERS, ENUMERATED AFTER REVIEW.
+#
+# `betting/pool_funding.py` and `betting/pool_settlement.py` are the SIXTH and
+# SEVENTH consumers. They are not new: both held the mutex at the accepted P4
+# baseline. What is new is that this assertion RAN — it needs PostgreSQL, which
+# was deliberately unavailable through P1-P4, so a list written before the Pool
+# money paths existed was never checked against them.
+#
+# Each was reviewed against the L7 discipline before being added here, because
+# enumerating a consumer without reading it would defeat the point of the list:
+#
+#   pool_funding.collect_weekly_entries  takes EVERY participating wallet FOR
+#       UPDATE in ASCENDING team order before any balance read. Ascending order
+#       is precisely the rule that stops two concurrent collections deadlocking
+#       against each other, and it is the same rule L7 pins elsewhere.
+#
+#   pool_settlement.settle_pool_instance takes the PoolInstance row lock FIRST
+#       and the winners' funding scopes SECOND. That is the same RANK L7-9 pins
+#       for challenges — the governing row before the money rows — so the two
+#       subsystems cannot form a cycle against each other.
+#
+# Still enumerated rather than allowed by pattern, so an EIGHTH unreviewed
+# consumer remains a failure.
 check("L7-10: the production surface is exactly the primitive plus its known "
       "consumer modules",
       sorted(importers) == ["beefs/beef_engine.py", "betting/bet_engine.py",
+                            "betting/pool_funding.py",
+                            "betting/pool_settlement.py",
                             "economy/challenge_funding.py",
                             "economy/dynamic_challenge.py",
                             "ledger/ledger.py"], str(sorted(importers)))
