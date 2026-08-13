@@ -11,9 +11,11 @@ ONE deterministic order, wrapped around the EXISTING irreversible
      5  final Week Close expiry is complete
      6  every required Skunk week is assessed or recorded NO_LOSER
      7  no required week is still RESULTS_NOT_READY
-     8  terminal Pool rollover handling is complete
-     9  pool:{league_id} is zero
+     8  terminal Pool rollover handling is complete OR the governed season
+        boundary has been reached, in which case step 9c performs it (WP6F)
+     9  pool:{league_id} holds nothing beyond those live carries
     9b  no unresolved ProviderConflict (S6 §11, additive)
+    9c  terminal Pool rollover sweep -> championship:{league_id} (WP6F)
     10  sweep every reserve:{team} -> championship:{league_id}
     11  distribute Skunk
     12  distribute Championship
@@ -29,9 +31,21 @@ refuses LOUDLY and names the FIRST unmet prerequisite rather than skipping it �
 a close that silently stepped over unsettled money would make that money
 permanently unreachable.
 
-WHY THE PRECONDITIONS ARE CHECKED BEFORE ANY POSTING. Steps 1-9 are pure reads.
+WHY THE PRECONDITIONS ARE CHECKED BEFORE ANY POSTING. Steps 1-9b are pure reads.
 If any fails, nothing has been written and the league is exactly as it was, so a
 refused close is always safely retryable once the underlying work completes.
+Step 9c is the first thing that posts, and it is placed after every read for
+exactly that reason.
+
+WP6F — WHY A SWEEP LIVES INSIDE THE CLOSE AT ALL. The owner ruling makes
+terminal rollover expiry a season-boundary settlement rule: at
+`season_final_week` a carry with no later eligible occurrence transfers to the
+Championship Pot, and no PoolInstance is required to host that transfer. The
+close is the only place that knows the boundary has been reached, so it is the
+narrowest correct home for the disposal. The RULE itself is not restated here —
+`betting.pool_settlement.expire_terminal_rollovers` owns it, reusing the same
+event type, ledger door and posting shape the occurrence-hosted final-week
+sweep already uses.
 """
 
 from __future__ import annotations
@@ -77,6 +91,12 @@ class SeasonCloseReport:
     season: int
     closed_now: bool = False
     replayed: bool = False
+    #: WP6F — cents this call's terminal rollover sweep MOVED (0 on a replay).
+    terminal_rollover_swept_cents: int = 0
+    #: WP6F — cents no longer carried, replays included. Distinct from the
+    #: above so a retry cannot be mistaken for a second sweep.
+    terminal_rollover_disposed_cents: int = 0
+    terminal_rollover_sweeps: tuple = ()
     reserve_swept_cents: int = 0
     legacy_consolidated_cents: int = 0
     skunk_distributed_cents: int = 0
@@ -102,7 +122,7 @@ def verify_preconditions(db, *, league_id: int, final_week: int) -> None:
         Bet, EconomyEvent, League, Matchup, PoolInstance, ProviderConflict,
         Wallet,
     )
-    from betting.pool_season_boundary import playoff_start_week
+    from betting.pool_season_boundary import playoff_start_week, season_final_week
 
     league = db.query(League).filter(League.id == league_id).first()
     if league is None:
@@ -185,20 +205,52 @@ def verify_preconditions(db, *, league_id: int, final_week: int) -> None:
                 f"outcome.")
 
     # 8 — terminal Pool rollover handling.
-    carried = (db.query(PoolInstance)
-               .filter(PoolInstance.league_id == league_id,
-                       PoolInstance.rollover_cents > 0).count())
-    if carried:
+    #
+    # WP6F OWNER RULING. Terminal rollover expiry is a SEASON-BOUNDARY
+    # SETTLEMENT RULE (BAB-805, BAB-901, AP-166): at `season_final_week` a carry
+    # with no later eligible occurrence transfers to the Championship Pot. So at
+    # the boundary a live carry is WORK THIS CLOSE PERFORMS (step 9c below), not
+    # a reason to refuse — and refusing would make it permanently undischargeable
+    # for any league whose final week falls inside the postseason, which under
+    # POR §9's own default boundaries is every league.
+    #
+    # BEFORE THE BOUNDARY IT STILL REFUSES, AND THAT IS THE POINT OF THE GATE.
+    # The ruling disposes of a rollover that has NO LATER ELIGIBLE OCCURRENCE;
+    # below the final week a later occurrence is precisely what still exists, so
+    # a close taken early must not be able to vacuum a live carry into
+    # Championship. The refusal is therefore narrowed by the ruling, not removed.
+    carried_rows = (db.query(PoolInstance)
+                    .filter(PoolInstance.league_id == league_id,
+                            PoolInstance.rollover_cents > 0).all())
+    carried_cents = sum(int(r.rollover_cents or 0) for r in carried_rows)
+    boundary = season_final_week(league)
+    boundary_reached = int(final_week) >= int(boundary)
+
+    if carried_rows and not boundary_reached:
         raise SeasonClosePreconditionError(
             "pool_rollover",
-            f"{carried} Pool occurrence(s) still carry a live rollover.")
+            f"{len(carried_rows)} Pool occurrence(s) still carry a live "
+            f"rollover, and this close is being taken at week {final_week}, "
+            f"before the governed season boundary (season_final_week "
+            f"{boundary}). A carry may only be disposed once no later eligible "
+            f"occurrence exists.")
 
     # 9 — the Pool account is drained.
+    #
+    # AT THE BOUNDARY THE EXPECTED RESIDUAL IS EXACTLY THE LIVE CARRIES, because
+    # a carry never left `pool:{league_id}` — a rollover is a column transfer,
+    # not a posting. Step 9c drains it. Anything ABOVE that residual is money no
+    # instance accounts for and still refuses, which is what keeps this check a
+    # real conservation gate rather than one the ruling quietly disabled.
+    expected_pool = carried_cents if boundary_reached else 0
     pool_balance = _balance_of_in_session(db, f"pool:{league_id}")
-    if pool_balance != 0:
-        raise SeasonClosePreconditionError(
-            "pool_zero",
-            f"pool:{league_id} holds {pool_balance} cents.")
+    if pool_balance != expected_pool:
+        detail = (f"pool:{league_id} holds {pool_balance} cents."
+                  if not expected_pool else
+                  f"pool:{league_id} holds {pool_balance} cents but live "
+                  f"rollover carries total only {expected_pool}; "
+                  f"{pool_balance - expected_pool} cents are unaccounted for.")
+        raise SeasonClosePreconditionError("pool_zero", detail)
 
     # 9b — S6 §11: no UNRESOLVED provider conflict.
     #
@@ -256,7 +308,7 @@ def close_season_economy(db, *, league_id: int, final_week: int,
     `close_season()` is called last and commits internally; by then every
     economic step has already been written into this same transaction.
     """
-    from db.schema import League
+    from db.schema import League, PoolInstance
     from economy.season_close import close_season, is_season_closed
 
     now = now or datetime.now(timezone.utc)
@@ -278,6 +330,52 @@ def close_season_economy(db, *, league_id: int, final_week: int,
 
     # Steps 1-9 — pure reads, before any posting.
     verify_preconditions(db, league_id=league_id, final_week=final_week)
+
+    # Step 9c — TERMINAL POOL ROLLOVER SWEEP (WP6F owner ruling).
+    #
+    # FIRST POSTING OF THE CLOSE, AND DELIBERATELY BEFORE THE RESERVE SWEEP AND
+    # CHAMPIONSHIP DISTRIBUTION. BAB-901 requires Season Close to resolve Pool
+    # rollovers and season-end sweeps BEFORE Championship distribution, and the
+    # order is economically load-bearing rather than cosmetic: step 12 reads the
+    # whole `championship:{league_id}` balance as its pot, so a carry that
+    # arrived after it would sit in the account unpaid and step 15's
+    # conservation assertion would refuse the close it was supposed to complete.
+    #
+    # STILL AFTER EVERY PRECONDITION. Steps 1-9 remain pure reads, so a refused
+    # close has written nothing and stays safely retryable — the property the
+    # module docstring states, preserved rather than traded away for the sweep.
+    from betting.pool_settlement import expire_terminal_rollovers
+
+    terminal = expire_terminal_rollovers(db, league_id=league_id,
+                                         final_week=final_week, now=now)
+    report.terminal_rollover_swept_cents = terminal.total_cents
+    report.terminal_rollover_disposed_cents = terminal.disposed_cents
+    report.terminal_rollover_sweeps = tuple(
+        {"pool_instance_id": s.pool_instance_id,
+         "definition_key": s.definition_key, "week": s.week, "slot": s.slot,
+         "classification": s.classification, "amount_cents": s.amount_cents,
+         "replayed": s.replayed}
+        for s in terminal.swept)
+
+    # POST-SWEEP CONSERVATION. Steps 8 and 9 were evaluated against the residual
+    # the sweep was expected to dispose of; these two assert it actually did.
+    # Without them a sweep that silently disposed of nothing would fall straight
+    # through into Championship distribution with the carry still live.
+    still_carried = (db.query(PoolInstance)
+                     .filter(PoolInstance.league_id == league_id,
+                             PoolInstance.rollover_cents > 0).count())
+    if still_carried:
+        raise SeasonClosePreconditionError(
+            "pool_rollover",
+            f"{still_carried} Pool occurrence(s) still carry a live rollover "
+            f"after the terminal sweep at season_final_week "
+            f"{terminal.season_final_week}.")
+    pool_after = _balance_of_in_session(db, f"pool:{league_id}")
+    if pool_after != 0:
+        raise SeasonClosePreconditionError(
+            "pool_zero",
+            f"pool:{league_id} holds {pool_after} cents after the terminal "
+            f"rollover sweep.")
 
     # Step 10 — reserve sweep (and any legacy pot consolidation first, so the
     # distribution below sees one canonical pot).

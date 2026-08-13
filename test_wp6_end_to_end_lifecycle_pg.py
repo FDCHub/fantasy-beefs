@@ -62,17 +62,33 @@ absent.
       contains no `submit_claim` call, so §8's payout cannot be reached by any
       other means.
 
-WHAT IS *NOT* CLEARED, and is stated here so the report cannot overstate the
-finding: §15 shows Season Close still refused, at `pool_rollover` and at nothing
-else. Two occurrences end the run carrying a live rollover, and BOTH are
-`ZERO_ELIGIBLE_CLAIMS` — the SUBJECT layer, where no matchup in the recorded
-corpus satisfied the predicate. §6 and §13 now put real governed claims on those
-same occurrences and they still classify subject-zero, which is the proof that
-BLOCKER 2 was never their cause. Such a pot rolls forward to `season_final_week`
-and sweeps to Championship under POR §5. This league's final week is 17, stated
-by the provider's own payload; the recorded corpus covers weeks 1 and 2. The bar
-is therefore the CORPUS HORIZON, not a product gap — and §15 proves that
-distinction rather than asserting it, by showing every other prerequisite met.
+  THE LAST BAR, CLEARED BY WP6F — TERMINAL ROLLOVER EXPIRY (§15).
+      WP6D ended at `409 pool_rollover` and attributed it to the two-week
+      recorded corpus: "a live league reaches week 17, the pots sweep, and the
+      close proceeds." WP6E tested that against the product and found it FALSE.
+      Week 17 is >= playoff_start_week 15, so a week-17 slate is governed by
+      POR §8 — whose approved 32-Pool postseason subset does not exist. Every
+      `postseason_eligible` is NULL, the postseason candidate set is empty, and
+      the draw refuses in the PURE SELECTOR, before any provider data is read.
+      No corpus could have cleared it; the carry was undischargeable.
+
+      The owner ruling made terminal rollover expiry a SEASON-BOUNDARY
+      SETTLEMENT RULE (BAB-805, BAB-901, AP-166): at `season_final_week` a carry
+      with no later eligible occurrence transfers to the Championship Pot,
+      exactly once, and NO PoolInstance is required to host it. §15 drives that
+      through `POST /league/{id}/season/close` and watches 600 cents leave
+      rollover state, reach `championship:{league}` BEFORE distribution, and be
+      paid out 60/30/10.
+
+      NOTHING WAS RELAXED TO GET THERE, AND §15 PROVES IT RATHER THAN CLAIMING
+      IT. Every pre-close fact WP6D established is still asserted — two carries,
+      300 cents each, both SUBJECT-layer `ZERO_ELIGIBLE_CLAIMS`, each having
+      carried six real governed claims — because those are what make the
+      disposal legitimate rather than convenient. §15 additionally asserts that
+      ZERO PoolInstance rows were created, that no POSTSEASON occurrence exists,
+      that not one of the 80 `postseason_eligible` values changed, and that no
+      league activation row moved. The postseason catalog question is untouched
+      and remains open; it simply no longer blocks the close.
 
 Requires TEST_DATABASE_URL -> a local, disposable, empty, _test-named database.
 """
@@ -1509,42 +1525,111 @@ _record("18/29 week 2 settlement, close and continuation",
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# §15 · SEASON CLOSE — prerequisites and the attempt
+# §15 · SEASON CLOSE — the terminal rollover sweep and the completed close
 # ══════════════════════════════════════════════════════════════════════════════
-
-_section("§15 · season-close prerequisites and the attempt (steps 30-37)")
-
-r = client().post(f"/league/{LEAGUE_ID}/season/close", headers=hdr)
-_season_close_status = r.status_code
-try:
-    _season_close_body = r.json()
-except ValueError:
-    _season_close_body = {}
-_close_step = ((_season_close_body.get("detail") or {}).get("reason_code")
-               if _season_close_status != 200 else None)
-
-print(f"     season close -> {_season_close_status} "
-      f"{str(_season_close_body)[:240]}")
-
-_assert("§15 (steps 30-37): SEASON CLOSE IS REFUSED — the lifecycle does not "
-        "complete inside this fixture", _season_close_status == 409,
-        str(_season_close_status))
-_assert("§15: the refusal is a GOVERNED, NAMED prerequisite",
-        _close_step in ("versus_terminal", "escrow_resolved", "pool_rollover"),
-        str(_close_step))
-_assert("§15: and the refusal moved no money",
-        trial_balance() == 0, str(trial_balance()))
-
-# ── WHICH PREREQUISITES ARE MET, ASKED ONE AT A TIME ─────────────────────────
 #
-# `verify_preconditions` raises on the FIRST unmet step, so a single call can
-# only ever name one. WP6's two blockers both refused here, and the WP6D report
-# must be able to say which of the nine are now satisfied rather than which one
-# happens to be checked first. These are the two the blockers owned.
-_assert("§15 BLOCKER 1 CLEARED: `escrow_resolved` is MET — not one escrow "
-        "account in the database carries a balance, where WP6 found the "
-        "Dynamic wager's two holding "
-        f"{anchor_bal + derived_bal} cents permanently",
+# WP6F — WHAT CHANGED HERE AND WHY NOTHING WAS RELAXED TO GET IT.
+#
+# WP6D ended this run at `409 pool_rollover` and called that bar a CERTIFICATION
+# CORPUS HORIZON — "a live league reaches week 17, the pots sweep, and the close
+# proceeds". WP6E tested that claim against the product instead of assuming it
+# and found it FALSE: week 17 is >= playoff_start_week 15, so a week-17 slate is
+# governed by POR §8, whose approved 32-Pool postseason subset does not exist.
+# Every `postseason_eligible` is NULL, the postseason candidate set is empty, and
+# the draw refuses with `[INVALID_SLOT_COUNT] POSTSEASON phase has 0 candidates
+# for 2 fresh slots and does not cycle.` No corpus could have cleared it — the
+# refusal happens in the pure selector, before any provider data is consulted.
+#
+# THE OWNER RULING RESOLVED IT, AND THIS SECTION IS WHERE THE RULING IS PROVED.
+# Terminal rollover expiry is a SEASON-BOUNDARY SETTLEMENT RULE (BAB-805,
+# BAB-901, AP-166): at `season_final_week` a carry with no later eligible
+# occurrence transfers to the Championship Pot, exactly once, and NO PoolInstance
+# is required to host that transfer.
+#
+# EVERY WP6D ASSERTION ABOUT THE SURVIVING POTS IS KEPT AND STRENGTHENED. The
+# pre-close facts WP6D established — two carries, 300 cents each, both
+# SUBJECT-layer zeros, both having carried six real governed claims — are all
+# still asserted below, because they are what makes this a legitimate disposal
+# rather than a convenient one. What changes is only what happens NEXT: WP6D
+# asserted the close was refused; this asserts the money is disposed of by the
+# governed rule and the close completes. The refusal assertion is not weakened,
+# it is SUPERSEDED by the ruling that made the refusal wrong.
+
+_section("§15 · terminal rollover sweep and Season Close (steps 30-37)")
+
+from betting.pool_settlement import EVENT_ROLLOVER_EXPIRY_SWEEP  # noqa: E402
+from db.schema import PoolEconomicEvent, PoolLeagueActivation  # noqa: E402
+from economy.economy_events import championship_account  # noqa: E402
+
+# ── PRE-CLOSE STATE, captured before anything is disposed of ─────────────────
+with SessionLocal() as db:
+    _rows = (db.query(PoolInstance)
+             .filter(PoolInstance.league_id == LEAGUE_ID,
+                     PoolInstance.rollover_cents > 0)
+             .order_by(PoolInstance.week, PoolInstance.slot).all())
+    _live = [(i.week, i.slot, i.id, i.definition_key, int(i.rollover_cents),
+              i.settlement_classification, int(i.pot_cents or 0)) for i in _rows]
+    _final_week = season_final_week(
+        db.query(League).filter(League.id == LEAGUE_ID).one())
+    _instances_before = (db.query(PoolInstance)
+                         .filter(PoolInstance.league_id == LEAGUE_ID).count())
+    _postseason_instances_before = (
+        db.query(PoolInstance)
+        .filter(PoolInstance.league_id == LEAGUE_ID,
+                PoolInstance.phase == "POSTSEASON").count())
+    # The full catalog eligibility snapshot — every row, not a sample, so a
+    # single flipped flag anywhere in the 80 would be caught.
+    _ps_flags_before = sorted(
+        (d.key, d.postseason_eligible)
+        for d in db.query(PoolDefinition).all())
+    _activations_before = db.query(PoolLeagueActivation).count()
+    db.rollback()
+
+_pool_before = balance_of(f"pool:{LEAGUE_ID}")
+_champ_before = balance_of(championship_account(LEAGUE_ID))
+_reserve_before = {t: balance_of(f"reserve:{t}") for t in team_ids}
+_carry_total = sum(row[4] for row in _live)
+
+print("\n     rollover state carried into the season boundary:")
+for _wk, _slot, _iid, _key, _cents, _cls, _pot in _live:
+    print(f"       w{_wk} slot{_slot} instance {_iid} {_key} = {_cents} cents  "
+          f"[{_cls}]; {claim_count(_iid)} governed claim(s) were submitted")
+
+# ── REQUIRED PROOFS 1-3 — the pre-sweep facts WP6D established, kept ─────────
+_assert("§15.1: PRE-SWEEP — exactly two Pool occurrences carry a live rollover, "
+        "300 cents each",
+        len(_live) == 2 and all(row[4] == 300 for row in _live),
+        str([(row[3], row[4]) for row in _live]))
+_assert("§15.2: PRE-SWEEP — both are SUBJECT-layer ZERO_ELIGIBLE_CLAIMS, not "
+        "zero-winning-ticket rollovers, so this is a legitimate carry and not "
+        "the shape WP6's BLOCKER 2 used to force",
+        all(row[5] == "ZERO_ELIGIBLE_CLAIMS" for row in _live),
+        str([(row[3], row[5]) for row in _live]))
+_assert("§15.3: PRE-SWEEP — each carried REAL governed PoolClaim rows, so the "
+        "pot survived a full claim phase rather than an empty one",
+        all(claim_count(row[2]) > 0 for row in _live),
+        str([(row[3], claim_count(row[2])) for row in _live]))
+_assert("§15.3b: PRE-SWEEP — the carried cents are still inside pool:{league}; "
+        "a rollover is a column transfer, never a posting",
+        _pool_before == _carry_total == 600,
+        f"pool={_pool_before} carries={_carry_total}")
+
+# ── ALL NINE PREREQUISITES, ASKED AS ONE CALL ────────────────────────────────
+#
+# `verify_preconditions` raises on the FIRST unmet step. WP6D could only ever
+# name one and had to attribute the other eight by hand. It now returns without
+# raising, which is a strictly stronger statement than any per-step enumeration:
+# every one of the nine is satisfied at once.
+_unmet_step, _unmet_detail = close_refusal()
+
+_assert("§15.15: ALL NINE season-close prerequisites pass — versus_terminal, "
+        "pool_settled, escrow_resolved, weekly_minimum_expiry, "
+        "results_not_ready, skunk_assessed, pool_rollover, pool_zero and "
+        "provider_conflict, in one call that raises on the first unmet one",
+        _unmet_step is None, f"refused at {_unmet_step}: {_unmet_detail[:160]}")
+_assert("§15: BLOCKER 1 stays CLEARED — `escrow_resolved` is MET, not one "
+        "escrow account in the database carries a balance, where WP6 found the "
+        f"Dynamic wager's two holding {anchor_bal + derived_bal} cents",
         open_escrow_accounts() == [], str(open_escrow_accounts()))
 with SessionLocal() as db:
     _pending_bets = (db.query(Bet)
@@ -1553,81 +1638,252 @@ with SessionLocal() as db:
     db.rollback()
 _assert("§15: `versus_terminal` is MET — both the Locked and the Final-Locked "
         "Dynamic wager settled", _pending_bets == 0, str(_pending_bets))
-_assert("§15 BLOCKER 2 CLEARED: governed claims exist and were paid, so no "
-        "occurrence rolled over for want of a winning TICKET",
-        _total_claims + _w2_submitted > 0, f"{_total_claims + _w2_submitted} "
-        f"claims created through /pool/pick across two weeks")
+_assert("§15: BLOCKER 2 stays CLEARED — governed claims exist and were paid, "
+        "so no occurrence rolled over for want of a winning TICKET",
+        _total_claims + _w2_submitted > 0,
+        f"{_total_claims + _w2_submitted} claims created through /pool/pick")
 
-# WHY EACH SURVIVING ROLLOVER SURVIVES, attributed rather than lumped together.
-# The distinction decides whether `pool_rollover` is a BLOCKER consequence or the
-# horizon of a two-week recorded corpus, and the report must not confuse them:
-#
-#   ZERO_ELIGIBLE_CLAIMS  no SUBJECT qualified — no matchup in the recorded
-#                         corpus satisfied the predicate. §6 and §13 put real
-#                         governed claims on these occurrences and they still
-#                         classify subject-zero, so BLOCKER 2 is demonstrably NOT
-#                         their cause. Such a pot rolls forward until
-#                         `season_final_week`, where POR §5 sweeps it to
-#                         Championship — week 17 for this league, stated by the
-#                         provider's own payload, which a real season reaches and
-#                         a two-week corpus does not.
-#
-#   CLAIMS_PRESENT        a winner existed and no GM held a winning ticket. THIS
-#                         is the shape BLOCKER 2 used to force on every pot, and
-#                         its absence below is the clearance.
-print("\n     surviving rollover, by cause:")
-with SessionLocal() as db:
-    _rows = (db.query(PoolInstance)
-             .filter(PoolInstance.league_id == LEAGUE_ID,
-                     PoolInstance.rollover_cents > 0)
-             .order_by(PoolInstance.week, PoolInstance.slot).all())
-    _live = [(i.week, i.slot, i.id, i.definition_key, i.rollover_cents,
-              i.settlement_classification) for i in _rows]
-    _final_week = season_final_week(
-        db.query(League).filter(League.id == LEAGUE_ID).one())
-    db.rollback()
-for _wk, _slot, _iid, _key, _cents, _cls in _live:
-    _cause = ("SUBJECT-layer zero — no matchup qualified; sweeps at "
-              f"season_final_week {_final_week}"
-              if _cls == "ZERO_ELIGIBLE_CLAIMS"
-              else "zero winning TICKETS held by any GM")
-    print(f"       w{_wk} slot{_slot} {_key} = {_cents} cents  [{_cls}] "
-          f"{_cause}; {claim_count(_iid)} governed claim(s) were submitted")
-
-_assert("§15: live rollover remains, which is what bars `pool_rollover`",
-        len(_live) > 0, f"{len(_live)} occurrence(s)")
-_assert("§15: every surviving rollover is SUBJECT-layer zero — the corpus "
-        "carried no qualifying matchup — and NONE is a zero-winning-ticket "
-        "rollover, which is the shape BLOCKER 2 produced",
-        all(_cls == "ZERO_ELIGIBLE_CLAIMS" for *_, _cls in _live),
-        str([(k, c) for _, _, _, k, _, c in _live]))
-_assert("§15: and each of them CARRIED REAL GOVERNED CLAIMS, so the rollover "
-        "survived a full claim phase rather than an empty one — this is the "
-        "proof that the corpus, not the admission path, is the cause",
-        all(claim_count(_iid) > 0 for _, _, _iid, _, _, _ in _live),
-        str([(k, claim_count(i)) for _, _, i, k, _, _ in _live]))
-_assert("§15: the bar is the CORPUS HORIZON — the league's own final week is "
-        "beyond the recorded weeks, so POR §5's sweep cannot be reached here",
-        _final_week > 2, f"season_final_week={_final_week}, recorded weeks 1-2")
-
+# ── THE CLOSE ITSELF, through the production route ───────────────────────────
+_tb_before_close = trial_balance()
 r = client().post(f"/league/{LEAGUE_ID}/season/close", headers=hdr)
-_assert("§15 (step 37): a REPEATED Season Close is safe — same refusal, still "
-        "no movement",
-        r.status_code == _season_close_status and trial_balance() == 0,
-        f"{r.status_code}")
-_record("30-37 Season Close", "POST /league/{id}/season/close", "commissioner",
-        f"409 {_close_step}",
-        f"no state change; {len(_live)} SUBJECT-zero occurrence(s) carrying "
-        f"rollover until season_final_week {_final_week}",
-        "no posting", "409 again, zero mutation")
+_season_close_status = r.status_code
+try:
+    _season_close_body = r.json()
+except ValueError:
+    _season_close_body = {}
 
-for _unreached in (
-        "32 Skunk season distribution/reconciliation",
-        "33 Championship Reserve 60/30/10",
-        "34 expired Weekly Minimum reconciliation",
-        "35 Current Settle / final balances"):
-    _record(_unreached, "POST /league/{id}/season/close", "commissioner",
-            f"NOT REACHED — blocked upstream at {_close_step}", "-", "-", "-")
+print(f"\n     season close -> {_season_close_status} "
+      f"{str(_season_close_body)[:200]}")
+
+_assert("§15.16 (steps 30-37): SEASON CLOSE RETURNS 200 — the lifecycle "
+        "COMPLETES through the running product",
+        _season_close_status == 200,
+        f"{_season_close_status} {str(_season_close_body)[:200]}")
+
+_close_step = None if _season_close_status == 200 else (
+    (_season_close_body.get("detail") or {}).get("reason_code"))
+
+# Everything below reads the body, so a non-200 would produce a cascade of
+# uninformative failures. Guard once, loudly.
+_body = _season_close_body if _season_close_status == 200 else {}
+_sweeps = _body.get("terminal_rollover_sweeps", [])
+
+# ── REQUIRED PROOFS 4-7, 10 — the terminal rollover sweep ────────────────────
+_assert("§15.4: the close REACHES the terminal rollover sweep and reports it — "
+        "one governed disposal per carried occurrence",
+        len(_sweeps) == 2, str(_sweeps))
+_assert("§15.4b: each disposal names the occurrence that CARRIED the balance, "
+        "so the lineage from drawn pot to Championship credit is unbroken",
+        sorted(s["pool_instance_id"] for s in _sweeps)
+        == sorted(row[2] for row in _live),
+        f"{sorted(s.get('pool_instance_id') for s in _sweeps)} vs "
+        f"{sorted(row[2] for row in _live)}")
+_assert("§15.4c: and each carries the SUBJECT-zero classification it was "
+        "settled under — the disposal did not reclassify anything",
+        all(s["classification"] == "ZERO_ELIGIBLE_CLAIMS" for s in _sweeps),
+        str([s.get("classification") for s in _sweeps]))
+_assert("§15.5: EXACTLY 600 cents leaves rollover state",
+        _body.get("terminal_rollover_swept_cents") == 600
+        and _body.get("terminal_rollover_disposed_cents") == 600
+        and sum(s["amount_cents"] for s in _sweeps) == 600,
+        f"swept={_body.get('terminal_rollover_swept_cents')} "
+        f"disposed={_body.get('terminal_rollover_disposed_cents')}")
+_assert("§15.5b: none of the disposals is a replay — this call moved the money",
+        all(s["replayed"] is False for s in _sweeps),
+        str([s.get("replayed") for s in _sweeps]))
+
+with SessionLocal() as db:
+    _rollover_after = [
+        (i.id, int(i.rollover_cents or 0), int(i.pot_cents or 0))
+        for i in db.query(PoolInstance)
+        .filter(PoolInstance.league_id == LEAGUE_ID)
+        .order_by(PoolInstance.week, PoolInstance.slot).all()]
+    _instances_after = (db.query(PoolInstance)
+                        .filter(PoolInstance.league_id == LEAGUE_ID).count())
+    _postseason_instances_after = (
+        db.query(PoolInstance)
+        .filter(PoolInstance.league_id == LEAGUE_ID,
+                PoolInstance.phase == "POSTSEASON").count())
+    _ps_flags_after = sorted(
+        (d.key, d.postseason_eligible) for d in db.query(PoolDefinition).all())
+    _activations_after = db.query(PoolLeagueActivation).count()
+    _sweep_events = (db.query(PoolEconomicEvent)
+                     .filter(PoolEconomicEvent.league_id == LEAGUE_ID,
+                             PoolEconomicEvent.event_type
+                             == EVENT_ROLLOVER_EXPIRY_SWEEP).all())
+    _sweep_event_rows = [(e.pool_instance_id, int(e.amount_cents),
+                          e.posting_id) for e in _sweep_events]
+    db.rollback()
+
+_assert("§15.10: BOTH rollover balances are now ZERO",
+        all(c == 0 for _, c, _ in _rollover_after),
+        str([(i, c) for i, c, _ in _rollover_after]))
+_assert("§15.10b: and `pot_cents` is UNTOUCHED on both — the historical record "
+        "of what each occurrence held survives the disposal",
+        all(row[6] == dict((i, p) for i, _, p in _rollover_after)[row[2]]
+            for row in _live),
+        str([(row[2], row[6]) for row in _live]))
+_assert("§15.7: ZERO new PoolInstance was created to host the sweep — the "
+        "ruling disposes of a balance, it does not fabricate an occurrence",
+        _instances_after == _instances_before,
+        f"{_instances_before} -> {_instances_after}")
+_assert("§15.7b: and no POSTSEASON occurrence exists at all, before or after — "
+        "the sweep took no dependency on a postseason slate",
+        _postseason_instances_before == _postseason_instances_after == 0,
+        f"{_postseason_instances_before} -> {_postseason_instances_after}")
+_assert("§15: exactly one ROLLOVER_EXPIRY_SWEEP event exists per carried "
+        "occurrence, each with a real posting — the audit row IS the "
+        "exactly-once guarantee (uq_pool_economic_event_instance)",
+        len(_sweep_event_rows) == 2
+        and all(p is not None for _, _, p in _sweep_event_rows)
+        and sorted(a for _, a, _ in _sweep_event_rows) == [300, 300],
+        str(_sweep_event_rows))
+
+# ── REQUIRED PROOFS 8, 9 — the postseason catalog is untouched ───────────────
+_assert("§15.9: NOT ONE `postseason_eligible` value changed — all 80 governed "
+        "definitions are byte-for-byte as the catalog seeded them",
+        _ps_flags_after == _ps_flags_before
+        and all(v is None for _, v in _ps_flags_after),
+        f"{len(_ps_flags_after)} definitions, distinct values "
+        f"{sorted({v for _, v in _ps_flags_after}, key=str)}")
+_assert("§15.8: NO postseason Pool definition was activated — the league's "
+        "activation rows are unchanged, and the sweep never consulted a gate",
+        _activations_after == _activations_before,
+        f"{_activations_before} -> {_activations_after}")
+
+# ── REQUIRED PROOF 6 — the money reached Championship BEFORE distribution ────
+_champ_pot = _body.get("championship_pot_cents", 0)
+_reserve_swept = _body.get("reserve_swept_cents", 0)
+_assert("§15.6: the 600 cents reached championship:{league} BEFORE the "
+        "Championship distribution — the distributed pot is exactly the "
+        "pre-close balance PLUS the swept rollover PLUS the reserve sweep, so "
+        "the carry was paid out rather than left sitting in the account",
+        _champ_pot == _champ_before + 600 + _reserve_swept,
+        f"pot={_champ_pot} = champ_before {_champ_before} + rollover 600 + "
+        f"reserves {_reserve_swept}")
+_assert("§15.6b: and the reserve sweep itself is the full governed obligation",
+        _reserve_swept == sum(_reserve_before.values())
+        == OPENING_CHAMPIONSHIP * TEAM_COUNT,
+        f"{_reserve_swept} vs {sum(_reserve_before.values())}")
+
+# ── REQUIRED PROOFS 12-14 — Championship 60/30/10 and the penny rule ─────────
+_places = _body.get("championship_placements", [])
+_assert("§15.12: Championship distributes 60/30/10 to three placed GMs",
+        [p["pct"] for p in _places] == [60, 30, 10]
+        and [p["place"] for p in _places] == [1, 2, 3],
+        str([(p.get("place"), p.get("pct")) for p in _places]))
+_assert("§15.12b: and the placements conserve the pot EXACTLY",
+        sum(p["cents"] for p in _places) == _champ_pot,
+        f"{sum(p['cents'] for p in _places)} vs {_champ_pot}")
+
+# THE PENNY REMAINDER RULE, asserted against the accepted pure function rather
+# than against a number typed here — every ordinary place floors, and the ENTIRE
+# indivisible remainder goes to FIRST place. Deliberately different from the
+# Pool's §6.3 canonical-id spread; collapsing the two would silently change
+# payouts, so the discriminating arithmetic is restated as an assertion.
+from economy.championship import championship_distribution  # noqa: E402
+
+_expected_places = championship_distribution(
+    _champ_pot, [60, 30, 10], [p["team_id"] for p in _places])
+_floor_sum = sum(_champ_pot * pct // 100 for pct in (60, 30, 10))
+_assert("§15.14: the penny-remainder rule is preserved — every ordinary place "
+        "floors and the WHOLE indivisible remainder goes to FIRST place",
+        [p["cents"] for p in _places] == [a for *_, a in _expected_places]
+        and _places[0]["cents"]
+        == (_champ_pot * 60 // 100) + (_champ_pot - _floor_sum)
+        and _places[1]["cents"] == _champ_pot * 30 // 100
+        and _places[2]["cents"] == _champ_pot * 10 // 100,
+        f"pot={_champ_pot} remainder={_champ_pot - _floor_sum} "
+        f"paid={[p['cents'] for p in _places]}")
+
+# ── REQUIRED PROOFS 13, 18, 19 — reconciliation and conservation ────────────
+_zero_assertions = _body.get("zero_assertions", {})
+_assert("§15.13: every account that must be zero at close IS zero — every "
+        "reserve, every expired_min, pool, skunk and championship",
+        _zero_assertions and all(v == 0 for v in _zero_assertions.values()),
+        str({k: v for k, v in _zero_assertions.items() if v != 0}))
+_assert("§15.13b: pool:{league} specifically is drained — the 600 left and "
+        "nothing replaced it",
+        balance_of(f"pool:{LEAGUE_ID}") == 0
+        and balance_of(championship_account(LEAGUE_ID)) == 0,
+        f"pool={balance_of(f'pool:{LEAGUE_ID}')} "
+        f"champ={balance_of(championship_account(LEAGUE_ID))}")
+_assert("§15: expired Weekly Minimum is reconciled back to GM Wallets exactly "
+        "once", _body.get("expired_min_returned_cents", 0) > 0
+        and all(balance_of(f"expired_min:{t}") == 0 for t in team_ids),
+        f"{_body.get('expired_min_returned_cents')} cents returned")
+
+_settle = _body.get("current_settle", {})
+_assert("§15.18: final Current Settle is derived for every GM and reconciles "
+        "with the posted wallet position",
+        len(_settle) == TEAM_COUNT,
+        f"{len(_settle)} of {TEAM_COUNT} GMs")
+_assert("§15.19: the ledger is BALANCED after the close — trial balance zero",
+        trial_balance() == 0, str(trial_balance()))
+
+# ── REQUIRED PROOFS 11, 17 — the repeat close moves nothing ─────────────────
+_ledger_after_close = {
+    **{f"wallet:{t}": balance_of(f"wallet:{t}") for t in team_ids},
+    **{f"reserve:{t}": balance_of(f"reserve:{t}") for t in team_ids},
+    **{f"expired_min:{t}": balance_of(f"expired_min:{t}") for t in team_ids},
+    f"pool:{LEAGUE_ID}": balance_of(f"pool:{LEAGUE_ID}"),
+    f"championship:{LEAGUE_ID}": balance_of(championship_account(LEAGUE_ID)),
+    f"skunk:{LEAGUE_ID}": balance_of(skunk_account(LEAGUE_ID)),
+}
+
+r2 = client().post(f"/league/{LEAGUE_ID}/season/close", headers=hdr)
+_body2 = r2.json() if r2.content else {}
+_ledger_after_repeat = {
+    **{f"wallet:{t}": balance_of(f"wallet:{t}") for t in team_ids},
+    **{f"reserve:{t}": balance_of(f"reserve:{t}") for t in team_ids},
+    **{f"expired_min:{t}": balance_of(f"expired_min:{t}") for t in team_ids},
+    f"pool:{LEAGUE_ID}": balance_of(f"pool:{LEAGUE_ID}"),
+    f"championship:{LEAGUE_ID}": balance_of(championship_account(LEAGUE_ID)),
+    f"skunk:{LEAGUE_ID}": balance_of(skunk_account(LEAGUE_ID)),
+}
+
+_assert("§15.17 (step 37): a REPEATED Season Close is 200 and REPLAYED",
+        r2.status_code == 200 and _body2.get("replayed") is True
+        and _body2.get("closed_now") is False,
+        f"{r2.status_code} replayed={_body2.get('replayed')}")
+_assert("§15.11: the repeat does NOT repeat either rollover transfer — it "
+        "moves zero cents and reports zero swept",
+        _body2.get("terminal_rollover_swept_cents", 0) == 0
+        and _body2.get("terminal_rollover_sweeps", []) == [],
+        str(_body2.get("terminal_rollover_swept_cents")))
+_assert("§15.17b: and NOT ONE account moved between the two closes",
+        _ledger_after_repeat == _ledger_after_close,
+        str({k: (v, _ledger_after_repeat[k])
+             for k, v in _ledger_after_close.items()
+             if _ledger_after_repeat[k] != v}))
+
+with SessionLocal() as db:
+    _sweep_events_after_repeat = (
+        db.query(PoolEconomicEvent)
+        .filter(PoolEconomicEvent.league_id == LEAGUE_ID,
+                PoolEconomicEvent.event_type
+                == EVENT_ROLLOVER_EXPIRY_SWEEP).count())
+    db.rollback()
+_assert("§15.11b: still EXACTLY two ROLLOVER_EXPIRY_SWEEP events after the "
+        "repeat — the uniqueness constraint, not a flag, is what guarantees it",
+        _sweep_events_after_repeat == 2, str(_sweep_events_after_repeat))
+_assert("§15.12c: trial balance is STILL zero after the repeated close",
+        trial_balance() == 0, str(trial_balance()))
+
+_record("30-31 terminal Pool rollover sweep", "POST /league/{id}/season/close",
+        "commissioner", "200 — 2 disposals, 600 cents",
+        f"both carrying occurrences zeroed; {_instances_after} PoolInstance "
+        f"rows, unchanged — none created for the sweep",
+        f"pool:{LEAGUE_ID} -> championship:{LEAGUE_ID} 600 cents "
+        f"(ROLLOVER_EXPIRY_SWEEP x2)",
+        "repeat moves nothing; unique (instance, event_type)")
+_record("32-37 Season Close", "POST /league/{id}/season/close", "commissioner",
+        "200 — all nine prerequisites met",
+        f"season closed at {_body.get('season_closed_at')}",
+        f"reserves {_reserve_swept} swept; Championship {_champ_pot} paid "
+        f"60/30/10; expired minimum "
+        f"{_body.get('expired_min_returned_cents')} returned",
+        "200 replayed=true, zero movement")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1643,9 +1899,20 @@ _assert("§16: no GM holds a negative wallet",
         str({t: balance_of(f"wallet:{t}") for t in team_ids}))
 _assert("§16: no GM holds a negative Weekly Minimum reserve",
         all(balance_of(f"min_reserve:{t}") >= 0 for t in team_ids))
-_assert("§16: no GM's Championship Reserve was touched by weekly play",
-        all(balance_of(f"reserve:{t}") == OPENING_CHAMPIONSHIP
-            for t in team_ids),
+# WP6F — THIS IS NOW TWO FACTS, AND BOTH ARE ASSERTED. `_reserve_before` was
+# read immediately before the close, so the original claim — weekly play never
+# touches the Championship Reserve — is still proved against the state at the
+# end of two governed weeks. The second half is what the close then does with
+# it: step 10 sweeps every reserve into the Championship pot, so a nonzero
+# balance afterwards would mean a GM's committed Credits never reached the pot
+# they were allocated for.
+_assert("§16: no GM's Championship Reserve was touched by weekly play — read "
+        "at the end of two governed weeks, immediately before the close",
+        all(_reserve_before[t] == OPENING_CHAMPIONSHIP for t in team_ids),
+        str([_reserve_before[t] for t in team_ids]))
+_assert("§16: and the close SWEPT every one of them into the Championship pot "
+        "— not a cent of committed Reserve is left behind",
+        all(balance_of(f"reserve:{t}") == 0 for t in team_ids),
         str([balance_of(f"reserve:{t}") for t in team_ids]))
 _assert("§16: two governed weeks consumed exactly two weeks of reserve",
         all(balance_of(f"min_reserve:{t}")
@@ -1731,20 +1998,27 @@ if _failures:
     for f in _failures:
         print(f"  - {f}")
     sys.exit(1)
-print("WP6/WP6D LIFECYCLE SUITE — every assertion PASSED")
+print("WP6/WP6D/WP6F LIFECYCLE SUITE — every assertion PASSED")
 print()
-print("  A passing run does NOT mean the lifecycle completes. It means the run")
-print("  behaved exactly as this suite states, which now includes:")
+print("  A passing run means the run behaved exactly as this suite states,")
+print("  which now includes:")
 print("    BLOCKER 1  CLEARED — workers/final_lock.py prices the Dynamic wager")
 print("               at its governed kickoff; the escrow WP6 found stranded")
 print("               resolves through the ordinary weekly settlement (step 14)")
 print("    BLOCKER 2  CLEARED — POST /pool/pick creates governed PoolClaim")
 print("               state; the production settlement route pays the winning")
 print("               tickets and nobody else (step 19)")
-print(f"    REMAINING  Season Close is refused at `{_close_step}`. Every other")
-print("               prerequisite is met. The surviving pots are SUBJECT-layer")
-print("               zeros that carried real governed claims and would sweep")
-print(f"               to Championship at season_final_week {_final_week}; the")
-print("               recorded corpus covers weeks 1-2. That is a CORPUS")
-print("               HORIZON, not a wiring gap. See the WP6D report.")
+print("    BLOCKER 3  CLEARED — WP6F. WP6D read the final 409 as a CORPUS")
+print("               HORIZON; WP6E disproved that — week 17 is inside the")
+print("               postseason, whose 32-Pool subset does not exist, so no")
+print("               corpus could ever have reached the sweep. The owner")
+print("               ruling made terminal rollover expiry a SEASON-BOUNDARY")
+print("               settlement rule, and §15 drives it through the product:")
+print(f"               {_carry_total} cents left rollover state at "
+      f"season_final_week {_final_week},")
+print("               reached championship before distribution and were paid")
+print("               60/30/10, with NO PoolInstance created to host it.")
+print("    LIFECYCLE  COMPLETES — Season Close returns 200 through the running")
+print("               product, all nine prerequisites met, trial balance zero,")
+print("               and the repeated close replays without moving a cent.")
 print("=" * 78)

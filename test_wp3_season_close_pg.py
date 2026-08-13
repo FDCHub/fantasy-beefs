@@ -425,7 +425,20 @@ def main() -> None:
     refuses_at("an unassessed Skunk week refuses the close",
                "skunk_assessed", _unassess)
 
-    # 8 — a live Pool rollover.
+    # 8 — a live Pool rollover AT THE SEASON BOUNDARY.
+    #
+    # WP6F OWNER RULING SUPERSEDES THE ORIGINAL ASSERTION HERE, and the change is
+    # stated rather than quietly dropped. Terminal rollover expiry is a
+    # SEASON-BOUNDARY SETTLEMENT RULE (BAB-805, BAB-901, AP-166): at
+    # `season_final_week` a carry with no later eligible occurrence transfers to
+    # the Championship Pot. This route derives `final_week` from the league, so
+    # every close taken through it is AT the boundary — which makes a live carry
+    # WORK THE CLOSE PERFORMS, not a reason to refuse it.
+    #
+    # THE REFUSAL WAS NARROWED BY THE RULING, NOT REMOVED, so both halves are
+    # proved: the boundary sweep here, and the sub-boundary refusal immediately
+    # below. Asserting only the first would leave the product free to vacuum a
+    # LIVE carry into Championship mid-season and this suite would not notice.
     def _live_rollover(db, lid, tids):
         inst = (db.query(PoolInstance)
                 .filter(PoolInstance.league_id == lid)
@@ -433,8 +446,68 @@ def main() -> None:
         inst.rollover_cents = 100
         ledger_post([(championship_account(lid), -100), (f"pool:{lid}", 100)],
                     door="pool_championship_sweep", session=db)
-    refuses_at("a live Pool rollover refuses the close",
-               "pool_rollover", _live_rollover)
+        return inst.id
+
+    lid_rr, tids_rr, hdr_rr = build("pre-pool_rollover")
+    with SessionLocal() as db:
+        _carrier_id = _live_rollover(db, lid_rr, tids_rr)
+        db.commit()
+    _champ_before_rr = balance_of(championship_account(lid_rr))
+    r_rr = close(lid_rr, hdr_rr)
+    _body_rr = r_rr.json() if r_rr.content else {}
+    _sweeps_rr = _body_rr.get("terminal_rollover_sweeps", [])
+
+    _assert("a live Pool rollover AT the season boundary is SWEPT, not refused "
+            "— the close completes (WP6F ruling supersedes the old refusal)",
+            r_rr.status_code == 200
+            and _body_rr.get("terminal_rollover_swept_cents") == 100,
+            f"HTTP {r_rr.status_code} "
+            f"swept={_body_rr.get('terminal_rollover_swept_cents')!r}")
+    _assert("    ...and the disposal names the occurrence that CARRIED it",
+            len(_sweeps_rr) == 1
+            and _sweeps_rr[0]["pool_instance_id"] == _carrier_id
+            and _sweeps_rr[0]["amount_cents"] == 100,
+            str(_sweeps_rr))
+    with SessionLocal() as db:
+        _carry_after = (db.query(PoolInstance)
+                        .filter(PoolInstance.id == _carrier_id).first()
+                        .rollover_cents)
+        db.rollback()
+    _assert("    ...the carry is discharged and the Pool account drained",
+            int(_carry_after or 0) == 0 and balance_of(f"pool:{lid_rr}") == 0,
+            f"rollover={_carry_after} pool={balance_of(f'pool:{lid_rr}')}")
+    _assert("    ...the season is CLOSED and the ledger still balances",
+            not season_open(lid_rr) and trial_balance() == 0,
+            f"open={season_open(lid_rr)} trial={trial_balance()}")
+
+    # BELOW THE BOUNDARY IT STILL REFUSES. Asserted against
+    # `verify_preconditions` directly because the route cannot reach this state:
+    # it derives `final_week` from the league, so a route close is always AT the
+    # boundary. The gate exists for every other caller, and this is where it is
+    # proved.
+    from economy.season_close_orchestrator import (  # noqa: E402
+        SeasonClosePreconditionError, verify_preconditions,
+    )
+
+    lid_early, tids_early, _hdr_early = build("early-pool_rollover")
+    with SessionLocal() as db:
+        _live_rollover(db, lid_early, tids_early)
+        db.commit()
+    with SessionLocal() as db:
+        try:
+            verify_preconditions(db, league_id=lid_early,
+                                 final_week=SEASON_FINAL_WEEK - 1)
+            _early_step = None
+        except SeasonClosePreconditionError as exc:
+            _early_step = exc.step
+        db.rollback()
+    _assert("a live Pool rollover BELOW the boundary still refuses at "
+            "`pool_rollover` — a close taken early cannot vacuum a live carry "
+            "into Championship", _early_step == "pool_rollover",
+            str(_early_step))
+    _assert("    ...and that refusal moved nothing",
+            balance_of(f"pool:{lid_early}") == 100 and trial_balance() == 0,
+            f"pool={balance_of(f'pool:{lid_early}')}")
 
     # 9 — the Pool account still holds money with nothing to explain it.
     def _stranded_pool_money(db, lid, tids):

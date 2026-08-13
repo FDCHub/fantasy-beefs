@@ -5428,6 +5428,22 @@ class SeasonCloseChampionshipPlacementOut(BaseModel):
     cents:   int
 
 
+class SeasonCloseTerminalRolloverOut(BaseModel):
+    """One carried Pool pot disposed at the season boundary (WP6F).
+
+    `pool_instance_id` is reported because it IS the lineage: the occurrence
+    named here is the one that drew the pot, ran the claim phase and carried the
+    balance, so an operator can trace a Championship credit back to the week it
+    came from without reading the ledger."""
+    pool_instance_id: int
+    definition_key:   str
+    week:             int
+    slot:             int
+    classification:   str
+    amount_cents:     int
+    replayed:         bool
+
+
 class SeasonCloseOut(BaseModel):
     """Mirrors `SeasonCloseReport` field for field, plus the close stamp.
 
@@ -5443,6 +5459,14 @@ class SeasonCloseOut(BaseModel):
     season_closed_at:           Optional[str]
     operator:                   str
     final_week:                 int
+    #: WP6F — the terminal Pool rollover sweep (BAB-805/BAB-901/AP-166).
+    #: `swept` is what THIS call moved and is 0 on a retry; `disposed` is what is
+    #: no longer carried, replays included. Both are reported because a retry
+    #: that moved nothing and a close that had nothing to move are different
+    #: facts, and one number could not tell an operator which happened.
+    terminal_rollover_swept_cents:    int
+    terminal_rollover_disposed_cents: int
+    terminal_rollover_sweeps:   list[SeasonCloseTerminalRolloverOut]
     reserve_swept_cents:        int
     legacy_consolidated_cents:  int
     skunk_distributed_cents:    int
@@ -5558,6 +5582,12 @@ def close_league_season(
         season_closed_at=closed_at.isoformat() if closed_at else None,
         operator=operator,
         final_week=final_week,
+        terminal_rollover_swept_cents=report.terminal_rollover_swept_cents,
+        terminal_rollover_disposed_cents=report.terminal_rollover_disposed_cents,
+        terminal_rollover_sweeps=[
+            SeasonCloseTerminalRolloverOut(**sweep)
+            for sweep in report.terminal_rollover_sweeps
+        ],
         reserve_swept_cents=report.reserve_swept_cents,
         legacy_consolidated_cents=report.legacy_consolidated_cents,
         skunk_distributed_cents=report.skunk_distributed_cents,
