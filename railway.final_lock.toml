@@ -1,0 +1,32 @@
+# Railway service definition for the Dynamic Final Lock worker (WP6B).
+#
+# A SECOND SERVICE, NOT A SECOND ROLE FOR THE WEB ONE. Rev 9 §5.5 fixes the
+# Final-Lock actor as a scheduled system worker that is "not reachable from any
+# HTTP route", so it does not belong inside the API process, and the API process
+# must not grow a trigger for it. Point a second Railway service at this repo and
+# set its config path to `railway.final_lock.toml`; it shares the same DATABASE_URL
+# as `web` and needs no other variable.
+#
+# NO HEALTHCHECK, deliberately. `healthcheckPath` describes an HTTP listener and
+# this process has none by design; declaring one would fail the deploy for the
+# exact property that makes the worker correct.
+#
+# WHY A RESIDENT LOOP RATHER THAN A PLATFORM CRON. Final Lock fires AT the
+# challenge's earliest covered kickoff. Railway's cron scheduling is coarse and
+# is not contracted to sub-hour precision, so scheduling this as a cron job would
+# put up to an hour of drift between the governed instant and the execution — a
+# weakening of the timing rule rather than an implementation of it. A resident
+# process bounds the latency at `--interval` (60s) using only the ability to keep
+# a process alive, which the deployment already provides for `web`.
+#
+# RESTART ON FAILURE IS SAFE HERE, and the claim protocol is why: a worker killed
+# mid-Phase-2 rolls its economic work back atomically and leaves its durable claim
+# recoverable, so a restarted worker reclaims after the 15-minute TTL and
+# re-executes against escrow exactly as the Handshake left it (Rev 9 §5.7).
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "python -m workers.final_lock --loop --interval 60"
+restartPolicyType = "ON_FAILURE"

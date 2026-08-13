@@ -32,6 +32,21 @@ from posted escrow; nothing here re-derives a price, and no Dynamic formula is
 reproduced. A Dynamic wager's Derived side is reported as the ceiling the
 Handshake wrote, because that is the only authoritative bound that exists before
 Final Lock.
+
+AND AFTER FINAL LOCK, THE FROZEN RESULT IS THE AUTHORITY (WP6B). This is still
+reporting rather than recomputing — `ChallengeFinalLock` is the immutable record
+of what executed (Rev 9 §7.3), and it is read exactly as the proposal is. The
+distinction matters because the proposal deliberately quotes NO Derived stake in
+Dynamic mode: before WP6B wired the Final-Lock worker that gap was unreachable,
+since a Dynamic wager could never be priced at all, and the card correctly showed
+a ceiling and no stake. Now that the wager does get priced, reading the proposal
+past that point would tell the opponent their stake is zero while real Credits of
+theirs sit in Bet escrow. The ODDS move for the same reason and no other: Rev 9
+§0 freezes the model and the ceilings at the Handshake but leaves the odds live
+until Final Lock, so the Handshake quote is superseded the moment a frozen result
+exists. American comes from that record and decimal from the Bet rows, which is
+where each representation authoritatively lives (Rev 9 B-2); neither is converted
+here.
 """
 
 from __future__ import annotations
@@ -50,7 +65,9 @@ from beefs.proposal_lifecycle import (
     ACCEPTED, CANCELLED, COUNTERED, DECLINED, EXPIRED, MODE_DYNAMIC, OFFERED,
     OPEN_STATES,
 )
-from db.schema import BeefChallenge, BeefProposal, Bet, Team
+from db.schema import (
+    BeefChallenge, BeefProposal, Bet, ChallengeFinalLock, Team,
+)
 from economy.challenge_funding import challenge_escrow_balance
 
 # ── The four rails, in Rev 4.2's order ────────────────────────────────────────
@@ -132,6 +149,11 @@ class ActionCard:
     # DYNAMIC ONLY. Absent on Locked, because a Locked wager has no ceiling.
     derived_ceiling_cents: Optional[int] = None
     derived_repriced: bool = False
+    # WP6B — has the Final-Lock worker priced this wager yet? Read from the
+    # existence of the immutable `ChallengeFinalLock` record, which is the one
+    # fact separating "funded to a ceiling" from "priced and live". Always False
+    # on a Locked card, which has no Final Lock to have occurred.
+    final_locked: bool = False
 
     # Settlement, when it exists
     settled: bool = False
@@ -249,6 +271,17 @@ def _bets_for(db: Session, challenge_id: int) -> list[Bet]:
             .all())
 
 
+def _final_lock(db: Session, challenge_id: int) -> Optional[ChallengeFinalLock]:
+    """The frozen Final-Lock result, or None if the worker has not priced it.
+
+    `UNIQUE(challenge_id)` makes "the" the right article: there is at most one,
+    forever, so its presence is a complete answer rather than the first of
+    several.
+    """
+    return (db.query(ChallengeFinalLock)
+            .filter(ChallengeFinalLock.challenge_id == challenge_id).first())
+
+
 def _settlement(db: Session, challenge_id: int, team_id: int
                 ) -> tuple[bool, Optional[int]]:
     """Whether this GM's side has settled, and their net in cents.
@@ -333,6 +366,29 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
         # ceiling to report and `dynamic_issuer_ceiling_cents` is not it.
         ceiling = challenge.dynamic_opponent_ceiling_cents if dynamic else None
 
+        # THE PRICE, FROM WHICHEVER RECORD IS AUTHORITATIVE NOW. Before Final
+        # Lock that is the accepted proposal; after it, the frozen result and the
+        # Bet rows it created. See the module docstring — the switch is reporting
+        # a later fact, not recomputing an earlier one.
+        final_lock = _final_lock(db, challenge.id) if dynamic else None
+        if final_lock is not None:
+            anchor_stake = final_lock.anchor_cents
+            derived_stake = final_lock.derived_final_cents
+            your_stake = anchor_stake if is_anchor else derived_stake
+            their_stake = derived_stake if is_anchor else anchor_stake
+            anchor_ml = final_lock.issuer_moneyline
+            derived_ml = final_lock.opponent_moneyline
+            _by_id = {b.id: b for b in _bets_for(db, challenge.id)}
+            _anchor_bet = _by_id.get(final_lock.anchor_bet_id)
+            _derived_bet = _by_id.get(final_lock.derived_bet_id)
+            anchor_odds = _anchor_bet.odds if _anchor_bet else None
+            derived_odds = _derived_bet.odds if _derived_bet else None
+        else:
+            anchor_ml = getattr(proposal, "anchor_moneyline", None)
+            derived_ml = getattr(proposal, "derived_moneyline", None)
+            anchor_odds = getattr(proposal, "anchor_odds", None)
+            derived_odds = getattr(proposal, "derived_odds", None)
+
         pot = None
         if anchor_stake and derived_stake:
             pot = anchor_stake + derived_stake
@@ -357,20 +413,15 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
             your_stake_cents=your_stake,
             their_stake_cents=their_stake,
             pot_cents=pot,
-            your_odds=(getattr(proposal, "anchor_odds", None) if is_anchor
-                       else getattr(proposal, "derived_odds", None)),
-            their_odds=(getattr(proposal, "derived_odds", None) if is_anchor
-                        else getattr(proposal, "anchor_odds", None)),
-            your_moneyline=(getattr(proposal, "anchor_moneyline", None)
-                            if is_anchor
-                            else getattr(proposal, "derived_moneyline", None)),
-            their_moneyline=(getattr(proposal, "derived_moneyline", None)
-                             if is_anchor
-                             else getattr(proposal, "anchor_moneyline", None)),
+            your_odds=(anchor_odds if is_anchor else derived_odds),
+            their_odds=(derived_odds if is_anchor else anchor_odds),
+            your_moneyline=(anchor_ml if is_anchor else derived_ml),
+            their_moneyline=(derived_ml if is_anchor else anchor_ml),
             escrow_cents=challenge_escrow_balance(db, challenge.id),
             derived_ceiling_cents=ceiling,
             derived_repriced=bool(dynamic
                                   and challenge.dynamic_handshake_at is not None),
+            final_locked=final_lock is not None,
             settled=settled,
             net_cents=net_cents,
             created_at=(challenge.created_at.isoformat()

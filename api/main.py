@@ -4202,6 +4202,9 @@ class ActionCardOut(BaseModel):
     escrow_cents:          int
     derived_ceiling_cents: Optional[int] = None
     derived_repriced:      bool = False
+    # WP6B — True once the Final-Lock system worker has priced this Dynamic
+    # wager. Read-only: the UI offers no control that could cause it.
+    final_locked:          bool = False
 
     settled:   bool = False
     net_cents: Optional[int] = None

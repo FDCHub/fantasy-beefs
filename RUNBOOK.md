@@ -223,10 +223,44 @@ Present and coherent:
 
 | Artifact | Contents |
 |---|---|
-| `Procfile` | `web: uvicorn api.main:app --host 0.0.0.0 --port $PORT` |
-| `railway.toml` | NIXPACKS builder, same start command, healthcheck `/health`, restart on failure |
+| `Procfile` | `web:` the API; `final_lock:` the Dynamic Final Lock worker |
+| `railway.toml` | NIXPACKS builder, the `web` start command, healthcheck `/health`, restart on failure |
+| `railway.final_lock.toml` | NIXPACKS builder, `python -m workers.final_lock --loop --interval 60`, no healthcheck |
 | `.railwayignore` | excludes `*.sql`, backups and scratch/debug artifacts |
 | `requirements.txt` | the full dependency set |
+
+### 5.1 The Final Lock worker (WP6B) — a required second process
+
+**A deployment that runs only `web` is incomplete.** Dynamic challenges are
+issued and handshaken over HTTP, but Final Lock is machine-triggered:
+SIMULATION_ENGINE_MODULE_SPEC_Rev9 §5.5 fixes its actor as "the same scheduled
+system worker/process class that acquires fresh claims. Not an end user, not a
+GM, not a commissioner, not reachable from any HTTP route." With this process
+absent, every handshaken Dynamic wager strands both sides' escrow and Season
+Close is refused at `escrow_resolved` forever — the blocker WP6 reported.
+
+```bash
+python -m workers.final_lock --loop --interval 60   # production: resident worker
+python -m workers.final_lock                        # one sweep, then exit
+python -m workers.final_lock --dry-run              # what would lock; claims nothing
+python -m workers.final_lock --league 19 --verbose  # one league, full report
+```
+
+It needs `DATABASE_URL` and nothing else. Run it as a second Railway service
+whose config path is `railway.final_lock.toml`, or as the `final_lock` Procfile
+process type on any platform that reads one.
+
+**Cadence is not the timing rule.** `_nfl_lock_time(LOCK_SEASON, week)` alone
+decides when a challenge is due — the earliest covered kickoff — and `--interval`
+only bounds how long after that instant the worker notices. A resident loop is
+used rather than a platform cron because Final Lock fires *at* kickoff and
+platform cron granularity is coarse; sixty seconds of latency sits well inside
+the fifteen-minute claim TTL and hours inside the settlement window.
+
+**More than one instance is safe.** The claim table's `UNIQUE(challenge_id)` is
+the mutex — concurrent workers race the same insert and exactly one proceeds. A
+worker killed mid-execution rolls its economic work back atomically, and its
+claim becomes reclaimable once the TTL passes.
 
 **Not verified from this repository:** that a Railway project, service,
 environment, database or domain actually exists. No credentials are present and
@@ -245,6 +279,8 @@ none were created. Nothing was deployed.
    - **Do not** set `FS_COOKIE_INSECURE`.
 3. Run the schema + migration steps of §3 against the deployed database.
 4. Confirm `/health` returns 200.
+5. Start the `final_lock` worker process (§5.1). Confirm it logs
+   `[final-lock] worker … starting`; without it Dynamic wagers cannot settle.
 
 ### Repeatable deploy path, once a target exists
 
@@ -257,6 +293,8 @@ railway up
 railway run python db/migrations/migrate_s8_provider_current_week.py
 # 5 · verify
 curl -fsS https://<host>/health
+# 6 · verify the system worker is resident (§5.1) — no HTTP surface exists for it
+railway logs --service final-lock | grep '\[final-lock\] worker'
 ```
 
 Restart is the platform's own restart; the process is stateless apart from the
