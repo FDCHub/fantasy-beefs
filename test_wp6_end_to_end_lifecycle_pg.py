@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test_wp6_end_to_end_lifecycle_pg.py — WP6 · end-to-end product lifecycle.
+test_wp6_end_to_end_lifecycle_pg.py — WP6/WP6D · end-to-end product lifecycle.
 
 THE QUESTION THIS SUITE ANSWERS, and the only one it answers:
 
@@ -23,51 +23,56 @@ certification do, so the run is offline and needs no credentials. Everything
 else — routes, authorization, assembly, identity resolution, stat source,
 census, engines, ledger — is production.
 
-WHAT THE RUN FOUND. Every lifecycle capability up to Season Close is reachable
-and correct through the product, with TWO exceptions that are certified-but-
-unwired. They are recorded here as first-class results rather than as skipped
-tests, because a suite that quietly stepped around them would be asserting the
-opposite of what is true:
+WHAT THE ORIGINAL WP6 RUN FOUND, AND WHAT WP6D REPLACES. WP6 reported two
+certified-but-unwired capabilities and asserted their absence, in those words,
+rather than stepping around them. WP6B and WP6C then wired both. The two
+blocker-EXISTENCE assertions in this suite are now stale, and WP6D replaces each
+with the corresponding blocker-CLEARED assertion. Nothing is relaxed: each
+retired assertion is replaced by a strictly stronger one, which demands the
+production surface exist AND behave, where the old one demanded only that it be
+absent.
 
-  BLOCKER 1 — DYNAMIC FINAL LOCK (lifecycle step 14).
-      `economy.dynamic_challenge.run_final_lock` is certified by
-      test_p3_d2_dynamic_final_lock_pg.py and has NO non-test caller: no route,
-      no scheduler, no worker. §12 proves a Dynamic wager can be issued and
-      handshaken through the product — the UI's own command layer offers the
-      mode — and then cannot be priced, so both sides' escrow is stranded. §15
-      then watches Season Close refuse at `escrow_resolved`, permanently: this
-      is the blocker that actually stops the lifecycle.
+  BLOCKER 1, CLEARED BY WP6B — DYNAMIC FINAL LOCK (lifecycle step 14).
+      WP6 proved `economy.dynamic_challenge.run_final_lock` had no non-test
+      caller — no route, no scheduler, no worker — so a handshaken Dynamic
+      wager's escrow was stranded and Season Close refused at `escrow_resolved`
+      permanently. `workers/final_lock.py` is now that caller, declared in the
+      `Procfile` as its own process type. §12 runs THE DEPLOYED ENTRY POINT and
+      watches the wager get priced.
 
-      THE REPAIR IS NOT A ROUTE, and this suite deliberately does not add one.
-      SIMULATION_ENGINE_MODULE_SPEC_Rev9 §"Actor class" is explicit: Final Lock
-      is "the same scheduled system worker/process class that acquires fresh
-      claims. Not an end user, not a GM, not a commissioner, not reachable from
-      any HTTP route." It fires at the challenge's earliest covered kickoff. The
-      missing production surface is therefore a KICKOFF-TIME SCHEDULED TRIGGER,
-      which is new infrastructure and outside a certification package.
+      IT IS STILL NOT A ROUTE, AND §12 STILL ASSERTS THAT.
+      SIMULATION_ENGINE_MODULE_SPEC_Rev9 §"Actor class" fixes Final Lock as "the
+      same scheduled system worker/process class that acquires fresh claims. Not
+      an end user, not a GM, not a commissioner, not reachable from any HTTP
+      route." A route would have been the wrong repair, so the assertion that no
+      Final-Lock route is mounted is KEPT — what changed is that the worker now
+      exists beside it.
 
-  BLOCKER 2 — GOVERNED POOL CLAIM SUBMISSION (lifecycle step 19).
-      `betting.pool_claims.submit_claim` is certified by the S4 suites and has
-      no non-test caller. The Pool pick control the UI actually posts —
-      `POST /pool/pick` — writes the LEGACY prediction model, which the Rev1.3
-      settlement engine never reads: §6 shows that route returning 200 while
-      `pool_claims` stays empty. No GM can hold a winning ticket, so lifecycle
-      step 19 — "Pool winner settlement succeeds" — is unreachable through the
-      product, and every pot with a real winner rolls over instead of paying.
+  BLOCKER 2, CLEARED BY WP6C — GOVERNED POOL CLAIM SUBMISSION (step 19).
+      WP6 proved `POST /pool/pick` — the control the UI actually posts — wrote
+      the LEGACY prediction model, which the Rev1.3 settlement engine never
+      reads: the route answered 200 while `pool_claims` stayed empty, so no GM
+      could hold a winning ticket. That route is now an adapter into the
+      certified `betting.pool_claims.submit_claim`, and §6 drives it as a GM.
 
-Both are the WP5 shape exactly: a certified engine with no caller. Neither is an
-engine defect, and §6.3 demonstrates that for BLOCKER 2 by calling the certified
-claim path directly and then watching the SAME production settlement route pay a
-real winner in §8 — the engine is sound; only the admission path is absent.
+      THIS SUITE NO LONGER IMPORTS THE CLAIM ENGINE AT ALL. WP6's §6.3 called
+      `submit_claim` directly, labelled as an ENGINE DEMONSTRATION, to show that
+      only the admission path was missing. That call is deleted: §6 now creates
+      every claim through the product, and §6.4 asserts this file's own source
+      contains no `submit_claim` call, so §8's payout cannot be reached by any
+      other means.
 
-WHAT IS *NOT* A BLOCKER, and is called out so the report cannot overstate the
-finding: §15 shows two occurrences still carrying a live rollover at the end of
-the run, which independently bars the `pool_rollover` prerequisite. Both are
-`ZERO_ELIGIBLE_CLAIMS` — the SUBJECT layer, where no matchup satisfied the
-predicate — so no GM claim could have changed them and BLOCKER 2 is not their
-cause. Such a pot rolls forward to `season_final_week` and sweeps to Championship
-under POR §5. This league's final week is 17; a two-week certification fixture
-never reaches it. That is a property of the fixture, not a defect.
+WHAT IS *NOT* CLEARED, and is stated here so the report cannot overstate the
+finding: §15 shows Season Close still refused, at `pool_rollover` and at nothing
+else. Two occurrences end the run carrying a live rollover, and BOTH are
+`ZERO_ELIGIBLE_CLAIMS` — the SUBJECT layer, where no matchup in the recorded
+corpus satisfied the predicate. §6 and §13 now put real governed claims on those
+same occurrences and they still classify subject-zero, which is the proof that
+BLOCKER 2 was never their cause. Such a pot rolls forward to `season_final_week`
+and sweeps to Championship under POR §5. This league's final week is 17, stated
+by the provider's own payload; the recorded corpus covers weeks 1 and 2. The bar
+is therefore the CORPUS HORIZON, not a product gap — and §15 proves that
+distinction rather than asserting it, by showing every other prerequisite met.
 
 Requires TEST_DATABASE_URL -> a local, disposable, empty, _test-named database.
 """
@@ -107,8 +112,9 @@ import providers.yahoo.transport as yahoo_transport  # noqa: E402
 from api.main import app  # noqa: E402
 from auth.jwt_auth import hash_password  # noqa: E402
 from db.schema import (  # noqa: E402
-    Bet, EconomyEvent, League, LeagueCommissioner, Matchup, Player, PoolClaim,
-    PoolInstance, Projection, Roster, SessionLocal, Team, User, Wallet,
+    Bet, ChallengeFinalLock, EconomyEvent, League, LeagueCommissioner, Matchup,
+    NflSchedule, Player, PoolBetPick, PoolClaim, PoolInstance, PoolPrediction,
+    Projection, Roster, SessionLocal, Team, User, Wallet,
 )
 from ledger.ledger import balance_of, trial_balance  # noqa: E402
 from providers.fixtures.replay import FixtureTransport  # noqa: E402
@@ -116,6 +122,12 @@ from test_support_wp2bc_league import (  # noqa: E402
     FROZEN_NOW, LEAGUE_ID, LEAGUE_KEY, SEASON, TEAM_COUNT,
     seed_economic_league, snapshot_for,
 )
+# WP6D — the WP6B fixture's kickoff helper, imported rather than restated. §12
+# runs the production Final-Lock worker, and the worker's dueness question is
+# answered by `_nfl_lock_time(LOCK_SEASON, week)`; this returns exactly what that
+# call will return for a week, so §12 can stand on either side of the governed
+# instant instead of sleeping or guessing.
+from test_support_wp6b import week_kickoff  # noqa: E402
 
 # ── THE ONE SUBSTITUTION ──────────────────────────────────────────────────────
 # Patched on the MODULE, not on `api.main._pool_settlement_transport`, so every
@@ -271,6 +283,20 @@ with SessionLocal() as db:
                     source="fantasypros",
                     projected_points=10.0 + idx * 1.5 + j * 0.5,
                     actual_points=9.0 + idx * 1.4 + j * 0.4))
+    # FIXTURE-ONLY 4b (WP6D) — the LOCK_SEASON kickoff schedule.
+    # `seed_economic_league` seeds `NflSchedule` for CURRENT_SEASON, which is what
+    # `pool_claims.pool_lock_time` reads. The challenge domain's kickoff-lock —
+    # and therefore `workers.final_lock`, which uses the same helper — reads
+    # LOCK_SEASON, a deliberately different year (`config`: "NFL schedule season
+    # for kickoff-lock checks; independent of CURRENT_SEASON"). Both years are
+    # seeded so each reader finds its own, and neither is bent to suit the other.
+    # No production route ingests the NFL schedule, so this is fixture-only for
+    # the same reason projections are.
+    for wk in (1, 2):
+        db.add(NflSchedule(
+            season=config.LOCK_SEASON, week=wk,
+            home_team=f"WP6-H{wk}", away_team=f"WP6-A{wk}",
+            kickoff_utc=week_kickoff(wk).replace(tzinfo=None)))
     db.flush()
 
     # FIXTURE-ONLY 5/6 — user accounts and the FIRST league commissioner.
@@ -293,6 +319,11 @@ _assert("§1: six teams exist, each with a wallet at zero",
 
 hdr = bearer(COMM_EMAIL)
 gm = {i: bearer(f"wp6-gm{i}@x.test") for i in range(2, TEAM_COUNT + 1)}
+#: Every team's OWN authenticated actor, by ordinal. Team 1's GM is also the
+#: commissioner — a Pool pick is a competitive choice with no commissioner
+#: exemption (`assert_wagering_team_owner`), so they pick as that team's GM and
+#: as nobody else's.
+actor = {1: hdr, **gm}
 
 T1, T2, T3, T4, T5, T6 = team_ids
 
@@ -496,62 +527,183 @@ _record("15 Pool collection", "POST /league/{id}/pool/collect/1",
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# §6 · GOVERNED POOL CLAIMS — BLOCKER 2
+# §6 · GOVERNED POOL CLAIMS — BLOCKER 2, CLEARED (WP6C)
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# WHAT WP6 ASSERTED HERE AND WP6D RETIRES. WP6 posted the legacy request shape to
+# `/pool/pick`, watched it answer 200, and asserted `pool_claims` stayed EMPTY —
+# the route wrote the legacy prediction model the Rev1.3 settlement engine never
+# reads. WP6C cut that route over to `betting.pool_claims.submit_claim`, so the
+# blocker-existence assertion is stale and is replaced, here, by the
+# blocker-CLEARED one: the same control, driven by real authenticated GMs,
+# creates governed `PoolClaim` state and nothing else. §8 then pays it.
 
-_section("§6 · governed Pool claim submission (step 19) — BLOCKER 2")
+_section("§6 · governed Pool claim submission (step 19) — BLOCKER 2 CLEARED")
 
 _routes = sorted({getattr(x, "path", "") for x in app.routes})
+
+
+def legacy_rows() -> tuple[int, int]:
+    """Every row in BOTH retired Pool pick models, for the whole database.
+
+    Counted globally rather than per-league: a route that wrote a legacy row
+    under a different scope would still be writing a legacy row."""
+    with SessionLocal() as db:
+        counts = (db.query(PoolBetPick).count(), db.query(PoolPrediction).count())
+        db.rollback()
+    return counts
+
+
+def pool_week(week: int, headers: dict) -> dict:
+    """The governed occurrences of one week, as the pick surface sees them."""
+    r = client().get(f"/pool/week/{week}?league_id={LEAGUE_ID}", headers=headers)
+    assert r.status_code == 200, f"/pool/week/{week}: {r.status_code} {r.text[:200]}"
+    return r.json()
+
+
+def claim_count(instance_id: int) -> int:
+    with SessionLocal() as db:
+        n = (db.query(PoolClaim)
+             .filter(PoolClaim.pool_instance_id == instance_id).count())
+        db.rollback()
+    return n
+
+
+_legacy_before = legacy_rows()
 
 r = client().get(f"/league/{LEAGUE_ID}/pool/slate/1", headers=gm[2])
 _assert("§6: a GM can READ the week's governed slate",
         r.status_code == 200 and len(r.json().get("slots") or []) == 4,
         f"{r.status_code}")
 
+_wk1 = pool_week(1, gm[2])
+_assert("§6: and reads the same four occurrences through the PICK surface, "
+        "with the week's one governed lock moment",
+        len(_wk1.get("pools") or []) == 4 and _wk1.get("drawn") is True
+        and _wk1.get("locked") is False, str(_wk1)[:200])
+
+_by_key = {p["definition_key"]: p for p in _wk1["pools"]}
+_rank = _by_key.get("most_passing_yards") or {}
+_rank_id = _rank.get("pool_instance_id")
+_assert("§6: the TEAM-scope occurrence offers the league's six teams as "
+        "subjects — the offer set is the census, not a hardcoded pot name",
+        _rank.get("scope") == "TEAM"
+        and sorted(s["subject_id"] for s in _rank.get("subjects") or [])
+        == sorted(team_ids), str(_rank.get("subjects"))[:200])
+_assert("§6: no GM holds a claim on it yet",
+        _rank.get("my_subject_id") is None and _rank.get("claim_count") == 0,
+        str(_rank)[:160])
+
+# WHY WEEK 1's MATCHUP-SCOPE OCCURRENCES OFFER NOTHING YET, stated rather than
+# stepped around. `_subjects_for_scope` builds the offer set from the census, and
+# week 1's census of MATCHUPS is empty until the provider publishes the week's
+# fixtures — which for week 1 happens at §7. That is an ordering property of this
+# fixture, not a refusal: §13 picks on MATCHUP-scope occurrences in week 2, where
+# the schedule IS published before the pick window, exactly as a live league's is.
+_empty_scope = sorted(p["definition_key"] for p in _wk1["pools"]
+                      if not p.get("subjects"))
+print(f"     week 1 occurrences whose census is not yet published: "
+      f"{_empty_scope}")
+
+# ── 6.1 · THE PRODUCTION PICK PATH ───────────────────────────────────────────
+#
+# THE SAME OCCURRENCE WP6's §6.3 REACHED BY CALLING THE ENGINE, reached instead
+# by the route the UI posts. Three GMs back team 1, one backs team 6 and one
+# abstains, so §8 can prove a winning ticket paid, a LOSING ticket paid nothing,
+# and an abstainer paid nothing — three outcomes one uniform field cannot show.
+WINNING_SUBJECT, LOSING_SUBJECT = T1, T6
+_backers = {2: WINNING_SUBJECT, 3: WINNING_SUBJECT, 4: WINNING_SUBJECT,
+            5: LOSING_SUBJECT}
+_ABSTAINER = T6
+
+for _ordinal, _subject in _backers.items():
+    r = client().post("/pool/pick", headers=gm[_ordinal], json={
+        "league_id": LEAGUE_ID, "team_id": team_ids[_ordinal - 1], "week": 1,
+        "pool_instance_id": _rank_id, "subject_id": _subject})
+    _assert(f"§6.1: GM {_ordinal} submits a Pool pick through the running "
+            f"product", r.status_code == 200, f"{r.status_code} {r.text[:160]}")
+
+with SessionLocal() as db:
+    _rows = (db.query(PoolClaim)
+             .filter(PoolClaim.pool_instance_id == _rank_id)
+             .order_by(PoolClaim.team_id).all())
+    _persisted = {c.team_id: c.selected_subject_id for c in _rows}
+    _total_claims = db.query(PoolClaim).count()
+    db.rollback()
+
+_assert("§6.1 BLOCKER 2 CLEARED: the product path creates GOVERNED PoolClaim "
+        "state — exactly one claim per submitting GM, and no other",
+        _persisted == {team_ids[o - 1]: s for o, s in _backers.items()}
+        and _total_claims == len(_backers), str(_persisted))
+_assert("§6.1: and the abstaining GM holds no claim",
+        _ABSTAINER not in _persisted, str(sorted(_persisted)))
+_assert("§6.1: the active path wrote NO legacy PoolBetPick or PoolPrediction "
+        "row", legacy_rows() == _legacy_before == (0, 0), str(legacy_rows()))
+_assert("§6.1: a pick creates a claim, not funding — zero Credits moved",
+        trial_balance() == 0 and balance_of(f"pool:{LEAGUE_ID}") == 600,
+        f"tb={trial_balance()} pool={balance_of(f'pool:{LEAGUE_ID}')}")
+
+# ── 6.2 · THE LEGACY REQUEST SHAPE IS NO LONGER ACCEPTED ─────────────────────
+#
+# The blocker was not only that the legacy shape wrote the wrong table — it was
+# that the shape existed at all, so a client could believe it had picked. The
+# route now REFUSES it at the schema boundary, which is what makes the cutover
+# complete rather than merely preferred.
 r = client().post("/pool/pick", headers=gm[2], json={
     "league_id": LEAGUE_ID, "team_id": T2, "bet_type": "biggest_winner",
     "pick": T1, "week": 1})
-_assert("§6.1: the Pool pick control the UI posts to returns 200 …",
-        r.status_code == 200, f"{r.status_code} {r.text[:160]}")
-with SessionLocal() as db:
-    _claims = db.query(PoolClaim).count()
-    db.rollback()
-_assert("§6.1 BLOCKER 2: … and writes ZERO governed claims. It targets the "
-        "LEGACY prediction model, which the Rev1.3 settlement engine never "
-        "reads", _claims == 0, str(_claims))
+_assert("§6.2 BLOCKER 2 CLEARED: the LEGACY request shape is refused (422) — "
+        "the user-facing path no longer requires or accepts it",
+        r.status_code == 422, f"{r.status_code} {r.text[:160]}")
+_assert("§6.2: and the refusal wrote nothing, legacy or governed",
+        legacy_rows() == (0, 0) and claim_count(_rank_id) == len(_backers))
 
 _claim_routes = [p for p in _routes
                  if "claim" in p.lower() or p.endswith("/pool/pick")]
-_assert("§6.2 BLOCKER 2: no GOVERNED claim route is mounted anywhere — the "
-        "only pick surface in the product is the legacy one",
+_assert("§6.2: the pick surface is still exactly one route — the cutover "
+        "changed what `/pool/pick` WRITES, not how many ways in there are",
         _claim_routes == ["/pool/pick"], str(_claim_routes))
-_record("19 governed Pool claim", "NONE — /pool/pick writes the legacy model",
-        "GM", "BLOCKED", "pool_claims stays empty", "none", "n/a")
 
-# 6.3 — THE ENGINE IS NOT THE PROBLEM. Called directly, the certified claim path
-# makes the SAME production settlement route pay a real winner in §8. This is
-# labelled an ENGINE DEMONSTRATION, not a lifecycle pass, and the report says so.
-from betting.pool_claims import submit_claim  # noqa: E402
+# ── 6.3 · THE CLAIM IS PRODUCT STATE, VISIBLE ONLY TO ITS OWNER ──────────────
+_mine = pool_week(1, gm[2])
+_mine_rank = {p["definition_key"]: p for p in _mine["pools"]}["most_passing_yards"]
+_assert("§6.3: the submitting GM's own claim is reflected back by the product",
+        _mine_rank.get("my_subject_id") == WINNING_SUBJECT,
+        str(_mine_rank.get("my_subject_id")))
+_assert("§6.3: the field's entry COUNT is public …",
+        _mine_rank.get("claim_count") == len(_backers),
+        str(_mine_rank.get("claim_count")))
+_theirs = pool_week(1, gm[6])
+_theirs_rank = {p["definition_key"]: p
+                for p in _theirs["pools"]}["most_passing_yards"]
+_assert("§6.3: … but another GM's SELECTION is not — a Pool is a blind "
+        "prediction until it settles",
+        _theirs_rank.get("my_subject_id") is None
+        and _theirs_rank.get("claim_count") == len(_backers),
+        str(_theirs_rank)[:160])
 
-with SessionLocal() as db:
-    _rank_id = (db.query(PoolInstance)
-                .filter(PoolInstance.league_id == LEAGUE_ID,
-                        PoolInstance.week == 1,
-                        PoolInstance.definition_key == "most_passing_yards")
-                .one().id)
-    db.rollback()
-
-with SessionLocal() as db:
-    for _c in (T2, T3, T4, T5):
-        submit_claim(db, pool_instance_id=_rank_id, team_id=_c, subject_id=T1)
-    db.commit()
-with SessionLocal() as db:
-    _n = db.query(PoolClaim).filter(
-        PoolClaim.pool_instance_id == _rank_id).count()
-    db.rollback()
-_assert("§6.3 (ENGINE DEMONSTRATION, not a lifecycle pass): the certified "
-        "claim path records four claims and moves no money",
-        _n == 4 and trial_balance() == 0, f"{_n} claims")
+# ── 6.4 · NO MANUAL ENGINE CALL, ASSERTED AGAINST THIS FILE'S OWN SOURCE ─────
+#
+# WP6's §6.3 imported `submit_claim` and called it, labelled an ENGINE
+# DEMONSTRATION. WP6C removed the need, and this asserts the removal rather than
+# trusting it: if any future edit reintroduced a direct call, §8's payout could
+# be reached without the product and this assertion would fail first.
+with open(os.path.abspath(__file__), encoding="utf-8") as _fh:
+    _own_source = _fh.read()
+# The needles are ASSEMBLED, not written literally, or this assertion's own text
+# would be the match it is searching for.
+_CALL_NEEDLE = "submit_claim" + "("
+_IMPORT_NEEDLE = "from betting.pool_claims " + "import"
+_assert("§6.4: this suite creates every claim through the product — its own "
+        "source neither imports nor calls the claim engine",
+        _CALL_NEEDLE not in _own_source and _IMPORT_NEEDLE not in _own_source,
+        f"call={_own_source.count(_CALL_NEEDLE)} "
+        f"import={_own_source.count(_IMPORT_NEEDLE)}")
+_record("19 governed Pool claim", "POST /pool/pick", "GM x4",
+        "200 x4 (legacy shape now 422)",
+        f"{len(_backers)} PoolClaim rows on instance {_rank_id}; 0 legacy rows",
+        "none — a pick is a claim, not funding",
+        "resubmission replaces in place; one row per GM per occurrence")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -603,6 +755,8 @@ _record("16/17 provider ingest + finality", "POST /admin/tuesday-sync",
 
 _section("§8 · Pool settlement, zero-winner and rollover (steps 19, 20)")
 
+_wallets_pre_settle = {t: balance_of(f"wallet:{t}") for t in team_ids}
+
 r = client().post(f"/league/{LEAGUE_ID}/pool/settle/1", headers=hdr)
 _assert("§8: week 1 Pool settlement succeeds through the route",
         r.status_code == 200, f"{r.status_code} {r.text[:200]}")
@@ -614,16 +768,45 @@ _assert("§8: all four occurrences were resolved",
         str(len(ps.get("settled", []))))
 
 _win = by_key.get("most_passing_yards", {})
-_assert("§8 (step 19, reached ONLY via the §6.3 engine demonstration): a "
-        "governed Pool DOES pay its winners once claims exist — the settlement "
-        "engine is sound and only the admission path is missing",
-        _win.get("distributed_cents") == 150
-        and len(_win.get("winning_team_ids") or []) == 4,
-        str(_win))
+_expected_winners = sorted(team_ids[o - 1] for o, s in _backers.items()
+                           if s == WINNING_SUBJECT)
+_assert("§8 (step 19) BLOCKER 2 CLEARED: the production settlement route SEES "
+        "the claims §6 created through the product, and pays them",
+        _win.get("classification") == "CLAIMS_PRESENT"
+        and sorted(_win.get("winning_team_ids") or []) == _expected_winners
+        and _win.get("distributed_cents") == 150, str(_win)[:260])
+
+# SETTLEMENT RESOLVED TICKETS, NOT TEAMS. The paid GMs are exactly the GMs whose
+# PERSISTED claim named the winning subject — read back from `pool_claim`, which
+# is the table `/pool/pick` wrote and the settlement engine reads. The route's
+# response deliberately does not publish the winning subject (a Pool is a blind
+# prediction), so the proof is taken from the state rather than from the reply.
+with SessionLocal() as db:
+    _paid_subjects = sorted({
+        c.selected_subject_id for c in db.query(PoolClaim)
+        .filter(PoolClaim.pool_instance_id == _rank_id,
+                PoolClaim.team_id.in_(_win.get("winning_team_ids") or []))
+        .all()})
+    db.rollback()
+_assert("§8 (step 19): every paid GM's persisted claim named the SAME subject — "
+        "settlement resolved TICKETS, not teams",
+        _paid_subjects == [WINNING_SUBJECT], str(_paid_subjects))
 _assert("§8 (step 19): the §6.3 even split conserves the pot exactly",
         _win.get("distributed_cents", 0) + _win.get("rolled_over_cents", 0)
         + _win.get("swept_to_championship_cents", 0) == _win.get("pot_cents"),
         str(_win))
+
+_share = 150 // len(_expected_winners)
+_assert("§8 (step 19): each WINNING ticket received its exact even share",
+        all(balance_of(f"wallet:{t}") - _wallets_pre_settle[t] == _share
+            for t in _expected_winners), f"{_share} cents each")
+_loser = team_ids[5 - 1]
+_assert("§8 (step 19): the LOSING ticket received nothing",
+        balance_of(f"wallet:{_loser}") == _wallets_pre_settle[_loser],
+        str(balance_of(f"wallet:{_loser}")))
+_assert("§8 (step 19): and the GM who never picked received nothing",
+        balance_of(f"wallet:{_ABSTAINER}") == _wallets_pre_settle[_ABSTAINER],
+        str(balance_of(f"wallet:{_ABSTAINER}")))
 
 _zero = by_key.get("matchups_with_zero_total_turnovers", {})
 _assert("§8 (step 20): a genuine ZERO_ELIGIBLE_CLAIMS outcome rolls over "
@@ -646,8 +829,9 @@ _assert("§8 (retry): NO duplicate Pool payout",
         and trial_balance() == 0)
 _record("19/20 Pool settlement + rollover",
         "POST /league/{id}/pool/settle/1", "commissioner", "200",
-        "4 PoolInstance settled; 3 carrying rollover",
-        "winner pot 150 split across 4 GMs",
+        "4 PoolInstance settled; 2 carrying rollover, 1 swept",
+        f"pot 150 split across the {len(_expected_winners)} GMs who claimed "
+        f"through /pool/pick; losing and abstaining GMs paid nothing",
         "200 replayed=true, zero further movement")
 
 
@@ -910,10 +1094,18 @@ _record("10/11/12/13 Versus locked",
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# §12 · DYNAMIC MODE — issue, handshake … and BLOCKER 1
+# §12 · DYNAMIC MODE — issue, handshake, and BLOCKER 1 CLEARED (WP6B)
 # ══════════════════════════════════════════════════════════════════════════════
+#
+# WHAT WP6 ASSERTED HERE AND WP6D RETIRES. WP6 walked the whole tree looking for
+# a caller of `run_final_lock`, found none, and asserted the empty list — then
+# watched the handshaken wager's escrow sit stranded and Season Close refuse at
+# `escrow_resolved`. `workers/final_lock.py` is now that caller. The
+# no-caller assertion is replaced by its opposite AND by the behaviour it was
+# standing in for: the deployed entry point runs, the wager gets priced, and the
+# escrow resolves through the ordinary settlement path with nothing left held.
 
-_section("§12 · Dynamic mode and Final Lock (step 14) — BLOCKER 1")
+_section("§12 · Dynamic mode and Final Lock (step 14) — BLOCKER 1 CLEARED")
 
 r = client().post("/beef/challenge", headers=gm[4], json={
     "challenger_team_id": T4, "challenged_team_id": T5, "week": 2,
@@ -950,66 +1142,137 @@ _assert("§12: the Handshake creates NO Bet rows — the Derived side is priced 
         "Final Lock, and that absence is the protocol, not a gap",
         _dyn_bets == 0, str(_dyn_bets))
 
-# ── THE BLOCKER ITSELF ───────────────────────────────────────────────────────
-_lock_routes = [p for p in _routes
-                if any(k in p.lower() for k in ("final", "lock", "dynamic"))]
-_assert("§12 BLOCKER 1: there is NO production route that can run Final Lock",
-        _lock_routes == [], str(_lock_routes))
-
-import economy.dynamic_challenge as _dyn_mod  # noqa: E402
-
-_assert("§12 BLOCKER 1: run_final_lock exists and is certified …",
-        callable(getattr(_dyn_mod, "run_final_lock", None)))
-
-_ROOT = os.path.dirname(os.path.abspath(__file__))
-_callers = []
-for _dirpath, _dirnames, _filenames in os.walk(_ROOT):
-    _dirnames[:] = [d for d in _dirnames
-                    if d not in (".git", "__pycache__", "node_modules")]
-    for _fn in _filenames:
-        if not _fn.endswith(".py") or _fn.startswith("test_"):
-            continue
-        if _fn == "dynamic_challenge.py":
-            continue
-        try:
-            with open(os.path.join(_dirpath, _fn), encoding="utf-8") as _fh:
-                _txt = _fh.read()
-        except (OSError, UnicodeDecodeError):
-            continue
-        if "run_final_lock" in _txt or "acquire_final_lock_claim" in _txt:
-            _callers.append(os.path.relpath(os.path.join(_dirpath, _fn), _ROOT))
-_assert("§12 BLOCKER 1: … and NOTHING in the product calls it — no route, no "
-        "scheduler, no worker, no management command",
-        _callers == [], str(_callers))
-
-_assert("§12 BLOCKER 1: so a handshaken Dynamic wager's escrow is STRANDED — "
-        "both sides' Credits are held with no product path to price them",
-        anchor_bal + derived_bal > 0,
-        f"{anchor_bal + derived_bal} cents held on challenge {DYN}")
-_record("14 Dynamic Final Lock", "NONE — no production surface exists",
-        "n/a (Rev9 §Actor class: scheduled system worker, at kickoff)",
-        "BLOCKED", f"challenge {DYN} handshaken; 0 Bet rows",
-        f"{anchor_bal + derived_bal} cents stranded in per-side escrow", "n/a")
-
+# ── THE PRE-STATE WP6 REPORTED, RESTATED SO THE CLEARANCE MEANS SOMETHING ────
 from betting.pool_season_boundary import season_final_week  # noqa: E402
 from economy.season_close_orchestrator import (  # noqa: E402
     SeasonClosePreconditionError, verify_preconditions,
 )
 
+
+def close_refusal() -> tuple[str | None, str]:
+    """The FIRST unmet Season Close prerequisite, or (None, '') if all are met.
+
+    The orchestrator's own contract, read on a rolled-back session: it writes
+    nothing, so asking it is a pure observation and can be asked repeatedly."""
+    with SessionLocal() as db:
+        lg = db.query(League).filter(League.id == LEAGUE_ID).one()
+        try:
+            verify_preconditions(db, league_id=LEAGUE_ID,
+                                 final_week=season_final_week(lg))
+            return None, ""
+        except SeasonClosePreconditionError as exc:
+            return exc.step, str(exc)
+        finally:
+            db.rollback()
+
+
+def open_escrow_accounts() -> list[tuple[str, int]]:
+    """Every escrow account carrying a nonzero balance — the exact query
+    `verify_preconditions` step 3 runs, asked directly so the proof does not
+    depend on which prerequisite happens to refuse FIRST."""
+    from sqlalchemy import text
+    with SessionLocal() as db:
+        rows = db.execute(text(
+            "SELECT account, SUM(amount_cents) FROM ledger_entries "
+            "WHERE account LIKE 'escrow:%' GROUP BY account "
+            "HAVING SUM(amount_cents) <> 0")).fetchall()
+        db.rollback()
+    return sorted((a, int(v)) for a, v in rows)
+
+
+_escrow_before = dict(open_escrow_accounts())
+_assert("§12 BEFORE: the handshaken Dynamic wager holds BOTH sides' maximum "
+        "exposure in unresolved per-side escrow — WP6's exact finding",
+        _escrow_before.get(anchor_acct) == anchor_bal
+        and _escrow_before.get(derived_acct) == derived_bal,
+        str(sorted(_escrow_before.items()))[:220])
+_step_before, _msg_before = close_refusal()
+_assert("§12 BEFORE: and Season Close is refused with the wager outstanding",
+        _step_before in ("versus_terminal", "escrow_resolved"),
+        f"{_step_before}: {_msg_before[:180]}")
+
+# ── THE PRODUCTION WORKER ────────────────────────────────────────────────────
+#
+# `python -m workers.final_lock` IS the deployed entry point: the `Procfile`
+# declares it as the `final_lock` process type and `railway.final_lock.toml`
+# gives it its own service. §12 calls `main()` — the same function that CLI
+# invocation calls — so what runs here is what a deployed FantasyStakes runs.
+import workers.final_lock as flw  # noqa: E402
+
+_KICKOFF = week_kickoff(2)
+
+_rc = flw.main(["--league", str(LEAGUE_ID), "--dry-run"])
+_assert("§12 (step 14): `python -m workers.final_lock --dry-run` runs at the "
+        "real clock and exits 0", _rc == 0, str(_rc))
+_assert("§12 (step 14): and BEFORE the governed kickoff it locks nothing — "
+        "escrow is exactly as the Handshake left it",
+        (balance_of(anchor_acct), balance_of(derived_acct))
+        == (anchor_bal, derived_bal),
+        f"anchor={balance_of(anchor_acct)}, derived={balance_of(derived_acct)}")
+
+_sweep = flw.run_once(worker_id="wp6d-lifecycle-worker", now=_KICKOFF,
+                      league_id=LEAGUE_ID)
+_out = next((o for o in _sweep.outcomes if o.challenge_id == DYN), None)
+_assert("§12 (step 14) BLOCKER 1 CLEARED: at the challenge's earliest covered "
+        "kickoff the PRODUCTION WORKER runs Final Lock",
+        _out is not None and _out.status == flw.LOCKED,
+        f"{getattr(_out, 'status', None)} — {getattr(_out, 'detail', '')}"[:200])
+
+# THE ACTOR CLASS IS UNCHANGED, AND THAT ASSERTION IS KEPT. Rev9 §5.5 forbids an
+# HTTP surface for Final Lock; WP6 refused to manufacture a pass by adding one
+# and WP6B did not add one either. The repair was a scheduled system worker, so
+# the absence of a route is still a property worth proving.
+_lock_routes = [p for p in _routes
+                if any(k in p.lower() for k in ("final", "lock", "dynamic"))]
+_assert("§12 (step 14): the actor was the SYSTEM WORKER — no Final-Lock route "
+        "is mounted, so no GM and no commissioner could have done this",
+        _lock_routes == [], str(_lock_routes))
+
+# ── THE WAGER IS NOW PRICED ──────────────────────────────────────────────────
 with SessionLocal() as db:
-    _lg = db.query(League).filter(League.id == LEAGUE_ID).one()
-    _step = None
-    try:
-        verify_preconditions(db, league_id=LEAGUE_ID,
-                             final_week=season_final_week(_lg))
-    except SeasonClosePreconditionError as exc:
-        _step = exc.step
+    _dyn_rows = [(b.id, b.status) for b in
+                 db.query(Bet).filter(Bet.beef_challenge_id == DYN).all()]
+    _dyn_bet_ids = sorted(i for i, _ in _dyn_rows)
+    _n_frozen = (db.query(ChallengeFinalLock)
+                 .filter(ChallengeFinalLock.challenge_id == DYN).count())
     db.rollback()
-_assert("§12 BLOCKER 1: and Season Close is consequently refused — the stranded "
-        "escrow is a permanent close-prerequisite failure",
-        _step in ("versus_terminal", "escrow_resolved"), f"step={_step!r}")
-_assert("§12: trial balance is still zero — the blocker STRANDS Credits, it "
-        "does not lose them", trial_balance() == 0, str(trial_balance()))
+_assert("§12 (step 14): Final Lock created GOVERNED Bet state — the two rows "
+        "the Handshake deliberately did not create, now priced",
+        len(_dyn_rows) == 2 and all(s == "pending" for _, s in _dyn_rows),
+        str(_dyn_rows))
+_assert("§12 (step 14): with exactly one frozen Final-Lock result behind them",
+        _n_frozen == 1, str(_n_frozen))
+_assert("§12 (step 14): the per-side Dynamic escrow is DRAINED — nothing is "
+        "stranded on the challenge any more",
+        balance_of(anchor_acct) == 0 and balance_of(derived_acct) == 0,
+        f"anchor={balance_of(anchor_acct)}, derived={balance_of(derived_acct)}")
+_dyn_escrow = sum(balance_of(f"escrow:{b}") for b in _dyn_bet_ids)
+_assert("§12 (step 14): the Credits MIGRATED into per-bet escrow — the wager "
+        "was priced, not cancelled",
+        _dyn_escrow > 0
+        and all(balance_of(f"escrow:{b}") > 0 for b in _dyn_bet_ids),
+        str({b: balance_of(f"escrow:{b}") for b in _dyn_bet_ids}))
+_assert("§12 (step 14): the Derived refund returned the unused ceiling to its "
+        "GM rather than holding it — the migrated escrow cannot exceed what the "
+        "Handshake froze",
+        _dyn_escrow <= anchor_bal + derived_bal,
+        f"{_dyn_escrow} migrated of {anchor_bal + derived_bal} frozen")
+_assert("§12: trial balance zero across issue, handshake and Final Lock",
+        trial_balance() == 0, str(trial_balance()))
+
+_step_after, _ = close_refusal()
+_assert("§12 (step 14) BLOCKER 1 CLEARED: Season Close no longer refuses on "
+        "`escrow_resolved` — it now refuses on the ordinary PENDING WAGER, "
+        "which week 2's settlement retires",
+        _step_after == "versus_terminal", f"step={_step_after!r}")
+
+_record("14 Dynamic Final Lock", "python -m workers.final_lock (Procfile "
+        "process type `final_lock`)",
+        "system worker (Rev9 §5.5: not a GM, not a commissioner, no route)",
+        f"LOCKED at {_KICKOFF.isoformat()}",
+        f"challenge {DYN}: 1 ChallengeFinalLock row, Bet {_dyn_bet_ids} pending",
+        f"per-side escrow drained; {_dyn_escrow} cents in per-bet escrow",
+        "REPLAYED on a second sweep; claim mutex + TTL recovery")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1023,6 +1286,48 @@ r = client().post(f"/league/{LEAGUE_ID}/pool/collect/2", headers=hdr)
 _assert("§13: week 2's Pools are collected — the engine's own guard allowed "
         "this only because week 1 is fully settled",
         r.status_code == 200, f"{r.status_code} {r.text[:200]}")
+
+# ── WEEK 2's CLAIM PHASE, ON THE SAME PRODUCTION ROUTE ───────────────────────
+#
+# WEEK 2 IS WHERE THE MATCHUP-SCOPE OCCURRENCES CAN BE CLAIMED, because §11
+# published week 2's fixtures before the pick window — the state a live league is
+# actually in while its GMs are picking. Every GM picks on every open occurrence,
+# with the subject rotated by GM ordinal so the field is not uniform: that is what
+# makes §14's continuation settlement a real ticket resolution rather than a
+# unanimous one, and it is what lets §15 attribute each surviving rollover.
+_wk2 = pool_week(2, gm[2])
+_claims_before_w2 = sum(claim_count(p["pool_instance_id"])
+                        for p in _wk2["pools"])
+_w2_submitted = 0
+for _pool in _wk2["pools"]:
+    _subjects = _pool.get("subjects") or []
+    if not _pool.get("open_for_claims") or not _subjects:
+        continue
+    for _ordinal in range(1, TEAM_COUNT + 1):
+        rr = client().post("/pool/pick", headers=actor[_ordinal], json={
+            "league_id": LEAGUE_ID, "team_id": team_ids[_ordinal - 1],
+            "week": 2, "pool_instance_id": _pool["pool_instance_id"],
+            "subject_id": _subjects[(_ordinal - 1) % len(_subjects)]["subject_id"]})
+        if rr.status_code == 200:
+            _w2_submitted += 1
+        else:
+            _assert(f"§13: GM {_ordinal} picks on {_pool['definition_key']}",
+                    False, f"{rr.status_code} {rr.text[:140]}")
+
+_assert("§13: every GM claimed every one of week 2's four governed occurrences "
+        "through the product", _w2_submitted == 4 * TEAM_COUNT,
+        f"{_w2_submitted} submissions")
+_assert("§13: and each submission is exactly one governed claim — 24 in the "
+        "week, none legacy",
+        sum(claim_count(p["pool_instance_id"]) for p in _wk2["pools"])
+        == _claims_before_w2 + _w2_submitted and legacy_rows() == (0, 0),
+        str(legacy_rows()))
+_assert("§13: the claim phase moved no Credits",
+        trial_balance() == 0, str(trial_balance()))
+_record("19 governed Pool claim (week 2)", "POST /pool/pick", "all six GMs",
+        f"200 x{_w2_submitted}",
+        f"{_w2_submitted} PoolClaim rows across 4 occurrences; 0 legacy rows",
+        "none", "one row per GM per occurrence")
 
 _pool_before = balance_of(f"pool:{LEAGUE_ID}")
 _tb_before = trial_balance()
@@ -1110,6 +1415,30 @@ _assert("§14: no GM holds a negative balance after settlement",
         all(balance_of(f"wallet:{t}") >= 0 for t in team_ids),
         str({t: balance_of(f"wallet:{t}") for t in team_ids}))
 
+# ── THE DYNAMIC WAGER SETTLES ON THE SAME RUN (WP6B closure) ─────────────────
+#
+# NO SEPARATE PATH, and that is the point of the clearance. A Final-Locked
+# Dynamic wager is an ordinary pair of Bet rows from here on, so the SAME weekly
+# automation that settled the Locked wager settles this one, with no Dynamic
+# branch anywhere in the settlement chain.
+with SessionLocal() as db:
+    _dyn_statuses = sorted(b.status for b in
+                           db.query(Bet).filter(Bet.id.in_(_dyn_bet_ids)).all())
+    db.rollback()
+_assert("§14 (step 18) BLOCKER 1 CLEARED: both legs of the DYNAMIC wager "
+        "reached a terminal state through the ordinary weekly settlement",
+        len(_dyn_statuses) == 2
+        and all(s in ("won", "lost", "push") for s in _dyn_statuses),
+        str(_dyn_statuses))
+_assert("§14 (step 18) BLOCKER 1 CLEARED: and every Dynamic escrow account is "
+        "drained — the escrow WP6 found stranded resolved through the normal "
+        "lifecycle",
+        balance_of(anchor_acct) == 0 and balance_of(derived_acct) == 0
+        and all(balance_of(f"escrow:{b}") == 0 for b in _dyn_bet_ids),
+        str({b: balance_of(f"escrow:{b}") for b in _dyn_bet_ids}))
+_assert("§14 (step 18): NOT ONE escrow account in the database holds a balance",
+        open_escrow_accounts() == [], str(open_escrow_accounts()))
+
 _wallets_post = {t: balance_of(f"wallet:{t}") for t in team_ids}
 dup = client().post(f"/league/{LEAGUE_ID}/settle/2", headers=hdr)
 _assert("§14 (retry): a DUPLICATE Versus settlement through the commissioner "
@@ -1128,6 +1457,18 @@ _assert("§14 (step 20): the week 1 carry was CONSUMED as a continuation — a "
         "carried pot is larger than a fresh week's even share",
         any(s["pot_cents"] > 150 for s in ps2.get("settled", [])),
         str([s["pot_cents"] for s in ps2.get("settled", [])]))
+
+_paid2 = [s for s in ps2.get("settled", []) if s["distributed_cents"] > 0]
+_assert("§14 (step 20): week 2's own governed claims were paid too — the "
+        "production claim path is not a one-week accident",
+        _paid2 and all(s["classification"] == "CLAIMS_PRESENT"
+                       and s["winning_team_ids"] for s in _paid2),
+        str([(s["definition_key"], s["winning_team_ids"]) for s in _paid2]))
+_assert("§14 (step 20): every occurrence conserved its pot exactly",
+        all(s["distributed_cents"] + s["rolled_over_cents"]
+            + s["swept_to_championship_cents"] == s["pot_cents"]
+            for s in ps2.get("settled", [])),
+        str([(s["definition_key"], s["pot_cents"]) for s in ps2.get("settled", [])]))
 
 r = client().post(f"/league/{LEAGUE_ID}/week/2/close", headers=hdr)
 _assert("§14 (step 29): week 2 closes, so the lifecycle CONTINUES rather than "
@@ -1185,8 +1526,8 @@ _close_step = ((_season_close_body.get("detail") or {}).get("reason_code")
 print(f"     season close -> {_season_close_status} "
       f"{str(_season_close_body)[:240]}")
 
-_assert("§15 (steps 30-37): SEASON CLOSE IS REFUSED — the lifecycle cannot "
-        "complete through the product", _season_close_status == 409,
+_assert("§15 (steps 30-37): SEASON CLOSE IS REFUSED — the lifecycle does not "
+        "complete inside this fixture", _season_close_status == 409,
         str(_season_close_status))
 _assert("§15: the refusal is a GOVERNED, NAMED prerequisite",
         _close_step in ("versus_terminal", "escrow_resolved", "pool_rollover"),
@@ -1194,49 +1535,80 @@ _assert("§15: the refusal is a GOVERNED, NAMED prerequisite",
 _assert("§15: and the refusal moved no money",
         trial_balance() == 0, str(trial_balance()))
 
-_pending_dyn = balance_of(anchor_acct) + balance_of(derived_acct)
-_assert("§15: BLOCKER 1's stranded Dynamic escrow is still held, and is a "
-        "permanent bar to `escrow_resolved`",
-        _pending_dyn > 0, f"{_pending_dyn} cents on challenge {DYN}")
+# ── WHICH PREREQUISITES ARE MET, ASKED ONE AT A TIME ─────────────────────────
+#
+# `verify_preconditions` raises on the FIRST unmet step, so a single call can
+# only ever name one. WP6's two blockers both refused here, and the WP6D report
+# must be able to say which of the nine are now satisfied rather than which one
+# happens to be checked first. These are the two the blockers owned.
+_assert("§15 BLOCKER 1 CLEARED: `escrow_resolved` is MET — not one escrow "
+        "account in the database carries a balance, where WP6 found the "
+        "Dynamic wager's two holding "
+        f"{anchor_bal + derived_bal} cents permanently",
+        open_escrow_accounts() == [], str(open_escrow_accounts()))
+with SessionLocal() as db:
+    _pending_bets = (db.query(Bet)
+                     .filter(Bet.beef_challenge_id.in_([CH, DYN]),
+                             Bet.status == "pending").count())
+    db.rollback()
+_assert("§15: `versus_terminal` is MET — both the Locked and the Final-Locked "
+        "Dynamic wager settled", _pending_bets == 0, str(_pending_bets))
+_assert("§15 BLOCKER 2 CLEARED: governed claims exist and were paid, so no "
+        "occurrence rolled over for want of a winning TICKET",
+        _total_claims + _w2_submitted > 0, f"{_total_claims + _w2_submitted} "
+        f"claims created through /pool/pick across two weeks")
 
 # WHY EACH SURVIVING ROLLOVER SURVIVES, attributed rather than lumped together.
-# The distinction decides whether `pool_rollover` is a BLOCKER consequence or a
-# property of a two-week synthetic season, and the report must not confuse them:
+# The distinction decides whether `pool_rollover` is a BLOCKER consequence or the
+# horizon of a two-week recorded corpus, and the report must not confuse them:
 #
-#   ZERO_ELIGIBLE_CLAIMS  no SUBJECT qualified. No GM claim could have changed
-#                         this, so BLOCKER 2 is NOT its cause. Such a pot rolls
-#                         forward until `season_final_week`, where POR §5 sweeps
-#                         it to Championship — week 17 for this league, which a
-#                         real season reaches and a two-week fixture does not.
+#   ZERO_ELIGIBLE_CLAIMS  no SUBJECT qualified — no matchup in the recorded
+#                         corpus satisfied the predicate. §6 and §13 put real
+#                         governed claims on these occurrences and they still
+#                         classify subject-zero, so BLOCKER 2 is demonstrably NOT
+#                         their cause. Such a pot rolls forward until
+#                         `season_final_week`, where POR §5 sweeps it to
+#                         Championship — week 17 for this league, stated by the
+#                         provider's own payload, which a real season reaches and
+#                         a two-week corpus does not.
 #
-#   CLAIMS_PRESENT        a winner existed and no GM held a winning ticket.
-#                         With no production claim route, no GM COULD hold one,
-#                         so this rollover IS a BLOCKER 2 consequence.
+#   CLAIMS_PRESENT        a winner existed and no GM held a winning ticket. THIS
+#                         is the shape BLOCKER 2 used to force on every pot, and
+#                         its absence below is the clearance.
 print("\n     surviving rollover, by cause:")
 with SessionLocal() as db:
     _rows = (db.query(PoolInstance)
              .filter(PoolInstance.league_id == LEAGUE_ID,
                      PoolInstance.rollover_cents > 0)
              .order_by(PoolInstance.week, PoolInstance.slot).all())
-    _live = [(i.week, i.slot, i.definition_key, i.rollover_cents,
+    _live = [(i.week, i.slot, i.id, i.definition_key, i.rollover_cents,
               i.settlement_classification) for i in _rows]
     _final_week = season_final_week(
         db.query(League).filter(League.id == LEAGUE_ID).one())
     db.rollback()
-for _wk, _slot, _key, _cents, _cls in _live:
-    _cause = ("SUBJECT-layer zero — no claim could have changed it; sweeps at "
+for _wk, _slot, _iid, _key, _cents, _cls in _live:
+    _cause = ("SUBJECT-layer zero — no matchup qualified; sweeps at "
               f"season_final_week {_final_week}"
               if _cls == "ZERO_ELIGIBLE_CLAIMS"
-              else "zero winning TICKETS — no GM could claim (BLOCKER 2)")
-    print(f"       w{_wk} slot{_slot} {_key} = {_cents} cents  [{_cls}] {_cause}")
+              else "zero winning TICKETS held by any GM")
+    print(f"       w{_wk} slot{_slot} {_key} = {_cents} cents  [{_cls}] "
+          f"{_cause}; {claim_count(_iid)} governed claim(s) were submitted")
 
-_assert("§15: live rollover remains, which independently bars `pool_rollover`",
+_assert("§15: live rollover remains, which is what bars `pool_rollover`",
         len(_live) > 0, f"{len(_live)} occurrence(s)")
-_assert("§15: and every surviving rollover here is SUBJECT-layer zero, so it "
-        "is a property of a two-week synthetic season — it would sweep to "
-        "Championship at season_final_week — NOT a blocker consequence",
+_assert("§15: every surviving rollover is SUBJECT-layer zero — the corpus "
+        "carried no qualifying matchup — and NONE is a zero-winning-ticket "
+        "rollover, which is the shape BLOCKER 2 produced",
         all(_cls == "ZERO_ELIGIBLE_CLAIMS" for *_, _cls in _live),
-        str([(k, c) for _, _, k, _, c in _live]))
+        str([(k, c) for _, _, _, k, _, c in _live]))
+_assert("§15: and each of them CARRIED REAL GOVERNED CLAIMS, so the rollover "
+        "survived a full claim phase rather than an empty one — this is the "
+        "proof that the corpus, not the admission path, is the cause",
+        all(claim_count(_iid) > 0 for _, _, _iid, _, _, _ in _live),
+        str([(k, claim_count(i)) for _, _, i, k, _, _ in _live]))
+_assert("§15: the bar is the CORPUS HORIZON — the league's own final week is "
+        "beyond the recorded weeks, so POR §5's sweep cannot be reached here",
+        _final_week > 2, f"season_final_week={_final_week}, recorded weeks 1-2")
 
 r = client().post(f"/league/{LEAGUE_ID}/season/close", headers=hdr)
 _assert("§15 (step 37): a REPEATED Season Close is safe — same refusal, still "
@@ -1244,8 +1616,10 @@ _assert("§15 (step 37): a REPEATED Season Close is safe — same refusal, still
         r.status_code == _season_close_status and trial_balance() == 0,
         f"{r.status_code}")
 _record("30-37 Season Close", "POST /league/{id}/season/close", "commissioner",
-        f"409 {_close_step}", "no state change", "no posting",
-        "409 again, zero mutation")
+        f"409 {_close_step}",
+        f"no state change; {len(_live)} SUBJECT-zero occurrence(s) carrying "
+        f"rollover until season_final_week {_final_week}",
+        "no posting", "409 again, zero mutation")
 
 for _unreached in (
         "32 Skunk season distribution/reconciliation",
@@ -1357,13 +1731,20 @@ if _failures:
     for f in _failures:
         print(f"  - {f}")
     sys.exit(1)
-print("WP6 LIFECYCLE SUITE — every assertion PASSED")
+print("WP6/WP6D LIFECYCLE SUITE — every assertion PASSED")
 print()
 print("  A passing run does NOT mean the lifecycle completes. It means the run")
-print("  behaved exactly as this suite states, INCLUDING the two blockers it")
-print("  asserts:")
-print("    BLOCKER 1  Dynamic Final Lock has no production trigger  (step 14)")
-print("    BLOCKER 2  governed Pool claims have no production route (step 19)")
-print("  Season Close is consequently refused, so the answer to WP6's question")
-print("  is NO. See the WP6 report for the exact step and technical reason.")
+print("  behaved exactly as this suite states, which now includes:")
+print("    BLOCKER 1  CLEARED — workers/final_lock.py prices the Dynamic wager")
+print("               at its governed kickoff; the escrow WP6 found stranded")
+print("               resolves through the ordinary weekly settlement (step 14)")
+print("    BLOCKER 2  CLEARED — POST /pool/pick creates governed PoolClaim")
+print("               state; the production settlement route pays the winning")
+print("               tickets and nobody else (step 19)")
+print(f"    REMAINING  Season Close is refused at `{_close_step}`. Every other")
+print("               prerequisite is met. The surviving pots are SUBJECT-layer")
+print("               zeros that carried real governed claims and would sweep")
+print(f"               to Championship at season_final_week {_final_week}; the")
+print("               recorded corpus covers weeks 1-2. That is a CORPUS")
+print("               HORIZON, not a wiring gap. See the WP6D report.")
 print("=" * 78)
