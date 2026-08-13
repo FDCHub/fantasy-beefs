@@ -36,7 +36,9 @@ import {
 import { escapeHtml, sheet } from './components.js';
 
 import { ILLUSTRATIVE, MASTHEAD } from './demo-state.js';
-import { bindLeague, buildLeaguePanel } from './league.js';
+import {
+  bindLeague, bindPoolPickForm, buildLeaguePanel, setPoolSheetMount,
+} from './league.js';
 import { bindAction, buildActionPanel, setRespondHook } from './action.js';
 // ALIASED, because `action.js` already exports a `bindAction` that wires the
 // PANEL while this one binds the DATA. Importing both under one name is a
@@ -63,8 +65,11 @@ import {
 } from './action-command.js';
 import { bindGate, bindIdentityBlock, buildGate, buildIdentityBlock } from './auth-view.js';
 import {
-  currentIdentity, isAuthenticated, onIdentityChange, refreshIdentity,
+  apiFetch, currentIdentity, isAuthenticated, onIdentityChange, refreshIdentity,
 } from './session.js';
+import {
+  explainPoolClaimRefusal, submitPoolClaim,
+} from './pool-claim-command.js';
 import { clearProductionData, loadProductionData, productionData } from './production-data.js';
 // Aliased: `bindLedger` above is the Ledger PANEL's event binder; these are the
 // MODEL's data binders. Two different jobs that wanted the same name.
@@ -512,6 +517,7 @@ async function bindAuthoritativeData() {
     setLifecycleCapability(false);
     setLifecycleDispatch(null);
     setSeasonBlocker(null);
+    setPoolSheetMount(null);
     return;
   }
 
@@ -529,6 +535,7 @@ async function bindAuthoritativeData() {
     markLifecycleUnavailable(leagueId);
     setLifecycleDispatch(null);
     setSeasonBlocker(null);
+    setPoolSheetMount(null);
     return;
   }
 
@@ -660,6 +667,54 @@ async function bindAuthoritativeData() {
       },
     });
   });
+
+  // ── WP6C · the governed Pool pick ───────────────────────────────────────
+  //
+  // INSTALLED ONLY WHEN THE SLATE BOUND AND THE SESSION NAMES A TEAM. A claim
+  // is submitted BY a team FOR one drawn occurrence in one week; a session that
+  // cannot name its acting team, or a league whose slate could not be read, can
+  // supply neither. The hook then stays null and the Pool sheet draws no
+  // control — the same rule the Action commands follow, and for the same
+  // reason: offering a button whose subject the page cannot state is how a GM
+  // ends up submitting something neither of you meant.
+  const poolWeek = authoritativeWeek();
+  if (data && data.slate && data.slate.drawn
+      && actingTeamId !== null && poolWeek !== null) {
+    setPoolSheetMount((host, api) => {
+      bindPoolPickForm(host, {
+        leagueId,
+        teamId: actingTeamId,
+        week: poolWeek,
+        submit: submitPoolClaim,
+        explain: explainPoolClaimRefusal,
+        onClaimed: async () => {
+          // ONE WAY TO LEARN WHAT IS TRUE. The write also returns a refreshed
+          // week view, and it is deliberately NOT bound here: that body is the
+          // claim route's shape, and merging two shapes into one model is how a
+          // card ends up describing a state neither read reported. The slate
+          // read is the authority on the slate, so it is re-asked.
+          try {
+            bindSlate(await apiFetch(`/league/${leagueId}/pool/slate/${poolWeek}`));
+          } catch {
+            markSlateUnavailable();
+          }
+          // THE PANELS BEHIND THE SHEET ARE REDRAWN; THE SHEET IS NOT.
+          //
+          // Re-rendering the sheet here — which is what the settings command
+          // does, correctly, because a saved setting has no other confirmation
+          // — would immediately replace the control that just succeeded with a
+          // freshly drawn one, and the GM would watch their confirmation vanish
+          // in the same frame it appeared. The form has already written the
+          // SERVER's persisted subject into its own held row, so the open sheet
+          // is showing authoritative state either way; reopening it rebuilds
+          // from the slate just refreshed above.
+          mountApplication();
+        },
+      });
+    });
+  } else {
+    setPoolSheetMount(null);
+  }
 }
 
 /* ── The commissioner lifecycle (WP4) ───────────────────────────────────── */
@@ -877,6 +932,10 @@ function clearAuthoritativeData() {
   unbindSkunk();
   setCommissionerCapability(false);
   setSettingSheetMount(null);
+  // WP6C — the Pool pick goes with the session too. A signed-out page holding a
+  // live claim command is the same defect as one holding a live wagering
+  // command, and a claim decides a GM's position in the league.
+  setPoolSheetMount(null);
   // The lifecycle goes with the session, controls and recorded outcomes alike.
   // Leaving a "Week 5 is open" banner or a live dispatch behind a sign-out
   // would leave a signed-out page holding a commissioner's command.

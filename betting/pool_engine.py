@@ -407,7 +407,16 @@ def submit_worst_beat_prediction(
     week:              int,
     db:                Session,
 ) -> PoolPredictionOut:
-    """Upsert a GM's worst-beat prediction for the week. No self-picks."""
+    """Upsert a GM's worst-beat prediction for the week. No self-picks.
+
+    WP6C — FAIL-CLOSED FOR A GOVERNED LEAGUE, for the same reason
+    `submit_pool_pick` is. This is the other legacy Pool pick write, and Worst
+    Beat is itself retired from Pool scope. Leaving it open for a Rev1.3 league
+    would preserve exactly the condition WP6C removes: two live meanings for "a
+    Pool pick", only one of which settlement can see.
+    """
+    assert_legacy_pool_path_allowed(db, league_id, week)
+
     if predicted_team_id == team_id:
         raise ValueError("A GM cannot predict their own team as Worst Beat")
 
@@ -985,7 +994,22 @@ def submit_pool_pick(
     Upsert a GM's pick for one of the 4 pool bet types.
     pick_team_id=None resets the pick to unpicked.
     Raises ValueError if: window closed, self-pick blocked, invalid team, invalid bet_type.
+
+    RETIRED FROM THE PRODUCT PATH BY WP6C, AND FAIL-CLOSED FOR A GOVERNED
+    LEAGUE. `POST /pool/pick` no longer calls this; it adapts into
+    `betting.pool_claims.submit_claim` and writes a `PoolClaim`. What this
+    writes — a `PoolBetPick` against one of three hardcoded pot names — is read
+    by nothing in the Rev1.3 settlement path, so for a league that has crossed
+    over to Rev1.3 a row here is a pick that can never be settled and never be
+    paid. The guard below refuses to create one.
+
+    THE FUNCTION AND ITS TABLE STAY. Historical `pool_bet_pick` rows remain
+    readable and no migration drops anything; a legacy-only league — one
+    carrying no Rev1.3 marker at all — is unaffected, exactly as it is for
+    `collect_weekly_entries` and `settle_pool`, whose guard this is.
     """
+    assert_legacy_pool_path_allowed(db, league_id, week)
+
     if bet_type not in _VALID_BET_TYPES:
         raise ValueError(f"Invalid bet_type {bet_type!r}. Must be one of: {sorted(_VALID_BET_TYPES)}")
 

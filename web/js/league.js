@@ -234,10 +234,12 @@ export function poolSheet(pool) {
       '<div class="fs-prev__row"><span class="fs-prev__label">Entry</span>' +
       `<span class="fs-prev__value fs-money" data-exact-cents="${pool.entryCents}">` +
       `${escapeHtml(formatCredits(pool.entryCents))}</span></div>` +
-      // S8-P4B-3R: `entered` is a count of entries, which the SLATE does not
-      // carry — entries live in `pool_claim`, and no read model publishes them
-      // yet. Drawing the em dash is the approved unresolved treatment; drawing
-      // `undefined`, which is what an unguarded interpolation did, is not.
+      // S8-P4B-3R noted that `entered` — a count of entries — lived in
+      // `pool_claim` with no read model publishing it, so the em dash was the
+      // approved unresolved treatment. WP6C published it: the slate now carries
+      // a claim COUNT, not a roster, so the row resolves without disclosing who
+      // picked what. The em dash remains for demo rows, which have no
+      // occurrence and therefore no count.
       '<div class="fs-prev__row"><span class="fs-prev__label">Entered</span>' +
       `<span class="fs-prev__value fs-money">` +
       `${pool.entered === undefined ? PENDING_FIGURE : pool.entered}</span></div>` +
@@ -259,6 +261,164 @@ export function poolSheet(pool) {
         ? '<div class="fs-note">Settled. Pool settlement is performed by the Pool ' +
           'engine; nothing here moves Credits.</div>'
         : '<div class="fs-note">All Pools for the week lock at the week’s first kickoff. ' +
-          'Entry binds to the Pool engine when the session seam lands.</div>'),
+          'A pick is a claim, not a stake — submitting one moves no Credits.</div>') +
+      poolPickControl(pool),
+    onMount: POOL_SHEET_MOUNT,
   };
+}
+
+/* ── WP6C · the governed pick control ───────────────────────────────────────*/
+
+/**
+ * The Pool sheet's mount hook.
+ *
+ * Set by the shell, which is the only thing that knows the acting league, the
+ * acting team, the authoritative week and how to refresh afterwards. NULL in
+ * demo mode and for any session whose slate did not bind — and a null hook
+ * means no control is wired, which is the same rule the Action surfaces follow:
+ * a GM whose state could not be read must not be offered a button, because
+ * neither they nor the page knows what it would submit.
+ *
+ * @type {((host: HTMLElement, api: object) => void)|null}
+ */
+let POOL_SHEET_MOUNT = null;
+
+/** @param {((host: HTMLElement, api: object) => void)|null} fn */
+export function setPoolSheetMount(fn) {
+  POOL_SHEET_MOUNT = fn;
+}
+
+/**
+ * The subject picker, or the reason there isn't one.
+ *
+ * DRAWN FROM THE SERVER'S OWN ANSWER, never from a client-side rule. The
+ * options are the subjects the occurrence admits — the census set
+ * `pool_claims._validate_subject` checks against — and `openForClaims` is the
+ * server's judgement on whether a submission could be accepted. Neither decides
+ * anything: `submit_claim` refuses regardless of what was drawn. Drawing the
+ * closed state rather than offering a control that is certain to be refused is
+ * a courtesy, not a permission.
+ *
+ * @param {object} pool a row from `slateRows()`
+ * @returns {string}
+ */
+function poolPickControl(pool) {
+  // Demo rows carry no occurrence, so there is nothing to claim against and no
+  // control is drawn. The illustrative cards were never a pick surface.
+  if (typeof pool.poolInstanceId !== 'number') return '';
+
+  const current = typeof pool.mySubjectId === 'number'
+    ? (pool.subjects.find((s) => s.subject_id === pool.mySubjectId) || null)
+    : null;
+
+  // ALWAYS DRAWN, even with no claim yet, and the em dash is the accepted
+  // unresolved treatment. It is also where a successful submission writes the
+  // server's confirmed subject, so the row has to exist before the press —
+  // a confirmation with nowhere to land is one the GM never sees.
+  const held =
+    '<div class="fs-prev__row"><span class="fs-prev__label">Your pick</span>' +
+    `<span class="fs-prev__value" id="fs-poolpick-held">` +
+    `${current ? escapeHtml(current.label) : PENDING_FIGURE}</span></div>`;
+
+  if (pool.settled) return held;
+
+  if (!pool.openForClaims) {
+    return held + '<div class="fs-note is-warn">'
+      + (pool.locked
+        ? 'This week’s Pools are locked. The window closes at the week’s first '
+          + 'kickoff, and the server holds that moment — not this page.'
+        : 'This Pool is not accepting picks.')
+      + '</div>';
+  }
+
+  const options = ['<option value="">— choose —</option>'].concat(
+    pool.subjects.map((s) => (
+      `<option value="${s.subject_id}"`
+      + (current && current.subject_id === s.subject_id ? ' selected' : '')
+      + `>${escapeHtml(s.label)}</option>`
+    )),
+  ).join('');
+
+  return (
+    held +
+    `<form class="fs-setform" id="fs-poolpick-form" data-instance="${pool.poolInstanceId}">` +
+    '<label class="fs-setform__label" for="fs-poolpick">' +
+    `${escapeHtml(pool.subject)}</label>` +
+    `<select class="fs-setform__input" id="fs-poolpick">${options}</select>` +
+    '<button type="submit" class="fs-btn fs-btn--gold fs-setform__save" ' +
+    `id="fs-poolpick-save">${current ? 'Change pick' : 'Submit pick'}</button>` +
+    '<p class="fs-setform__error" id="fs-poolpick-error" role="alert" ' +
+    'aria-live="polite"></p>' +
+    '</form>'
+  );
+}
+
+/**
+ * Bind the Pool pick form, wherever it is rendered.
+ *
+ * Called from the sheet's own mount rather than from `bindLeague`, because the
+ * form lives inside the SHEET and the sheet is created after the panel binds —
+ * the same reason `bindPoolEntryForm` is mounted that way.
+ *
+ * NO OPTIMISTIC CONFIRMATION. The control reports success only after the
+ * governed write has returned, and what it then displays is the SERVER's
+ * persisted claim rather than the value the GM chose. That distinction is the
+ * whole point of WP6C: the old surface confirmed a pick the settlement engine
+ * could not see.
+ *
+ * @param {HTMLElement} host the sheet element
+ * @param {{leagueId: number, teamId: number, week: number,
+ *          submit: Function, explain: Function,
+ *          onClaimed: (body: object) => void}} ctx
+ */
+export function bindPoolPickForm(host, ctx) {
+  const form = host.querySelector('#fs-poolpick-form');
+  if (!form) return;
+
+  const select = form.querySelector('#fs-poolpick');
+  const save = form.querySelector('#fs-poolpick-save');
+  const error = form.querySelector('#fs-poolpick-error');
+  const held = host.querySelector('#fs-poolpick-held');
+  let inFlight = false;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (inFlight) return;
+
+    error.textContent = '';
+    const subjectId = Number.parseInt(select.value, 10);
+    if (!Number.isInteger(subjectId)) {
+      error.textContent = 'Choose one first.';
+      return;
+    }
+
+    inFlight = true;
+    save.disabled = true;
+    save.textContent = 'Submitting…';
+    try {
+      const body = await ctx.submit({
+        leagueId: ctx.leagueId,
+        teamId: ctx.teamId,
+        week: ctx.week,
+        poolInstanceId: Number.parseInt(form.dataset.instance, 10),
+        subjectId,
+      });
+      // THE CONFIRMATION IS THE SERVER'S. The label redrawn below is looked up
+      // from `selected_subject_id` — what was PERSISTED — not from the value
+      // the GM chose. The two agree on every success, and on the one occasion
+      // they would not, the GM is shown what the database holds.
+      const option = Array.from(select.options).find(
+        (o) => Number.parseInt(o.value, 10) === body.selected_subject_id);
+      if (held && option) held.textContent = option.textContent;
+      select.value = String(body.selected_subject_id);
+      save.textContent = 'Pick recorded';
+      ctx.onClaimed(body);
+    } catch (refusal) {
+      error.textContent = ctx.explain(refusal);
+      save.disabled = false;
+      save.textContent = 'Submit pick';
+    } finally {
+      inFlight = false;
+    }
+  });
 }

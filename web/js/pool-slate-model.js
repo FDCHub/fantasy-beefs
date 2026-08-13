@@ -131,7 +131,44 @@ export function slateRows() {
     // card, which is what would turn four governed slots into five.
     continuation: slot.is_continuation,
     settled: slot.settled,
+    // ── WP6C · the claim layer ────────────────────────────────────────────
+    //
+    // The occurrence a claim is submitted against, the subjects it admits, and
+    // the viewing GM's own pick. Carried straight through from the read: the
+    // Pool sheet composes a claim from these and invents none of them. Before
+    // WP6C the sheet had no source for any of it, which is why its Entry row
+    // read "binds to the Pool engine when the session seam lands" — this is
+    // that seam.
+    poolInstanceId: slot.pool_instance_id,
+    subjects: Array.isArray(slot.subjects) ? slot.subjects : [],
+    mySubjectId: slot.my_subject_id === undefined ? null : slot.my_subject_id,
+    // `entered` was the em-dash placeholder the sheet drew because no read
+    // model published a claim count. It does now.
+    entered: typeof slot.entered === 'number' ? slot.entered : undefined,
+    openForClaims: Boolean(slot.open_for_claims),
+    locked: SERVED.locked === undefined ? true : Boolean(SERVED.locked),
   }));
+}
+
+/**
+ * The week's single governed lock moment, as the server reported it.
+ *
+ * ONE MOMENT FOR THE WHOLE WEEK — POR §11 — so it belongs to the slate rather
+ * than to a slot. `time` is null when the schedule has not landed, and `locked`
+ * is then TRUE with `reason` naming the closure: an unknowable window is a
+ * closed one, because a claim submitted into it is certain to be refused.
+ *
+ * @returns {{time: string|null, locked: boolean, reason: string|null}}
+ */
+export function slateLock() {
+  if (MODE !== SLATE_MODE_DRAWN || !SERVED) {
+    return { time: null, locked: true, reason: null };
+  }
+  return {
+    time: SERVED.lock_time || null,
+    locked: SERVED.locked === undefined ? true : Boolean(SERVED.locked),
+    reason: SERVED.lock_unavailable_reason || null,
+  };
 }
 
 /**

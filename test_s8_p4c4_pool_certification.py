@@ -38,7 +38,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 _TMP_DIR = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(_TMP_DIR, 's8p4c4.db')}"
@@ -779,7 +779,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from api.main import app  # noqa: E402
 from auth.session import CSRF_COOKIE, CSRF_HEADER  # noqa: E402
-from db.schema import PoolBetPick, PoolPrediction  # noqa: E402
+from db.schema import PoolBetPick, PoolClaim, PoolPot, PoolPrediction  # noqa: E402
 
 
 class Client:
@@ -807,6 +807,11 @@ def pool_state(team_id: int) -> dict:
         return {
             "picks": db.query(PoolBetPick)
                        .filter(PoolBetPick.team_id == team_id).count(),
+            # WP6C — the governed row. `picks` and `predictions` are the two
+            # LEGACY models, kept in this witness so a regression that quietly
+            # started writing one again would show up here rather than nowhere.
+            "claims": db.query(PoolClaim)
+                        .filter(PoolClaim.team_id == team_id).count(),
             "predictions": db.query(PoolPrediction)
                              .filter(PoolPrediction.team_id == team_id).count(),
             "instances": db.query(PoolInstance)
@@ -818,11 +823,35 @@ def pool_state(team_id: int) -> dict:
 gm_a, gm_b, comm_c, gm_f = (Client(A_EMAIL), Client(B_EMAIL),
                             Client(C_EMAIL), Client(F_EMAIL))
 
+# WP6C — A REAL GOVERNED OCCURRENCE TO PICK AGAINST.
+#
+# `/pool/pick` is an adapter into `betting.pool_claims.submit_claim` now, so a
+# pick names a `pool_instance` and a SUBJECT rather than a legacy pot name. The
+# ownership assertions below are unchanged in substance and still run BEFORE the
+# occurrence is read — what changed is that the positive case can now be a real
+# 200 instead of merely "not a 403", which is a stronger control.
+#
+# The pinned `PoolPot.lock_time` is how an operator-set lock reaches the engine.
+# It is a real future moment and the same server-side comparison still decides
+# every submission; no gate is weakened.
+with SessionLocal() as db:
+    _defkey = (db.query(PoolDefinition)
+               .filter(PoolDefinition.scope == "TEAM")
+               .order_by(PoolDefinition.catalog_number).first().key)
+    _inst = PoolInstance(league_id=LEAGUE_ID, season=SEASON, week=1,
+                         phase="REGULAR", rotation_cycle=1,
+                         definition_key=_defkey, slot=1, pot_cents=0)
+    db.add(_inst)
+    db.add(PoolPot(league_id=LEAGUE_ID, week=1,
+                   lock_time=datetime.now(timezone.utc) + timedelta(days=3)))
+    db.commit()
+    PICK_INSTANCE = _inst.id
+
 before_a = pool_state(A)
 
 status, body = comm_c.post("/pool/pick", {
-    "league_id": LEAGUE_ID, "team_id": A, "bet_type": "biggest_winner",
-    "pick": A, "week": 1})
+    "league_id": LEAGUE_ID, "team_id": A, "week": 1,
+    "pool_instance_id": PICK_INSTANCE, "subject_id": A})
 _assert("§1: a COMMISSIONER cannot submit a Pool pick as another GM",
         status == 403, f"status {status}: {str(body)[:110]}")
 
@@ -834,27 +863,42 @@ _assert("§3: no participation state changed",
         after_a["instances"] == before_a["instances"])
 _assert("§3: and the trial balance is unchanged",
         after_a["trial_balance"] == before_a["trial_balance"] == 0)
+# WP6C — and no governed CLAIM either, which is the row that now matters.
+_assert("§3: and no governed claim was created for GM A",
+        after_a["claims"] == before_a["claims"] == 0,
+        f"{before_a['claims']} → {after_a['claims']}")
 
 status, _ = gm_b.post("/pool/pick", {
-    "league_id": LEAGUE_ID, "team_id": A, "bet_type": "biggest_winner",
-    "pick": A, "week": 1})
+    "league_id": LEAGUE_ID, "team_id": A, "week": 1,
+    "pool_instance_id": PICK_INSTANCE, "subject_id": A})
 _assert("§3: a GM cannot submit a Pool pick as another GM", status == 403,
         f"status {status}")
 
 status, _ = gm_f.post("/pool/pick", {
-    "league_id": LEAGUE_ID, "team_id": A, "bet_type": "biggest_winner",
-    "pick": A, "week": 1})
+    "league_id": LEAGUE_ID, "team_id": A, "week": 1,
+    "pool_instance_id": PICK_INSTANCE, "subject_id": A})
 _assert("§3: cross-league submission is denied", status == 403,
         f"status {status}")
+
+# …and denied for their OWN team too, which is the isolation question rather
+# than the impersonation one. The occurrence belongs to another league, and
+# `submit_claim` refuses NOT_IN_LEAGUE rather than recording an orphan ticket.
+status, _ = gm_f.post("/pool/pick", {
+    "league_id": LEAGUE_ID, "team_id": F, "week": 1,
+    "pool_instance_id": PICK_INSTANCE, "subject_id": A})
+_assert("§3: a foreign GM cannot claim this league's occurrence for their own "
+        "team either", status == 409, f"status {status}")
 
 # THE COMMISSIONER IS NOT DISABLED AS A PLAYER. Their own pick is accepted on
 # the same terms as anyone's — the refusal above is about identity, not rank.
 status, own = comm_c.post("/pool/pick", {
-    "league_id": LEAGUE_ID, "team_id": C, "bet_type": "biggest_winner",
-    "pick": C, "week": 1})
-_assert("§1: a commissioner CAN submit their OWN team's pick",
-        status not in (401, 403),
+    "league_id": LEAGUE_ID, "team_id": C, "week": 1,
+    "pool_instance_id": PICK_INSTANCE, "subject_id": C})
+_assert("§1: a commissioner CAN submit their OWN team's pick", status == 200,
         f"status {status}: {str(own)[:110]}")
+_assert("§1: and it is a GOVERNED claim, not a legacy prediction row",
+        pool_state(C)["claims"] == 1 and pool_state(C)["picks"] == 0,
+        str(pool_state(C)))
 
 # THE SECOND DEFECT THIS PACKAGE FOUND: /pool/predict had no ownership check at
 # all — weaker than the commissioner-permissive one already on the checklist.
@@ -866,10 +910,21 @@ _assert("§2: a GM cannot submit a Worst Beat prediction as another team",
 _assert("§3: and no prediction row was written",
         pool_state(A)["predictions"] == before_pred["predictions"])
 
+# WP6C — AND THE SURFACE IS CLOSED EVEN FOR ITS OWNER, on a governed league.
+# Ownership is checked first, so the refusal above is still the ownership one;
+# this is the separate question of whether the LEGACY prediction model is still
+# writable at all once a league carries Rev1.3 state. It is not.
+status, _ = gm_a.post("/pool/predict", {
+    "league_id": LEAGUE_ID, "team_id": A, "predicted_team_id": B, "week": 1})
+_assert("§2: the legacy Worst Beat write fails closed for a governed league",
+        status == 409, f"status {status}")
+_assert("§3: and still wrote no prediction row",
+        pool_state(A)["predictions"] == before_pred["predictions"])
+
 anon = Client(None)
 status, _ = anon.post("/pool/pick", {
-    "league_id": LEAGUE_ID, "team_id": A, "bet_type": "biggest_winner",
-    "pick": A, "week": 1})
+    "league_id": LEAGUE_ID, "team_id": A, "week": 1,
+    "pool_instance_id": PICK_INSTANCE, "subject_id": A})
 _assert("§3: an unauthenticated pick is refused", status in (401, 403),
         f"status {status}")
 

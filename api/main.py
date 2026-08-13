@@ -4509,6 +4509,13 @@ def league_set_pool_entry(
 
 # ── The authoritative weekly Pool slate (S8-P4) ──────────────────────────────
 
+class PoolSubjectOut(BaseModel):
+    """One selectable outcome unit — POR §6.2."""
+    subject_id:   int
+    subject_type: str
+    label:        str
+
+
 class PoolSlotOut(BaseModel):
     slot:            int
     definition_key:  str
@@ -4524,6 +4531,30 @@ class PoolSlotOut(BaseModel):
     pot_cents:       int
     rollover_cents:  int
     settled:         bool
+    # ── WP6C: what the Pool pick control needs ────────────────────────────────
+    #
+    # The slate said WHICH Pools a week has. It could not say what a GM would be
+    # picking, so the Rev 4.2 Pool sheet had nothing to offer and the only pick
+    # control in the product posted to the legacy model instead. These four
+    # fields are what turn the read into one a governed claim can be composed
+    # from — all of them projected from `betting/pool_claim_view.py`, which
+    # reads the same census the engine validates a submission against.
+    #: The occurrence a claim is submitted against. NOT the catalog number: the
+    #: same definition recurs across weeks and cycles, and a claim belongs to
+    #: one drawn occurrence of it.
+    pool_instance_id: int
+    #: Subjects this occurrence admits — teams for a TEAM scope, that week's
+    #: matchups for a MATCHUP one.
+    subjects:        list[PoolSubjectOut]
+    #: The VIEWING GM's own claim, or None. Never anyone else's: a Pool is a
+    #: blind prediction until it settles.
+    my_subject_id:   Optional[int]
+    #: How many GMs have claimed. A count, not a roster — it fills the card's
+    #: "Entered" row without disclosing who picked what.
+    entered:         int
+    #: Whether a submission could be accepted right now. Presentation guidance
+    #: only; the engine refuses regardless of what was drawn.
+    open_for_claims: bool
 
 
 class PoolSlateOut(BaseModel):
@@ -4542,6 +4573,20 @@ class PoolSlateOut(BaseModel):
     slot_count:       int
     slots:            list[PoolSlotOut]
     drawn:            bool
+    # ── WP6C: the week's ONE governed lock moment (POR §11) ───────────────────
+    #
+    # Reported here rather than per slot because there is one: all four
+    # occurrences close at the week's earliest governed kickoff. It is the same
+    # value `pool_claims.submit_claim` enforces per submission, so the countdown
+    # a GM sees and the boundary the engine applies are the same fact.
+    #
+    # `locked` is TRUE when the moment is unknowable — the schedule has not
+    # landed, and `lock_unavailable_reason` says so. A claim then has no
+    # governed window to be inside, so offering one would be offering a certain
+    # refusal.
+    lock_time:        Optional[str]
+    locked:           bool
+    lock_unavailable_reason: Optional[str]
 
 
 @app.get("/league/{league_id}/pool/slate/{week}", response_model=PoolSlateOut)
@@ -4564,6 +4609,7 @@ def league_pool_slate(
     Continuations occupy slots and are flagged — a carried pot is a slot state,
     never a fifth Pool and never a second category.
     """
+    from betting.pool_claim_view import week_claim_view
     from betting.pool_rotation import DEFAULT_SLOT_COUNT
     from db.schema import PoolDefinition, PoolInstance
 
@@ -4585,12 +4631,29 @@ def league_pool_slate(
             PoolDefinition.key.in_([r.definition_key for r in rows])).all()
     } if rows else {}
 
+    # WP6C — THE CLAIM LAYER OF THE SAME WEEK, from the read model the pick
+    # route also projects. `viewer_team_id` is the member team resolved above,
+    # never a parameter: `my_subject_id` must not be answerable for a team the
+    # caller does not hold. A commissioner with no team in the league reads the
+    # slate with no claim of their own, which is correct — they have none.
+    claim_views = {
+        v.pool_instance_id: v for v in week_claim_view(
+            db, league_id=league_id, season=league.season, week=week,
+            viewer_team_id=_member_team_id(current_user, league_id, db))
+    }
+    _first = next(iter(claim_views.values()), None)
+
     return PoolSlateOut(
         league_id=league_id,
         season=league.season,
         week=week,
         slot_count=DEFAULT_SLOT_COUNT,
         drawn=bool(rows),
+        lock_time=(_first.lock_time.isoformat()
+                   if _first and _first.lock_time else None),
+        locked=bool(_first.locked) if _first else True,
+        lock_unavailable_reason=(_first.lock_unavailable_reason
+                                 if _first else None),
         slots=[
             PoolSlotOut(
                 slot=r.slot,
@@ -4610,6 +4673,19 @@ def league_pool_slate(
                 pot_cents=int(r.pot_cents or 0),
                 rollover_cents=int(r.rollover_cents or 0),
                 settled=bool(r.settled),
+                pool_instance_id=r.id,
+                subjects=[
+                    PoolSubjectOut(subject_id=s.subject_id,
+                                   subject_type=s.subject_type, label=s.label)
+                    for s in (claim_views[r.id].subjects
+                              if r.id in claim_views else ())
+                ],
+                my_subject_id=(claim_views[r.id].my_subject_id
+                               if r.id in claim_views else None),
+                entered=(claim_views[r.id].claim_count
+                         if r.id in claim_views else 0),
+                open_for_claims=(claim_views[r.id].open_for_claims
+                                 if r.id in claim_views else False),
             )
             for r in rows
         ],

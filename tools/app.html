@@ -1036,30 +1036,40 @@ function _poolPickCardHtml(poolWeek) {
       '</div>',
   ];
 
-  (poolWeek.bets || []).forEach(function(bt) {
-    var myPick   = (bt.picks || []).find(function(p) { return p.team_id === GM_TEAM_ID; });
-    var hasPick  = myPick && myPick.picked_team_id != null;
+  // WP6C — GOVERNED OCCURRENCES, NOT LEGACY POT NAMES.
+  //
+  // This card used to iterate `poolWeek.bets` — the three hardcoded
+  // `POOL_BET_TYPES` — and post `{bet_type, pick}` to a route that wrote a
+  // `PoolBetPick`. The Rev1.3 settlement engine reads `pool_claim` and never
+  // that table, so every pick made here was invisible to the only thing that
+  // pays. `GET /pool/week/{week}` now returns the week's drawn occurrences with
+  // the subjects each admits, and the pick posts a governed claim.
+  //
+  // NO RESET CONTROL. The old `×` posted `pick: null` to unset a legacy row.
+  // The governed model has no withdrawal primitive — `submit_claim` records or
+  // replaces a claim and there is no unclaim — so the button is gone rather
+  // than left to post something the engine cannot express. A GM changes their
+  // mind by picking again, which replaces the claim in place.
+  (poolWeek.pools || []).forEach(function(pool) {
+    var open = pool.open_for_claims;
+    var mine = pool.my_subject_id;
 
     var opts = '<option value="">— pick —</option>';
-    (poolWeek.teams || []).forEach(function(t) {
-      if (!bt.self_pick_allowed && t.team_id === GM_TEAM_ID) return;
-      var sel = hasPick && myPick.picked_team_id === t.team_id ? ' selected' : '';
-      opts += '<option value="' + t.team_id + '"' + sel + '>' + _esc(t.team_name) + '</option>';
+    (pool.subjects || []).forEach(function(s) {
+      var sel = mine != null && mine === s.subject_id ? ' selected' : '';
+      opts += '<option value="' + s.subject_id + '"' + sel + '>' + _esc(s.label) + '</option>';
     });
 
     parts.push(
       '<div class="pool-pick-row">',
-        '<span class="pool-pick-label">' + _esc(bt.label) + '</span>',
-        '<select class="pool-pick-select" id="pool-sel-' + bt.bet_type + '"' + (locked ? ' disabled' : '') + '>',
+        '<span class="pool-pick-label">' + _esc(pool.definition_key) + '</span>',
+        '<select class="pool-pick-select" id="pool-sel-' + pool.pool_instance_id + '"' + (open ? '' : ' disabled') + '>',
           opts,
         '</select>',
         '<div class="pool-pick-actions">',
           '<button class="pool-pick-btn"' +
-            (locked ? ' disabled' : ' onclick="submitPoolPick(\'' + bt.bet_type + '\')"') +
+            (open ? ' onclick="submitPoolPick(' + pool.pool_instance_id + ')"' : ' disabled') +
           '>Go</button>',
-          (hasPick && !locked)
-            ? '<button class="pool-pick-btn pool-pick-btn--reset" onclick="submitPoolPick(\'' + bt.bet_type + '\', true)">×</button>'
-            : '',
         '</div>',
       '</div>'
     );
@@ -1086,31 +1096,33 @@ function _startPoolCountdown(lockTimeISO) {
   _poolCountdownTimer = setInterval(tick, 60000);
 }
 
-async function submitPoolPick(betType, reset) {
-  var sel        = document.getElementById('pool-sel-' + betType);
-  var pickTeamId = reset ? null : (sel ? parseInt(sel.value, 10) || null : null);
+async function submitPoolPick(poolInstanceId) {
+  var sel       = document.getElementById('pool-sel-' + poolInstanceId);
+  var subjectId = sel ? parseInt(sel.value, 10) : NaN;
 
-  if (!reset && !pickTeamId) { alert('Select a team first.'); return; }
+  if (!Number.isInteger(subjectId)) { alert('Select one first.'); return; }
 
   try {
     var res = await fetchAuth(API_BASE + '/pool/pick', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
-        league_id: LEAGUE_ID,
-        team_id:   GM_TEAM_ID,
-        bet_type:  betType,
-        pick:      pickTeamId,
-        week:      CURRENT_WEEK,
+        league_id:        LEAGUE_ID,
+        team_id:          GM_TEAM_ID,
+        week:             CURRENT_WEEK,
+        pool_instance_id: poolInstanceId,
+        subject_id:       subjectId,
       }),
     });
     if (!res.ok) {
       var err = await res.json().catch(function() { return {}; });
-      alert('Error: ' + (err.detail || 'HTTP ' + res.status));
+      var detail = err.detail && err.detail.message ? err.detail.message : err.detail;
+      alert('Error: ' + (detail || 'HTTP ' + res.status));
       return;
     }
-    // Refresh the pool card
-    var weekRes = await fetch(API_BASE + '/pool/week/' + CURRENT_WEEK + '?league_id=' + LEAGUE_ID);
+    // Refresh the pool card. The read is AUTHENTICATED now — it carries the
+    // viewing GM's own claim, so it has to know who is asking.
+    var weekRes = await fetchAuth(API_BASE + '/pool/week/' + CURRENT_WEEK + '?league_id=' + LEAGUE_ID);
     if (weekRes.ok) {
       _poolData = await weekRes.json();
       var poolEl = document.getElementById('vp-pool-header');
@@ -1223,7 +1235,9 @@ async function loadTheBook() {
     var parallel = await Promise.all([
       fetch(API_BASE + '/bets/' + gmMatchupId)
         .then(function(r) { return r.ok ? r.json() : []; }).catch(function() { return []; }),
-      fetch(API_BASE + '/pool/week/' + CURRENT_WEEK + '?league_id=' + LEAGUE_ID)
+      // WP6C: authenticated — the governed week read carries the viewing GM's
+      // own claim, so it resolves the acting team from the session.
+      fetchAuth(API_BASE + '/pool/week/' + CURRENT_WEEK + '?league_id=' + LEAGUE_ID)
         .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
     ]);
     var gmBets = parallel[0];

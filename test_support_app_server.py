@@ -231,8 +231,26 @@ _SEED_POOL_SLATE = """
     # tested for reading it rather than composing one. No gate is weakened and
     # no provider measurement is fabricated.
     from betting.pool_catalog import seed_definitions
-    from db.schema import PoolDefinition, PoolInstance
+    from db.schema import PoolDefinition, PoolInstance, PoolPot
     seed_definitions(db)
+    db.flush()
+
+    # WP6C — THE WEEK'S GOVERNED LOCK MOMENT.
+    #
+    # `pool_claims.pool_lock_time` reads `PoolPot.lock_time` when an operator
+    # has pinned one and otherwise derives the week's earliest kickoff from
+    # `NflSchedule`. This fixture has no schedule, so without a pinned lock the
+    # read raises ScheduleNotReadyError and every occurrence reports itself
+    # closed — which is the CORRECT fail-closed answer, and also means no pick
+    # could be certified through the product here.
+    #
+    # A pinned lock is the state a real operating week has, not a weakened gate:
+    # the value is a real future moment and the same server-side comparison
+    # `submit_claim` performs still decides every submission. The late/locked
+    # negative is certified separately by moving this timestamp into the past.
+    from datetime import timedelta as _td
+    db.add(PoolPot(league_id=league.id, week={slate_week},
+                   lock_time=datetime.now(timezone.utc) + _td(days=3)))
     db.flush()
 
     slate_keys = [d.key for d in db.query(PoolDefinition)

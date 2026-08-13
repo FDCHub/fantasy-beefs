@@ -58,7 +58,35 @@ await withPage({ port: 9391, settleMs: 1600 }, async ({ evaluate }) => {
   `));
 
   const OTHER = roster[0];
-  const WEEK = 1;
+
+  /* WP6C — THE WEEK AND THE OCCURRENCE COME FROM THE SERVER.
+   *
+   * A pick names a governed `pool_instance` and a SUBJECT now, not a legacy pot
+   * name, so this suite can no longer compose a request out of constants. It
+   * reads the authoritative slate — the same read the shipped client makes —
+   * and picks the first drawn occurrence. Hard-coding week 1 here would also
+   * have been wrong: the fixture league STATES its own week. */
+  const slate = await evaluate(asyncProbe(`
+    // The SAME context read production-data.js makes, for the same reason: an
+    // illustrative constant here would ask for a week the league is not in.
+    const ctx = await (await fetch('/league/' + ${identity.league} + '/context/me',
+      { credentials: 'same-origin' })).json();
+    const week = ctx.week_resolved ? ctx.current_week : null;
+    if (week === null) return { week, ok: false };
+    const r = await fetch('/league/' + ${identity.league} + '/pool/slate/' + week,
+      { credentials: 'same-origin' });
+    if (!r.ok) return { week, ok: false };
+    const b = await r.json();
+    const slot = (b.slots || [])[0] || null;
+    return {
+      week, ok: true, drawn: b.drawn, locked: b.locked,
+      instance: slot ? slot.pool_instance_id : null,
+      subject: slot && slot.subjects.length ? slot.subjects[0].subject_id : null,
+      openForClaims: slot ? slot.open_for_claims : false,
+    };
+  `));
+
+  const WEEK = slate.week;
 
   report.section('Pool pick authority, from the loaded application');
 
@@ -66,6 +94,14 @@ await withPage({ port: 9391, settleMs: 1600 }, async ({ evaluate }) => {
     typeof identity.team === 'number', String(identity.team));
   report.check('and another team in the league to aim at',
     typeof OTHER === 'number' && OTHER !== identity.team, String(OTHER));
+
+  // WP6C — the governed occurrence the refusals below are aimed at. Without one
+  // every request would fail validation and the ownership guard would never be
+  // reached, so each negative would pass against a route with no guard at all.
+  report.check('the session can read a drawn governed Pool occurrence',
+    slate.ok === true && slate.drawn === true
+      && typeof slate.instance === 'number' && typeof slate.subject === 'number',
+    JSON.stringify(slate));
 
   /* ── The negative: picking for someone else ───────────────────────────── */
 
@@ -76,12 +112,13 @@ await withPage({ port: 9391, settleMs: 1600 }, async ({ evaluate }) => {
   `));
 
   const foreign = await evaluate(post('/pool/pick', {
-    league_id: 0, team_id: 0, bet_type: 'biggest_winner', pick: 0, week: WEEK,
+    league_id: 0, team_id: 0, week: WEEK,
+    pool_instance_id: slate.instance, subject_id: slate.subject,
   }));
 
   const asOther = await evaluate(post('/pool/pick', {
-    league_id: identity.league, team_id: OTHER,
-    bet_type: 'biggest_winner', pick: OTHER, week: WEEK,
+    league_id: identity.league, team_id: OTHER, week: WEEK,
+    pool_instance_id: slate.instance, subject_id: slate.subject,
   }));
 
   // THE TOKEN REACHED THE REQUEST. Without this the refusals below prove
@@ -120,17 +157,35 @@ await withPage({ port: 9391, settleMs: 1600 }, async ({ evaluate }) => {
   /* ── The positive: picking for your own team ──────────────────────────── */
 
   const own = await evaluate(post('/pool/pick', {
-    league_id: identity.league, team_id: identity.team,
-    bet_type: 'biggest_winner', pick: identity.team, week: WEEK,
+    league_id: identity.league, team_id: identity.team, week: WEEK,
+    pool_instance_id: slate.instance, subject_id: slate.subject,
   }));
 
-  // NOT ASSERTED AS 200. This fixture may have no Pool week drawn, in which
-  // case the engine refuses for a POOL reason (400/404) rather than an
-  // authority one. What must never happen is a 403: the GM owns this team, and
-  // an ownership refusal here would mean the repair had disabled them.
   report.check('a GM is never refused OWNERSHIP of their own team’s pick',
     own.status !== 403,
     `status ${own.status}: ${JSON.stringify(own.payload).slice(0, 110)}`);
+
+  // WP6C — AND IT LANDS AS A REAL GOVERNED CLAIM. Before the cutover this
+  // returned 200 having written a `PoolBetPick`, which the Rev1.3 settlement
+  // engine never reads: the GM was told their pick was recorded and held no
+  // payable ticket. A 200 alone therefore proves nothing here; what proves it
+  // is the authoritative re-read reporting the claim back.
+  report.check('and it is accepted', own.status === 200,
+    `status ${own.status}: ${JSON.stringify(own.payload).slice(0, 140)}`);
+
+  const mine = await evaluate(asyncProbe(`
+    const r = await fetch('/league/' + ${identity.league} + '/pool/slate/${WEEK}',
+      { credentials: 'same-origin' });
+    const b = await r.json();
+    const slot = b.slots.find((s) => s.pool_instance_id === ${slate.instance});
+    return { mySubjectId: slot ? slot.my_subject_id : null,
+             entered: slot ? slot.entered : null };
+  `));
+  report.check('the authoritative read reflects the GM’s own governed claim',
+    mine.mySubjectId === slate.subject,
+    `my_subject_id=${mine.mySubjectId} expected ${slate.subject}`);
+  report.check('and the occurrence counts exactly one entry',
+    mine.entered === 1, String(mine.entered));
 
   /* ── No optimistic selection survives a refusal ───────────────────────── */
 

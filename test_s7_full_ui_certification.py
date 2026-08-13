@@ -487,7 +487,16 @@ _FORMS = re.findall(r"<form\b[^>]*", APP_RENDERED_SOURCE + INDEX)
 # invariant's substance is unchanged: EVERY form is enumerated, and each is
 # either the sign-in gate or a governed, authenticated, server-authorised
 # mutation. A form that is neither is what this still refuses.
-_GOVERNED_FORMS = {"fs-gate-form", "fs-pool-entry-form"}
+#
+# GOVERNED REVISION, WP6C. A third form: the Pool pick. It posts to
+# `POST /pool/pick`, which is an adapter into the certified
+# `betting.pool_claims.submit_claim`, and it is authenticated, ownership-checked
+# and refused server-side for anyone who does not hold the team — so it meets
+# the same test every other entry here meets. Before WP6C the Rev 4.2 Pool sheet
+# carried NO control at all, and the only shipped pick surface wrote a legacy
+# row the settlement engine never reads. This list growing by one is what
+# closing that gap looks like.
+_GOVERNED_FORMS = {"fs-gate-form", "fs-pool-entry-form", "fs-poolpick-form"}
 _assert("every form in the application is enumerated and governed",
         len(_FORMS) == len(_GOVERNED_FORMS)
         and all(any(name in f for f in _FORMS) for name in _GOVERNED_FORMS),
@@ -495,6 +504,17 @@ _assert("every form in the application is enumerated and governed",
 _assert("the mutating form targets the governed command, not the legacy route",
         "/settings/pool-entry" in APP_SOURCE
         and "'/pool/config'" not in APP_SOURCE)
+# WP6C — and the Pool pick form targets the GOVERNED claim path. A control bound
+# to the legacy three-pot engine would report a pick the Rev1.3 settlement
+# engine cannot see, which is the exact defect WP6C removed. Scoped to the
+# command module rather than the whole app: `bet_type` is also the WAGER market
+# vocabulary in The Book, and a global scan would trip on that and prove nothing.
+_POOL_CLAIM_CMD = _strip_comments(_read("js", "pool-claim-command.js"))
+_assert("the Pool pick form targets the governed claim route",
+        "'/pool/pick'" in _POOL_CLAIM_CMD
+        and "pool_instance_id" in _POOL_CLAIM_CMD
+        and "subject_id" in _POOL_CLAIM_CMD
+        and "bet_type" not in _POOL_CLAIM_CMD)
 
 print("\nNo browser credential enters script-readable storage")
 
