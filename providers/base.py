@@ -56,6 +56,53 @@ class Finality(str, Enum):
         return self is Finality.FINAL
 
 
+class MatchupBracket(str, Enum):
+    """WP1A — the provider's statement about which BRACKET a matchup belongs to.
+
+    CHAMPIONSHIP        the provider says this matchup is on the championship
+                        track — the only postseason track FantasyStakes supports
+    NON_CHAMPIONSHIP    the provider says it is not: consolation, placement,
+                        third-place, toilet bowl, or anything else that is not
+                        the championship track
+    UNKNOWN             the provider said nothing usable about the bracket
+
+    A TRISTATE FOR THE SAME REASON `Finality` IS ONE, and the reason is worth
+    restating because the failure it prevents is the expensive one. A boolean
+    `is_championship` has no room for "the provider did not say", so an absent
+    signal collapses into False-with-a-shrug — or, worse, into a default that
+    reads as True for every matchup in a postseason week. Both readings are
+    wrong, and they are wrong in opposite directions.
+
+    UNKNOWN IS NOT NON_CHAMPIONSHIP AND IS EMPHATICALLY NOT CHAMPIONSHIP.
+    They are kept apart because they describe different situations: "this is a
+    consolation game" is a provider fact that can be acted on, while "we could
+    not tell" is a gap that must stop the determination entirely. Owner ruling
+    (WP1A §2) makes the second fail closed — an unclassified postseason week
+    yields NO championship-alive set at all, never a fallback to every team that
+    happens to have a matchup.
+
+    NOTHING HERE IS DERIVED FROM A SCORE, A WEEK NUMBER, OR TEAM SURVIVAL. A
+    matchup is on the championship track because a provider said so, or its
+    bracket is UNKNOWN. `providers/yahoo/` does not populate this field today —
+    see season/championship_track.py for what that costs and why it is correct.
+    """
+
+    CHAMPIONSHIP = "CHAMPIONSHIP"
+    NON_CHAMPIONSHIP = "NON_CHAMPIONSHIP"
+    UNKNOWN = "UNKNOWN"
+
+    @property
+    def is_affirmatively_championship(self) -> bool:
+        """The ONLY predicate a championship-track path may consult.
+
+        Named for what it asserts, exactly as `is_affirmatively_final` is. A
+        bare `if bracket:` would pass for UNKNOWN — every member of a str-Enum
+        is truthy — and `bracket != NON_CHAMPIONSHIP` would admit UNKNOWN, which
+        is the specific mistake the owner ruling forbids.
+        """
+        return self is MatchupBracket.CHAMPIONSHIP
+
+
 @dataclass(frozen=True)
 class ProviderLeague:
     """One league's provider-stable identity and season boundaries."""
@@ -72,6 +119,18 @@ class ProviderLeague:
     #: frozen value is a conflict rather than an update.
     season_final_week: int | None = None
     playoff_start_week: int | None = None
+    #: WP1A — how many teams enter the CHAMPIONSHIP playoff track. None where
+    #: the provider did not state it, which is the current state for every
+    #: provider in this repository: no transport method fetches it and no parser
+    #: reads it. APPENDED, WITH A DEFAULT, so every existing construction site
+    #: keeps working unchanged.
+    #:
+    #: THIS IS A FIELD SIZE, NOT A BRACKET SHAPE. It is the only input from
+    #: which season/championship_track.py derives a round count, and it derives
+    #: it arithmetically — no league size, no round count and no week number is
+    #: written down anywhere. None means the round count stays None; it never
+    #: means "assume the usual".
+    playoff_team_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +180,17 @@ class ProviderMatchup:
     #: authoritative, and one that does not has not made the statement.
     winner_team_key: str | None = None
     is_tied: bool = False
+    #: WP1A — which bracket this matchup belongs to, per the provider.
+    #:
+    #: DEFAULTS TO UNKNOWN, AND THE DEFAULT IS THE POINT. Every existing
+    #: producer — providers/yahoo/normalize.py included — constructs this DTO
+    #: without the field and therefore states nothing about the bracket, which
+    #: is exactly the truth: nothing in this repository can classify a Yahoo
+    #: matchup as championship or consolation today. A default of CHAMPIONSHIP
+    #: would have silently admitted every consolation game into the
+    #: championship track, and a default of NON_CHAMPIONSHIP would have silently
+    #: excluded every real one. Only UNKNOWN is honest, and it fails closed.
+    bracket: MatchupBracket = MatchupBracket.UNKNOWN
 
 
 @dataclass(frozen=True)
