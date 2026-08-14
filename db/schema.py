@@ -1857,6 +1857,82 @@ class PoolInstance(Base):
     origin = relationship("PoolInstance", remote_side=[id])
 
 
+class PoolWeekSubjectManifest(Base):
+    """WP1B — the FROZEN legal subject universe of one postseason league-week.
+
+    THE RULE THIS EXISTS TO MAKE TRUE (WP1B §3, owner ruling):
+
+        The field a member sees and picks from must be the same field
+        settlement later evaluates.
+
+    Before this table the subject universe was recomputed on every read from
+    `betting.pool_subjects.league_weekly_structure`. In the regular season that
+    is harmless — the universe is "every team in the league", which does not
+    move. In the postseason it is derived from provider championship state,
+    which does move: a Wednesday refresh that reclassified a bracket would
+    silently change the field a GM picked from on Tuesday, change `considered`
+    underneath the census, and could flip a settleable Pool to INCOMPLETE_FIELD.
+
+    ONE ROW PER (LEAGUE, SEASON, WEEK, SCOPE, SUBJECT). The grain is the WEEK
+    and the SCOPE, not the individual occurrence, and that is a deliberate
+    strengthening rather than a shortcut. All four of a week's cards face the
+    same championship field; there is no rule under which slot 1 and slot 3
+    could legitimately disagree about which teams are alive. Per-occurrence rows
+    would make that disagreement REPRESENTABLE, and anything representable
+    eventually gets written. It also lets the certified settlement path consume
+    the frozen universe through the seam it already calls, with no change to
+    `betting/pool_settlement.py` at all.
+
+    NO YAHOO FIELD IS STORED HERE. Every column is a FantasyStakes-native
+    reference: our league id, our season, our week, our scope name, and our own
+    `teams.id` / `matchups.id` primary keys. No bracket flag, no seed, no
+    provider payload, no provider classification and no Yahoo-derived
+    descriptive text is persisted. This is a record of what THIS APPLICATION
+    offered, not a cache of what Yahoo said.
+
+    ABSENCE IS A GOVERNED STATE, NOT A GAP. A league-week with no rows here is
+    UNMANIFESTED and falls back to the derived universe — which is exactly the
+    regular-season behaviour and exactly what every pre-WP1B historical
+    occurrence needs. Absence therefore means "no freeze applies", never "the
+    field is empty". A frozen week with a genuinely empty universe is
+    unreachable: the slate build refuses before publishing one.
+    """
+
+    __tablename__ = "pool_week_subject_manifest"
+    __table_args__ = (
+        CheckConstraint("scope IN ('TEAM','MATCHUP')",
+                        name="ck_pool_week_subject_manifest_scope"),
+        UniqueConstraint("league_id", "season", "week", "scope", "subject_id",
+                         name="uq_pool_week_subject_manifest_subject"),
+        Index("ix_pool_week_subject_manifest_lookup",
+              "league_id", "season", "week", "scope"),
+    )
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    league_id  = Column(Integer, ForeignKey("leagues.id"), nullable=False)
+    season     = Column(Integer, nullable=False)
+    week       = Column(Integer, nullable=False)
+    #: 'TEAM' or 'MATCHUP' — the same two scope names betting/pool_subjects.py
+    #: governs. String + CHECK, following PoolInstance.phase; this repository
+    #: carries no native Enum anywhere.
+    scope      = Column(String,  nullable=False)
+    #: An internal `teams.id` for TEAM scope, an internal `matchups.id` for
+    #: MATCHUP scope. NOT a foreign key: one column cannot reference two tables,
+    #: and splitting it into two nullable FK columns would make "exactly one is
+    #: set" an application rule rather than a schema one — strictly worse. The
+    #: scope column states which table the value belongs to, and the writer
+    #: resolves both through the certified identity seam before writing.
+    subject_id = Column(Integer, nullable=False)
+    #: The rotation cycle in force when the freeze happened. Audit only; nothing
+    #: reads it to make a decision. It answers "which draw produced this" without
+    #: a join.
+    rotation_cycle = Column(Integer, nullable=True)
+    frozen_at  = Column(DateTime(timezone=True),
+                        default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+
+
 class PoolRotationCycle(Base):
     """One row per cycle open — §C3 verbatim: league_id, season, rotation_cycle,
     opened_week, eligible_set_size, opened_at. Satisfies POR §4's auditable-reset

@@ -339,8 +339,36 @@ def league_weekly_structure(db, *, league_id: int, week: int,
 
     TEAM subjects come from the league's team roster of record; MATCHUP subjects
     from that week's schedule. Neither query touches a stat table, which is the
-    property Scope §H scenario 28 exists to prove."""
-    from db.schema import Matchup, Team
+    property Scope §H scenario 28 exists to prove.
+
+    ── WP1B: A FROZEN POSTSEASON WEEK OVERRIDES THE DERIVED UNIVERSE ─────────
+
+    When `pool_week_subject_manifest` carries rows for this league-week-scope,
+    THOSE ids are the census — the derived queries below are not run at all.
+    That is the whole of the postseason contraction: every consumer of this
+    function (settlement's census, the GM's option list, and the claim
+    validator) gets the contracted field without any of them changing.
+
+    THE SIGNATURE IS UNCHANGED, AND THAT IS THE DESIGN. `pool_settlement.py` is
+    certified economic code and calls this with exactly these three arguments.
+    Keying the manifest by league-week-scope rather than by occurrence is what
+    lets the frozen field reach settlement through the seam it already uses,
+    instead of threading an occurrence id through a protected money path.
+
+    ABSENT MANIFEST MEANS NO FREEZE APPLIES — never an empty field. The regular
+    season is unmanifested by construction, and so is every occurrence drawn
+    before WP1B; both keep the derived behaviour below, byte for byte.
+    """
+    from db.schema import League, Matchup, Team
+    from betting.pool_postseason import frozen_subject_ids
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is not None and scope in (SCOPE_TEAM, SCOPE_MATCHUP):
+        frozen = frozen_subject_ids(db, league_id=league_id,
+                                    season=league.season, week=week,
+                                    scope=scope)
+        if frozen is not None:
+            return WeeklyStructure(scope=scope, considered_subject_ids=frozen)
 
     if scope == SCOPE_TEAM:
         ids = [t.id for t in db.query(Team)

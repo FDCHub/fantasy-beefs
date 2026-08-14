@@ -88,7 +88,17 @@ absent.
       ZERO PoolInstance rows were created, that no POSTSEASON occurrence exists,
       that not one of the 80 `postseason_eligible` values changed, and that no
       league activation row moved. The postseason catalog question is untouched
-      and remains open; it simply no longer blocks the close.
+      by the sweep; it simply no longer blocks the close.
+
+      WP1B UPDATE. The POR §8 blocker described above — "every
+      `postseason_eligible` is NULL" — has since been RESOLVED by owner ruling:
+      the values are now explicit booleans, TRUE on 44 permitted definitions and
+      FALSE on 36. That changes the WORLD this section describes, not the RULE
+      it proves. §15 still asserts the sweep touches no flag, creates no
+      occurrence and consults no gate; §15.9's second clause, which pinned the
+      flags to NULL, is amended in place with its reasoning recorded there. The
+      close in this suite still reaches the boundary with no postseason
+      occurrence, because this league never draws one.
 
 Requires TEST_DATABASE_URL -> a local, disposable, empty, _test-named database.
 """
@@ -1740,12 +1750,49 @@ _assert("§15: exactly one ROLLOVER_EXPIRY_SWEEP event exists per carried "
         str(_sweep_event_rows))
 
 # ── REQUIRED PROOFS 8, 9 — the postseason catalog is untouched ───────────────
-_assert("§15.9: NOT ONE `postseason_eligible` value changed — all 80 governed "
-        "definitions are byte-for-byte as the catalog seeded them",
-        _ps_flags_after == _ps_flags_before
-        and all(v is None for _, v in _ps_flags_after),
+#
+# WP1B AMENDED THE SECOND CLAUSE OF THIS ASSERTION, AND ONLY THE SECOND.
+#
+# As written for WP6F it asserted two different things at once:
+#
+#   (1) `_ps_flags_after == _ps_flags_before` — the terminal rollover sweep
+#       changes no `postseason_eligible` value. That is a real INVARIANT about
+#       the sweep, it is what "the sweep took no dependency on the postseason
+#       catalog" means, and it is UNCHANGED and still asserted below.
+#
+#   (2) `all(v is None …)` — every flag is NULL. That was never an invariant.
+#       It was a SNAPSHOT of the recorded POR §8 blocker, true on the day WP6F
+#       was written because no postseason subset had been approved yet.
+#
+# WP1B's owner ruling resolved exactly that blocker: `postseason_eligible` is
+# now an explicit boolean on all 80 rows — TRUE on the 44 permitted definitions,
+# FALSE on the 36 excluded ones. Clause (2) therefore asserts a state the
+# product has deliberately left behind, and keeping it would pin this suite to
+# the absence of a feature rather than to the behaviour of the sweep.
+#
+# The invariant is kept and SHARPENED rather than dropped: the flags must be
+# unchanged across the close AND must still be the values the catalog seeded, so
+# a sweep that quietly rewrote one is caught just as surely as before — and now
+# a sweep that rewrote one to NULL would be caught too, which the old form could
+# not distinguish from a pass.
+from betting.pool_catalog import load_catalog as _load_catalog  # noqa: E402
+
+_catalog_flags = sorted(
+    (d.key, d.postseason_eligible) for d in _load_catalog().definitions)
+
+_assert("§15.9: NOT ONE `postseason_eligible` value changed across the close — "
+        "the sweep takes no dependency on the postseason catalog and rewrites "
+        "nothing in it",
+        _ps_flags_after == _ps_flags_before,
         f"{len(_ps_flags_after)} definitions, distinct values "
         f"{sorted({v for _, v in _ps_flags_after}, key=str)}")
+_assert("§15.9b: and every value still equals what the governed catalog "
+        "artifact seeded — WP1B resolved the POR §8 nulls to explicit booleans "
+        "and the close leaves them exactly there",
+        _ps_flags_after == _catalog_flags,
+        f"{sum(1 for k, v in _ps_flags_after if v)} eligible / "
+        f"{sum(1 for k, v in _ps_flags_after if v is False)} excluded / "
+        f"{sum(1 for k, v in _ps_flags_after if v is None)} unresolved")
 _assert("§15.8: NO postseason Pool definition was activated — the league's "
         "activation rows are unchanged, and the sweep never consulted a gate",
         _activations_after == _activations_before,

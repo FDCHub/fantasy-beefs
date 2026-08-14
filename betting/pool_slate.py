@@ -126,27 +126,79 @@ def pending_continuations(db, *, league_id: int, season: int, week: int):
             .all())
 
 
-def used_fresh_keys(db, *, league_id: int, season: int,
-                    rotation_cycle: int) -> set[str]:
-    """Definition keys already consumed as FRESH draws in this cycle.
+def used_fresh_keys(db, *, league_id: int, season: int, rotation_cycle: int,
+                    phase: str = PHASE_REGULAR) -> set[str]:
+    """Definition keys already consumed as FRESH draws in this cycle and phase.
 
-    `origin_instance_id IS NULL` is the whole filter and it is load-bearing: a
-    continuation is one instance persisting, not a second draw (POR §4)."""
+    `origin_instance_id IS NULL` is the whole filter on lineage and it is
+    load-bearing: a continuation is one instance persisting, not a second draw
+    (POR §4).
+
+    ── WP1B: THE PHASE IS A PARAMETER, NOT A CONSTANT ───────────────────────
+
+    This filter was pinned to `PHASE_REGULAR`, so postseason draws accumulated
+    nothing. Combined with two other facts — the ranking digest is over
+    (definition_key, league_id, season, rotation_cycle) with WEEK deliberately
+    excluded (`pool_rotation.build_week_slate`), and the postseason does not
+    cycle — every postseason week subtracted an empty used-set from an identical
+    candidate list and ranked it identically. The quarter-final, the semi-final
+    and the championship week would have drawn the SAME FOUR definitions.
+
+    Reading the phase being built fixes that with no change to the ranking
+    contract, no week in the digest, and no new state: the postseason now
+    consumes its own candidates exactly as the regular season consumes its own.
+    The two phases stay separate sets — a definition drawn in week 3 is not
+    "used up" for the playoffs, and vice versa.
+    """
     from db.schema import PoolInstance
 
     rows = (db.query(PoolInstance.definition_key)
             .filter(PoolInstance.league_id == league_id,
                     PoolInstance.season == season,
                     PoolInstance.rotation_cycle == rotation_cycle,
-                    PoolInstance.phase == PHASE_REGULAR,
+                    PoolInstance.phase == phase,
                     PoolInstance.origin_instance_id.is_(None))
             .all())
     return {r[0] for r in rows}
 
 
+def _championship_candidates(eligible, *, league_id: int, season: int,
+                             rotation_cycle: int, needed: int):
+    """The themed title-week candidate set — WP1B §12.
+
+    PREFERRED FIRST, THEN A DETERMINISTIC TOP-UP. Whichever of
+    `CHAMPIONSHIP_PREFERRED_KEYS` survive both gates are taken in their declared
+    order; if that is fewer than the week needs, the shortfall is filled from
+    the rest of the permitted postseason catalog **through the existing ranker**,
+    not by an arbitrary slice. So a partially supported week still produces four
+    cards, still deterministically, and still favouring the themed set.
+
+    WHY THE CANDIDATE LIST IS TRIMMED TO EXACTLY `needed` WHEN IT CAN BE.
+    `build_week_slate` ranks whatever it is handed and takes the top N, and its
+    ranking is intentionally blind to caller order. Handing it the full eligible
+    set would therefore let the digest pick any four and defeat the theme.
+    Handing it exactly the intended set makes the theme survive the ranker while
+    leaving the ranker's contract — and its determinism proof — untouched.
+    """
+    from betting.pool_postseason import CHAMPIONSHIP_PREFERRED_KEYS
+    from betting.pool_rotation import rank_definitions
+
+    by_key = {d.definition_key: d for d in eligible}
+    preferred = [by_key[k] for k in CHAMPIONSHIP_PREFERRED_KEYS if k in by_key]
+    if len(preferred) >= needed:
+        return tuple(preferred)
+
+    rest = [d for d in eligible
+            if d.definition_key not in CHAMPIONSHIP_PREFERRED_KEYS]
+    fill = rank_definitions(rest, league_id=league_id, season=season,
+                            rotation_cycle=rotation_cycle)
+    return tuple(preferred) + tuple(fill[:needed - len(preferred)])
+
+
 def build_and_persist_slate(db, *, league, season: int, week: int, phase: str,
                             provider: str,
                             slot_count: int = DEFAULT_SLOT_COUNT,
+                            championship=None, resolver=None,
                             ) -> SlateBuildResult:
     """Draw and persist one week's four occurrences. Does NOT commit.
 
@@ -154,12 +206,44 @@ def build_and_persist_slate(db, *, league, season: int, week: int, phase: str,
     funding that follows it commit together or not at all — a funded week with
     no slate, or a slate with no funding, are both states no reader could act
     on.
+
+    ── WP1B: A POSTSEASON DRAW ESTABLISHES ITS SUBJECT UNIVERSE FIRST ────────
+
+    `championship` is WP1A's `ChampionshipTrackState` and `resolver` is the
+    certified provider identity resolver. In the POSTSEASON phase both are
+    REQUIRED: the universe is resolved and FROZEN into
+    `pool_week_subject_manifest` before a single occurrence row is written, so a
+    published card can never exist without the field it was published against.
+
+    THE ORDER IS THE GUARANTEE. Freezing after the draw would leave a window in
+    which occurrences exist with no manifest, and a read landing in that window
+    would fall through to the derived universe — every league team, consolation
+    included. Resolving first also means an undeterminable championship track
+    refuses BEFORE the week is drawn, which is the only point at which refusing
+    is free.
+
+    Both parameters are ignored in the REGULAR phase, whose subject universe is
+    the league's own membership and does not move.
     """
     from db.schema import PoolInstance
+    from betting.pool_postseason import (
+        freeze_universe, is_championship_round, resolve_universe,
+    )
+    from betting.pool_season_boundary import PHASE_POSTSEASON
 
     league_id = league.id
     rotation_cycle = current_rotation_cycle(db, league_id=league_id,
                                             season=season)
+
+    postseason = phase == PHASE_POSTSEASON
+    if postseason:
+        # Raises PostseasonSubjectError — a ValueError — on a missing,
+        # undeterminable or unresolvable championship state. Nothing has been
+        # written at this point, so the refusal costs the week nothing.
+        universe = resolve_universe(db, league_id=league_id, week=week,
+                                    state=championship, resolver=resolver)
+        freeze_universe(db, league_id=league_id, season=season, week=week,
+                        universe=universe, rotation_cycle=rotation_cycle)
 
     eligible = selectable_definitions(db, league_id=league_id,
                                       provider=provider, phase=phase)
@@ -172,7 +256,21 @@ def build_and_persist_slate(db, *, league, season: int, week: int, phase: str,
     )
 
     used = used_fresh_keys(db, league_id=league_id, season=season,
-                           rotation_cycle=rotation_cycle)
+                           rotation_cycle=rotation_cycle, phase=phase)
+
+    if postseason and is_championship_round(championship):
+        # THE TITLE WEEK IS THEMED, NOT ROTATED. Rotation exists so a league
+        # does not see the same four cards every week; the championship week is
+        # the one week where a deliberate set beats variety. Its candidates are
+        # chosen by theme, and the used-key subtraction is deliberately NOT
+        # applied — a preferred definition already drawn in the semi-final must
+        # still be available for the final. No economics change: slot count,
+        # funding split and carry handling are all untouched.
+        eligible = _championship_candidates(
+            eligible, league_id=league_id, season=season,
+            rotation_cycle=rotation_cycle,
+            needed=max(0, slot_count - len(continuations)))
+        used = set()
 
     result = build_week_slate(
         league_id=league_id, season=season, week=week,

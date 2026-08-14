@@ -35,8 +35,17 @@ USAGE
     python scripts/bootstrap_pool_catalog.py            # seed / re-seed
     python scripts/bootstrap_pool_catalog.py --check    # report drift, write nothing
 
-`--check` exits 1 when the database is missing definitions the catalog carries,
+`--check` exits 1 when the database is missing definitions the catalog carries
+OR when a seeded row's governed eligibility values disagree with the artifact,
 so a deploy pipeline can gate on it without granting the step write access.
+
+WP1B EXTENDED `--check` FROM PRESENCE TO CURRENCY. It previously compared only
+the set of KEYS, which answers "has this ever been seeded" — a question that
+stops being interesting after the first deploy. A catalog revision that changes
+VALUES on rows which all already exist would have reported OK. WP1B is exactly
+that shape of revision: it resolves `postseason_eligible` on all 80 existing
+rows and adds none, so under the old check a stale database would have passed
+the gate and then drawn an empty postseason candidate set.
 """
 
 from __future__ import annotations
@@ -46,6 +55,42 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+
+#: Governed columns `--check` compares by VALUE. Deliberately the decision-
+#: bearing ones — what a definition is eligible for and whether it may run —
+#: rather than every column: display text drifting is cosmetic, while an
+#: eligibility flag drifting silently changes which Pools a league can draw.
+_DRIFT_FIELDS = (
+    "regular_season_eligible",
+    "postseason_eligible",
+    "rollover_eligible",
+    "definition_runtime_eligible",
+    "dependency_state",
+    "scope",
+    "evaluator_family",
+)
+
+
+def _value_drift(db, catalog) -> list[tuple[str, str, object, object]]:
+    """(key, field, catalog_value, db_value) for every governed mismatch.
+
+    A pure read — it reports, it never repairs, so a deploy pipeline can gate on
+    `--check` without holding write access."""
+    from db.schema import PoolDefinition
+
+    rows = {r.key: r for r in db.query(PoolDefinition).all()}
+    out: list[tuple[str, str, object, object]] = []
+    for spec in catalog.definitions:
+        row = rows.get(spec.key)
+        if row is None:
+            continue                      # already reported as missing
+        for field in _DRIFT_FIELDS:
+            want = getattr(spec, field)
+            got = getattr(row, field, None)
+            if want != got:
+                out.append((spec.key, field, want, got))
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -72,16 +117,34 @@ def main(argv: list[str] | None = None) -> int:
         missing = [s.key for s in catalog.definitions if s.key not in present]
 
         if args.check:
+            # VALUE DRIFT IS DRIFT TOO, and it is the kind a launch actually
+            # hits. `--check` originally reported only MISSING keys, which
+            # answers "has the catalog ever been seeded" — a question that stops
+            # being interesting after the first deploy. A catalog REVISION
+            # changes values on rows that are all already present, so a
+            # key-only check reports OK on a database that is materially stale.
+            #
+            # WP1B is the first revision to prove that: it flips
+            # `postseason_eligible` from null to an explicit boolean on all 80
+            # rows and adds no row at all. Under the old check every one of
+            # those databases would have reported OK while drawing an empty
+            # postseason candidate set.
+            stale = _value_drift(db, catalog)
+
             print(f"  in database: {len(present)}")
             print(f"  missing    : {len(missing)}")
-            if missing:
+            print(f"  stale      : {len(stale)}")
+            if missing or stale:
                 for key in missing[:10]:
-                    print(f"    - {key}")
-                if len(missing) > 10:
-                    print(f"    ... and {len(missing) - 10} more")
+                    print(f"    - missing {key}")
+                for key, field, want, got in stale[:10]:
+                    print(f"    ~ {key}.{field}: db={got!r} catalog={want!r}")
+                extra = max(0, len(missing) - 10) + max(0, len(stale) - 10)
+                if extra:
+                    print(f"    ... and {extra} more")
                 print("\nDRIFT — run without --check to seed.")
                 return 1
-            print("\nOK — every catalog definition is present.")
+            print("\nOK — every catalog definition is present and current.")
             return 0
 
         result = seed_definitions(db, catalog)

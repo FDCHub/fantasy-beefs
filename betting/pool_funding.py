@@ -205,8 +205,23 @@ def _record_event(db, *, league_id: int, season: int, week: int,
 
 
 def collect_weekly_entries(db, *, league_id: int, week: int,
-                           provider: str = "yahoo") -> WeeklyCollectionResult:
+                           provider: str = "yahoo",
+                           championship=None, resolver=None,
+                           ) -> WeeklyCollectionResult:
     """Collect one week's league-level contribution and fund the four Pools.
+
+    WP1B: `championship` and `resolver` are passed straight through to the slate
+    builder and are consulted only in the POSTSEASON phase, where the subject
+    universe is frozen before any occurrence is drawn. Nothing about the
+    collection ARITHMETIC changes — every team in the league is still charged,
+    the posting shape is unchanged, and an eliminated GM is a full participant
+    (WP1B §2). Subject eligibility and participation are different questions and
+    this function only ever answered the second one.
+
+    They are INJECTED rather than resolved here because `betting/` imports
+    nothing from `providers/`, and WP1B does not start. The caller that already
+    holds a transport builds the state and the certified identity resolver; a
+    Demo provider later satisfies the same two parameters with no change here.
 
     Order is load-bearing and follows Scope §E:
 
@@ -259,7 +274,9 @@ def collect_weekly_entries(db, *, league_id: int, week: int,
 
     phase = phase_for_week(league, week)
     slate = build_and_persist_slate(db, league=league, season=season, week=week,
-                                    phase=phase, provider=provider)
+                                    phase=phase, provider=provider,
+                                    championship=championship,
+                                    resolver=resolver)
 
     # P1-L7 — take every wallet row FOR UPDATE in ascending team order before
     # the balance reads inside the posting. Ascending order is what prevents two

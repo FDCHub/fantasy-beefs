@@ -78,37 +78,48 @@ def pool_lock_time(db, *, league, week: int) -> datetime:
 
 def _validate_subject(db, *, league_id: int, week: int, scope: str,
                       subject_id: int) -> None:
-    """The selected subject must exist in the league's own weekly structure.
+    """The selected subject must be in the week's AUTHORITATIVE subject universe.
 
     A TEAM subject is one league team; a MATCHUP subject is one scheduled
     matchup of that week — POR §6.2. Validating here means a claim can never
     reference a subject the census will not contain, which would otherwise
-    settle as a permanent non-winner with no explanation."""
-    from db.schema import Matchup, Team
+    settle as a permanent non-winner with no explanation.
 
-    if scope == SCOPE_TEAM:
-        found = (db.query(Team)
-                 .filter(Team.id == subject_id, Team.league_id == league_id)
-                 .first())
-        if found is None:
-            raise PoolClaimError(
-                REASON_INVALID_SUBJECT,
-                f"team {subject_id} is not in league {league_id}")
-    elif scope == SCOPE_MATCHUP:
-        found = (db.query(Matchup)
-                 .filter(Matchup.id == subject_id,
-                         Matchup.league_id == league_id,
-                         Matchup.week == week)
-                 .first())
-        if found is None:
-            raise PoolClaimError(
-                REASON_INVALID_SUBJECT,
-                f"matchup {subject_id} is not scheduled in league "
-                f"{league_id} week {week}")
-    else:
+    ── WP1B: ONE SOURCE, NOT TWO THAT AGREE BY COINCIDENCE ──────────────────
+
+    This function used to query `Team` and `Matchup` directly, reimplementing
+    POR §6.2 a second time. `betting/pool_claim_view.py` builds the GM's option
+    list from `league_weekly_structure` and its docstring claimed the two could
+    not drift — which was true only for as long as the two implementations
+    happened to return the same rows.
+
+    They stop agreeing the moment a universe contracts. A postseason week offers
+    six championship teams through the view while a direct query still accepts
+    any of twelve, so a request posted outside the UI could claim an ELIMINATED
+    team, be accepted, and sit unpayable against a census that never contained
+    it. UI filtering is not a correctness boundary.
+
+    So the offered set and the accepted set are now literally the same call.
+    That also means the frozen postseason manifest governs both without this
+    function knowing that postseasons exist.
+    """
+    from betting.pool_subjects import league_weekly_structure
+
+    if scope not in (SCOPE_TEAM, SCOPE_MATCHUP):
         raise PoolClaimError(
             REASON_INVALID_SUBJECT,
             f"scope {scope!r} has no subject rule (POR §6.2)")
+
+    structure = league_weekly_structure(db, league_id=league_id, week=week,
+                                        scope=scope)
+    if subject_id not in structure.considered_subject_ids:
+        raise PoolClaimError(
+            REASON_INVALID_SUBJECT,
+            f"{scope.lower()} {subject_id} is not in the eligible subject set "
+            f"for league {league_id} week {week} "
+            f"({len(structure.considered_subject_ids)} eligible). It is either "
+            f"outside this league, not scheduled this week, or not on the "
+            f"championship track.")
 
 
 def submit_claim(db, *, pool_instance_id: int, team_id: int, subject_id: int,

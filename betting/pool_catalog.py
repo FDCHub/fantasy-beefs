@@ -98,6 +98,8 @@ REASON_MALFORMED_CATALOG = "MALFORMED_CATALOG"
 REASON_UNBOUND_PREDICATE_VARIABLE = "UNBOUND_PREDICATE_VARIABLE"
 REASON_BLOCKED_REASON_MISMATCH = "BLOCKED_REASON_MISMATCH"
 REASON_SHAPE_MISMATCH = "SHAPE_MISMATCH"
+#: WP1B §10 — a postseason-eligible matchup-vs-matchup Pool.
+REASON_PROHIBITED_POSTSEASON_STRUCTURE = "PROHIBITED_POSTSEASON_STRUCTURE"
 
 
 # ── Stat vocabulary ───────────────────────────────────────────────────────────
@@ -361,6 +363,36 @@ def load_catalog(path: str = CATALOG_PATH) -> PoolCatalog:
             raise PoolCatalogError(
                 REASON_BLOCKED_REASON_MISMATCH,
                 f"#{number} {key!r} is ENABLED yet carries a blocked_reason.",
+            )
+
+        # ── WP1B §10 — MATCHUP-VS-MATCHUP IS PROHIBITED IN THE POSTSEASON ────
+        #
+        # A MATCHUP-scoped RANK_EXTREMUM definition makes whole matchups the
+        # COMPETING OPTIONS: the GM picks one matchup and wins if it out-scores
+        # the others. In the postseason that is exactly the structure the POR
+        # forbids — "which two-team fantasy matchup scores more than another".
+        #
+        # MATCHUP + QUALIFIER is a different shape and stays permitted: each
+        # matchup independently satisfies a predicate, so a threshold
+        # proposition on one championship game is a legal card. The distinction
+        # is structural rather than editorial, which is what makes it checkable
+        # here instead of relying on a reviewer noticing.
+        #
+        # ENFORCED AS CATALOG VALIDATION, NOT AS A SELECTOR FILTER. The selector
+        # could drop such a row at draw time, but then a future catalog edit
+        # would sit in the artifact looking approved and only fail silently at
+        # runtime. Refusing to LOAD the catalog makes the prohibition
+        # unfalsifiable and makes the bad edit impossible to land.
+        if (row["scope"] == "MATCHUP"
+                and row["evaluator_family"] == "RANK_EXTREMUM"
+                and row.get("postseason_eligible") is True):
+            raise PoolCatalogError(
+                REASON_PROHIBITED_POSTSEASON_STRUCTURE,
+                f"#{number} {key!r} is MATCHUP/RANK_EXTREMUM and marked "
+                f"postseason_eligible. A postseason Pool may not pit one full "
+                f"championship matchup against another (WP1B §5). MATCHUP "
+                f"definitions may be postseason-eligible only in the QUALIFIER "
+                f"family, where each matchup qualifies independently.",
             )
 
         # ── POR §1.4 — required_stats are canonical vocabulary keys ONLY ─────
