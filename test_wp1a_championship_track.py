@@ -45,6 +45,7 @@ from season.championship_track import (  # noqa: E402
     REASON_ORPHAN_PARTICIPANT,
     REASON_PARTIAL_BRACKET_CLASSIFICATION,
     REASON_PLAYOFF_START_WEEK_ABSENT,
+    REASON_AMBIGUOUS_THIRD_PLACE,
     REASON_PLAYOFF_TEAM_COUNT_ABSENT,
     REASON_UNDECIDED_EARLIER_ROUND,
     REASON_UNRESOLVED_RESULT,
@@ -655,6 +656,113 @@ def case_16_live_yahoo_default() -> None:
                 week=15).authority is TrackAuthority.UNKNOWN)
 
 
+# ── W1A-17 · WP1BC · the official third-place exception ─────────────────────
+
+def case_17_third_place() -> None:
+    _section("W1A-17 · official third-place eligibility (WP1BC)")
+    from providers.fixtures.postseason_synthetic import (
+        ps12_ambiguous_third_place, ps12_no_third_place,
+    )
+
+    early = derive_championship_track_state(
+        _input(ps12(), through_week=16, declare_field=True), week=16)
+    _assert("17a: an ordinary playoff round has NO third-place concept",
+            early.third_place_matchup is None
+            and not early.third_place_team_keys)
+    _assert("17b: and its eligible set is exactly the contesting field",
+            early.postseason_subject_team_keys() == early.contesting_team_keys,
+            detail=str(_names(early.postseason_subject_team_keys())))
+
+    final = derive_championship_track_state(
+        _input(ps12(), through_week=17, declare_field=True), week=17)
+
+    _assert("17c: the third-place game is identified in championship week",
+            final.third_place_matchup is not None)
+    _assert("17d: its participants are exactly the semifinal losers",
+            _names(final.third_place_team_keys) == ["3", "4"],
+            detail=str(_names(final.third_place_team_keys)))
+    _assert("17e: EXACTLY FOUR teams are eligible — finalists plus the "
+            "official third-place pair",
+            _names(final.postseason_subject_team_keys()) == ["1", "2", "3", "4"],
+            detail=str(_names(final.postseason_subject_team_keys())))
+    _assert("17f: the other placement teams stay excluded — 'a placement game "
+            "in the final week' is NOT the rule",
+            not ({"5", "7", "8", "9"}
+                 & set(_names(final.postseason_subject_team_keys()))))
+    _assert("17g: exactly two matchups are eligible: the final and third place",
+            len(final.postseason_subject_matchups) == 2,
+            detail=str(len(final.postseason_subject_matchups)))
+    eligible_pairs = {frozenset(m.team_keys)
+                      for m in final.postseason_subject_matchups}
+    _assert("17h: and the other two placement games are absent from it",
+            all(frozenset({final.league_key + f".t.{a}",
+                           final.league_key + f".t.{b}"}) not in eligible_pairs
+                for a, b in ((5, 7), (8, 9))))
+
+    # ── THE CHAMPIONSHIP-TRACK MEANINGS ARE UNCHANGED. This is the whole
+    # argument for adding a second concept instead of widening the first.
+    _assert("17i: third-place teams remain ELIMINATED from the championship "
+            "track — they cannot win the title",
+            final.third_place_team_keys <= final.eliminated_team_keys)
+    _assert("17j: they are NOT contesting the championship",
+            not (final.third_place_team_keys & final.contesting_team_keys))
+    _assert("17k: their game is NOT a championship matchup",
+            all(frozenset(m.team_keys) != final.third_place_team_keys
+                for m in final.championship_matchups))
+    _assert("17l: finalists and champion are unaffected",
+            _names(final.finalist_team_keys) == ["1", "2"]
+            and _names([final.champion_team_key]) == ["1"])
+    _assert("17m: the narrow accessor still answers the narrow question",
+            _names(final.championship_subject_team_keys()) == ["1", "2"],
+            detail=str(_names(final.championship_subject_team_keys())))
+
+    # ── PS10: a DIFFERENT shape reaches the same rule.
+    ten = derive_championship_track_state(
+        _input(ps10(), through_week=17, declare_field=False), week=17)
+    _assert("17n: PS10's third-place game is found in its ROUND TWO final week "
+            "— the exception follows the bracket, not a week number",
+            _names(ten.third_place_team_keys) == ["3", "4"]
+            and _names(ten.postseason_subject_team_keys()) == ["1", "2", "3", "4"],
+            detail=str(_names(ten.postseason_subject_team_keys())))
+
+    # ── Fail-closed and no-op cases.
+    ambiguous = derive_championship_track_state(
+        _input(ps12_ambiguous_third_place(), through_week=17,
+               declare_field=True), week=17)
+    _assert("17o: TWO games between the semifinal losers fails closed",
+            ambiguous.authority is TrackAuthority.UNKNOWN
+            and REASON_AMBIGUOUS_THIRD_PLACE in ambiguous.insufficiency_reasons,
+            detail=str(ambiguous.insufficiency_reasons))
+    _assert("17p: and yields NO eligible set at all",
+            ambiguous.postseason_subject_team_keys() is None
+            and ambiguous.postseason_subject_matchups == ())
+
+    absent = derive_championship_track_state(
+        _input(ps12_no_third_place(), through_week=17, declare_field=True),
+        week=17)
+    _assert("17q: a season with no third-place game is an ANSWER, not a refusal",
+            absent.authority.is_authoritative
+            and absent.third_place_matchup is None
+            and _names(absent.postseason_subject_team_keys()) == ["1", "2"],
+            detail=str(_names(absent.postseason_subject_team_keys())))
+    _assert("17r: and the placement games still present are NOT promoted in "
+            "its absence",
+            len(absent.postseason_subject_matchups) == 1)
+
+    unclassified = derive_championship_track_state(
+        _input(ps12_unclassified_week(), through_week=17, declare_field=True),
+        week=17)
+    _assert("17s: UNKNOWN never becomes eligible by any path",
+            unclassified.postseason_subject_team_keys() is None
+            and not unclassified.third_place_team_keys)
+
+    before = derive_championship_track_state(
+        _input(ps12(), through_week=17, declare_field=True), week=14)
+    _assert("17t: a regular-season week has no eligible set — the broader "
+            "accessor refuses exactly where the narrow one does",
+            before.postseason_subject_team_keys() is None)
+
+
 def main() -> None:
     case_1_ps12_first_round()
     case_2_ps10_different_shape()
@@ -672,6 +780,7 @@ def main() -> None:
     case_14_phase_is_not_track()
     case_15_provenance()
     case_16_live_yahoo_default()
+    case_17_third_place()
 
 
 if __name__ == "__main__":

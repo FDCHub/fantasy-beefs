@@ -314,6 +314,43 @@ def ps12_declared_winner_contradicts_score() -> SyntheticPostseasonLeague:
     return league
 
 
+def ps12_ambiguous_third_place() -> SyntheticPostseasonLeague:
+    """SYNTHETIC PS12 whose championship week carries TWO games between the
+    beaten semi-finalists.
+
+    Nonsense as a bracket, and that is the point: two rows claiming the same
+    pair means "the official third-place game" has no deterministic answer, and
+    picking either would make eligibility depend on row order. The
+    determination must refuse rather than choose.
+    """
+    league = ps12()
+    key = league.league_key
+    t = league.team_key
+    final = list(league.weeks[17])
+    # A second t3-vs-t4 game, distinguished only by being a separate row.
+    final.append(matchup(key, 17, t(4), t(3),
+                         bracket=MatchupBracket.NON_CHAMPIONSHIP,
+                         finality=Finality.NOT_FINAL))
+    league.weeks[17] = tuple(final)
+    return league
+
+
+def ps12_no_third_place() -> SyntheticPostseasonLeague:
+    """SYNTHETIC PS12 whose championship week plays NO third-place game.
+
+    The two other placement games remain, so this also proves they are not
+    promoted in its absence: a week with placement games but no semifinal-loser
+    pairing yields finalists-only eligibility, never "whatever placement game
+    happens to be there".
+    """
+    league = ps12()
+    losers = {league.team_key(3), league.team_key(4)}
+    league.weeks[17] = tuple(
+        m for m in league.weeks[17]
+        if frozenset((m.home_team_key, m.away_team_key)) != losers)
+    return league
+
+
 # ── PS10 — ten teams, four-team championship field, no byes, later start ──────
 
 def ps10() -> SyntheticPostseasonLeague:

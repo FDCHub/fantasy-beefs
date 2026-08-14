@@ -573,6 +573,50 @@ def derived_team_id(challenge: BeefChallenge, proposal: BeefProposal) -> int:
 
 # ── §9 Issue ──────────────────────────────────────────────────────────────────
 
+# ── WP1C — postseason admission gate ──────────────────────────────────────────
+#
+# ONE HELPER, FIVE CALL SITES, NO RULE OF ITS OWN. Every entry point below that
+# creates or materially advances a NEW commitment calls this and nothing else;
+# the eligibility rule itself lives in season/championship_track.py and the
+# comparison in beefs/postseason_versus.py. Nothing here decides who is
+# eligible — it supplies the league row and forwards.
+#
+# PLACEMENT IS LOAD-BEARING AT EVERY CALL SITE (WP1C §13). The gate goes AFTER
+# idempotency replay and after the already-closed / open-state guard, and BEFORE
+# the first write. A committed action retried after the bracket advanced must
+# return its committed result rather than being re-judged against a field that
+# has since contracted — so a gate placed above those guards would retroactively
+# invalidate a wager the protocol already accepted.
+#
+# REGULAR SEASON IS UNTOUCHED. `assert_admissible` short-circuits on the phase
+# boundary before reading `postseason_state` or `resolver`, so a regular-season
+# call with both absent does exactly what it did before WP1C.
+#
+# THE PARAMETER IS NAMED FOR THE QUESTION, NOT THE DTO. It carries a
+# `ChampionshipTrackState`, but what this module needs from it is postseason
+# ELIGIBILITY, and `challenge_funding` is fenced against Championship-Pot
+# identifiers by test_p1_l4_challenge_escrow_pg's scope fence. `championship`
+# there means the season-close pot, a different concept that happens to share
+# a word; naming the parameter for what it is used for keeps that fence intact
+# and is the clearer name besides.
+
+def _gate_postseason(db: Session, *, league_id: Optional[int], week: int,
+                     team_ids, postseason_state, resolver, action: str) -> None:
+    """Refuse a postseason Versus action unless both teams are eligible."""
+    from beefs.postseason_versus import assert_admissible
+    from db.schema import League
+
+    league = (db.query(League).filter(League.id == league_id).first()
+              if league_id is not None else None)
+    if league is None:
+        # No league row means no governed boundary, which is the pre-WP1C
+        # world: a legacy or unbound challenge. It is not a postseason week by
+        # any authority available here, so the gate does not invent one.
+        return
+    assert_admissible(league=league, week=week, team_ids=team_ids,
+                      state=postseason_state, resolver=resolver, action=action)
+
+
 def issue_funded_challenge(
     *,
     event_id: uuid.UUID,
@@ -587,6 +631,8 @@ def issue_funded_challenge(
     proposal_lock_at: Optional[datetime] = None,
     schedule_source_ref: Optional[str] = None,
     now: Optional[datetime] = None,
+    postseason_state=None,
+    resolver=None,
 ) -> FundingResult:
     """§9 — create the challenge and post the issuer's real Anchor escrow.
 
@@ -612,6 +658,13 @@ def issue_funded_challenge(
     if anchor_cents is None or anchor_cents <= 0:
         raise MissingProposalError(
             "terms.anchor_stake_cents must be a positive integer number of cents.")
+
+    # WP1C — postseason admission, after replay and before the first lock. No
+    # challenge row exists yet, so replay is the only prior guard there is.
+    _gate_postseason(db, league_id=league_id, week=week,
+                     team_ids=(challenger_team_id, challenged_team_id),
+                     postseason_state=postseason_state, resolver=resolver,
+                     action="issue")
 
     # 1 — funding-scope mutex, before any balance read.
     lock_funding_scopes(db, challenger_team_id)
@@ -715,6 +768,8 @@ def revive_funded_challenge(
     proposal_lock_at: Optional[datetime] = None,
     schedule_source_ref: Optional[str] = None,
     now: Optional[datetime] = None,
+    postseason_state=None,
+    resolver=None,
 ) -> FundingResult:
     """Revive a negotiation-terminal challenge as a NEW funded challenge.
 
@@ -758,6 +813,16 @@ def revive_funded_challenge(
     # 1 — the OLD challenge row first, then wallets. Never inverted.
     old    = _lock_challenge(db, challenge_id)
     issuer = old.challenger_team_id
+
+    # WP1C — A REVIVE IS A FRESH COMMITMENT, so it is admitted like one. Spec 1
+    # rules it "a fresh issue_challenge()", and it posts a fresh Anchor escrow;
+    # eligibility at the ORIGINAL issue does not carry forward to it. Gated after
+    # the row lock, before the wallet lock and every write.
+    _gate_postseason(db, league_id=old.league_id, week=old.week,
+                     team_ids=(old.challenger_team_id, old.challenged_team_id),
+                     postseason_state=postseason_state, resolver=resolver,
+                     action="revive")
+
     lock_funding_scopes(db, issuer)
 
     # 2 — authoritative capacity under the lock, on the ORIGINAL issuer.
@@ -803,6 +868,8 @@ def counter_funded_challenge(
     proposal_lock_at: Optional[datetime] = None,
     schedule_source_ref: Optional[str] = None,
     now: Optional[datetime] = None,
+    postseason_state=None,
+    resolver=None,
 ) -> FundingResult:
     """§10 — validate capacity for the proposed counter. NO MONEY MOVES.
 
@@ -834,6 +901,17 @@ def counter_funded_challenge(
     prior     = challenge.response_status
     issuer    = challenge.challenger_team_id
     recipient = challenge.challenged_team_id
+
+    # WP1C — A COUNTER MOVES NO MONEY AND IS STILL GATED. It freezes a new
+    # proposal version and hands the decision back, which is exactly what
+    # "materially advances a commitment" means: the wager the other side may
+    # then accept is the countered one. Admitting a counter between teams that
+    # may no longer wager would leave a live offer nobody is allowed to take.
+    _gate_postseason(db, league_id=challenge.league_id, week=challenge.week,
+                     team_ids=(issuer, recipient),
+                     postseason_state=postseason_state, resolver=resolver,
+                     action="counter")
+
     lock_funding_scopes(db, issuer, recipient)
 
     proposed_anchor = terms.anchor_stake_cents or 0
@@ -1205,6 +1283,8 @@ def accept_funded_challenge(
     actor_team_id: int,
     db: Session,
     now: Optional[datetime] = None,
+    postseason_state=None,
+    resolver=None,
 ) -> FundingResult:
     """§12 (A8) — the atomic Locked acceptance. ONE transaction, ONE commit.
 
@@ -1260,6 +1340,18 @@ def accept_funded_challenge(
 
     anchor    = anchor_team_id(challenge, proposal)
     derived   = derived_team_id(challenge, proposal)
+
+    # WP1C — ACCEPTANCE IS THE COMMITMENT, so it is gated here: after the replay
+    # check, after `_already_closed`, after the mode guard, and before the
+    # capacity revalidation at step 4 that the docstring calls "the last point at
+    # which nothing has happened". An already-accepted challenge returned above
+    # and is never re-judged.
+    _gate_postseason(db, league_id=challenge.league_id, week=challenge.week,
+                     team_ids=(challenge.challenger_team_id,
+                               challenge.challenged_team_id),
+                     postseason_state=postseason_state, resolver=resolver,
+                     action="accept")
+
     lock_funding_scopes(db, anchor, derived)
 
     # 2 — the accepted amounts, from the FROZEN proposal. No reprice (Locked).

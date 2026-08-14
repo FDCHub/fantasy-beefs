@@ -114,6 +114,7 @@ REASON_UNDECIDED_EARLIER_ROUND = "UNDECIDED_ROUND_PRECEDES_REQUESTED_WEEK"
 REASON_UNRESOLVED_RESULT = "CHAMPIONSHIP_RESULT_UNRESOLVED"
 REASON_BYE_STRUCTURE_CONTRADICTS = "BYE_STRUCTURE_CONTRADICTS_FIELD_SIZE"
 REASON_PREMATURE_COMPLETION = "PREMATURE_CHAMPIONSHIP_COMPLETION"
+REASON_AMBIGUOUS_THIRD_PLACE = "AMBIGUOUS_THIRD_PLACE_MATCHUP"
 
 
 class TrackAuthority(str, Enum):
@@ -282,6 +283,30 @@ class ChampionshipTrackState:
     champion_team_key: str | None = None
     finalist_team_keys: tuple[str, ...] = ()
 
+    # ── WP1BC — the official third-place exception ────────────────────────────
+    #
+    # ADDITIVE, AND EVERY FIELD ABOVE KEEPS ITS MEANING. The two teams playing
+    # for third place are ELIMINATED from the championship track and stay in
+    # `eliminated_team_keys`; they are not in `contesting_team_keys`, and their
+    # game is not in `championship_matchups`. All of that remains true and is
+    # still asserted. What WP1BC adds is a SECOND, BROADER concept beside it:
+    #
+    #     championship track   who can still win the title
+    #     postseason eligible  who may be a FantasyStakes subject or wager this
+    #                          week — the track, PLUS the official third-place
+    #                          pair in championship week
+    #
+    # Collapsing the two would have been the smaller diff and the wrong model:
+    # a third-place team must never read as a title contender, and a rule that
+    # says "eliminated teams cannot play" must not silently acquire an
+    # exception it cannot name.
+    #: The official third-place game, when one is identified. `round_ordinal`
+    #: carries the championship round ordinal of the WEEK it is played in — it
+    #: is not itself a championship round.
+    third_place_matchup: ChampionshipMatchup | None = None
+    #: Its two participants: exactly the losers of the championship semifinal.
+    third_place_team_keys: frozenset[str] = frozenset()
+
     authority: TrackAuthority = TrackAuthority.UNKNOWN
     provenance: TrackProvenance = _field(default_factory=TrackProvenance)
     insufficiency_reasons: tuple[str, ...] = ()
@@ -320,6 +345,63 @@ class ChampionshipTrackState:
         if self.championship_round_ordinal is None:
             return None
         return self.contesting_team_keys
+
+    # ── WP1BC — THE SHARED POSTSEASON ELIGIBILITY RULE ───────────────────────
+    #
+    # ONE AUTHORITY, TWO CONSUMERS. `betting/pool_postseason.py` and
+    # `beefs/postseason_versus.py` both call the two members below and neither
+    # restates the rule. That is deliberate: "who may act this week" is a single
+    # product question, and two implementations of it would drift the first time
+    # one of them was amended. Each consumer translates the answer into internal
+    # ids through the certified identity resolver; neither decides it.
+
+    def postseason_subject_team_keys(self) -> frozenset[str] | None:
+        """Every team eligible for FantasyStakes action this postseason week.
+
+            ordinary playoff round   the championship-contesting field
+            championship week        the finalists, PLUS the two teams in the
+                                     OFFICIAL third-place game when one exists
+            no third-place game      finalists only — a complete answer, not a
+                                     refusal
+
+        NOT THE SAME QUESTION AS `championship_subject_team_keys()`, and the two
+        must not be used interchangeably. That one answers "who can still win
+        the title" and is what a champion, finalist or advancement reader wants.
+        This one answers "who may be a Pool subject or enter a Versus wager",
+        which in championship week is a strictly larger set.
+
+        NONE MEANS REFUSE, on exactly the same three conditions as the narrower
+        accessor. An empty frozenset would be a determined-but-empty field; None
+        is an undetermined one, and a caller that conflates them will build a
+        subject universe out of a provider outage.
+
+        THE THIRD-PLACE PAIR IS NEVER INFERRED FROM `NON_CHAMPIONSHIP`. It is
+        identified by matching a classified non-championship matchup's
+        participants against the semifinal losers derived from CHAMPIONSHIP
+        results — see `_identify_third_place`. Every other placement game in the
+        same week fails that match and stays excluded.
+        """
+        base = self.championship_subject_team_keys()
+        if base is None:
+            return None
+        return base | self.third_place_team_keys
+
+    @property
+    def postseason_subject_matchups(self) -> tuple[ChampionshipMatchup, ...]:
+        """Every matchup eligible to be a FantasyStakes subject this week.
+
+        The championship matchups, plus the official third-place game when one
+        is identified, in deterministic key order. Ordinary consolation and
+        placement games are absent — including the other placement games played
+        in the very same championship week.
+
+        Empty whenever `postseason_subject_team_keys()` is None; a consumer that
+        checks the accessor first, as both do, never reads a stale tuple.
+        """
+        combined = list(self.championship_matchups)
+        if self.third_place_matchup is not None:
+            combined.append(self.third_place_matchup)
+        return tuple(sorted(combined, key=lambda m: m.matchup_key))
 
 
 # ── Round arithmetic ──────────────────────────────────────────────────────────
@@ -414,6 +496,63 @@ def _championship_matchups(week_input: ChampionshipWeekInput, *, ordinal: int
          if m.bracket.is_affirmatively_championship),
         key=lambda m: m.matchup_key,
     ))
+
+
+def _identify_third_place(week_input: ChampionshipWeekInput,
+                          semifinal_losers: frozenset[str],
+                          *, ordinal: int
+                          ) -> tuple[ChampionshipMatchup | None, str | None]:
+    """The OFFICIAL third-place game for a championship week — WP1BC §2.
+
+    Returns (matchup, refusal_reason); exactly one is ever non-None, and both
+    being None means "this season has no third-place game", which is a complete
+    answer rather than a gap.
+
+    THE DISCRIMINATOR IS THE PARTICIPANT SET, NOT THE BRACKET VALUE. A
+    championship week can carry several classified non-championship games —
+    PS12's carries three. Treating any of them as eligible because it is "the
+    placement game in the final week" is the exact rule the POR prohibits. What
+    identifies the OFFICIAL one is that its two participants are precisely the
+    teams that lost the championship semifinal, and those come from CHAMPIONSHIP
+    results the track already derived. So the third-place game is recognised by
+    championship evidence, not by consolation evidence.
+
+    UNKNOWN CANNOT QUALIFY, on two independent grounds. The filter demands
+    `MatchupBracket.NON_CHAMPIONSHIP` affirmatively rather than "not
+    championship", and a week containing any UNKNOWN matchup has already been
+    refused by `_classify_week` before this is reached. Either alone would be
+    sufficient; both are present because this is the branch where an eliminated
+    team becomes able to take money.
+
+    MORE THAN ONE MATCH IS A REFUSAL, NOT A CHOICE. Two rows claiming the same
+    pair means the bracket cannot be read deterministically, and picking either
+    would make eligibility depend on row order.
+    """
+    if not semifinal_losers:
+        return None, None
+
+    candidates = [
+        m for m in week_input.matchups
+        if m.bracket is MatchupBracket.NON_CHAMPIONSHIP
+        and frozenset((m.home_team_key, m.away_team_key)) == semifinal_losers
+    ]
+    if not candidates:
+        # A season that simply does not play a third-place game. Finalists-only
+        # eligibility is the correct answer and nothing is wrong.
+        return None, None
+    if len(candidates) > 1:
+        return None, REASON_AMBIGUOUS_THIRD_PLACE
+
+    found = candidates[0]
+    return ChampionshipMatchup(
+        matchup_key=found.matchup_key,
+        home_team_key=found.home_team_key,
+        away_team_key=found.away_team_key,
+        round_ordinal=ordinal,
+        finality=found.finality,
+        winner_team_key=found.winner_team_key,
+        is_tied=found.is_tied,
+    ), None
 
 
 def derive_championship_track_state(track_input: ChampionshipTrackInput, *,
@@ -612,6 +751,12 @@ def derive_championship_track_state(track_input: ChampionshipTrackInput, *,
     requested_ordinal: int | None = None
     finalists: tuple[str, ...] = ()
     rounds_decided = 0
+    # WP1BC — losers per championship round ordinal. Recorded as the walk goes
+    # because the semifinal's losers are computed here and were previously
+    # discarded; nothing downstream could reconstruct them, since
+    # `eliminated_team_keys` is the WHOLE eliminated field rather than one
+    # round's casualties.
+    losers_by_round: dict[int, frozenset[str]] = {}
 
     for index, (week_input, matchups) in enumerate(rounds):
         ordinal = index + 1
@@ -663,6 +808,11 @@ def derive_championship_track_state(track_input: ChampionshipTrackInput, *,
                                 if m.winner_team_key)
             advancing = winners | round_byes
             rounds_decided += 1
+            # PLAYING minus WINNERS, not ENTERING minus ADVANCING. The two agree
+            # today, but the first says what it means — a bye team did not lose
+            # a game it never played, and if bye handling ever changes the
+            # second would quietly start counting them.
+            losers_by_round[ordinal] = playing - winners
         else:
             if not is_requested:
                 # An undecided round before the one being asked about makes
@@ -703,6 +853,32 @@ def derive_championship_track_state(track_input: ChampionshipTrackInput, *,
                         provenance=provenance, postseason_started=True,
                         round_count_expected=round_count_expected)
 
+    # ── WP1BC — the official third-place game ────────────────────────────────
+    #
+    # CHAMPIONSHIP WEEK ONLY, AND ONLY WHEN A SEMIFINAL EXISTS. The exception is
+    # scoped to the round that decides the title (§1); an ordinary playoff round
+    # has no third-place concept, and a one-round track (a two-team field) has
+    # no semifinal to lose. Both yield finalists-only eligibility, which is an
+    # answer rather than a refusal.
+    third_place: ChampionshipMatchup | None = None
+    third_place_keys: frozenset[str] = frozenset()
+    if (requested_ordinal is not None
+            and round_count_expected is not None
+            and requested_ordinal == round_count_expected
+            and round_count_expected >= 2):
+        semifinal_losers = losers_by_round.get(round_count_expected - 1,
+                                               frozenset())
+        requested_input = next(w for w in in_scope if w.week == week)
+        third_place, third_place_problem = _identify_third_place(
+            requested_input, semifinal_losers, ordinal=requested_ordinal)
+        if third_place_problem:
+            return _unknown(track_input, week=week,
+                            reasons=(third_place_problem,),
+                            provenance=provenance, postseason_started=True,
+                            round_count_expected=round_count_expected)
+        if third_place is not None:
+            third_place_keys = frozenset(third_place.team_keys)
+
     authority = (TrackAuthority.PROVIDER_CLASSIFIED
                  if field_source == SOURCE_PROVIDER_DECLARED
                  else TrackAuthority.DERIVED)
@@ -723,6 +899,8 @@ def derive_championship_track_state(track_input: ChampionshipTrackInput, *,
         complete=complete,
         champion_team_key=champion,
         finalist_team_keys=finalists,
+        third_place_matchup=third_place,
+        third_place_team_keys=third_place_keys,
         authority=authority,
         provenance=provenance,
         insufficiency_reasons=(),

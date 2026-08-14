@@ -97,106 +97,12 @@ def _section(title: str) -> None:
 # matchup carrying that matchup's derived `provider_matchup_key`. Nothing is
 # invented — the keys are the ones providers/base.derive_matchup_key produced.
 
-FIXTURE_FINAL = datetime(2025, 12, 30, 12, 0, tzinfo=timezone.utc)
-
-
-def namespaced(synthetic, suffix: str):
-    """A copy of a synthetic league whose provider keys are unique to `suffix`.
-
-    `teams.uq_teams_provider_key` is unique on (provider, provider_team_key)
-    ACROSS leagues — the compound Yahoo key is globally unique in reality, so
-    the constraint is right and it is the fixtures that must not collide. Each
-    scenario below therefore gets its own synthetic league key, and every
-    matchup key is RE-DERIVED through `providers.base.derive_matchup_key` rather
-    than string-patched, so the keys stay the ones production would construct.
-    """
-    from dataclasses import replace
-
-    from providers.fixtures.postseason_synthetic import matchup
-
-    old = synthetic.league_key
-    new = f"{old}-{suffix}"
-
-    def rekey(key: str) -> str:
-        return key.replace(old, new, 1)
-
-    weeks = {}
-    for week, matchups in synthetic.weeks.items():
-        weeks[week] = tuple(
-            matchup(new, week, rekey(m.home_team_key), rekey(m.away_team_key),
-                    bracket=m.bracket, finality=m.finality,
-                    winner=(rekey(m.winner_team_key) if m.winner_team_key
-                            else None),
-                    home_points=m.home_points, away_points=m.away_points,
-                    is_tied=m.is_tied)
-            for m in matchups)
-
-    return replace(
-        synthetic, league_key=new,
-        championship_field=frozenset(rekey(k)
-                                     for k in synthetic.championship_field),
-        weeks=weeks)
-
-
-def build_league(db, synthetic, *, name: str, wallet_cents: int = 100_000):
-    """A DB league mirroring one synthetic postseason league."""
-    from db.schema import League, Matchup, Team, Wallet
-    from ledger.ledger import post as ledger_post
-
-    league = League(season=synthetic.season, name=name,
-                    projection_source="fantasypros",
-                    season_final_week=synthetic.season_final_week,
-                    playoff_start_week=synthetic.playoff_start_week)
-    db.add(league)
-    db.flush()
-
-    teams: dict[str, object] = {}
-    for ordinal in range(1, synthetic.team_count + 1):
-        key = synthetic.team_key(ordinal)
-        team = Team(league_id=league.id, team_name=f"{name}-t{ordinal}",
-                    owner=f"owner-{ordinal}", email=f"{name}-{ordinal}@x.test",
-                    provider="yahoo", provider_team_key=key,
-                    provider_team_id=ordinal)
-        db.add(team)
-        db.flush()
-        db.add(Wallet(team_id=team.id, balance=0.0))
-        teams[key] = team
-    db.flush()
-
-    for team in teams.values():
-        ledger_post([("world", -wallet_cents), (f"wallet:{team.id}", wallet_cents)],
-                    door="buy_in_paid", session=db)
-
-    for week, matchups in sorted(synthetic.weeks.items()):
-        for m in matchups:
-            db.add(Matchup(
-                league_id=league.id, week=week,
-                home_team_id=teams[m.home_team_key].id,
-                away_team_id=teams[m.away_team_key].id,
-                home_score=float(m.home_points or 0.0),
-                away_score=float(m.away_points or 0.0),
-                provider_matchup_key=m.matchup_key,
-                finalized_at=FIXTURE_FINAL))
-    db.flush()
-    return league, teams
-
-
-def track_state(synthetic, *, week: int, declare: bool = True,
-                weeks_override: dict | None = None):
-    """WP1A championship state for one synthetic league-week."""
-    source = weeks_override if weeks_override is not None \
-        else synthetic.weeks_through(week)
-    return derive_championship_track_state(
-        ChampionshipTrackInput(
-            league_key=synthetic.league_key, season=synthetic.season,
-            playoff_start_week=synthetic.playoff_start_week,
-            season_final_week=synthetic.season_final_week,
-            playoff_team_count=synthetic.playoff_team_count,
-            weeks=tuple(ChampionshipWeekInput(week=w, matchups=tuple(ms))
-                        for w, ms in sorted(source.items())),
-            field_declaration=(ChampionshipFieldDeclaration(
-                team_keys=synthetic.championship_field) if declare else None)),
-        week=week)
+# Fixture construction is SHARED with the WP1C suite via
+# test_support_postseason, so the two packages certify against one league shape
+# and cannot drift into testing different worlds while both report green.
+from test_support_postseason import (  # noqa: E402
+    FIXTURE_FINAL, build_league, namespaced, track_state,
+)
 
 
 def _ords(team_ids, teams_by_key) -> list[int]:
@@ -388,8 +294,23 @@ def case_rounds(db) -> None:
             shapes[15][:2] == ([1, 2, 3, 4, 5, 6], 2), detail=str(shapes[15]))
     _assert("5b: round 2 -> four teams, two games",
             shapes[16][:2] == ([1, 2, 3, 4], 2), detail=str(shapes[16]))
-    _assert("5c: championship week -> the two finalists, one game",
-            shapes[17][:2] == ([1, 2], 1), detail=str(shapes[17]))
+    # WP1BC AMENDED THIS ASSERTION, AND THE AMENDMENT IS THE POINT OF THE
+    # PACKAGE. As written for WP1B it read `([1, 2], 1)` — the two finalists and
+    # the one title game — because that was the whole postseason-eligible field
+    # at the time. The owner ruling adds a deliberate exception: in championship
+    # week the two teams contesting the OFFICIAL third-place game are eligible
+    # too, so the correct field is four teams and two matchups.
+    #
+    # WHAT DID NOT CHANGE, and is asserted right below: those two extra teams are
+    # still ELIMINATED from the championship track, still absent from
+    # `contesting_team_keys`, and their game is still not a championship matchup.
+    # The Pool universe grew; the championship track did not.
+    _assert("5c: championship week -> finalists PLUS the official third-place "
+            "pair, and both of their games",
+            shapes[17][:2] == ([1, 2, 3, 4], 2), detail=str(shapes[17]))
+    _assert("5c2: the OTHER final-week placement teams are still excluded — "
+            "'a placement game in the final week' is not the rule",
+            not ({5, 7, 8, 9} & set(shapes[17][0])), detail=str(shapes[17][0]))
     _assert("5d: only the final round is identified as the championship round",
             [shapes[w][2] for w in (15, 16, 17)] == [False, False, True],
             detail=str([shapes[w][2] for w in (15, 16, 17)]))
@@ -1025,6 +946,108 @@ def case_invariants(db) -> None:
     db.flush()
 
 
+# ── 14 · WP1BC · the official third-place exception, end to end ──────────────
+
+def case_third_place(db) -> None:
+    _section("W1B-14 · WP1BC — third-place teams are frozen as Pool subjects")
+    from providers.fixtures.postseason_synthetic import ps12_no_third_place
+
+    syn = namespaced(ps12(), "third")
+    league, teams = build_league(db, syn, name="ps12-third")
+    seed_catalog(db)
+    ready_postseason(db, league.id)
+    resolver = build_team_identity_resolver(db, league_id=league.id)
+    _add_kickoff(db, season=syn.season, week=17, name="third17")
+    db.flush()
+
+    state = track_state(syn, week=17)
+    slate = build_and_persist_slate(
+        db, league=league, season=syn.season, week=17,
+        phase=PHASE_POSTSEASON, provider=PROVIDER, championship=state,
+        resolver=resolver)
+    db.flush()
+
+    team_universe = league_weekly_structure(db, league_id=league.id, week=17,
+                                            scope=SCOPE_TEAM)
+    matchup_universe = league_weekly_structure(db, league_id=league.id, week=17,
+                                               scope=SCOPE_MATCHUP)
+
+    _assert("14a: the FROZEN championship-week TEAM universe is the four "
+            "eligible teams",
+            _ords(team_universe.considered_subject_ids, teams) == [1, 2, 3, 4],
+            detail=str(_ords(team_universe.considered_subject_ids, teams)))
+    _assert("14b: the FROZEN MATCHUP universe is exactly two — the final and "
+            "the official third-place game",
+            len(matchup_universe.considered_subject_ids) == 2,
+            detail=str(len(matchup_universe.considered_subject_ids)))
+
+    from db.schema import Matchup
+    by_id = {t.id: int(k.rsplit(".", 1)[-1]) for k, t in teams.items()}
+    frozen_pairs = {
+        frozenset((by_id[m.home_team_id], by_id[m.away_team_id]))
+        for m in db.query(Matchup).filter(
+            Matchup.id.in_(matchup_universe.considered_subject_ids)).all()}
+    _assert("14c: they are {1,2} and {3,4}",
+            frozen_pairs == {frozenset({1, 2}), frozenset({3, 4})},
+            detail=str([sorted(p) for p in frozen_pairs]))
+    _assert("14d: the other two placement games of the SAME week are excluded",
+            not (frozen_pairs & {frozenset({5, 7}), frozenset({8, 9})}))
+
+    total_w17 = db.query(Matchup).filter(Matchup.league_id == league.id,
+                                         Matchup.week == 17).count()
+    _assert("14e: four matchups were reported that week and two were admitted "
+            "— the contraction is real, not an artifact of a thin fixture",
+            total_w17 == 4, detail=str(total_w17))
+
+    _assert("14f: the themed championship slate still draws four cards over "
+            "the wider field",
+            len(slate.instances) == 4, detail=str(len(slate.instances)))
+    _assert("14g: and it is still exactly the themed subset",
+            {i.definition_key for i in slate.instances}
+            == set(CHAMPIONSHIP_PREFERRED_KEYS),
+            detail=str(sorted(i.definition_key for i in slate.instances)))
+
+    # A third-place participant may now be CLAIMED, which is the product point.
+    view = week_claim_view(db, league_id=league.id, season=syn.season, week=17,
+                           viewer_team_id=None)
+    team_card = next(v for v in view if v.scope == SCOPE_TEAM)
+    offered = {s.subject_id for s in team_card.subjects}
+    _assert("14h: the pick surface offers all four eligible teams",
+            _ords(offered, teams) == [1, 2, 3, 4],
+            detail=str(_ords(offered, teams)))
+    instance = next(i for i in slate.instances
+                    if i.definition_key == team_card.definition_key)
+    third_place_team = teams[syn.team_key(3)]
+    ok = submit_claim(db, pool_instance_id=instance.id,
+                      team_id=teams[syn.team_key(9)].id,
+                      subject_id=third_place_team.id)
+    db.flush()
+    _assert("14i: a GM may claim an official third-place team",
+            ok is not None and ok.selected_subject_id == third_place_team.id)
+
+    refused = None
+    try:
+        submit_claim(db, pool_instance_id=instance.id,
+                     team_id=teams[syn.team_key(10)].id,
+                     subject_id=teams[syn.team_key(5)].id)
+    except PoolClaimError as exc:
+        refused = exc.reason
+    _assert("14j: but NOT an ordinary placement team from the same week",
+            refused == "INVALID_SUBJECT", detail=str(refused))
+
+    # A season with no third-place game contracts to finalists only.
+    syn2 = namespaced(ps12_no_third_place(), "nothird")
+    league2, teams2 = build_league(db, syn2, name="ps12-nothird")
+    r2 = build_team_identity_resolver(db, league_id=league2.id)
+    db.flush()
+    u2 = resolve_universe(db, league_id=league2.id, week=17,
+                          state=track_state(syn2, week=17), resolver=r2)
+    _assert("14k: a season with NO third-place game freezes finalists only",
+            _ords(u2.team_ids, teams2) == [1, 2]
+            and len(u2.matchup_ids) == 1,
+            detail=f"{_ords(u2.team_ids, teams2)} / {len(u2.matchup_ids)}")
+
+
 def main() -> None:
     case_catalog()
     case_guard()
@@ -1061,6 +1084,9 @@ def main() -> None:
         db.commit()
     with tdb.SessionLocal() as db:
         case_invariants(db)
+        db.commit()
+    with tdb.SessionLocal() as db:
+        case_third_place(db)
         db.commit()
 
 

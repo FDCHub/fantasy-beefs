@@ -491,6 +491,8 @@ def handshake_dynamic_challenge(
     actor_team_id: int,
     db: Session,
     now: Optional[datetime] = None,
+    postseason_state=None,
+    resolver=None,
 ) -> HandshakeResult:
     """Dynamic acceptance. ONE transaction, ONE commit.
 
@@ -529,6 +531,20 @@ def handshake_dynamic_challenge(
     proposal  = cf._active_proposal(db, challenge)
     anchor    = cf.anchor_team_id(challenge, proposal)
     derived   = cf.derived_team_id(challenge, proposal)
+
+    # WP1C — THE HANDSHAKE IS WHERE BOTH SIDES' MONEY IS COMMITTED, so the gate
+    # belongs here rather than at Final Lock. Refusing later would mean an
+    # ineligible pair had already had their escrow taken and then found the
+    # wager unfinalizable — the same stranding failure
+    # `resolve_shared_matchup_for_challenge` was written to prevent for
+    # cross-matchup wagers. Placed after the replay check and after the
+    # OPEN_STATES guard, before every write.
+    cf._gate_postseason(db, league_id=challenge.league_id, week=challenge.week,
+                        team_ids=(challenge.challenger_team_id,
+                                  challenge.challenged_team_id),
+                        postseason_state=postseason_state, resolver=resolver,
+                        action="handshake")
+
     lock_funding_scopes(db, anchor, derived)
 
     anchor_target = cf._anchor_cents(proposal)

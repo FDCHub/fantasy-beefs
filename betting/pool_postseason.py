@@ -157,7 +157,18 @@ def resolve_universe(db, *, league_id: int, week: int, state,
             f"championship track state was supplied. The postseason subject "
             f"universe is not derivable from league membership.")
 
-    allowed = state.championship_subject_team_keys()
+    # WP1BC — THE BROADER ACCESSOR, AND THE DIFFERENCE MATTERS ONLY IN ONE WEEK.
+    # `postseason_subject_team_keys()` is the shared eligibility rule that
+    # `season/championship_track.py` owns: the championship-contesting field in
+    # an ordinary playoff round, and in CHAMPIONSHIP WEEK that field plus the two
+    # teams in the OFFICIAL third-place game. Pools and Versus consume this same
+    # member so the rule has one home; neither restates it.
+    #
+    # It is NOT `championship_subject_team_keys()`, which answers the narrower
+    # question "who can still win the title". A third-place participant is
+    # eliminated from the championship track and simultaneously eligible for
+    # FantasyStakes action — two facts that stay separate on purpose.
+    allowed = state.postseason_subject_team_keys()
     if allowed is None:
         raise PostseasonSubjectError(
             REASON_TRACK_UNKNOWN,
@@ -167,10 +178,10 @@ def resolve_universe(db, *, league_id: int, week: int, state,
             f"postseason slate — there is no fallback to the league's teams.")
 
     # ── TEAM universe. Bye teams ARE included: a bye team is championship-alive
-    # (WP1B §5), and `championship_subject_team_keys()` returns the CONTESTING
-    # field, which is byes plus this round's participants. Whether that team's
-    # week is evaluable is a data question the census answers later, per its own
-    # fail-closed rule; it is emphatically not a reason to drop the team here.
+    # (WP1B §5), and the eligible field is byes plus this round's participants.
+    # Whether that team's week is evaluable is a data question the census answers
+    # later, per its own fail-closed rule; it is emphatically not a reason to
+    # drop the team here.
     team_ids: list[int] = []
     unresolved: list[str] = []
     for team_key in sorted(allowed):
@@ -195,10 +206,16 @@ def resolve_universe(db, *, league_id: int, week: int, state,
     # never on a name. A championship matchup with no persisted row is a
     # refusal, not an omission: the alternative is a census that silently drops
     # a title game.
+    #
+    # WP1BC — `postseason_subject_matchups` is the championship matchups PLUS
+    # the official third-place game in championship week. The other placement
+    # games played that same week are absent from it, so the MATCHUP universe
+    # contracts to exactly the two games the POR admits.
     matchup_ids: list[int] = []
     missing_keys: list[str] = []
-    if state.championship_matchups:
-        wanted = {m.matchup_key for m in state.championship_matchups}
+    eligible_matchups = state.postseason_subject_matchups
+    if eligible_matchups:
+        wanted = {m.matchup_key for m in eligible_matchups}
         rows = (db.query(Matchup)
                 .filter(Matchup.league_id == league_id,
                         Matchup.week == week,
