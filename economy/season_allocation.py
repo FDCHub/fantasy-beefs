@@ -145,6 +145,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import config
 from db.schema import League, LeagueSeasonTopoffConfig, SeasonAllocation, Team
+# ECONCFG-F1 — the activation freeze. Imported for the audit row only; it
+# supplies no number to any posting in this module.
+from economy.league_economy_config import freeze_economy_config
 from payments.economy_config import EconomyStop, get_league_economy_stop
 from economy.economy_events import (
     EVENT_OPENING_ALLOCATION,
@@ -469,6 +472,32 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
             season                    = config.ALLOCATION_SEASON,
             topoff_cap_multiplier_bps = league_multiplier_bps,
         ))
+
+        # ── ECONCFG-F1 — FREEZE THE ECONOMY CONFIGURATION, ISSUE NOTHING FROM
+        # IT ──────────────────────────────────────────────────────────────────
+        #
+        # Beside the top-off multiplier and for the same reason: no Credits may
+        # be issued from economy inputs that are not already frozen and
+        # auditable. The row records the commissioner's three inputs, the
+        # regular-season week count derived from the connected league's own
+        # settings, and the active team count — everything needed to explain
+        # afterwards why each GM was issued what they were issued.
+        #
+        # THE ISSUANCE NUMBERS BELOW ARE UNCHANGED AND STILL COME FROM `stop`.
+        # This call writes an audit row; it does not participate in the posting.
+        # `stop` is read from payments/economy_config.py exactly as before, the
+        # three ledger legs are byte-identical, and `SeasonAllocation` is built
+        # from `stop` and nothing else. Switching the authority is a later,
+        # deliberate economic package — until then a frozen configuration row
+        # must never be mistakable for live parameterized economics, and the
+        # certification asserts a configured league is issued exactly the same
+        # amounts as an unconfigured one.
+        #
+        # RETURNS None FOR AN UNCONFIGURED LEAGUE, which is every league that
+        # has not set an economy configuration — including every historical
+        # season. Nothing is written for them and nothing is refused.
+        freeze_economy_config(db, league_id=league_id,
+                              season=config.ALLOCATION_SEASON)
 
         posting_ids: list[uuid.UUID] = []
         for team_id in team_ids:

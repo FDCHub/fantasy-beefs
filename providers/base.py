@@ -119,6 +119,21 @@ class ProviderLeague:
     #: frozen value is a conflict rather than an update.
     season_final_week: int | None = None
     playoff_start_week: int | None = None
+    #: ECONCFG-F1 — the season's FIRST scoring week.
+    #:
+    #: PARSED SINCE SPRINT 6 AND DISCARDED UNTIL NOW. `parse_league` has always
+    #: read Yahoo's `start_week`; `normalize_league` simply never carried it, so
+    #: no consumer could see it. Nothing new is asked of any provider — the
+    #: value was already on the wire.
+    #:
+    #: WHY IT IS SUDDENLY LOAD-BEARING. The configurable season economy derives
+    #: its week count as `playoff_start_week - start_week`, and the governing
+    #: ruling forbids assuming `start_week == 1`. Without this field the count
+    #: could only be guessed, and a guess would decide how many Credits each GM
+    #: is issued. None stays None: a league whose provider never stated a first
+    #: week cannot freeze an economy configuration, which is a refusal rather
+    #: than a default.
+    start_week: int | None = None
     #: WP1A — how many teams enter the CHAMPIONSHIP playoff track. None where
     #: the provider did not state it, which is the current state for every
     #: provider in this repository: no transport method fetches it and no parser

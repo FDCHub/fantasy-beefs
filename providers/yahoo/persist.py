@@ -501,6 +501,16 @@ def refresh_league_week(db, snapshot: ProviderWeek, *,
                         provider_value=snapshot.league.playoff_start_week,
                         league_key=snapshot.league.league_key, now=now,
                         result=result)
+    # ECONCFG-F1 — the season's first scoring week, reconciled on exactly the
+    # same discipline as the other two boundaries. It is frozen for the same
+    # reason: the configurable season economy derives its week count from it,
+    # so a provider that later contradicts it is contradicting the basis on
+    # which Credits were already issued. Recorded as a conflict, never
+    # overwritten.
+    _reconcile_boundary(db, league, field_name="start_week",
+                        provider_value=snapshot.league.start_week,
+                        league_key=snapshot.league.league_key, now=now,
+                        result=result)
 
     # §6 — THE INGESTION HORIZON. Checked before any matchup is written.
     current_week = snapshot.league.current_week

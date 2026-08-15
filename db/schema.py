@@ -132,6 +132,42 @@ class League(Base):
     # playoff_start_week.
     season_final_week   = Column(Integer, nullable=True)
     playoff_start_week  = Column(Integer, nullable=True)
+    # ── ECONCFG-F1: the season's FIRST scoring week ───────────────────────────
+    #
+    # Yahoo has always reported it and providers/yahoo/parse.py has always read
+    # it; nothing carried it past the parser until now. It is reconciled through
+    # the SAME `_reconcile_boundary` discipline as the two boundaries above —
+    # populate once, conflict on contradiction, never silently overwrite —
+    # because it is load-bearing for exactly the same reason they are: the
+    # configurable season economy derives
+    #
+    #     regular_season_week_count = playoff_start_week - start_week
+    #
+    # and a provider that later moves it is contradicting the basis on which
+    # Credits were already issued.
+    #
+    # NULLABLE, AND NULL MEANS SOMETHING. A league whose provider never stated a
+    # first scoring week has no derivable week count, and the governing ruling
+    # forbids assuming 1. So NULL blocks an economy configuration from freezing
+    # rather than defaulting into one — the same rule `provider_current_week`
+    # follows for "which week is it".
+    start_week          = Column(Integer, nullable=True)
+    #
+    # THE COMMISSIONER'S ECONOMY INPUTS ARE NOT COLUMNS HERE, DELIBERATELY. They
+    # live on `league_season_economy_config`, whose row doubles as the editable
+    # draft (frozen_at NULL) and the immutable record (frozen_at set).
+    #
+    # `leagues` is the most-locked table in the system — every activation, every
+    # season close and every League-authority writer takes its row FOR UPDATE or
+    # FOR NO KEY UPDATE. SQLAlchemy emits every column of a locked entity in the
+    # SELECT, and `pg_stat_activity.query` truncates at track_activity_query_size
+    # (1kB by default), so each column added here consumes budget that the
+    # certified concurrency suites spend proving WHICH lock a blocked backend is
+    # waiting on. Three more columns pushed that SELECT from 761 to 1039 bytes
+    # and cut `FOR NO KEY UPDATE` off the end of the observable text. The lock
+    # was unchanged; the evidence for it was not. Season-scoped configuration
+    # belongs on a season-scoped table regardless, and this is a second, concrete
+    # reason to keep it there.
     # ── Sprint 8 P4C-3: the provider's own current week ───────────────────────
     #
     # WHY THIS COLUMN EXISTS. `ProviderLeague.current_week` has always been
@@ -2339,6 +2375,132 @@ class LeagueSeasonTopoffConfig(Base):
     topoff_cap_multiplier_bps = Column(Integer,  nullable=False)
     created_at                = Column(DateTime, nullable=False,
                                        default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+
+
+class LeagueSeasonEconomyConfig(Base):
+    """ECONCFG-F1 — one league-season's FROZEN economy configuration.
+
+    THE QUESTION THIS ROW ANSWERS, and the reason it exists at all: *why was
+    each GM issued exactly this many Credits?* `SeasonAllocation` already
+    records the ANSWER per team — the buy-in, the Weekly Minimum Reserve and the
+    Championship Reserve actually issued — but not the INPUTS that produced it.
+    With a fixed five-stop table that gap was invisible, because the inputs were
+    a compile-time constant. Once a commissioner configures the weekly minimum
+    and the championship contribution, and the week count comes from the
+    connected league's own settings, the answer alone stops being an
+    explanation.
+
+    ONE ROW, TWO STATES, DISTINGUISHED BY `frozen_at`. While it is NULL the row
+    is the commissioner's editable draft; the activation stamps it, and from
+    that moment every further write is refused. The alternative — a mutable
+    draft on `leagues` plus an insert-only copy here, mirroring
+    LeagueSeasonTopoffConfig — was implemented first and then withdrawn: three
+    extra columns on `leagues` pushed the row-lock SELECT past
+    `track_activity_query_size`, which is budget the certified concurrency
+    suites spend proving which lock a blocked backend awaits. Season-scoped
+    configuration belongs on a season-scoped table anyway.
+
+    IMMUTABLE ONCE STAMPED. There is no update path past the freeze and no
+    delete path at all. Correcting a post-activation mistake requires a
+    separately governed season-reset protocol, which FantasyStakes 1.0 does not
+    have and this package does not invent.
+
+    ONE ROW PER LEAGUE-SEASON, NOT ONE PER TEAM. The configuration is a property
+    of the season, not of a GM, and storing it once is what makes divergence
+    STRUCTURALLY IMPOSSIBLE: with one row there is no pair of rows that can
+    disagree, so no reconciliation code is needed and no drift is
+    representable. That is the same argument LeagueSeasonTopoffConfig makes, and
+    it holds here for the same reason.
+
+    ABSENCE IS A GOVERNED STATE. A league-season with no row here at all is
+    UNCONFIGURED and keeps the existing fixed economy-stop behaviour, byte for
+    byte. Every season activated before this package is in exactly that state
+    and is not migrated, backfilled or reinterpreted.
+
+    ── WHAT IS STORED, AND WHAT IS DELIBERATELY NOT ─────────────────────────
+
+    The three `*_cents` columns are the commissioner's own inputs — FantasyStakes
+    product configuration, not provider data. `regular_season_week_count` and
+    `active_team_count` are DERIVED internal economic facts.
+
+    `start_week_used` and `playoff_start_week_used` are the two provider-stated
+    boundaries the week count was derived FROM. They are stored because without
+    them the row records a count with no way to check it: an auditor asking
+    "why fourteen?" would have to re-read live provider state, which is
+    precisely the state that may have moved since. Storing them is a
+    deliberate, minimal duplication of two integers already persisted on
+    `League` — the tradeoff is a small provider-derived storage surface in
+    exchange for an audit record that survives a later boundary conflict.
+    They carry a YAHOO STORAGE-BOUNDARY REVIEW flag for that reason.
+
+    NO RAW PROVIDER PAYLOAD IS STORED. No settings blob, no bracket data, no
+    league-name copy, no scoring configuration. Six integers and a timestamp.
+
+    NOT THE ISSUANCE SOURCE IN THIS PACKAGE. Nothing reads this row to post a
+    Credit. It is written at activation and read by nothing economic until the
+    later combined package switches the authority. That separation is
+    deliberate and is certified, so the presence of a row can never be mistaken
+    for live parameterized economics.
+    """
+
+    __tablename__ = "league_season_economy_config"
+    __table_args__ = (
+        UniqueConstraint("league_id", "season", name="uq_lsec_league_season"),
+        # The governed commissioner ranges (ECON-CONFIG-R1/R2/R3), enforced by
+        # the database as well as by the validator. Whole-Credit multiples are
+        # an application rule; a CHECK cannot express "multiple of 100" as
+        # portably, and the validator owns it.
+        CheckConstraint(
+            "weekly_bet_minimum_cents BETWEEN 100 AND 10000",
+            name="ck_lsec_weekly_bet_minimum"),
+        CheckConstraint(
+            "championship_contribution_cents BETWEEN 100 AND 100000",
+            name="ck_lsec_championship_contribution"),
+        CheckConstraint(
+            "skunk_fee_cents BETWEEN 100 AND 10000",
+            name="ck_lsec_skunk_fee"),
+        # NULL passes a CHECK, which is exactly right: a draft has not derived
+        # these yet. Once written they must be positive.
+        CheckConstraint(
+            "regular_season_week_count IS NULL OR regular_season_week_count > 0",
+            name="ck_lsec_regular_season_week_count"),
+        CheckConstraint(
+            "active_team_count IS NULL OR active_team_count > 0",
+            name="ck_lsec_active_team_count"),
+    )
+
+    id        = Column(Integer, primary_key=True, autoincrement=True)
+    league_id = Column(Integer,
+                       ForeignKey("leagues.id", name="fk_lsec_league"),
+                       nullable=False)
+    season    = Column(Integer, nullable=False)
+
+    #: Commissioner inputs, frozen exactly as entered (ECON-CONFIG-R1/R2/R3).
+    weekly_bet_minimum_cents        = Column(Integer, nullable=False)
+    championship_contribution_cents = Column(Integer, nullable=False)
+    skunk_fee_cents                 = Column(Integer, nullable=False)
+
+    #: Derived internal economic facts. NULL on a draft — they are computed at
+    #: the freeze, from the connected league's own settings and its own teams,
+    #: and a draft that cannot derive them is a draft that cannot freeze.
+    regular_season_week_count = Column(Integer, nullable=True)
+    active_team_count         = Column(Integer, nullable=True)
+
+    #: The two provider boundaries the week count was derived from — the audit
+    #: trail for `regular_season_week_count`. See the class docstring.
+    start_week_used         = Column(Integer, nullable=True)
+    playoff_start_week_used = Column(Integer, nullable=True)
+
+    #: NULL WHILE EDITABLE, STAMPED ONCE AT ACTIVATION. This single column is
+    #: the draft/frozen distinction: a row with a NULL `frozen_at` is the
+    #: commissioner's working configuration and may be rewritten; a stamped row
+    #: governs Credits that have already been issued and is refused every
+    #: further write. One row, one state, no pair of rows that can disagree.
+    frozen_at  = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
 
     league = relationship("League")
 

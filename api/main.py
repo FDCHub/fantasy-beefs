@@ -4507,6 +4507,194 @@ def league_set_pool_entry(
     return _league_settings(db, league_id)
 
 
+# ── ECONCFG-F1 — league-season economy configuration ─────────────────────────
+#
+# THREE COMMISSIONER INPUTS AND NOTHING ELSE. The client sends the Weekly Bet
+# Minimum, the Championship Pot Contribution and the Skunk Fee. It does NOT send
+# `regular_season_week_count`, `active_team_count`, `start_week` or
+# `playoff_start_week` — those are derived server-side from the connected
+# league's own settings and from the league's own teams, and accepting them from
+# a caller would let a commissioner name the basis on which their own Credits
+# are issued.
+#
+# NOTHING HERE ISSUES A CREDIT. These routes read and write configuration. The
+# fixed economy-stop table remains the live issuance authority until a later,
+# deliberate economic package moves it.
+
+class EconomyConfigUpdateRequest(BaseModel):
+    """The three commissioner inputs, in integer cents.
+
+    Cents on the wire for the same reason cents are used everywhere else in this
+    repository — no float ever authorizes or funds anything. The UI renders
+    these as `$10` / `$80` / `$10`, where `$` is the FantasyStakes shorthand for
+    virtual Credits.
+    """
+    weekly_bet_minimum_cents:        int = Field(..., ge=100, le=10_000)
+    championship_contribution_cents: int = Field(..., ge=100, le=100_000)
+    skunk_fee_cents:                 int = Field(..., ge=100, le=10_000)
+
+
+class EconomyConfigOut(BaseModel):
+    """One league-season's economy configuration and what it computes to.
+
+    `frozen` distinguishes a draft a commissioner may still edit from the
+    immutable record that governs a season whose Credits are already issued.
+    """
+    league_id: int
+    season:    int
+    frozen:    bool
+    configured: bool
+
+    weekly_bet_minimum_cents:        int
+    championship_contribution_cents: int
+    skunk_fee_cents:                 int
+
+    #: Server-derived. None on a draft whose league has not stated both
+    #: boundaries — which is exactly the state that will refuse to freeze.
+    regular_season_week_count: Optional[int]
+    active_team_count:         int
+    start_week:                Optional[int]
+    playoff_start_week:        Optional[int]
+
+    #: Computed, read-only. None whenever the week count is not derivable.
+    weekly_minimum_reserve_per_player_cents:   Optional[int]
+    championship_reserve_per_player_cents:     int
+    season_opening_allocation_per_player_cents: Optional[int]
+    league_opening_allocation_cents:           Optional[int]
+
+    frozen_at: Optional[str]
+
+
+def _economy_config_out(db: Session, league_id: int) -> EconomyConfigOut:
+    """Read model over the draft or the frozen row, whichever governs."""
+    from economy.league_economy_config import (
+        EconomyCalculation, active_team_count, derive_regular_season_week_count,
+        EconomyConfigError, read_draft, read_frozen,
+    )
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    frozen = read_frozen(db, league_id=league_id, season=league.season)
+    teams = active_team_count(db, league_id=league_id)
+
+    if frozen is not None:
+        calc = EconomyCalculation(
+            weekly_bet_minimum_cents=frozen.weekly_bet_minimum_cents,
+            championship_contribution_cents=frozen.championship_contribution_cents,
+            skunk_fee_cents=frozen.skunk_fee_cents,
+            regular_season_week_count=frozen.regular_season_week_count,
+            active_team_count=frozen.active_team_count)
+        return EconomyConfigOut(
+            league_id=league_id, season=frozen.season, frozen=True,
+            configured=True,
+            weekly_bet_minimum_cents=frozen.weekly_bet_minimum_cents,
+            championship_contribution_cents=frozen.championship_contribution_cents,
+            skunk_fee_cents=frozen.skunk_fee_cents,
+            regular_season_week_count=frozen.regular_season_week_count,
+            active_team_count=frozen.active_team_count,
+            start_week=frozen.start_week_used,
+            playoff_start_week=frozen.playoff_start_week_used,
+            weekly_minimum_reserve_per_player_cents=(
+                calc.weekly_minimum_reserve_per_player_cents),
+            championship_reserve_per_player_cents=(
+                calc.championship_reserve_per_player_cents),
+            season_opening_allocation_per_player_cents=(
+                calc.season_opening_allocation_per_player_cents),
+            league_opening_allocation_cents=calc.league_opening_allocation_cents,
+            frozen_at=(frozen.frozen_at.isoformat() if frozen.frozen_at
+                       else None))
+
+    draft = read_draft(db, league_id=league_id)
+    # THE WEEK COUNT MAY NOT BE DERIVABLE YET, and that is reported as None
+    # rather than guessed. A draft with no derivable count is a draft that
+    # cannot freeze, and the surface should say so before activation rather
+    # than at it.
+    try:
+        weeks = derive_regular_season_week_count(
+            start_week=league.start_week,
+            playoff_start_week=league.playoff_start_week)
+    except EconomyConfigError:
+        weeks = None
+
+    calc = (EconomyCalculation(
+        weekly_bet_minimum_cents=draft.weekly_bet_minimum_cents,
+        championship_contribution_cents=draft.championship_contribution_cents,
+        skunk_fee_cents=draft.skunk_fee_cents,
+        regular_season_week_count=weeks,
+        active_team_count=teams) if weeks is not None else None)
+
+    return EconomyConfigOut(
+        league_id=league_id, season=league.season, frozen=False,
+        configured=draft.configured,
+        weekly_bet_minimum_cents=draft.weekly_bet_minimum_cents,
+        championship_contribution_cents=draft.championship_contribution_cents,
+        skunk_fee_cents=draft.skunk_fee_cents,
+        regular_season_week_count=weeks,
+        active_team_count=teams,
+        start_week=league.start_week,
+        playoff_start_week=league.playoff_start_week,
+        weekly_minimum_reserve_per_player_cents=(
+            calc.weekly_minimum_reserve_per_player_cents if calc else None),
+        championship_reserve_per_player_cents=draft.championship_contribution_cents,
+        season_opening_allocation_per_player_cents=(
+            calc.season_opening_allocation_per_player_cents if calc else None),
+        league_opening_allocation_cents=(
+            calc.league_opening_allocation_cents if calc else None),
+        frozen_at=None)
+
+
+@app.get("/league/{league_id}/economy-config", response_model=EconomyConfigOut)
+def read_league_economy_config(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """This league-season's economy configuration — draft or frozen.
+
+    A pure read. Before activation it reports the editable draft (falling back
+    to the setup defaults for a league that has configured nothing); afterwards
+    it reports the immutable frozen record and every value it computed.
+    """
+    return _economy_config_out(db, league_id)
+
+
+@app.put("/league/{league_id}/economy-config", response_model=EconomyConfigOut)
+def set_league_economy_config(
+    league_id: int,
+    req:       EconomyConfigUpdateRequest,
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Set the three commissioner economy inputs. Refused once frozen.
+
+    NO SECOND IMPLEMENTATION OF THE RULES. The governed ranges, the
+    whole-Credit rule and the post-activation refusal all live in
+    `economy/league_economy_config.py` and stay there. This route resolves
+    authority, calls it, and commits.
+    """
+    from economy.league_economy_config import EconomyConfigError, set_draft
+
+    try:
+        set_draft(db, league_id=league_id,
+                  weekly_bet_minimum_cents=req.weekly_bet_minimum_cents,
+                  championship_contribution_cents=req.championship_contribution_cents,
+                  skunk_fee_cents=req.skunk_fee_cents)
+    except EconomyConfigError as e:
+        # 409 for the freeze — the request is well formed and the caller is
+        # authorized, but the season has moved past the point where this may
+        # change. 400 for a value the commissioner may simply retype.
+        status_code = 409 if e.reason == "ECONOMY_CONFIG_FROZEN" else 400
+        raise HTTPException(status_code=status_code,
+                            detail={"reason_code": e.reason,
+                                    "message": str(e)})
+    db.commit()
+    return _economy_config_out(db, league_id)
+
+
 # ── The authoritative weekly Pool slate (S8-P4) ──────────────────────────────
 
 class PoolSubjectOut(BaseModel):

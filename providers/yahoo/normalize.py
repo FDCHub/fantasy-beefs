@@ -41,10 +41,12 @@ PROVIDER = "yahoo"
 def normalize_league(parsed: dict) -> ProviderLeague:
     """Parsed league dict -> ProviderLeague.
 
-    `season_final_week` comes from Yahoo's `end_week` and `playoff_start_week`
-    from its own field. Both stay None when Yahoo did not report them: §12 makes
-    these load-bearing once frozen, and a default substituted here would freeze
-    as though it had been measured.
+    `season_final_week` comes from Yahoo's `end_week`, `playoff_start_week` and
+    `start_week` from their own fields. All stay None when Yahoo did not report
+    them: §12 makes these load-bearing once frozen, and a default substituted
+    here would freeze as though it had been measured. That applies with
+    particular force to `start_week`, whose absence must stop an economy
+    configuration from freezing rather than quietly become a 1.
     """
     return ProviderLeague(
         provider=PROVIDER,
@@ -54,6 +56,10 @@ def normalize_league(parsed: dict) -> ProviderLeague:
         current_week=parsed.get("current_week"),
         season_final_week=parsed.get("end_week"),
         playoff_start_week=parsed.get("playoff_start_week"),
+        # ECONCFG-F1 — `start_week` was already parsed and is now carried. It
+        # is the season's first scoring week, and the configurable economy
+        # derives its regular-season week count from it rather than assuming 1.
+        start_week=parsed.get("start_week"),
     )
 
 
