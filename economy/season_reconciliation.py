@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from economy.championship import championship_distribution
+from economy.championship_podium import resolve_podium
 from economy.economy_events import (
     DOOR_CHAMPIONSHIP_DISTRIBUTION,
     DuplicateEconomyEvent,
@@ -205,25 +206,29 @@ def consolidate_legacy_championship(db, *, league_id: int,
 
 # ── §5 Championship distribution ──────────────────────────────────────────────
 
-def default_standings_order(db, *, league_id: int, league) -> list[int]:
-    """Final rank order by regular-season Points For, best first.
-
-    Ties break on ascending canonical team id — the same tie-break convention
-    used everywhere else in this codebase, so a reader who has learned it once
-    can predict it here. Tests may pass an explicit recorded order instead;
-    §5 permits recorded/synthetic authoritative final standings for Sprint 5,
-    and Sprint 6 will supply live Yahoo-derived standings."""
-    from economy.skunk import season_points_for
-
-    totals = season_points_for(db, league_id=league_id, league=league)
-    return [team_id for team_id, _ in
-            sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))]
-
+# `default_standings_order` WAS HERE AND IS DELETED (WP1D).
+#
+# It ranked a league's teams by regular-season Points For and was the DEFAULT
+# recipient order for the Championship Pot. That was a live money defect, not a
+# style problem: a league whose highest regular-season scorers all lost in the
+# first playoff round paid 60/30/10 to three eliminated teams while the actual
+# champion received nothing.
+#
+# DELETED RATHER THAN KEPT AS A READ MODEL, because after this package it had no
+# caller at all. The Skunk Pot — the one payout for which season-long scoring IS
+# the right authority — ranks through `economy.skunk.season_points_for` and
+# always did; `reports/standings.py::_compute_standings_order` serves the
+# reporting surfaces. Leaving a third, uncalled function that computes a payout
+# order is how a defect gets re-wired by someone reaching for the obvious name.
+#
+# Points For is still correct for the Skunk Pot. It is no longer correct for
+# anything the Championship Pot consults.
 
 def distribute_championship(db, *, league_id: int,
                             standings_order: list[int] | None = None,
                             split: list[int] | None = None,
-                            now: datetime | None = None) -> ChampionshipResult:
+                            now: datetime | None = None,
+                            podium_source=None) -> ChampionshipResult:
     """Pay the Championship pot out by the accepted 60/30/10 rule.
 
     THE ARITHMETIC IS NOT REIMPLEMENTED. `championship_distribution()` is the
@@ -231,6 +236,38 @@ def distribute_championship(db, *, league_id: int,
     rule: every ordinary place floors, and the ENTIRE indivisible remainder goes
     to first place. That rule is deliberately different from the Pool's §6.3
     canonical-id spread, and collapsing the two would silently change payouts.
+
+    ── WP1D — WHO RECEIVES IT ──────────────────────────────────────────────
+
+        1st  the actual league champion
+        2nd  the championship-game runner-up
+        3rd  the winner of the official third-place game
+
+    derived by `economy/championship_podium.py` from the authoritative
+    postseason state and resolved through the certified league-scoped identity
+    seam. `podium_source` is INJECTED because `economy/` imports nothing from
+    `providers/`: the season-close route passes a zero-argument callable that
+    returns `(championship_state, team_identity_resolver)`.
+
+    IT IS A CALLABLE AND NOT TWO VALUES, FOR AN ORDERING REASON. Building the
+    resolver eagerly makes an unbound roster refuse the close BEFORE the
+    orchestrator's nine preconditions have run, so a league with a pending Versus
+    wager and unbound teams would be told about its teams instead of its wager.
+    Calling it here — after the pot check, at the one moment the podium is
+    actually needed — keeps every earlier refusal reachable and costs an
+    already-closed replay nothing, because that path returns before this.
+
+    THERE IS NO FALLBACK. If the podium cannot be established — unknown track,
+    incomplete championship, undecided third-place game — this raises and the
+    whole close rolls back. It does NOT fall back to regular-season Points For;
+    that was the defect.
+
+    `standings_order` REMAINS FOR EXISTING TESTS AND IS NOT REACHABLE FROM
+    PRODUCTION. The season-close route never passes it and accepts no such
+    input from a client, so no commissioner can name a podium (WP1D-R2). It is
+    honoured only when a caller supplies it explicitly, which the certified
+    Sprint-5 suites do to pin an exact payout against fixed teams; production
+    passes the podium instead.
     """
     from db.schema import League, Wallet
 
@@ -246,8 +283,15 @@ def distribute_championship(db, *, league_id: int,
             REASON_EMPTY_POT,
             f"championship:{league_id} holds {pot} cents; nothing to distribute.")
 
-    order = standings_order or default_standings_order(db, league_id=league_id,
-                                                       league=league)
+    if standings_order is not None:
+        # EXPLICIT CALLER-SUPPLIED ORDER — tests only; see the docstring.
+        order = list(standings_order)
+    else:
+        # THE PRODUCTION PATH. Refuses rather than ordering by anything else.
+        state, resolver = podium_source() if podium_source else (None, None)
+        podium = resolve_podium(state, resolver)
+        order = list(podium.team_ids)
+
     if len(order) < len(split):
         raise SeasonReconciliationError(
             REASON_NO_STANDINGS,

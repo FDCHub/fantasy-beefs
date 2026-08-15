@@ -299,14 +299,31 @@ def verify_preconditions(db, *, league_id: int, final_week: int) -> None:
 
 def close_season_economy(db, *, league_id: int, final_week: int,
                          operator: str = "s5-close",
-                         standings_order: list[int] | None = None,
-                         now: datetime | None = None) -> SeasonCloseReport:
+                         now: datetime | None = None,
+                         podium_source=None) -> SeasonCloseReport:
     """Run the full close sequence. Does NOT commit — the caller owns the
     transaction, which is what keeps every posting and every event row atomic
     with the checks that authorized them.
 
     `close_season()` is called last and commits internally; by then every
     economic step has already been written into this same transaction.
+
+    ── WP1D — THIS FUNCTION NO LONGER ACCEPTS A RECIPIENT ORDER ─────────────
+
+    `standings_order` USED TO BE A PARAMETER HERE AND HAS BEEN REMOVED, not
+    defaulted and not deprecated. Any caller able to pass it could name the three
+    teams who receive 60/30/10 of the Championship Pot, and a parameter that can
+    do that on the production close path is a bypass of the podium regardless of
+    whether today's routes happen to pass it. `distribute_championship` keeps it
+    for the certified arithmetic suites, which call that function directly and
+    pin an exact payout against fixed teams; the close does not offer the door.
+
+    `podium_source` REPLACES IT AND CANNOT DO THE SAME JOB. It is a zero-argument
+    callable returning `(championship_state, team_identity_resolver)`, and the
+    order is DERIVED from that state by `economy/championship_podium.py` rather
+    than stated by the caller. The worst a caller can do with it is supply a
+    state the podium refuses, which refuses the close — it cannot select a
+    recipient.
     """
     from db.schema import League, PoolInstance
     from economy.season_close import close_season, is_season_closed
@@ -403,9 +420,19 @@ def close_season_economy(db, *, league_id: int, final_week: int,
 
     # Step 12 — Championship.
     try:
-        champ = distribute_championship(db, league_id=league_id,
-                                        standings_order=standings_order,
-                                        now=now)
+        # WP1D — THE PODIUM IS THE AUTHORITY, AND A REFUSAL ABORTS THE CLOSE.
+        # `distribute_championship` raises rather than falling back, and the
+        # only reason swallowed below is EMPTY_POT. Steps 9c-11 have already
+        # written into THIS transaction, so the caller's rollback discards the
+        # terminal rollover sweep, the reserve sweep and the Skunk distribution
+        # along with it — the season stays exactly as it was, retryable once the
+        # postseason result becomes authoritative.
+        #
+        # `podium_source` IS CALLED INSIDE distribute_championship, not here, so
+        # that an empty pot still closes a season whose bracket was never
+        # classified and so that every step 1-11 refusal stays reachable first.
+        champ = distribute_championship(db, league_id=league_id, now=now,
+                                        podium_source=podium_source)
         report.championship_pot_cents = champ.pot_cents
         report.championship_placements = champ.placements
     except SeasonReconciliationError as exc:

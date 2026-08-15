@@ -3842,6 +3842,10 @@ class SettlementRowOut(BaseModel):
 
 class SettlementReportOut(BaseModel):
     league_id:               int
+    #: WP1D — whether `rows` name the actual postseason podium (True) or the
+    #: regular-season projection (False). A surface that renders "your winners"
+    #: without reading this would present a projection as a result.
+    podium_authoritative:    bool = False
     pot_total_cents:         int
     pot_total_dollars:       str
     collected_cents:         int
@@ -3858,10 +3862,22 @@ def reports_settlement(
     _comm:     User    = Depends(require_league_commissioner),
 ):
     """Season-end settlement report: each winner's payout decomposed into
-    collected vs. contingent-on-outstanding-receivables (B2-6.3-R)."""
-    report = championship_settlement_report(league_id, db)
+    collected vs. contingent-on-outstanding-receivables (B2-6.3-R).
+
+    WP1D — IT NAMES THE PODIUM WHEN THERE IS ONE. The season close pays the
+    champion, the runner-up and the third-place-game winner, so a report that
+    kept projecting the top three by regular-season record would contradict the
+    payout it is describing. The podium is derived through the same production
+    seam the close uses and is passed in; when it cannot be derived — mid-season,
+    or a bracket the provider cannot classify — the historical projection is
+    shown unchanged and `podium_authoritative` says so. No arithmetic moves on
+    either path.
+    """
+    report = championship_settlement_report(
+        league_id, db, podium_order=_settlement_podium_order(db, league_id))
     return SettlementReportOut(
         league_id=report.league_id,
+        podium_authoritative=report.podium_authoritative,
         pot_total_cents=report.pot_total_cents,
         pot_total_dollars=_cents_to_dollars(report.pot_total_cents),
         collected_cents=report.collected_cents,
@@ -4406,13 +4422,22 @@ def _league_settings(db: Session, league_id: int) -> LeagueSettingsOut:
     from economy.skunk import (
         DEFAULT_SKUNK_CONTRIBUTION_CENTS, DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS,
     )
-    from payments.economy_config import get_league_economy_stop
+    from economy.league_economy_config import read_frozen
+    from payments.economy_config import (
+        get_league_economy_stop, resolve_allocation_terms,
+    )
 
     league = db.query(League).filter(League.id == league_id).first()
     if league is None:
         raise HTTPException(status_code=404, detail=f"League {league_id} not found")
 
-    stop = get_league_economy_stop(league_id, db)
+    # ECONCFG-WP1D — REPORT WHAT THIS LEAGUE-SEASON ACTUALLY USES. A configured
+    # season reports its own derived terms; an unconfigured one reports the
+    # historical fixed stop, exactly as before. Reported, never issued from —
+    # issuance is `economy/season_allocation.py`'s.
+    terms = resolve_allocation_terms(db, league_id=league_id,
+                                     season=league.season)
+    frozen_econ = read_frozen(db, league_id=league_id, season=league.season)
 
     cfg = db.query(PoolConfig).filter(PoolConfig.league_id == league_id).first()
     frozen_at = getattr(cfg, "pool_weekly_entry_frozen_at", None) if cfg else None
@@ -4427,10 +4452,15 @@ def _league_settings(db: Session, league_id: int) -> LeagueSettingsOut:
         league_id=league_id,
         season=league.season,
         economy_stop=SettingsEconomyStopOut(
-            weekly_min_cents=stop.weekly_min_cents,
-            min_reserve_cents=stop.min_reserve_cents,
-            reserve_cents=stop.reserve_cents,
-            buyin_cents=stop.buyin_cents,
+            # On the configured path the weekly minimum is the commissioner's
+            # own input; on the legacy path it is the stop's constant.
+            weekly_min_cents=(terms.weekly_bet_minimum_cents
+                              if terms.is_configured
+                              else get_league_economy_stop(
+                                  league_id, db).weekly_min_cents),
+            min_reserve_cents=terms.min_reserve_cents,
+            reserve_cents=terms.reserve_cents,
+            buyin_cents=terms.buyin_cents,
             editable=False,
         ),
         pool_entry=SettingsPoolEntryOut(
@@ -4443,8 +4473,18 @@ def _league_settings(db: Session, league_id: int) -> LeagueSettingsOut:
             editable=frozen_at is None,
         ),
         skunk=SettingsSkunkOut(
-            weekly_cents=DEFAULT_SKUNK_CONTRIBUTION_CENTS,
-            season_maximum_cents=DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS,
+            # THE CONCEPTUAL MAXIMUM IS DERIVED, NOT A CONSTANT (ECONCFG-WP1D
+            # §15). For a configured season it is fee x frozen regular-season
+            # weeks; the historical 14000 would be a misleading figure for a
+            # league that plays thirteen weeks or charges a different fee.
+            # NOTHING ENFORCES IT — it is a reported ceiling, and production
+            # still assesses exactly one fee per regular-season week.
+            weekly_cents=(frozen_econ.skunk_fee_cents if frozen_econ
+                          else DEFAULT_SKUNK_CONTRIBUTION_CENTS),
+            season_maximum_cents=(
+                frozen_econ.skunk_fee_cents
+                * frozen_econ.regular_season_week_count
+                if frozen_econ else DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS),
             editable=False,
         ),
         championship_split=SettingsChampionshipSplitOut(split=split, editable=False),
@@ -5569,6 +5609,109 @@ def settle_governed_pool_week(
     )
 
 
+def _postseason_track_state(db, league, *, week: int):
+    """The league's championship-track state as of `week` — WP1D.
+
+    THE ONE PLACE THE PRODUCT ASSEMBLES IT. `season/` may not import `db`,
+    `betting/` and `economy/` import nothing from `providers/`, and the
+    composition layer is where those three are allowed to meet. Every consumer
+    — the Championship podium here, and postseason Pools and postseason Versus
+    when their routes are wired — takes the state as an argument, so there is
+    one assembly and not three subtly different ones.
+
+    IT NEVER RAISES FOR "NOT KNOWABLE", AND THAT IS THE POINT. An unclassified
+    or incomplete postseason produces an UNKNOWN state carrying its own reasons,
+    which the consumer refuses on in its own vocabulary. Refusing here instead
+    would put a second opinion about championship determinability in front of
+    `season/championship_track.py`, and the season close would then report a
+    route-local error for a domain fact.
+
+    THE BOUNDARY IS THE LEAGUE'S OWN. `playoff_start_week` comes from the
+    governed reader, so a league whose provider states week 14 is read from 14
+    and one that states nothing falls back to the POR's own 15 — no week literal
+    appears here.
+    """
+    from betting.pool_season_boundary import playoff_start_week, season_final_week
+    from providers.postseason_bracket import championship_field, classified_week
+    from season.championship_track import (
+        ChampionshipFieldDeclaration, ChampionshipTrackInput,
+        ChampionshipWeekInput, derive_championship_track_state,
+    )
+
+    start = playoff_start_week(league)
+    played = tuple(
+        ChampionshipWeekInput(week=w,
+                              matchups=classified_week(db, league=league, week=w))
+        for w in range(start, week + 1)
+    )
+
+    # ── ONLY THE WEEKS THE PROVIDER ACTUALLY REPORTED ────────────────────────
+    #
+    # A postseason week with no matchup rows is a week the provider said nothing
+    # about, and `_classify_week` refuses an empty week outright — correctly, for
+    # a week that was played and whose games are missing. Handing it every week
+    # between the boundary and the final one would therefore refuse EVERY league
+    # whose bracket is shorter than its postseason window, which is most of them:
+    # a four-team field decides in two weeks no matter how many weeks sit between
+    # `playoff_start_week` and `season_final_week`.
+    #
+    # SKIPPING THEM HIDES NOTHING, because week enumeration was never the guard.
+    # Completeness is decided by the FIELD SIZE: `round_count_for_field` fixes how
+    # many rounds a declared field must play, and a bracket missing its final is
+    # incomplete however the weeks are counted. A league whose last week's games
+    # are genuinely absent from the database still has an undecided final and
+    # still refuses.
+    weeks = tuple(w for w in played if w.matchups)
+    as_of = max((w.week for w in weeks), default=week)
+
+    field = championship_field(db, league=league)
+    return derive_championship_track_state(
+        ChampionshipTrackInput(
+            league_key=league.provider_league_key or f"internal.l.{league.id}",
+            season=league.season,
+            playoff_start_week=start,
+            season_final_week=season_final_week(league),
+            weeks=weeks or played,
+            field_declaration=(ChampionshipFieldDeclaration(team_keys=field)
+                               if field else None),
+            observed_at=datetime.now(timezone.utc),
+        ),
+        week=as_of)
+
+
+def _settlement_podium_order(db, league_id: int):
+    """The podium as internal team ids for a READ surface, or None.
+
+    NEVER RAISES, WHICH IS THE OPPOSITE OF THE CLOSE'S CONTRACT AND IS CORRECT
+    FOR A REPORT. The close must refuse rather than pay the wrong three teams;
+    a report must not 500 because a league is in week 3 with no bracket to show.
+    Every refusal the podium can make is a legitimate "there is no podium yet"
+    for this caller, so all of them collapse to None and the report falls back to
+    its historical projection with `podium_authoritative` False.
+    """
+    from db.schema import League
+    from economy.championship_podium import ChampionshipPodiumError, resolve_podium
+    from providers.errors import ProviderError
+    from providers.postseason_bracket import league_provider
+    from providers.yahoo.identity import (
+        PROVIDER as DEFAULT_PROVIDER, build_team_identity_resolver,
+    )
+    from betting.pool_season_boundary import season_final_week
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        return None
+    try:
+        state = _postseason_track_state(db, league,
+                                        week=season_final_week(league))
+        provider = league_provider(db, league_id=league_id) or DEFAULT_PROVIDER
+        resolver = build_team_identity_resolver(db, league_id=league_id,
+                                                provider=provider)
+        return list(resolve_podium(state, resolver).team_ids)
+    except (ChampionshipPodiumError, ProviderError):
+        return None
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # WP3 — SEASON CLOSE
 # ══════════════════════════════════════════════════════════════════════════════
@@ -5601,8 +5744,12 @@ def settle_governed_pool_week(
 #
 #   standings_order  decides who receives 60% of the Championship pot. Accepting
 #                    it from the caller would let a commissioner name themselves
-#                    first. It is left None so the orchestrator derives it from
-#                    posted results via `default_standings_order`.
+#                    first. It is left None, and WP1D changed what that means:
+#                    the orchestrator now derives the order from the actual
+#                    postseason podium — champion, runner-up, third-place-game
+#                    winner — instead of from regular-season Points For. This
+#                    route supplies the two inputs that derivation needs and
+#                    still accepts neither from the client.
 #
 # THE OPERATOR IS THE AUTHENTICATED COMMISSIONER. §9.2 requires the close writer
 # to report operator identity in its return value and defines no audit table for
@@ -5700,11 +5847,17 @@ def close_league_season(
     from economy.season_close import (
         LeagueNotFoundError, SeasonCloseConflictError,
     )
+    from economy.championship_podium import ChampionshipPodiumError
     from economy.season_close_orchestrator import (
         SeasonClosePreconditionError, close_season_economy,
     )
     from economy.season_reconciliation import SeasonReconciliationError
     from economy.skunk import SkunkError
+    from providers.errors import ProviderIdentityError
+    from providers.postseason_bracket import league_provider
+    from providers.yahoo.identity import (
+        PROVIDER as DEFAULT_PROVIDER, build_team_identity_resolver,
+    )
 
     league = db.query(League).filter(League.id == league_id).first()
     if league is None:
@@ -5718,9 +5871,64 @@ def close_league_season(
     final_week = season_final_week(league)
     operator = comm.email
 
+    # ── WP1D — THE TWO INPUTS THE PODIUM NEEDS, BOTH BUILT SERVER-SIDE ────────
+    #
+    # NEITHER IS A ROUTE PARAMETER, and neither can be influenced by the caller.
+    # The state is derived from the league's own persisted postseason results
+    # through the certified determination, and the resolver is the certified
+    # league-scoped identity seam — the same one the Pool activation route above
+    # builds. A commissioner closing their season therefore cannot name a
+    # podium, reorder one, or nominate a recipient (WP1D-R2).
+    #
+    # AN UNRESOLVABLE ROSTER IS A REFUSAL, NOT A DEGRADED CLOSE.
+    # `build_team_identity_resolver` refuses a PARTIAL resolver by design, and
+    # that refusal is honoured rather than worked around: a resolver missing one
+    # team is exactly how a podium team would silently drop out of a payout.
+    #
+    # BUILT LAZILY, AND THE LAZINESS IS LOAD-BEARING. This closure runs inside
+    # `distribute_championship`, after the nine preconditions and after the
+    # empty-pot check. Building either input here instead would make an unbound
+    # roster refuse the close before the preconditions have run, so a league with
+    # a pending Versus wager would be told about its teams rather than its wager
+    # — and a season with nothing in the pot would need an authoritative bracket
+    # it never needs to pay anyone.
+    def podium_source():
+        # THE RESOLVER IS BUILT FOR THE PROVIDER THE LEAGUE'S TEAMS ARE ACTUALLY
+        # BOUND TO, not for a default. `build_team_identity_resolver` has always
+        # taken the provider as a parameter and only defaulted to Yahoo; passing
+        # the league's own binding is what lets a Demo league resolve its own
+        # teams through the certified seam instead of being told it carries no
+        # Yahoo identity. An unbound or mixed-binding league resolves to the
+        # default and refuses there, which is the same answer it gave before.
+        provider = league_provider(db, league_id=league_id) or DEFAULT_PROVIDER
+        return (_postseason_track_state(db, league, week=final_week),
+                build_team_identity_resolver(db, league_id=league_id,
+                                             provider=provider))
+
     try:
         report = close_season_economy(db, league_id=league_id,
-                                      final_week=final_week, operator=operator)
+                                      final_week=final_week, operator=operator,
+                                      podium_source=podium_source)
+    except ProviderIdentityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "provider_identity_unresolved",
+            "message": str(exc), "league_id": league_id,
+            "final_week": final_week})
+    except ChampionshipPodiumError as exc:
+        # THE POT IS NOT PAID AND THE SEASON DOES NOT CLOSE. Every posting steps
+        # 10-13 made lives in this session and has not been committed, so the
+        # rollback leaves the league exactly as it was — retryable the moment the
+        # postseason result becomes authoritative. `exc.reason` names WHICH
+        # condition is missing (unknown bracket, incomplete championship,
+        # undecided third-place game) so an operator is told what to wait for
+        # rather than being handed a generic conflict.
+        db.rollback()
+        raise HTTPException(status_code=409, detail={
+            "reason_code": exc.reason,
+            "message": str(exc),
+            "league_id": league_id,
+            "final_week": final_week})
     except SeasonClosePreconditionError as exc:
         # THE STEP NAME IS THE REASON CODE, passed through rather than restated.
         # `exc.step` is already the orchestrator's own vocabulary — versus_terminal,

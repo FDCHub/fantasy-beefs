@@ -27,6 +27,85 @@ from datetime import datetime, timezone
 FIXTURE_FINAL = datetime(2025, 12, 30, 12, 0, tzinfo=timezone.utc)
 
 
+#: The provider a Demo/synthetic league binds its TEAM IDENTITY to.
+SYNTHETIC_PROVIDER = "synthetic"
+
+#: The name the synthetic POSTSEASON source registers under. It is a source
+#: name, not a provider name, and the two are deliberately separate: a league's
+#: teams can be identified by Yahoo while its bracket is stated by something
+#: else, because no supported identity provider states brackets at all. See
+#: `providers/postseason_bracket.register_postseason_source`.
+SYNTHETIC_POSTSEASON_SOURCE = "synthetic-postseason"
+
+
+class RecordedBracketSource:
+    """A postseason bracket source that answers from RECORDED facts only.
+
+    WP1D — this is what a Demo provider is, and what a Yahoo adapter would be
+    once captured evidence settles what Yahoo reports: something that STATES
+    which games are championship games rather than inferring it. It infers
+    nothing. A matchup nobody recorded stays UNKNOWN and fails the determination
+    closed, which is the behaviour a live league gets today.
+
+    One instance serves every league in a suite, keyed by provider league key, so
+    a harness that builds a dozen leagues cannot leak one league's bracket into
+    another's.
+    """
+
+    def __init__(self) -> None:
+        self._brackets: dict[tuple[str, int, str], object] = {}
+        self._fields: dict[str, frozenset] = {}
+
+    def knows(self, *, league_key: str) -> bool:
+        """Only the leagues a fixture actually recorded. A source that claimed
+        every league would silently take over any other suite's league and
+        answer UNKNOWN for it, which is worse than not claiming it."""
+        return league_key in self._fields
+
+    def record(self, league_key: str, week: int, matchup_key: str, bracket):
+        self._brackets[(league_key, week, matchup_key)] = bracket
+
+    def declare_field(self, league_key: str, team_keys) -> None:
+        self._fields[league_key] = frozenset(team_keys)
+
+    def classify_week(self, *, league_key: str, week: int, matchups):
+        from dataclasses import replace
+
+        return tuple(
+            replace(m, bracket=self._brackets.get(
+                (league_key, week, m.matchup_key), m.bracket))
+            for m in matchups)
+
+    def championship_field(self, *, league_key: str, season: int):
+        return self._fields.get(league_key)
+
+
+#: Module-level so repeated installation is the SAME object — the production
+#: registry refuses to rebind a provider to a DIFFERENT source, and two suites
+#: importing this module must not trip that.
+SYNTHETIC_BRACKET_SOURCE = RecordedBracketSource()
+
+
+def install_synthetic_bracket_source() -> RecordedBracketSource:
+    """Register the synthetic postseason source, as a Demo deployment would.
+
+    THE REGISTRY IS PRODUCTION; ONLY THE SOURCE IS SYNTHETIC. A harness that
+    calls this exercises the real extension point the season-close route reads
+    through, so the state it produces reaches the podium by the production path
+    rather than by injection into a test-only parameter.
+
+    IT REGISTERS UNDER ITS OWN NAME AND CLAIMS ONLY THE LEAGUES A FIXTURE
+    RECORDED. Nothing here asserts that Yahoo can classify a bracket — a league
+    whose games this source never recorded is not claimed, gets no
+    classification, and fails closed exactly as a live Yahoo league does.
+    """
+    from providers.postseason_bracket import register_postseason_source
+
+    register_postseason_source(SYNTHETIC_POSTSEASON_SOURCE,
+                               SYNTHETIC_BRACKET_SOURCE)
+    return SYNTHETIC_BRACKET_SOURCE
+
+
 def namespaced(synthetic, suffix: str):
     """A copy of a synthetic league whose provider keys are unique to `suffix`.
 
@@ -135,6 +214,186 @@ def track_state(synthetic, *, week: int, declare: bool = True,
             field_declaration=(ChampionshipFieldDeclaration(
                 team_keys=synthetic.championship_field) if declare else None)),
         week=week)
+
+
+def record_synthetic_postseason(db, league, teams, *, semifinal_week: int,
+                                championship_week: int, podium_indexes):
+    """Play a four-team postseason for `league` and STATE its brackets.
+
+    WHY SUITES THAT CERTIFY SOMETHING ELSE NEED THIS. WP1D made the Championship
+    Pot's recipients a fact about the postseason, so a season close is no longer
+    reachable for a league that never played one. Every route-level suite that
+    drives a league to its close therefore needs a bracket — not because it is
+    testing the bracket, but because a season without one cannot legitimately
+    close. This is that fixture, written once.
+
+    `podium_indexes` is (champion, runner-up, third, fourth) as indexes into
+    `teams`, and the games follow from it:
+
+        semifinal_week      champion beats third      (CHAMPIONSHIP)
+                            runner-up beats fourth    (CHAMPIONSHIP)
+        championship_week   champion beats runner-up  (CHAMPIONSHIP)
+                            third beats fourth        (NON_CHAMPIONSHIP)
+
+    TWO FACTS IN TWO PLACES, DELIBERATELY. The games are ordinary `Matchup`
+    rows, with `finalized_at` as the only finality the close will read. WHICH
+    BRACKET each belongs to is answered by the provider's registered capability,
+    because no bracket column exists and inventing one would have manufactured
+    the Yahoo evidence the WP1A recon reported as missing.
+
+    BOTH WEEKS MUST BE POSTSEASON WEEKS for the league — at or after its
+    `playoff_start_week`. A championship game recorded in a regular-season week
+    would also be a Skunk week and a Weekly Minimum week, which is a different
+    fixture with different economics.
+    """
+    from db.schema import Matchup
+    from providers.base import MatchupBracket, derive_matchup_key, orient
+
+    if len(podium_indexes) < 4:
+        raise ValueError("a four-team bracket needs four team indexes")
+    champion, runner_up, third, fourth = podium_indexes[:4]
+
+    league_key = league.provider_league_key
+    keys = [t.provider_team_key for t in teams]
+    if not league_key or not all(keys):
+        raise ValueError(
+            f"league {league.id} or its teams carry no provider identity; the "
+            f"podium is named in provider keys and cannot be recorded without "
+            f"them.")
+
+    source = install_synthetic_bracket_source()
+    source.declare_field(league_key,
+                         [keys[i] for i in (champion, runner_up, third, fourth)])
+
+    games = (
+        (semifinal_week, champion, third, champion, MatchupBracket.CHAMPIONSHIP),
+        (semifinal_week, runner_up, fourth, runner_up, MatchupBracket.CHAMPIONSHIP),
+        (championship_week, champion, runner_up, champion,
+         MatchupBracket.CHAMPIONSHIP),
+        (championship_week, third, fourth, third,
+         MatchupBracket.NON_CHAMPIONSHIP),
+    )
+
+    for week, a, b, winner, bracket in games:
+        home_key, away_key = orient([keys[a], keys[b]])
+        matchup_key = derive_matchup_key(league_key, week, home_key, away_key)
+        home = keys.index(home_key)
+        away = keys.index(away_key)
+        db.add(Matchup(
+            league_id=league.id, week=week,
+            home_team_id=teams[home].id, away_team_id=teams[away].id,
+            # Scores are supplied and are NOT the basis of anything: the winner
+            # is stated separately and the determination reads only the
+            # statement.
+            home_score=120.0 if home == winner else 100.0,
+            away_score=100.0 if home == winner else 120.0,
+            winner_team_id=teams[winner].id,
+            provider_matchup_key=matchup_key,
+            refreshed_at=FIXTURE_FINAL, finalized_at=FIXTURE_FINAL))
+        source.record(league_key, week, matchup_key, bracket)
+    db.flush()
+
+
+def bind_synthetic_identity(db, league, teams, *, name: str | None = None):
+    """Give a league and its teams synthetic provider identity, in place.
+
+    FOR SUITES WHOSE LEAGUE BUILDER PREDATES PROVIDER IDENTITY. The Championship
+    podium is named in provider keys and resolved through the certified
+    league-scoped resolver, so a league with unbound teams cannot be paid — and
+    binding them one suite at a time would put four slightly different key
+    conventions in four files, which is how `uq_teams_provider_key` collisions
+    start.
+    """
+    league_key = f"synthetic.l.{name or league.name}"
+    league.provider = SYNTHETIC_PROVIDER
+    league.provider_league_key = league_key
+    for i, team in enumerate(teams):
+        team.provider = SYNTHETIC_PROVIDER
+        team.provider_team_key = f"{league_key}.t.{i}"
+        team.provider_team_id = i
+    db.flush()
+    return league_key
+
+
+class _KeyResolver:
+    """The identity half of a podium source: provider key -> internal team id.
+
+    A resolver is exactly this mapping in production too — `TeamIdentityResolver`
+    reads it off persisted `provider_team_key` columns — so supplying it directly
+    fakes nothing about the podium. The BRACKET half is not faked either: it is
+    derived below by the real production determination.
+    """
+
+    def __init__(self, by_key: dict) -> None:
+        self._by_key = dict(by_key)
+
+    def to_internal(self, team_key: str):
+        return self._by_key.get(team_key)
+
+
+def authoritative_podium_source(team_ids, *, league_key: str = "syn.l.podium",
+                                season: int = 2025,
+                                playoff_start_week: int = 15):
+    """A `podium_source` callable whose podium is `team_ids[0:3]`, in order.
+
+    FOR SUITES THAT CERTIFY SOMETHING OTHER THAN WP1D and need a season to reach
+    its close — the Sprint-5 arithmetic and concurrency proofs, which pin exact
+    cents against fixed teams and must not be rewritten into postseason suites to
+    keep doing so.
+
+    IT DOES NOT NAME A PODIUM; IT PLAYS ONE. Four teams, two semifinals, a final
+    and an official third-place game are constructed and handed to the real
+    `derive_championship_track_state`, so the order comes out of the same
+    determination production uses. A change that broke third-place derivation
+    would break this too, which is the property a hand-written podium object
+    would have thrown away.
+
+    `team_ids` needs four entries — champion, runner-up, third, fourth. The
+    fourth is the third-place game's loser and receives nothing.
+    """
+    from providers.base import MatchupBracket
+    from providers.fixtures.postseason_synthetic import _final
+    from season.championship_track import (
+        ChampionshipFieldDeclaration, ChampionshipTrackInput,
+        ChampionshipWeekInput, derive_championship_track_state,
+    )
+
+    ids = list(team_ids)
+    if len(ids) < 4:
+        raise ValueError(
+            f"a podium needs four teams — champion, runner-up, third and the "
+            f"third-place game's loser — got {len(ids)}.")
+    champion, runner_up, third, fourth = ids[:4]
+    keys = {tid: f"{league_key}.t.{tid}" for tid in (champion, runner_up,
+                                                     third, fourth)}
+    final_week = playoff_start_week + 1
+
+    semis = (
+        _final(league_key, playoff_start_week, keys[champion], keys[third],
+               bracket=MatchupBracket.CHAMPIONSHIP, winner=keys[champion]),
+        _final(league_key, playoff_start_week, keys[runner_up], keys[fourth],
+               bracket=MatchupBracket.CHAMPIONSHIP, winner=keys[runner_up]),
+    )
+    finals = (
+        _final(league_key, final_week, keys[champion], keys[runner_up],
+               bracket=MatchupBracket.CHAMPIONSHIP, winner=keys[champion]),
+        _final(league_key, final_week, keys[third], keys[fourth],
+               bracket=MatchupBracket.NON_CHAMPIONSHIP, winner=keys[third]),
+    )
+
+    state = derive_championship_track_state(
+        ChampionshipTrackInput(
+            league_key=league_key, season=season,
+            playoff_start_week=playoff_start_week,
+            season_final_week=final_week,
+            weeks=(ChampionshipWeekInput(week=playoff_start_week, matchups=semis),
+                   ChampionshipWeekInput(week=final_week, matchups=finals)),
+            field_declaration=ChampionshipFieldDeclaration(
+                team_keys=frozenset(keys.values()))),
+        week=final_week)
+
+    resolver = _KeyResolver({k: tid for tid, k in keys.items()})
+    return lambda: (state, resolver)
 
 
 def team_ordinals(team_ids, teams_by_key) -> list[int]:

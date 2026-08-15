@@ -73,7 +73,7 @@ def snapshot_for(transport, week: int, *, scoreboard_id: str | None = None):
         observed_at=transport.observed_at())
 
 
-def seed_economic_league(db):
+def seed_economic_league(db, *, with_postseason: bool = False):
     """The proof league: pinned id, provider identity, wallets, kickoffs.
 
     IDENTITY IS THE PROVIDER'S COMPOUND KEY, never an email smuggle. Emails here
@@ -83,6 +83,28 @@ def seed_economic_league(db):
     Season boundaries are stated to match the corpus payload (end_week 17,
     playoff_start_week 15), so `providers.yahoo.persist._reconcile_boundary`
     finds agreement rather than recording a conflict on first ingest.
+
+    ── WP1D: `with_postseason` ──────────────────────────────────────────────
+
+    OFF BY DEFAULT, AND ON FOR ANY SUITE THAT CLOSES THE SEASON. The
+    Championship Pot is now paid to the postseason podium, so a league that
+    never played a postseason has no podium and cannot legitimately close. A
+    suite that drives this league to `POST /season/close` therefore needs a
+    bracket; one that stops at weekly settlement does not, and should not carry
+    four matchups it never reads.
+
+    THE BRACKET IS STATED BY A SYNTHETIC POSTSEASON SOURCE, NOT BY YAHOO. This
+    league's TEAM IDENTITY is Yahoo's — that is what the corpus certifies and
+    what `bind_team_identity` binds. Its BRACKET is not: no supported provider
+    states which games are championship games, so the classification comes from
+    a source registered under its own name. Registering synthetic material under
+    Yahoo's name would assert a capability Yahoo has not been shown to have, and
+    the two registries are separate precisely so that fixtures cannot.
+
+    THAT SEPARATION IS ALSO THE LIVE LAUNCH BLOCKER, stated here rather than
+    hidden: a real Yahoo league today has no registered postseason source, so its
+    Championship Pot is not distributed and its season does not close. The
+    adapter that changes this is outstanding work, not a defect in this fixture.
     """
     from db.schema import League, NflSchedule, Team, Wallet
     from providers.yahoo.identity import bind_league_identity, bind_team_identity
@@ -122,4 +144,19 @@ def seed_economic_league(db):
                            home_team=f"WP2BC-H{week}", away_team=f"WP2BC-A{week}",
                            kickoff_utc=kickoff))
     db.flush()
+
+    if with_postseason:
+        from test_support_postseason import record_synthetic_postseason
+
+        # Weeks 16 and 17 — both at or after `playoff_start_week`, so they are
+        # POSTSEASON weeks and fall outside the close's Weekly Minimum and Skunk
+        # cutoff, `min(final_week, playoff_start_week - 1)`. Nothing about this
+        # league's regular-season economics moves.
+        #
+        # The podium is teams 3, 5, 1 (ordinals 4, 6, 2) — deliberately not the
+        # first three and not in id order, so a close that paid by insertion
+        # order or by regular-season scoring would produce a different answer.
+        record_synthetic_postseason(db, league, teams, semifinal_week=16,
+                                    championship_week=17,
+                                    podium_indexes=(3, 5, 1, 0))
     return league, teams

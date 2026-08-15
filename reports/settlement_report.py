@@ -56,6 +56,12 @@ class SettlementReport:
     collected_cents:   int
     contingent_cents:  int
     rows:              list[SettlementRow]
+    #: WP1D — True when `rows` name the actual postseason podium, False when
+    #: they are the regular-season projection. Reported rather than inferred:
+    #: "these are your winners" and "these would be your winners on current
+    #: standings" are different claims, and a reader who cannot tell them apart
+    #: will read the second as the first.
+    podium_authoritative: bool = False
 
 
 def championship_settlement_report(
@@ -63,6 +69,7 @@ def championship_settlement_report(
     db:              Session,
     standings_order: Optional[list[int]] = None,
     payout_split:    Optional[list[int]] = None,
+    podium_order:    Optional[list[int]] = None,
 ) -> SettlementReport:
     """
     Decomposes the championship pot's payout across the configured split
@@ -77,7 +84,23 @@ def championship_settlement_report(
     _championship_total() for the same bridge and its single-league-only
     caveat.
     """
-    order = standings_order or _compute_standings_order(league_id, db)
+    # ── WP1D — WHO THIS REPORT NAMES ─────────────────────────────────────────
+    #
+    # `podium_order` is the actual postseason podium — champion, runner-up,
+    # third-place-game winner — and it is the SAME order the season close pays.
+    # Before WP1D this report projected the payout by regular-season record, and
+    # so did the close; they agreed because they shared a defect. The close now
+    # pays the bracket, so a report still ordered by record would tell a league
+    # one set of winners and hand money to another.
+    #
+    # THE LEGACY ORDER SURVIVES ONLY WHERE THERE IS NO PODIUM. A league mid-
+    # season, or one whose bracket its provider cannot classify, has no podium to
+    # show; `_compute_standings_order` then gives the same projection it always
+    # did, and `podium_authoritative` on the report says which of the two a
+    # reader is looking at. NO ARITHMETIC CHANGES on either path — the split, the
+    # collected/contingent decomposition and the rounding are untouched.
+    order = standings_order or podium_order or _compute_standings_order(
+        league_id, db)
     split = payout_split or DEFAULT_PAYOUT_SPLIT
 
     pot_total_cents = balance_of("championship") + balance_of(f"championship:{league_id}")
@@ -121,4 +144,5 @@ def championship_settlement_report(
         collected_cents=collected_cents,
         contingent_cents=contingent_cents,
         rows=rows,
+        podium_authoritative=bool(podium_order) and not standings_order,
     )

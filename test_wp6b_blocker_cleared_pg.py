@@ -160,7 +160,7 @@ _section("§1 · the league, driven to WP6's week 2 through production routes")
 tdb.reset()
 
 with SessionLocal() as db:
-    seed_economic_league(db)
+    seed_economic_league(db, with_postseason=True)
     db.commit()
 with SessionLocal() as db:
     team_ids, _ = seed_wp6b_fixture(db, team_count=TEAM_COUNT,

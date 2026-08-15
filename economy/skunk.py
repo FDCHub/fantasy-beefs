@@ -56,7 +56,11 @@ from economy.economy_events import (
 )
 from ledger.ledger import _balance_of_in_session, post as ledger_post
 
-#: The governed weekly Skunk contribution, in integer cents.
+#: The historical weekly Skunk contribution, in integer cents.
+#:
+#: THE DEFAULT FOR AN UNCONFIGURED LEAGUE-SEASON ONLY (ECONCFG-WP1D). A season
+#: with a frozen economy configuration assesses its own configured fee; see
+#: `resolve_skunk_fee_cents`.
 #:
 #: AUTHORITY: BAB-504 (Weekly Contribution), Merged Section 4.7 Skunk Pot —
 #: "Default weekly Skunk amount $10; regular season only (weeks 1-14), never
@@ -192,15 +196,50 @@ def determine_skunk_losers(db, *, league_id: int, week: int):
     return tuple(sorted(set(losers))), worst_margin
 
 
+def resolve_skunk_fee_cents(db, *, league_id: int, season: int) -> int:
+    """The Skunk Fee this league-season assesses. ECONCFG-WP1D.
+
+    A FROZEN economy configuration governs; an UNCONFIGURED league-season keeps
+    the historical default. A DRAFT is never read — `read_frozen` returns only
+    stamped rows — so a fee a commissioner may still edit can never charge a GM.
+
+    FAILS CLOSED ON INCONSISTENT DURABLE STATE (§38). A season whose issuance
+    matches no certified legacy stop was priced by a configuration; if that
+    configuration is now missing, substituting the historical $10 would assess
+    a fee on a basis the season was never configured under, and the mismatch
+    would be invisible in the ledger afterwards.
+
+    THIS IS THE ONLY THING ABOUT SKUNK THAT CHANGED. The widest-margin
+    determination, the regular-season boundary, the margin-tie split, the
+    receivable semantics, the pot account, the event key, the idempotency and
+    the season distribution are all untouched — only where the AMOUNT comes
+    from.
+    """
+    from economy.league_economy_config import read_frozen
+    from payments.economy_config import assert_consistent_configured_state
+
+    # Raises InconsistentEconomyStateError on a vanished configuration.
+    assert_consistent_configured_state(db, league_id=league_id, season=season)
+
+    frozen = read_frozen(db, league_id=league_id, season=season)
+    if frozen is not None:
+        return int(frozen.skunk_fee_cents)
+    return DEFAULT_SKUNK_CONTRIBUTION_CENTS
+
+
 def assess_weekly_skunk(db, *, league_id: int, week: int,
-                        contribution_cents: int
-                        = DEFAULT_SKUNK_CONTRIBUTION_CENTS,
+                        contribution_cents: int | None = None,
                         now: datetime | None = None) -> SkunkAssessment:
     """Assess one league-week's Skunk. Does NOT commit.
 
     Posting and event row share the caller's transaction, so a crash before its
     commit leaves neither, and a retry collides on the deterministic
     league-week key.
+
+    `contribution_cents` defaults to the league-season's governing fee —
+    the frozen configured amount, or the historical default for an
+    unconfigured season. An explicit value still overrides it, which is what
+    the existing suites use to pin an exact figure; production passes none.
     """
     from db.schema import League
 
@@ -209,6 +248,10 @@ def assess_weekly_skunk(db, *, league_id: int, week: int,
     if league is None:
         raise SkunkError(REASON_LEAGUE_NOT_FOUND, f"league {league_id} not found")
     season = league.season
+
+    if contribution_cents is None:
+        contribution_cents = resolve_skunk_fee_cents(
+            db, league_id=league_id, season=season)
 
     if week >= playoff_start_week(league):
         raise SkunkError(

@@ -68,6 +68,10 @@ except RuntimeError as e:
 
 from datetime import datetime, timezone  # noqa: E402
 
+from test_support_postseason import (  # noqa: E402
+    SYNTHETIC_PROVIDER, record_synthetic_postseason,
+)
+
 _failures: list[str] = []
 
 
@@ -86,8 +90,15 @@ def _section(title: str) -> None:
 PASSWORD = "wp3-password"
 N_TEAMS = 6
 PLAYOFF_START = 6
-SEASON_FINAL_WEEK = 5
+SEASON_FINAL_WEEK = 7
 PLAYED_WEEKS = (3, 4)
+#: WP1D — the league now plays an actual postseason, because the Championship
+#: Pot's recipients are now derived from it. Weeks 6 and 7 are POSTSEASON
+#: (>= PLAYOFF_START), so they are outside `verify_preconditions`' Weekly Minimum
+#: and Skunk cutoff — `min(final_week, playoff_start_week - 1)` — and nothing
+#: about the regular-season economics in this suite moves.
+SEMIFINAL_WEEK = 6
+CHAMPIONSHIP_WEEK = 7
 
 #: The governed Pool weekly entry used to build a realistic Championship pot.
 #: 175 x 6 = 1050, whose §6.1 indivisible remainder (1050 % 4 = 2) lands in
@@ -110,7 +121,20 @@ WEEK_RESULTS = {
     3: [(0, 1, 100.0, 160.0), (2, 3, 130.0, 105.0), (4, 5, 120.0, 118.0)],
     4: [(0, 2, 90.0, 140.0), (1, 3, 120.0, 118.0), (4, 5, 111.0, 101.0)],
 }
-EXPECTED_PLACES = (1, 2, 4)     # team INDEXES, best first
+#: The postseason, recorded as a provider would state it. Team INDEXES.
+#:
+#:   week 6 semifinals   t0 beat t3      t5 beat t4      (CHAMPIONSHIP)
+#:   week 7 final        t0 beat t5                      (CHAMPIONSHIP)
+#:   week 7 third place  t3 beat t4                      (NON_CHAMPIONSHIP)
+#:
+#: DELIBERATELY DISJOINT FROM THE POINTS-FOR ORDER, which is the whole WP1D
+#: proof. By regular-season scoring the top three are t1, t2, t4 — and NONE of
+#: them is on the podium. t0, the WORST scorer in the league and the Skunk loser
+#: in both played weeks, is the champion. An implementation that still ranked the
+#: Championship Pot by Points For would produce a fully plausible payout to three
+#: teams that lost, and this suite would catch it on the first placement.
+EXPECTED_PODIUM = (0, 5, 3)     # champion, runner-up, third — best first
+THIRD_PLACE_LOSER = 4           # loses the semi-final AND the third-place game
 EXPECTED_SKUNK_WINNER = 1       # highest regular-season points for
 
 
@@ -152,23 +176,47 @@ def main() -> None:
 
     # ── Fixture construction ────────────────────────────────────────────────
 
+    def league_key_for(name: str) -> str:
+        return f"synthetic.l.{name}"
+
     def make_league(db, name: str):
+        league_key = league_key_for(name)
         league = League(season=SEASON, name=name,
                         projection_source="fantasypros",
                         season_final_week=SEASON_FINAL_WEEK,
-                        playoff_start_week=PLAYOFF_START)
+                        playoff_start_week=PLAYOFF_START,
+                        provider=SYNTHETIC_PROVIDER,
+                        provider_league_key=league_key)
         db.add(league)
         db.flush()
         teams = []
         for i in range(N_TEAMS):
+            # WP1D — PROVIDER IDENTITY, because the Championship Pot is now paid
+            # to teams the postseason names in the provider's own vocabulary.
+            # The certified resolver refuses a PARTIAL mapping, so every team is
+            # bound or none is; a per-league key namespace keeps
+            # uq_teams_provider_key satisfied across the many leagues this suite
+            # builds.
             t = Team(league_id=league.id, team_name=f"{name}-t{i}",
-                     owner=f"owner{i}", email=f"{name}-{i}@example.invalid")
+                     owner=f"owner{i}", email=f"{name}-{i}@example.invalid",
+                     provider=SYNTHETIC_PROVIDER,
+                     provider_team_key=f"{league_key}.t.{i}",
+                     provider_team_id=i)
             db.add(t)
             db.flush()
             db.add(Wallet(team_id=t.id, balance=0.0))
             teams.append(t)
         db.flush()
         return league, teams
+
+    def record_postseason(db, league, teams):
+        """The bracket, through the SHARED recorder every close-driving suite
+        uses. One copy of the fixture, so WP3, WP6 and WP6B cannot drift into
+        three subtly different postseasons while all reporting green."""
+        record_synthetic_postseason(
+            db, league, teams, semifinal_week=SEMIFINAL_WEEK,
+            championship_week=CHAMPIONSHIP_WEEK,
+            podium_indexes=EXPECTED_PODIUM + (THIRD_PLACE_LOSER,))
 
     def grant_commissioner(db, league_id: int, email: str):
         user = db.query(User).filter(User.email == email).first()
@@ -258,7 +306,8 @@ def main() -> None:
         return instances
 
     def build(name: str, *, with_pool: bool = True, finalized: bool = True,
-              assess: bool = True, expire: bool = True):
+              assess: bool = True, expire: bool = True,
+              with_postseason: bool = True):
         """A league driven to the brink of a legitimate close."""
         tdb.reset()
         if with_pool:
@@ -270,6 +319,8 @@ def main() -> None:
             tids = [t.id for t in teams]
             grant_commissioner(db, lid, f"{name}-comm@x.test")
             record_results(db, lid, tids, finalized=finalized)
+            if with_postseason:
+                record_postseason(db, league, teams)
             db.commit()
 
         with SessionLocal() as db:
@@ -624,7 +675,7 @@ def main() -> None:
     exp_amounts = [pot * 60 // 100, pot * 30 // 100, pot * 10 // 100]
     exp_amounts[0] += pot - sum(exp_amounts)     # first place absorbs it all
     expected_placements = [
-        {"place": i + 1, "team_id": tids[EXPECTED_PLACES[i]],
+        {"place": i + 1, "team_id": tids[EXPECTED_PODIUM[i]],
          "pct": [60, 30, 10][i], "cents": exp_amounts[i]}
         for i in range(3)
     ]
@@ -638,15 +689,29 @@ def main() -> None:
     _assert("the split is exhaustive — the three placements sum to the pot",
             sum(p["cents"] for p in body["championship_placements"]) == pot,
             str(sum(p["cents"] for p in body["championship_placements"])))
-    _assert("the placed teams are the top three by regular-season Points For, "
-            "which is NOT ascending team id and NOT the first three teams",
+    # ── WP1D — THE RECIPIENT ORDER IS THE POSTSEASON PODIUM ──────────────────
+    #
+    # champion, championship-game runner-up, official third-place-game winner —
+    # and NOT the top three by regular-season Points For, which this fixture
+    # arranges to be a completely disjoint set of teams. The old assertion here
+    # pinned the Points For order as product authority; that pin was the defect
+    # WP1D removes, so it is replaced rather than relaxed. Both orders are still
+    # named below, so the suite fails loudly if the two are ever swapped back.
+    _pf_order = [tids[i] for i in (1, 2, 4)]
+    _assert("the placed teams are the CHAMPION, the RUNNER-UP and the "
+            "THIRD-PLACE-GAME WINNER — not the top three by Points For, not "
+            "ascending team id, not the first three teams",
             [p["team_id"] for p in body["championship_placements"]]
-            == [tids[i] for i in EXPECTED_PLACES]
+            == [tids[i] for i in EXPECTED_PODIUM]
             != sorted(tids)[:3],
             str([p["team_id"] for p in body["championship_placements"]]))
+    _assert("    ...and that order is DISJOINT from the regular-season Points "
+            "For order, so a reversion to the old authority cannot pass",
+            not set(tids[i] for i in EXPECTED_PODIUM) & set(_pf_order),
+            f"podium={[tids[i] for i in EXPECTED_PODIUM]} pf={_pf_order}")
 
     after = ledger_state(lid, tids)
-    for i, place_index in enumerate(EXPECTED_PLACES):
+    for i, place_index in enumerate(EXPECTED_PODIUM):
         tid = tids[place_index]
         gained = after[f"wallet:{tid}"] - before[f"wallet:{tid}"]
         expected = exp_amounts[i] + expired_each
@@ -656,12 +721,21 @@ def main() -> None:
                 f"share plus its own reconciled money",
                 gained == expected, f"{gained} vs {expected}")
 
-    unplaced = [t for idx, t in enumerate(tids) if idx not in EXPECTED_PLACES]
-    for tid in unplaced:
+    # WP1D — THE TWO AUTHORITIES ARE PROVED APART HERE, not just asserted apart.
+    # `EXPECTED_SKUNK_WINNER` is the highest regular-season scorer and is NOT on
+    # the podium, so this loop states both halves at once: the Points For leader
+    # takes the Skunk pot and receives NOT ONE CENT of the Championship Pot. An
+    # implementation that reverted the Pot to Points For would pay them 60% here
+    # and fail on the very first unplaced GM.
+    unplaced = [(idx, t) for idx, t in enumerate(tids)
+                if idx not in EXPECTED_PODIUM]
+    for idx, tid in unplaced:
         gained = after[f"wallet:{tid}"] - before[f"wallet:{tid}"]
+        expected = expired_each + (before["skunk"]
+                                   if idx == EXPECTED_SKUNK_WINNER else 0)
         _assert(f"    an unplaced GM received NO championship money — only "
-                f"their own expired minimum back",
-                gained == expired_each, f"{gained} vs {expired_each}")
+                f"their own expired minimum{' and the Skunk pot they won' if idx == EXPECTED_SKUNK_WINNER else ''}",
+                gained == expected, f"{gained} vs {expected}")
 
     # ── Weekly Minimum reconciliation ───────────────────────────────────────
     _section("expired Weekly Minimum is reconciled exactly once, to its owner")
@@ -700,10 +774,19 @@ def main() -> None:
             and after["pool"] == 0
             and all(after[f"reserve:{t}"] == 0 for t in tids),
             str({k: v for k, v in after.items() if v and "wallet" not in k}))
-    _assert("the Skunk pot went to the highest Points For GM",
+    # THE SKUNK POT IS STILL RANKED BY POINTS FOR, AND THAT IS CORRECT.
+    # WP1D moved the CHAMPIONSHIP Pot off regular-season scoring; it did not
+    # move the Skunk Pot, whose whole premise is season-long scoring. Both live
+    # in this one suite deliberately, so a later change that collapses the two
+    # authorities into one rule cannot pass.
+    _assert("the Skunk pot went to the highest Points For GM — who is NOT on "
+            "the podium, so the two authorities are visibly different",
             after[f"wallet:{tids[EXPECTED_SKUNK_WINNER]}"]
             - before[f"wallet:{tids[EXPECTED_SKUNK_WINNER]}"]
-            > exp_amounts[EXPECTED_PLACES.index(EXPECTED_SKUNK_WINNER)])
+            == expired_each + before["skunk"]
+            and EXPECTED_SKUNK_WINNER not in EXPECTED_PODIUM,
+            f"{after[f'wallet:{tids[EXPECTED_SKUNK_WINNER]}'] - before[f'wallet:{tids[EXPECTED_SKUNK_WINNER]}']} "
+            f"vs {expired_each + before['skunk']}")
     _assert("the Skunk loser still carries their receivable — the close "
             "collects no receivable",
             balance_of(receivable_account(tids[0])) == -2000,
@@ -815,6 +898,49 @@ def main() -> None:
     _assert("trial balance is zero after the retry", trial_balance() == 0)
 
     # ════ 5. CROSS-LEAGUE ISOLATION ═════════════════════════════════════════
+    _section("WP1D · a league whose bracket nobody can classify fails CLOSED "
+             "through the production route")
+
+    # THIS IS THE LIVE YAHOO CASE, REACHED THROUGH THE REAL ROUTE.
+    # `with_postseason=False` records no games and registers no source for this
+    # league, which is exactly the state a Yahoo-bound league is in today:
+    # `providers/yahoo/normalize.py` never populates `bracket`, and no postseason
+    # source claims a Yahoo league key. The league is otherwise driven to the
+    # brink of a legitimate close — every one of the nine preconditions is met —
+    # so what refuses is the podium and nothing else.
+    lid_u, tids_u, hdr_u = build("wp1d-unclassified",
+                                 with_postseason=False)
+    _before_u = ledger_state(lid_u, tids_u)
+    r_u = close(lid_u, hdr_u)
+    _body_u = r_u.json() if r_u.content else {}
+    _detail_u = _body_u.get("detail", {}) if isinstance(_body_u, dict) else {}
+
+    _assert("an unclassifiable postseason refuses the close with 409, not 500 "
+            "and not a silent success",
+            r_u.status_code == 409, f"{r_u.status_code} {r_u.text[:200]}")
+    _assert("    ...and the reason names the podium condition an operator must "
+            "wait for, rather than a generic conflict",
+            _detail_u.get("reason_code") == "PODIUM_STATE_UNKNOWN",
+            str(_detail_u.get("reason_code")))
+    _assert("    ...the season is STILL OPEN and no close stamp was written",
+            season_open(lid_u))
+    _assert("    ...NOT ONE cent moved — the reserve sweep, the Skunk "
+            "distribution and the rollover sweep all rolled back with the "
+            "refusal",
+            ledger_state(lid_u, tids_u) == _before_u and trial_balance() == 0,
+            str({k: v for k, v in ledger_state(lid_u, tids_u).items()
+                 if _before_u.get(k) != v}))
+
+    # AND IT IS THE PODIUM THAT REFUSED, NOT A PRECONDITION. The same fixture
+    # WITH a recorded bracket closes, which is what makes the assertion above a
+    # statement about WP1D rather than about some unrelated gap in the fixture.
+    lid_k, tids_k, hdr_k = build("wp1d-classified")
+    r_k = close(lid_k, hdr_k)
+    _assert("    ...while the SAME fixture with a classified bracket closes "
+            "normally — the refusal is the podium's, not the fixture's",
+            r_k.status_code == 200, f"{r_k.status_code} {r_k.text[:200]}")
+
+
     _section("one league cannot close another")
 
     tdb.reset()
@@ -830,6 +956,12 @@ def main() -> None:
         grant_commissioner(db, lid_b, "iso-b-comm@x.test")
         record_results(db, lid_a, tids_a)
         record_results(db, lid_b, tids_b)
+        # WP1D — each league gets its OWN postseason, recorded under its own
+        # provider league key. A bracket source that leaked one league's games
+        # into the other would pay league A's champion out of league B's pot,
+        # which is exactly the isolation this section exists to prove.
+        record_postseason(db, league_a, teams_a)
+        record_postseason(db, league_b, teams_b)
         db.commit()
     for _lid in (lid_a, lid_b):
         with SessionLocal() as db:
@@ -962,13 +1094,23 @@ def main() -> None:
             sweep_events == 1, str(sweep_events))
 
     after = ledger_state(lid, tids)
-    winner_gain = (after[f"wallet:{tids[EXPECTED_PLACES[0]]}"]
-                   - before[f"wallet:{tids[EXPECTED_PLACES[0]]}"])
+    winner_gain = (after[f"wallet:{tids[EXPECTED_PODIUM[0]]}"]
+                   - before[f"wallet:{tids[EXPECTED_PODIUM[0]]}"])
+    # THE SKUNK POT IS NOT IN THIS SUM, AND ITS ABSENCE IS THE WP1D FACT.
+    # Before WP1D the Championship Pot and the Skunk Pot were both ranked by
+    # regular-season Points For, so first place was necessarily the Skunk winner
+    # and the two terms were added together here. The champion is now the team
+    # that WON THE BRACKET — in this fixture the league's lowest scorer and the
+    # Skunk loser in both played weeks — so their gain is the championship share
+    # and their own expired minimum, and nothing else.
     _assert("NO DOUBLE CHAMPIONSHIP PAYOUT — first place gained its share "
             "exactly once",
-            winner_gain == exp_amounts[0] + expired_each + before["skunk"],
-            f"{winner_gain} vs "
-            f"{exp_amounts[0] + expired_each + before['skunk']}")
+            winner_gain == exp_amounts[0] + expired_each,
+            f"{winner_gain} vs {exp_amounts[0] + expired_each}")
+    _assert("    ...and the champion received NO Skunk money — they were the "
+            "Skunk LOSER, which the close does not net against their payout",
+            balance_of(receivable_account(tids[EXPECTED_PODIUM[0]])) < 0,
+            str(balance_of(receivable_account(tids[EXPECTED_PODIUM[0]]))))
     _assert("every account the close must empty is empty after the race",
             after["championship"] == 0 and after["skunk"] == 0
             and all(after[f"reserve:{t}"] == 0 for t in tids)

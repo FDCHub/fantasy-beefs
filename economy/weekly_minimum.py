@@ -91,13 +91,37 @@ def is_release_week(league, week: int) -> bool:
 
 
 def weekly_minimum_cents(db, league_id: int) -> int:
-    """The league's governed weekly amount, from its economy stop.
+    """The league's governed weekly amount.
 
-    Read from the league's stop rather than a constant so the five certified
-    stops keep governing. `weekly_min_cents` is the stop field that has always
-    meant this; the S5-P1 rename touched `wallet_cents` only."""
-    from payments.economy_config import get_league_economy_stop
+    ONE RESOLUTION, SHARED WITH THE ALLOCATION THAT FUNDED IT.
+    `resolve_allocation_terms` is the same function `season_allocation` used to
+    decide how much `min_reserve:{team}` was issued, so the amount released each
+    week and the reserve it is released from cannot disagree. A configured league
+    is issued `weekly x regular_season_week_count` and releases `weekly`, which
+    is what makes the release EXHAUSTION-BOUNDED: the reserve empties after
+    exactly as many weeks as it was funded for, with no week count written here.
 
+    A LEAGUE THAT CONFIGURED NOTHING IS UNCHANGED. `weekly_bet_minimum_cents` is
+    None on the legacy path and the five certified stops keep governing through
+    the same `weekly_min_cents` field they always did.
+
+    THE ALTERNATIVE WOULD HAVE BEEN A HYBRID ECONOMY. Reading the legacy stop
+    here while the allocation funded from the configuration would release $10 a
+    week out of a reserve funded at $25 a week — a league issued fourteen weeks
+    of Weekly Minimum would find it lasted thirty-five, which is not either
+    economy and is nobody's product.
+    """
+    from db.schema import League
+    from payments.economy_config import (
+        get_league_economy_stop, resolve_allocation_terms,
+    )
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is not None:
+        terms = resolve_allocation_terms(db, league_id=league_id,
+                                         season=league.season)
+        if terms.weekly_bet_minimum_cents is not None:
+            return int(terms.weekly_bet_minimum_cents)
     return get_league_economy_stop(league_id, db).weekly_min_cents
 
 

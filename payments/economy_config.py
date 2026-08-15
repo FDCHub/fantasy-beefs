@@ -144,5 +144,174 @@ def get_league_economy_stop(league_id: int, db: Session) -> EconomyStop:
 
 # Fail loudly at import time if a stop was ever mistyped, rather than at
 # whatever moment in production first happens to touch the bad row.
+#
+# ECONCFG-WP1D — WHAT THESE THREE INVARIANTS NOW GOVERN, AND WHAT THEY DO NOT.
+# They validate the five historical constants above and nothing else. A
+# CONFIGURED league-season never reaches `validate_stop`: its terms come from
+# `resolve_allocation_terms` below, which derives them from the frozen
+# commissioner configuration. In particular:
+#
+#     min_reserve == weekly_min * 14      RETIRED as universal economics.
+#                                         The governing identity is now
+#                                         min_reserve = w * frozen week count.
+#     reserve * 11 == buyin * 4           RETIRED as universal economics. The
+#                                         championship contribution is an
+#                                         INDEPENDENT commissioner input, so no
+#                                         fraction of the allocation defines it.
+#
+# They are kept here because the five legacy stops genuinely satisfy them and a
+# mistyped historical constant should still fail loudly. They are emphatically
+# not a compatibility helper that re-imposes the old ratios on a configured
+# league — no configured path calls this function.
 for _stop in ECONOMY_STOPS:
     validate_stop(_stop)
+
+
+# ── ECONCFG-WP1D — the one place issuance amounts are decided ────────────────
+
+TERMS_SOURCE_LEGACY_STOP = "LEGACY_STOP"
+TERMS_SOURCE_FROZEN_CONFIG = "FROZEN_CONFIG"
+
+
+class InconsistentEconomyStateError(ValueError):
+    """A league-season's issuance basis cannot be established honestly."""
+
+
+@dataclass(frozen=True)
+class ResolvedAllocationTerms:
+    """The exact per-player amounts one league-season will issue.
+
+    ONE OBJECT, TWO SOURCES, ONE FORMULA EACH — and no third place where the
+    arithmetic is repeated. `economy/season_allocation.py` consumes this and
+    never asks where the numbers came from, which is what keeps the configured
+    and legacy paths from drifting into two implementations of the same posting.
+
+    THE THREE MONEY FIELDS DELIBERATELY KEEP THE LEGACY NAMES. `buyin_cents`,
+    `min_reserve_cents` and `reserve_cents` are the columns `SeasonAllocation`
+    has always snapshotted and the values the three-leg posting has always used.
+    Renaming them here would have rippled into a durable schema and an API for
+    no economic gain; `season_opening_allocation_cents` is exposed alongside
+    `buyin_cents` so the CANONICAL PRODUCT TERM is available to any reader
+    without a database column changing its meaning.
+    """
+
+    #: LEGACY_STOP or FROZEN_CONFIG. Carried so a caller — or an operator
+    #: reading a refusal — can tell which regime priced a season without
+    #: inferring it from the numbers.
+    source: str
+
+    buyin_cents: int
+    min_reserve_cents: int
+    reserve_cents: int
+
+    #: Present only on the configured path; None for a legacy stop, whose
+    #: amounts are constants rather than a formula.
+    weekly_bet_minimum_cents: int | None = None
+    regular_season_week_count: int | None = None
+    championship_contribution_cents: int | None = None
+
+    @property
+    def season_opening_allocation_cents(self) -> int:
+        """The canonical product term for `buyin_cents` (ECON-CONFIG-R6)."""
+        return self.buyin_cents
+
+    @property
+    def is_configured(self) -> bool:
+        return self.source == TERMS_SOURCE_FROZEN_CONFIG
+
+
+def terms_from_stop(stop: EconomyStop) -> ResolvedAllocationTerms:
+    """Legacy fixed-stop terms, for an unconfigured league-season."""
+    return ResolvedAllocationTerms(
+        source=TERMS_SOURCE_LEGACY_STOP,
+        buyin_cents=stop.buyin_cents,
+        min_reserve_cents=stop.min_reserve_cents,
+        reserve_cents=stop.reserve_cents,
+    )
+
+
+def terms_from_frozen_config(frozen) -> ResolvedAllocationTerms:
+    """Configured terms, derived from ONE frozen league-season row.
+
+        min_reserve = weekly_bet_minimum x regular_season_week_count
+        reserve     = championship_contribution
+        allocation  = min_reserve + reserve
+
+    THE FORMULA LIVES HERE AND NOWHERE ELSE. Zero-sum is true by construction —
+    the allocation IS the sum of its two parts — so the three-leg posting stays
+    balanced without anything recomputing or rounding it, exactly as the legacy
+    invariant guaranteed for the fixed stops.
+    """
+    weeks = frozen.regular_season_week_count
+    weekly = frozen.weekly_bet_minimum_cents
+    championship = frozen.championship_contribution_cents
+    if weeks is None or weeks <= 0:
+        raise InconsistentEconomyStateError(
+            f"frozen economy configuration for league {frozen.league_id} "
+            f"season {frozen.season} carries regular_season_week_count="
+            f"{weeks!r}; a frozen row must have derived it.")
+    min_reserve = weekly * weeks
+    return ResolvedAllocationTerms(
+        source=TERMS_SOURCE_FROZEN_CONFIG,
+        buyin_cents=min_reserve + championship,
+        min_reserve_cents=min_reserve,
+        reserve_cents=championship,
+        weekly_bet_minimum_cents=weekly,
+        regular_season_week_count=weeks,
+        championship_contribution_cents=championship,
+    )
+
+
+def resolve_allocation_terms(db: Session, *, league_id: int,
+                             season: int) -> ResolvedAllocationTerms:
+    """The issuance basis for one league-season. Reads only.
+
+    A FROZEN configuration wins; otherwise the legacy fixed stop applies. A
+    DRAFT is never consulted — `read_frozen` returns only stamped rows, so no
+    Credit can be posted from a configuration a commissioner may still edit.
+
+    Callers that intend to issue must have frozen the configuration first;
+    `activate_season_allocation` does exactly that, immediately before calling
+    this.
+    """
+    from economy.league_economy_config import read_frozen
+
+    frozen = read_frozen(db, league_id=league_id, season=season)
+    if frozen is not None:
+        return terms_from_frozen_config(frozen)
+    return terms_from_stop(get_league_economy_stop(league_id, db))
+
+
+def assert_consistent_configured_state(db: Session, *, league_id: int,
+                                       season: int) -> bool:
+    """Whether this league-season was issued under a frozen configuration.
+
+    FAIL CLOSED ON A VANISHED CONFIGURATION (ECONCFG-WP1D §38). A season whose
+    `SeasonAllocation` amounts match no certified legacy stop can only have come
+    from a configured freeze. If its frozen row is then missing, the durable
+    state is inconsistent — a row was deleted from an insert-only table — and
+    substituting the legacy default would silently price the rest of the season
+    on a basis it was never issued under. Refusing names the corruption instead.
+
+    Returns True when a frozen row governs, False for a genuine legacy season.
+    """
+    from db.schema import SeasonAllocation
+    from economy.league_economy_config import read_frozen
+
+    if read_frozen(db, league_id=league_id, season=season) is not None:
+        return True
+
+    row = (db.query(SeasonAllocation)
+           .filter(SeasonAllocation.league_id == league_id,
+                   SeasonAllocation.season == season)
+           .first())
+    if row is None:
+        return False
+    if find_stop_by_buyin_cents(row.buyin_cents) is None:
+        raise InconsistentEconomyStateError(
+            f"league {league_id} season {season} was issued "
+            f"{row.buyin_cents} cents per team, which matches no certified "
+            f"legacy stop, yet no frozen economy configuration exists for it. "
+            f"The configuration that priced this season is missing; refusing "
+            f"to substitute the legacy default.")
+    return False

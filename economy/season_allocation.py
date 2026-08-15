@@ -71,7 +71,7 @@ ISOLATION (decided)
     commits, so it would still see no rows, take the create path, and die on
     the unique index — converting a benign replay into an IntegrityError. It
     is also not reliably settable at that point, because
-    get_league_economy_stop() has already opened the transaction.
+    resolve_allocation_terms() has already opened the transaction.
 
 STATE MACHINE — FIVE states, evaluated inside the transaction before any write
     Evaluated over the PAIR (allocation rows, frozen config row). Both are read
@@ -124,10 +124,22 @@ CONSERVATION
         ("season_issuance:{league_id}:{season}", -stop.buyin_cents)
         (f"min_reserve:{team_id}",                stop.min_reserve_cents)
         (f"reserve:{team_id}",                    stop.reserve_cents)
-    Zero-sum is guaranteed upstream by economy_config's import-time invariant
-    min_reserve_cents + reserve_cents == buyin_cents; it is never recomputed or
-    rounded here. season_issuance:* is exempt from the ledger's non-negative
-    balance guard UNDER THIS DOOR ONLY, so debiting it from zero is legal.
+    Zero-sum is guaranteed upstream by payments/economy_config.py's
+    ResolvedAllocationTerms, whose buyin_cents IS min_reserve_cents +
+    reserve_cents by construction on BOTH paths — the legacy stop's import-time
+    invariant, and the configured formula's own definition. It is never
+    recomputed or rounded here. season_issuance:* is exempt from the ledger's
+    non-negative balance guard UNDER THIS DOOR ONLY, so debiting it from zero is
+    legal.
+
+    ECONCFG-WP1D — WHERE THE THREE AMOUNTS COME FROM. A league-season with a
+    FROZEN economy configuration is issued
+        min_reserve = weekly_bet_minimum x regular_season_week_count
+        reserve     = championship_contribution
+    and an UNCONFIGURED one keeps the historical fixed stop, unchanged and
+    un-backfilled. The posting shape, the ledger door, the account names and the
+    SeasonAllocation snapshot are identical on both paths; only the numbers
+    differ, and the row records whichever was actually issued.
     Wallet receives no leg: S5-R2 supersedes the model that put the Weekly
     Minimum allocation into Wallet.
 """
@@ -148,7 +160,9 @@ from db.schema import League, LeagueSeasonTopoffConfig, SeasonAllocation, Team
 # ECONCFG-F1 — the activation freeze. Imported for the audit row only; it
 # supplies no number to any posting in this module.
 from economy.league_economy_config import freeze_economy_config
-from payments.economy_config import EconomyStop, get_league_economy_stop
+from payments.economy_config import (
+    ResolvedAllocationTerms, resolve_allocation_terms,
+)
 from economy.economy_events import (
     EVENT_OPENING_ALLOCATION,
     gm_season_key,
@@ -218,7 +232,7 @@ class SeasonAllocationResult:
 def _result(
     league_id: int,
     team_ids: tuple[int, ...],
-    stop: EconomyStop,
+    stop: ResolvedAllocationTerms,
     created: bool,
     posting_ids: tuple[uuid.UUID, ...],
 ) -> SeasonAllocationResult:
@@ -308,8 +322,6 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
             .first()
         )
 
-        stop = get_league_economy_stop(league_id, db)
-
         # order_by(Team.id) is LOAD-BEARING, not tidiness (R-8). It fixes the
         # order in which concurrent activations of the same league insert
         # rows, so they acquire the unique index's locks in the SAME order and
@@ -335,6 +347,27 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
                 f"season {config.ALLOCATION_SEASON}. Refusing to record an "
                 f"empty activation."
             )
+
+        # ── ECONCFG-WP1D — FREEZE FIRST, THEN RESOLVE, THEN ISSUE ───────────
+        #
+        # THE ORDER IS THE SAFETY PROPERTY. No Credit may post from an editable
+        # draft, so the configuration is stamped immutable BEFORE anything reads
+        # it as an issuance basis. `freeze_economy_config` is a no-op returning
+        # None for an UNCONFIGURED league-season — which is every pre-ECONCFG-F1
+        # season — and those fall through to the legacy fixed stop unchanged.
+        #
+        # Both calls sit under the League row lock taken above, so a concurrent
+        # activation cannot freeze one configuration and issue against another.
+        freeze_economy_config(db, league_id=league_id,
+                              season=config.ALLOCATION_SEASON)
+
+        # ONE RESOLUTION, ONE FORMULA. `stop` keeps its name because every
+        # reader below consumes exactly the three amounts it always did —
+        # buyin_cents, min_reserve_cents, reserve_cents — and the posting shape,
+        # the ledger door and the SeasonAllocation snapshot are untouched. What
+        # changed is only WHERE those three numbers come from.
+        stop = resolve_allocation_terms(db, league_id=league_id,
+                                        season=config.ALLOCATION_SEASON)
 
         # THE STATE READ. Both halves of the frozen state are read here, in one
         # phase, before any branch — so every corruption is detected on the READ
@@ -472,32 +505,6 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
             season                    = config.ALLOCATION_SEASON,
             topoff_cap_multiplier_bps = league_multiplier_bps,
         ))
-
-        # ── ECONCFG-F1 — FREEZE THE ECONOMY CONFIGURATION, ISSUE NOTHING FROM
-        # IT ──────────────────────────────────────────────────────────────────
-        #
-        # Beside the top-off multiplier and for the same reason: no Credits may
-        # be issued from economy inputs that are not already frozen and
-        # auditable. The row records the commissioner's three inputs, the
-        # regular-season week count derived from the connected league's own
-        # settings, and the active team count — everything needed to explain
-        # afterwards why each GM was issued what they were issued.
-        #
-        # THE ISSUANCE NUMBERS BELOW ARE UNCHANGED AND STILL COME FROM `stop`.
-        # This call writes an audit row; it does not participate in the posting.
-        # `stop` is read from payments/economy_config.py exactly as before, the
-        # three ledger legs are byte-identical, and `SeasonAllocation` is built
-        # from `stop` and nothing else. Switching the authority is a later,
-        # deliberate economic package — until then a frozen configuration row
-        # must never be mistakable for live parameterized economics, and the
-        # certification asserts a configured league is issued exactly the same
-        # amounts as an unconfigured one.
-        #
-        # RETURNS None FOR AN UNCONFIGURED LEAGUE, which is every league that
-        # has not set an economy configuration — including every historical
-        # season. Nothing is written for them and nothing is refused.
-        freeze_economy_config(db, league_id=league_id,
-                              season=config.ALLOCATION_SEASON)
 
         posting_ids: list[uuid.UUID] = []
         for team_id in team_ids:

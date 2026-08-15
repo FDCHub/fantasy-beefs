@@ -413,17 +413,31 @@ def case_freeze(db) -> None:
             read_frozen(db, league_id=lg3.id, season=SEASON) is None)
 
 
-# ── 7 · THE ECONOMIC NON-IMPACT FENCE ────────────────────────────────────────
+# ── 7 · THE ECONOMIC AUTHORITY FENCE
+#
+# THIS SECTION WAS INVERTED BY THE COMBINED ECONOMY PARAMETERIZATION PACKAGE,
+# AND THE INVERSION IS THE POINT. Under ECONCFG-F1 it asserted the OPPOSITE of
+# everything below: that a configured league was issued the fixed-stop amounts
+# and that its frozen row was an audit record with no authority. That was true
+# and deliberate — F1 built the configuration and refused to wire it, so the
+# schema, the freeze discipline and the derivation could be certified before a
+# single Credit depended on them.
+#
+# The wiring package moves the authority, so an unchanged §7 would now be
+# asserting that the wiring did not happen. Each assertion is therefore restated
+# as its opposite rather than deleted, so the two economies stay pinned against
+# each other in one place and neither can quietly become the other. ────────────────────────────────────────
 
-def case_no_economic_impact(db) -> None:
-    _section("F1-7 · FENCE — live economics have NOT switched")
+def case_configured_economy_is_authoritative(db) -> None:
+    _section("F1-7 · FENCE — the frozen configuration IS the live economy")
     from db.schema import LeagueSeasonEconomyConfig, SeasonAllocation
     from economy.season_allocation import activate_season_allocation
     from payments.economy_config import DEFAULT_STOP
 
     # Two identical leagues. One configures a DELIBERATELY DIFFERENT economy;
-    # the other configures nothing. If the foundation had switched the issuance
-    # authority, their allocations would differ.
+    # the other configures nothing. Their allocations must now DIFFER, and the
+    # unconfigured one must be issued exactly what it was issued before this
+    # package existed — the two halves of "no hybrid economics".
     configured = make_league(db, name="f1-fence-cfg", teams=4)
     plain = make_league(db, name="f1-fence-plain", teams=4)
     set_draft(db, league_id=configured.id, weekly_bet_minimum_cents=2500,
@@ -449,14 +463,23 @@ def case_no_economic_impact(db) -> None:
     expected = {(DEFAULT_STOP.buyin_cents, DEFAULT_STOP.min_reserve_cents,
                  DEFAULT_STOP.reserve_cents)}
 
-    _assert("7b: THE CONFIGURED LEAGUE IS ISSUED THE FIXED-STOP AMOUNTS — its "
-            "$25/wk + $1,000 configuration funded nothing",
-            cfg_amounts == expected, detail=str(cfg_amounts))
-    _assert("7c: and is issued EXACTLY what the unconfigured league is issued",
-            cfg_amounts == plain_amounts,
+    # $25/week x 14 regular-season weeks = $350 of Weekly Minimum, plus the
+    # $1,000 Championship contribution, is a $1,350 Season-Opening Allocation.
+    # Every number is derived from the three commissioner inputs and the
+    # league's own boundaries; none is written here twice.
+    _assert("7b: THE CONFIGURED LEAGUE IS ISSUED ITS OWN ECONOMY — $1,350 "
+            "Season-Opening Allocation, $350 Weekly Minimum reserve, $1,000 "
+            "Championship contribution",
+            cfg_amounts == {(135_000, 35_000, 100_000)}, detail=str(cfg_amounts))
+    _assert("7c: and is issued something DIFFERENT from the unconfigured "
+            "league — the configuration is authority, not decoration",
+            cfg_amounts != plain_amounts,
             detail=f"{cfg_amounts} vs {plain_amounts}")
-    _assert("7d: which is 22000 / 14000 / 8000 — the existing certified stop",
-            cfg_amounts == {(22_000, 14_000, 8_000)}, detail=str(cfg_amounts))
+    _assert("7d: while the UNCONFIGURED league is still issued 22000 / 14000 / "
+            "8000 — the certified legacy stop, unchanged for every league "
+            "that configured nothing",
+            plain_amounts == expected == {(22_000, 14_000, 8_000)},
+            detail=str(plain_amounts))
 
     _assert("7e: the configured league DID freeze an audit row",
             db.query(LeagueSeasonEconomyConfig).filter(
@@ -466,34 +489,49 @@ def case_no_economic_impact(db) -> None:
                 LeagueSeasonEconomyConfig.league_id == plain.id).count() == 0)
 
     frozen = read_frozen(db, league_id=configured.id, season=SEASON)
-    _assert("7g: and the frozen row records an allocation that DIFFERS from "
-            "what was issued — proving the row is an audit record, not an "
-            "authority",
+    _assert("7g: and what was ISSUED equals what the frozen row DERIVES — the "
+            "row is the authority the ledger was funded from, not a record "
+            "kept beside it",
             EconomyCalculation(
                 weekly_bet_minimum_cents=frozen.weekly_bet_minimum_cents,
                 championship_contribution_cents=frozen.championship_contribution_cents,
                 skunk_fee_cents=frozen.skunk_fee_cents,
                 regular_season_week_count=frozen.regular_season_week_count,
                 active_team_count=frozen.active_team_count
-            ).season_opening_allocation_per_player_cents != 22_000)
+            ).season_opening_allocation_per_player_cents
+            == next(iter(cfg_amounts))[0] == 135_000)
 
     _assert("7h: the ledger is balanced", trial_balance() == 0,
             detail=str(trial_balance()))
 
-    # Skunk still charges the existing hardcoded default, NOT the configured fee.
-    from economy.skunk import DEFAULT_SKUNK_CONTRIBUTION_CENTS
+    # Skunk now charges the CONFIGURED fee, and an unconfigured league still
+    # charges the certified default. Read through the production resolver rather
+    # than by inspecting source, so the assertion is about behaviour.
+    from economy.skunk import (
+        DEFAULT_SKUNK_CONTRIBUTION_CENTS, resolve_skunk_fee_cents,
+    )
+
+    _cfg_fee = resolve_skunk_fee_cents(db, league_id=configured.id, season=SEASON)
+    _plain_fee = resolve_skunk_fee_cents(db, league_id=plain.id, season=SEASON)
+    _assert("7i: the weekly Skunk fee follows the configuration — $100 for "
+            "the configured league, the certified $10 default for the one that "
+            "configured nothing",
+            _cfg_fee == 10_000
+            and _plain_fee == DEFAULT_SKUNK_CONTRIBUTION_CENTS == 1000,
+            detail=f"cfg={_cfg_fee} plain={_plain_fee}")
+
+    # The Championship Pot's recipient authority moved in the SAME package, and
+    # the two are asserted together deliberately: they are the two live money
+    # authorities this program changed, and a later edit that reverted either
+    # one would leave the other's assertion passing on its own.
     import inspect as _inspect
 
-    import economy.skunk as _skunk
-    _assert("7i: economy/skunk.py does not read the configured fee — live "
-            "Skunk economics are untouched by this package",
-            "league_economy_config" not in _inspect.getsource(_skunk)
-            and DEFAULT_SKUNK_CONTRIBUTION_CENTS == 1000)
-
     import economy.season_reconciliation as _recon
-    _assert("7j: the WP1D recipient-order defect is NOT silently changed here",
-            "default_standings_order" in _inspect.getsource(_recon)
-            and "postseason_subject" not in _inspect.getsource(_recon))
+    _assert("7j: the Championship Pot is paid by the POSTSEASON PODIUM, and "
+            "the regular-season ordering that used to pay it is gone from the "
+            "module",
+            "resolve_podium" in _inspect.getsource(_recon.distribute_championship)
+            and getattr(_recon, "default_standings_order", None) is None)
 
 
 # ── 8 · Migration, compatibility, structural ─────────────────────────────────
@@ -587,7 +625,7 @@ def main() -> None:
         case_freeze(db)
         db.commit()
     with tdb.SessionLocal() as db:
-        case_no_economic_impact(db)
+        case_configured_economy_is_authoritative(db)
         db.commit()
     with tdb.SessionLocal() as db:
         case_migration(db)

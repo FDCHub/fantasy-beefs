@@ -287,7 +287,7 @@ _section("§1 · bootstrap (FIXTURE-ONLY — no product path exists for these)")
 tdb.reset()
 
 with SessionLocal() as db:
-    league, teams = seed_economic_league(db)
+    league, teams = seed_economic_league(db, with_postseason=True)
     db.commit()
     team_ids = [t.id for t in teams]
 

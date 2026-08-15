@@ -15,6 +15,9 @@ import threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from test_support_postgres import setup_postgres_test_db  # noqa: E402
+from test_support_postseason import (  # noqa: E402
+    authoritative_podium_source,
+)
 
 try:
     tdb = setup_postgres_test_db()
@@ -334,9 +337,15 @@ def main(tdb) -> None:
     # ════ 3. CLOSE ══════════════════════════════════════════════════════════
     print("\n== canonical close sequence ==")
     with SessionLocal() as db:
-        report = close_season_economy(db, league_id=lid, final_week=FINAL_WEEK,
-                                      standings_order=[tids[0], tids[1],
-                                                       tids[2]])
+        # WP1D — THE CLOSE NO LONGER ACCEPTS A RECIPIENT ORDER. It derives one
+        # from the postseason, so this suite supplies a postseason whose podium
+        # is tids[0], tids[1], tids[2] — the same three teams whose exact cents
+        # every assertion below pins. The bracket is played, not asserted: the
+        # helper builds semifinals, a final and an official third-place game and
+        # runs them through the real determination.
+        report = close_season_economy(
+            db, league_id=lid, final_week=FINAL_WEEK,
+            podium_source=authoritative_podium_source(tids))
         db.commit()
 
     _assert("close completed", report.closed_now is True)
