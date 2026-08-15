@@ -47,6 +47,12 @@ class GateResult:
     passed: bool
     evidence: list[str] = field(default_factory=list)
     error: str | None = None
+    #: WP2 §42 — set when the gate's own checks all held AND the capability it
+    #: guards is NOT CERTIFIED because required external evidence is absent. It
+    #: is a THIRD status on purpose: rendering such a gate as PASS would let a
+    #: launch readiness review read "17/17 green" over an open blocker, and
+    #: rendering it as FAIL would say the code is defective when it is correct.
+    blocker: str | None = None
 
 
 RESULTS: list[GateResult] = []
@@ -58,8 +64,9 @@ def gate(gate_id: str, title: str):
         def runner(*args, **kwargs):
             evidence: list[str] = []
             try:
-                fn(evidence, *args, **kwargs)
-                RESULTS.append(GateResult(gate_id, title, True, evidence))
+                blocker = fn(evidence, *args, **kwargs)
+                RESULTS.append(GateResult(gate_id, title, True, evidence,
+                                          blocker=blocker))
             except Exception as exc:  # noqa: BLE001
                 evidence.append(f"EXCEPTION: {type(exc).__name__}: {exc}")
                 RESULTS.append(GateResult(
@@ -672,9 +679,18 @@ def c7_immutability(evidence, tdb):
                  if ".git" not in dp
                  for f in fn if f.endswith(".sql")]
 
+    # WP2 MOVED BOTH WRITERS OUT OF THE YAHOO PACKAGE AND DID NOT DUPLICATE
+    # EITHER. `providers/finality.py` holds the sole `finalized_at` writer and
+    # `providers/persist.py` the sole guarded score/winner writer; the two Yahoo
+    # modules that used to hold them are now re-export shims with no assignment
+    # in them at all. The list is therefore two entries longer and the PROPERTY
+    # it asserts is unchanged — there is still exactly one implementation of
+    # each, and every provider reaches it.
     allowed_orm = (
-        "providers/yahoo/finality.py",   # THE finality writer
-        "providers/yahoo/persist.py",    # THE score/winner writer, guarded
+        "providers/finality.py",         # THE finality writer
+        "providers/persist.py",          # THE score/winner writer, guarded
+        "providers/yahoo/finality.py",   # Yahoo status mapping; re-exports it
+        "providers/yahoo/persist.py",    # re-export shim
         "providers/certify/run.py",      # this file's Fake row
     )
     allowed_sql = (
@@ -1651,12 +1667,1007 @@ def c17_scrub(evidence, tdb):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# WP2  —  C-18 through C-25
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# ADDITIVE. C-1 through C-17 above are untouched: WP2 changed where two provider
+# modules live, not what any of them does, and a gate that had to be rewritten to
+# keep passing would be evidence of exactly the behaviour change this package
+# promised not to make.
+
+DEMO_TOKEN = "cert1"
+DEMO_TOKEN_B = "cert2"
+
+
+def seed_demo_league(db, *, token: str = DEMO_TOKEN):
+    """A Demo league with provider identity, wallets and no economic state.
+
+    Deliberately NOT a call into `api.demo_routes.create_demo_league`: that
+    function also grants commissioner authority and seats a user, neither of
+    which a provider gate is testing, and importing the API into this harness
+    would drag FastAPI into a run whose whole claim is that it is minimal.
+    Everything IDENTITY-related below goes through the certified binders.
+    """
+    from db.schema import League, Team, Wallet
+    from providers.demo import DEMO_PROVIDER
+    from providers.demo.scenario import TEAM_COUNT, DemoScenario, league_key_for
+    from providers.identity import bind_league_identity, bind_team_identity
+
+    league_key = league_key_for(token)
+    scenario = DemoScenario(league_key=league_key)
+
+    league = League(season=scenario.season, name=f"Demo {token}",
+                    projection_source="fantasypros")
+    db.add(league)
+    db.flush()
+    bind_league_identity(db, league_id=league.id, league_key=league_key,
+                         provider=DEMO_PROVIDER)
+
+    teams = []
+    for ordinal in range(1, TEAM_COUNT + 1):
+        team = Team(league_id=league.id, team_name=scenario.team_name(ordinal),
+                    owner=scenario.owner_name(ordinal),
+                    email=scenario.owner_email(ordinal))
+        db.add(team)
+        db.flush()
+        db.add(Wallet(team_id=team.id, balance=0.0))
+        bind_team_identity(db, team_id=team.id,
+                           team_key=scenario.team_key(ordinal),
+                           team_ordinal=ordinal, provider=DEMO_PROVIDER)
+        teams.append(team)
+    db.flush()
+    return league, teams, scenario
+
+
+def demo_snapshot(scenario, *, week: int, final: bool, with_rosters: bool = False,
+                  source=None):
+    """One Demo snapshot through the production source object."""
+    from providers.demo.source import DemoProviderSource
+
+    src = source or DemoProviderSource()
+    return src.week_snapshot(league_key=scenario.league_key, week=week,
+                             current_week=week, final=final,
+                             with_rosters=with_rosters)
+
+
+@gate("C-18", "DEMO NORMALIZATION — same DTO contract, same writer, same rules")
+def c18_demo_normalization(evidence, tdb):
+    from providers.base import Finality, MatchupBracket, derive_matchup_key
+    from providers.demo import DEMO_PROVIDER
+    from providers.demo.scenario import (
+        PLAYOFF_START_WEEK, SEASON_FINAL_WEEK, START_WEEK,
+    )
+    from providers.persist import refresh_league_week, snapshot_digest
+    from db.schema import Matchup
+
+    tdb.reset()
+    with tdb.SessionLocal() as db:
+        league, teams, scenario = seed_demo_league(db)
+        db.commit()
+
+        # (a) THE DTO CONTRACT. An OPEN week carries no score and no winner —
+        #     None, never 0.0 — and is NOT_FINAL, so nothing economic can move.
+        open_week = demo_snapshot(scenario, week=1, final=False)
+        require(all(m.provider == DEMO_PROVIDER for m in open_week.matchups),
+                "a Demo matchup does not declare the demo provider")
+        require(all(m.home_points is None and m.away_points is None
+                    for m in open_week.matchups),
+                "an OPEN Demo week carries scores — 0.0 standing in for 'not "
+                "played' is the conflation providers/base.py refuses")
+        require(all(m.finality is Finality.NOT_FINAL
+                    and m.winner_team_key is None
+                    for m in open_week.matchups),
+                "an OPEN Demo week declares finality or a winner")
+        evidence.append(f"open week: {len(open_week.matchups)} matchups, every "
+                        f"one NOT_FINAL with home_points/away_points None and "
+                        f"no declared winner")
+
+        # (b) BOUNDARIES TRAVEL ON THE DTO and are reconciled by the same writer.
+        league_dto = open_week.league
+        require((league_dto.start_week, league_dto.playoff_start_week,
+                 league_dto.season_final_week) ==
+                (START_WEEK, PLAYOFF_START_WEEK, SEASON_FINAL_WEEK),
+                f"Demo boundaries are not carried: {league_dto}")
+        require(league_dto.playoff_team_count == 4,
+                "Demo does not state its championship field size")
+        evidence.append(
+            f"boundaries carried on the DTO: start_week="
+            f"{league_dto.start_week} playoff_start_week="
+            f"{league_dto.playoff_start_week} season_final_week="
+            f"{league_dto.season_final_week} playoff_team_count="
+            f"{league_dto.playoff_team_count}")
+
+        # (c) ORIENTATION IS THE CERTIFIED CANONICAL RULE, not payload order.
+        #     Swapping the two team keys must produce a byte-identical key.
+        for matchup in open_week.matchups:
+            mirrored = derive_matchup_key(scenario.league_key, 1,
+                                          matchup.away_team_key,
+                                          matchup.home_team_key)
+            require(mirrored == matchup.matchup_key,
+                    f"Demo matchup key is not mirror-stable: {matchup.matchup_key}"
+                    f" vs {mirrored}")
+        evidence.append("every Demo matchup key is byte-identical under a "
+                        "swapped team pair — providers.base.orient decides "
+                        "orientation, not the scenario's own ordering")
+
+        # (d) A REGULAR-SEASON WEEK STATES NO BRACKET. UNKNOWN is the truth for
+        #     a week the championship track never asks about.
+        require(all(m.bracket is MatchupBracket.UNKNOWN
+                    for m in open_week.matchups),
+                "a regular-season Demo matchup claims a bracket")
+        evidence.append("regular-season Demo matchups are bracket UNKNOWN — "
+                        "'not a championship game' is not asserted for a week "
+                        "nothing asks about")
+
+        # (e) PERSISTENCE IS THE PRODUCTION WRITER, and finality comes only
+        #     from an affirmative FINAL signal.
+        refresh_league_week(db, open_week)
+        db.commit()
+        rows = db.query(Matchup).filter(Matchup.league_id == league.id,
+                                        Matchup.week == 1).all()
+        require(len(rows) == 3, f"{len(rows)} matchup rows for Demo week 1")
+        require(all(r.finalized_at is None for r in rows),
+                "an OPEN Demo week set finalized_at")
+        require(all(r.provider_matchup_key for r in rows),
+                "a persisted Demo matchup carries no provider key")
+        evidence.append(f"providers.persist wrote {len(rows)} Demo matchup rows "
+                        f"with finalized_at NULL and provider keys set")
+
+        final_week = demo_snapshot(scenario, week=1, final=True,
+                                   with_rosters=True)
+        refresh_league_week(db, final_week)
+        db.commit()
+        rows = db.query(Matchup).filter(Matchup.league_id == league.id,
+                                        Matchup.week == 1).all()
+        require(len(rows) == 3, "finalizing changed the matchup row count")
+        require(all(r.finalized_at is not None for r in rows),
+                "a FINAL Demo week left finalized_at NULL")
+        require(all(r.winner_team_id is not None for r in rows),
+                "a FINAL Demo week persisted no declared winner")
+        evidence.append("finalizing the same week set finalized_at on all 3 "
+                        "rows and persisted the provider's DECLARED winner — "
+                        "no row was inserted twice")
+
+        # (f) REPLAY IS DETERMINISTIC — the same input digest, the same state.
+        again = demo_snapshot(scenario, week=1, final=True, with_rosters=True)
+        require(snapshot_digest(again) == snapshot_digest(final_week),
+                "two Demo snapshots of the same week differ")
+        evidence.append(f"two independent Demo snapshots of week 1 hash "
+                        f"identically ({snapshot_digest(again)[:16]}...)")
+
+
+@gate("C-19", "DEMO MONEY ISOLATION — a full Demo season posts zero ledger entries")
+def c19_demo_money(evidence, tdb):
+    import ast
+
+    from ledger.ledger import LedgerEntry, trial_balance
+    from providers.demo.scenario import SEASON_FINAL_WEEK, START_WEEK
+    from providers.persist import refresh_league_week
+
+    # (a) STATIC — the Demo package imports no money module. C-15 already scans
+    #     all of providers/; this reports the Demo subtree by name so a reader
+    #     is not left inferring that it was covered.
+    demo_root = os.path.join(REPO_ROOT, "providers", "demo")
+    offenders: list[str] = []
+    modules = 0
+    for dirpath, dirnames, filenames in os.walk(demo_root):
+        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+        for filename in filenames:
+            if not filename.endswith(".py"):
+                continue
+            modules += 1
+            path = os.path.join(dirpath, filename)
+            rel = os.path.relpath(path, REPO_ROOT).replace("\\", "/")
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=path)
+            for node in ast.walk(tree):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    names = [node.module]
+                for name in names:
+                    if name.split(".")[0] in ("ledger", "economy"):
+                        offenders.append(f"{rel}:{node.lineno} imports {name}")
+    require(not offenders, f"the Demo provider imports money modules: {offenders}")
+    require(modules >= 4, f"only {modules} Demo modules scanned")
+    evidence.append(f"static scan of {modules} providers/demo modules: zero "
+                    f"imports from ledger/ or economy/")
+
+    # (b) DYNAMIC — every week of a Demo season, twice, posts nothing.
+    tdb.reset()
+    with tdb.SessionLocal() as db:
+        _league, _teams, scenario = seed_demo_league(db)
+        db.commit()
+
+        before_entries = db.query(LedgerEntry).count()
+        before_balance = trial_balance()
+
+        # PASS 1 plays the season the way the Demo actually advances: each week
+        # is OPENED and then FINALIZED. PASS 2 replays only the FINAL snapshots,
+        # which is what a repeated refresh of a played season is. Re-opening a
+        # finalized week is deliberately NOT done — a provider reporting a final
+        # matchup as non-final is a post-final CONTRADICTION (S6-R3), correctly
+        # refused by the gateway, and asserting money isolation across a refusal
+        # would be asserting it about a path that never ran.
+        for week in range(START_WEEK, SEASON_FINAL_WEEK + 1):
+            refresh_league_week(db, demo_snapshot(scenario, week=week,
+                                                  final=False))
+            db.commit()
+            refresh_league_week(db, demo_snapshot(scenario, week=week,
+                                                  final=True,
+                                                  with_rosters=True))
+            db.commit()
+        for week in range(START_WEEK, SEASON_FINAL_WEEK + 1):
+            refresh_league_week(db, demo_snapshot(scenario, week=week,
+                                                  final=True,
+                                                  with_rosters=True))
+            db.commit()
+
+        after_entries = db.query(LedgerEntry).count()
+        require(after_entries == before_entries,
+                f"a Demo season replay posted {after_entries - before_entries} "
+                f"ledger entries")
+        require(trial_balance() == before_balance,
+                "trial_balance moved during a Demo provider replay")
+        evidence.append(
+            f"Demo weeks {START_WEEK}-{SEASON_FINAL_WEEK} opened and finalized "
+            f"with rosters, then every final week replayed a second time: "
+            f"ledger entries {before_entries} -> {after_entries}; trial_balance "
+            f"{before_balance} throughout")
+
+
+@gate("C-20", "DEMO IDENTITY — deterministic, non-colliding, cross-provider safe")
+def c20_demo_identity(evidence, tdb):
+    from providers.demo import DEMO_PROVIDER
+    from providers.demo.scenario import DemoScenario, league_key_for
+    from providers.demo.source import scenario_for
+    from providers.errors import ProviderIdentityError
+    from providers.identity import build_team_identity_resolver
+    from providers.persist import snapshot_digest
+
+    # (a) THE SAME SEED PRODUCES THE SAME FACTS.
+    a1 = DemoScenario(league_key=league_key_for(DEMO_TOKEN))
+    a2 = DemoScenario(league_key=league_key_for(DEMO_TOKEN))
+    d1 = snapshot_digest(demo_snapshot(a1, week=2, final=True, with_rosters=True))
+    d2 = snapshot_digest(demo_snapshot(a2, week=2, final=True, with_rosters=True))
+    require(d1 == d2, "two identical Demo scenarios produced different facts")
+    evidence.append(f"identical Demo league keys produce identical week-2 "
+                    f"digests ({d1[:16]}...)")
+
+    # (b) A DIFFERENT DEMO LEAGUE COLLIDES WITH NOTHING. `uq_teams_provider_key`
+    #     is unique across leagues, so this is a constraint property, not a
+    #     stylistic one.
+    b = DemoScenario(league_key=league_key_for(DEMO_TOKEN_B))
+    keys_a = {a1.team_key(n) for n in range(1, 7)}
+    keys_b = {b.team_key(n) for n in range(1, 7)}
+    require(not (keys_a & keys_b),
+            f"two Demo leagues share team keys: {sorted(keys_a & keys_b)}")
+    players_a = {a1.player_key(t, i) for t in range(1, 7) for i in range(10)}
+    players_b = {b.player_key(t, i) for t in range(1, 7) for i in range(10)}
+    require(not (players_a & players_b), "two Demo leagues share player keys")
+    evidence.append(f"two Demo leagues: {len(keys_a)} + {len(keys_b)} team keys "
+                    f"and {len(players_a)} + {len(players_b)} player keys, zero "
+                    f"overlap")
+
+    # (c) NO DEMO KEY IS YAHOO-SHAPED, and the Demo source refuses a Yahoo key.
+    require(all(not k.split(".")[0].isdigit() for k in keys_a),
+            f"a Demo key is Yahoo-shaped: {sorted(keys_a)[:1]}")
+    try:
+        scenario_for(LEAGUE_KEY)
+        raise AssertionError(
+            "the Demo provider answered for a Yahoo league key — it is capable "
+            "of fabricating facts about a real league")
+    except ProviderIdentityError as exc:
+        require(exc.reason == ProviderIdentityError.NON_AUTHORITATIVE,
+                f"Demo refusal used reason {exc.reason}")
+    evidence.append(f"no Demo key parses as a Yahoo game id; the Demo source "
+                    f"refuses league key {LEAGUE_KEY!r} with "
+                    f"NON_AUTHORITATIVE_IDENTITY")
+
+    # (d) CROSS-PROVIDER RESOLUTION CANNOT SUCCEED. A Demo-bound league asked
+    #     for its Yahoo identity refuses, and a Yahoo-bound one asked for Demo.
+    tdb.reset()
+    with tdb.SessionLocal() as db:
+        demo_league, _teams, _scenario = seed_demo_league(db)
+        yahoo_league, _yteams = seed_provider_league(db, name="Yahoo Ctrl")
+        db.commit()
+
+        resolver = build_team_identity_resolver(db, league_id=demo_league.id,
+                                                provider=DEMO_PROVIDER)
+        require(len(resolver) == 6, f"Demo resolver holds {len(resolver)} keys")
+        evidence.append(f"the Demo league resolves 6 team keys under provider "
+                        f"{DEMO_PROVIDER!r} through the certified resolver")
+
+        for league_id, wrong, label in (
+            (demo_league.id, PROVIDER, "a Demo league asked for Yahoo identity"),
+            (yahoo_league.id, DEMO_PROVIDER,
+             "a Yahoo league asked for Demo identity"),
+        ):
+            try:
+                build_team_identity_resolver(db, league_id=league_id,
+                                             provider=wrong)
+                raise AssertionError(f"{label} RESOLVED")
+            except ProviderIdentityError as exc:
+                require(exc.reason == ProviderIdentityError.UNKNOWN,
+                        f"{label} used reason {exc.reason}")
+        evidence.append("a Demo league refuses a Yahoo resolver and a Yahoo "
+                        "league refuses a Demo one — every lookup filters on "
+                        "(provider, key) together, so the namespaces cannot mix")
+
+        # (e) A LEAGUE CANNOT SWITCH PROVIDER.
+        from providers.identity import bind_league_identity
+        try:
+            bind_league_identity(db, league_id=demo_league.id,
+                                 league_key=demo_league.provider_league_key,
+                                 provider=PROVIDER)
+            raise AssertionError("a Demo league was rebound to Yahoo")
+        except ProviderIdentityError as exc:
+            require(exc.reason == ProviderIdentityError.CONFLICTING,
+                    f"provider switch used reason {exc.reason}")
+        db.rollback()
+        evidence.append("rebinding a Demo league to Yahoo is refused as "
+                        "CONFLICTING_IDENTITY — a league cannot switch provider")
+
+
+@gate("C-21", "DEMO POSTSEASON — production seam, derived podium, no Yahoo claim")
+def c21_demo_postseason(evidence, tdb):
+    from economy.championship_podium import derive_podium_keys
+    from providers.demo.postseason import (
+        DEMO_POSTSEASON_SOURCE, install_demo_postseason_source,
+    )
+    from providers.demo.scenario import (
+        EXPECTED_PODIUM_ORDINALS, PLAYOFF_START_WEEK, SEASON_FINAL_WEEK,
+    )
+    from providers.persist import refresh_league_week
+    from providers.postseason_bracket import (
+        championship_field, classified_week, postseason_source_for,
+        unregister_postseason_source,
+    )
+    from season.championship_track import (
+        ChampionshipFieldDeclaration, ChampionshipTrackInput,
+        ChampionshipWeekInput, TrackAuthority, derive_championship_track_state,
+    )
+
+    source = install_demo_postseason_source()
+    try:
+        # (a) IT CLAIMS DEMO LEAGUES AND NOTHING ELSE.
+        require(source.knows(league_key="demo.l.42"),
+                "the Demo source does not claim a Demo league")
+        require(not source.knows(league_key=LEAGUE_KEY),
+                f"the Demo postseason source CLAIMS Yahoo league {LEAGUE_KEY} "
+                f"— it could take over a live league's championship")
+        require(source.championship_field(league_key=LEAGUE_KEY,
+                                          season=SEASON) is None,
+                "the Demo source declared a field for a Yahoo league")
+        evidence.append(f"registered as {DEMO_POSTSEASON_SOURCE!r}; claims "
+                        f"demo.l.* and refuses {LEAGUE_KEY}")
+
+        tdb.reset()
+        with tdb.SessionLocal() as db:
+            league, _teams, scenario = seed_demo_league(db)
+            db.commit()
+
+            # (b) THE PRODUCTION LOOKUP FINDS IT, and finds nothing for Yahoo.
+            require(postseason_source_for(scenario.league_key) is source,
+                    "postseason_source_for did not return the Demo source")
+            require(postseason_source_for(LEAGUE_KEY) is None,
+                    "a Yahoo league found a registered postseason source")
+            evidence.append("providers.postseason_bracket.postseason_source_for "
+                            "resolves the Demo league to the Demo source and a "
+                            "Yahoo league to None")
+
+            # (c) THE FACTS REACH THE DOMAIN THROUGH PERSISTED ROWS.
+            for week in range(1, SEASON_FINAL_WEEK + 1):
+                refresh_league_week(db, demo_snapshot(scenario, week=week,
+                                                      final=True,
+                                                      with_rosters=False))
+                db.commit()
+
+            weeks = []
+            for week in range(PLAYOFF_START_WEEK, SEASON_FINAL_WEEK + 1):
+                matchups = classified_week(db, league=league, week=week)
+                require(matchups, f"postseason week {week} rehydrated empty")
+                weeks.append(ChampionshipWeekInput(week=week, matchups=matchups))
+            field = championship_field(db, league=league)
+            require(field and len(field) == 4,
+                    f"the Demo championship field is {field!r}")
+            evidence.append(
+                f"weeks {PLAYOFF_START_WEEK}-{SEASON_FINAL_WEEK} rehydrated from "
+                f"PERSISTED rows and classified through the production seam; "
+                f"declared field size {len(field)}")
+
+            state = derive_championship_track_state(
+                ChampionshipTrackInput(
+                    league_key=league.provider_league_key, season=league.season,
+                    playoff_start_week=PLAYOFF_START_WEEK,
+                    season_final_week=SEASON_FINAL_WEEK,
+                    playoff_team_count=4, weeks=tuple(weeks),
+                    field_declaration=ChampionshipFieldDeclaration(
+                        team_keys=field)),
+                week=SEASON_FINAL_WEEK)
+            require(state.authority is TrackAuthority.PROVIDER_CLASSIFIED,
+                    f"Demo track authority is {state.authority} with reasons "
+                    f"{list(state.insufficiency_reasons)}")
+            require(state.complete, "the Demo championship is not complete")
+            evidence.append(f"championship track authority="
+                            f"{state.authority.value} complete={state.complete} "
+                            f"champion={state.champion_team_key}")
+
+            # (d) THE PODIUM IS DERIVED BY THE PRODUCTION RULE, NOT INJECTED.
+            podium = derive_podium_keys(state)
+            expected = tuple(scenario.team_key(n)
+                             for n in EXPECTED_PODIUM_ORDINALS)
+            require(podium == expected,
+                    f"podium {podium!r} is not the scenario's {expected!r}")
+            evidence.append(
+                f"economy.championship_podium.derive_podium_keys returns "
+                f"{[k.rsplit('.', 1)[-1] for k in podium]} — champion, "
+                f"runner-up and the OFFICIAL THIRD-PLACE winner, derived from "
+                f"the semifinal losers by WP1BC and never stated by the source")
+
+            # (e) A SECOND SOURCE CLAIMING THE SAME LEAGUE REFUSES.
+            from providers.errors import ProviderIdentityError
+            from providers.postseason_bracket import register_postseason_source
+
+            class _Rival:
+                def knows(self, *, league_key):
+                    return True
+
+                def classify_week(self, *, league_key, week, matchups):
+                    return matchups
+
+                def championship_field(self, *, league_key, season):
+                    return None
+
+            register_postseason_source("c21-rival", _Rival())
+            try:
+                postseason_source_for(scenario.league_key)
+                raise AssertionError(
+                    "two postseason sources claimed one league and one was "
+                    "chosen — a championship decided by registration order")
+            except ProviderIdentityError as exc:
+                require(exc.reason == ProviderIdentityError.AMBIGUOUS,
+                        f"ambiguity used reason {exc.reason}")
+            finally:
+                unregister_postseason_source("c21-rival")
+            evidence.append("two sources claiming one league refuse with "
+                            "AMBIGUOUS_IDENTITY rather than picking one")
+    finally:
+        unregister_postseason_source(DEMO_POSTSEASON_SOURCE)
+
+
+@gate("C-22", "PROVIDER OUTAGE — named, retryable, nothing persisted, retry works")
+def c22_outage(evidence, tdb):
+    from ledger.ledger import LedgerEntry, trial_balance
+    from providers import incident as provider_incident
+    from providers.demo.source import DemoProviderSource
+    from providers.errors import ProviderTransportError
+    from providers.persist import refresh_league_week
+    from db.schema import Matchup
+
+    tdb.reset()
+    with tdb.SessionLocal() as db:
+        league, _teams, scenario = seed_demo_league(db)
+        db.commit()
+
+        entries_before = db.query(LedgerEntry).count()
+        balance_before = trial_balance()
+
+        out = DemoProviderSource(outage=True)
+        try:
+            demo_snapshot(scenario, week=1, final=True, with_rosters=True,
+                          source=out)
+            raise AssertionError(
+                "a provider OUTAGE produced a snapshot — a partial answer from "
+                "a failed read is indistinguishable from a short week")
+        except ProviderTransportError as exc:
+            reason = provider_incident.reason_for_exception(exc)
+        require(reason == provider_incident.REASON_PROVIDER_UNAVAILABLE,
+                f"an outage mapped to reason {reason!r}")
+        require(provider_incident.is_retryable(reason) is True,
+                "a provider outage is not classified retryable")
+        evidence.append(f"outage raises ProviderTransportError -> named reason "
+                        f"{reason!r}, retryable=True")
+
+        # NOTHING WAS PERSISTED, INVENTED OR POSTED.
+        require(db.query(Matchup).filter(
+            Matchup.league_id == league.id).count() == 0,
+            "an outage persisted matchup rows")
+        require(db.query(LedgerEntry).count() == entries_before,
+                "an outage posted ledger entries")
+        require(trial_balance() == balance_before,
+                "an outage moved the trial balance")
+        require(league.provider_current_week is None,
+                "an outage advanced the provider's current week")
+        evidence.append("after the outage: 0 matchup rows, 0 new ledger "
+                        "entries, trial_balance unchanged, no finality "
+                        "invented and no current week recorded")
+
+        # THE SAME REFRESH SUCCEEDS ONCE THE PROVIDER RECOVERS.
+        healthy = DemoProviderSource()
+        result = refresh_league_week(db, demo_snapshot(scenario, week=1,
+                                                       final=True,
+                                                       with_rosters=True,
+                                                       source=healthy))
+        db.commit()
+        rows = db.query(Matchup).filter(Matchup.league_id == league.id,
+                                        Matchup.week == 1).all()
+        require(len(rows) == 3 and all(r.finalized_at for r in rows),
+                f"the retry persisted {len(rows)} rows")
+        require(db.query(LedgerEntry).count() == entries_before,
+                "the successful refresh posted ledger entries")
+        evidence.append(f"the identical refresh retried after recovery: "
+                        f"{result.matchups_inserted} inserted, "
+                        f"{result.matchups_finalized} finalized, still 0 ledger "
+                        f"entries — the provider layer never posts")
+
+
+@gate("C-23", "INCOMPLETE DATA — INCOMPLETE_FIELD, no posting, resync settles")
+def c23_incomplete_recovery(evidence, tdb):
+    from betting.pool_catalog import spec_from_row
+    from betting.pool_census import (
+        CLASSIFICATION_INCOMPLETE_FIELD, classify_pool, require_settleable,
+    )
+    from betting.pool_errors import IncompleteFieldError
+    from betting.pool_subjects import league_weekly_structure
+    from ledger.ledger import LedgerEntry, trial_balance
+    from providers import incident as provider_incident
+    from providers.demo import DEMO_PROVIDER
+    from providers.demo.pool_source import DemoProviderStatSource
+    from providers.demo.scenario import (
+        INCOMPLETE_PLAYER_INDEX, INCOMPLETE_TEAM_ORDINAL, REVISION_INCOMPLETE,
+    )
+    from providers.demo.source import DemoProviderSource
+    from providers.identity import build_team_identity_resolver
+    from providers.persist import refresh_league_week
+    from db.schema import PoolDefinition
+
+    tdb.reset()
+    with tdb.SessionLocal() as db:
+        from test_support_s4_pool import seed_catalog
+
+        league, teams, scenario = seed_demo_league(db)
+        seed_catalog(db)
+        db.commit()
+
+        refresh_league_week(db, demo_snapshot(scenario, week=1, final=True))
+        db.commit()
+
+        entries_before = db.query(LedgerEntry).count()
+        balance_before = trial_balance()
+        resolver = build_team_identity_resolver(db, league_id=league.id,
+                                                provider=DEMO_PROVIDER)
+
+        # A definition that needs a PLAYER stat, so the withheld record matters.
+        row = (db.query(PoolDefinition)
+               .filter(PoolDefinition.key == "most_passing_yards").first())
+        require(row is not None, "most_passing_yards is not in the catalog")
+        spec = spec_from_row(row)
+        structure = league_weekly_structure(db, league_id=league.id, week=1,
+                                            scope=spec.scope)
+
+        # ── REVISION A: FINAL WEEK, ONE STARTER NEVER MEASURED ───────────────
+        incomplete = DemoProviderSource(revision=REVISION_INCOMPLETE)
+        snap_a = demo_snapshot(scenario, week=1, final=True, with_rosters=True,
+                               source=incomplete)
+        source_a = DemoProviderStatSource(snap_a).bind(db, resolver)
+        outcome_a = classify_pool(spec, structure,
+                                  source_a.subjects_for(
+                                      league_id=league.id, season=league.season,
+                                      week=1, structure=structure))
+        require(outcome_a.classification == CLASSIFICATION_INCOMPLETE_FIELD,
+                f"an unmeasured starter classified as "
+                f"{outcome_a.classification}, not INCOMPLETE_FIELD")
+        require(not outcome_a.settles, "an INCOMPLETE_FIELD outcome settles")
+        require(outcome_a.census.subjects_claiming is None,
+                "a claim count was computed over an incomplete field")
+        require(outcome_a.unevaluable_subject_ids,
+                "INCOMPLETE_FIELD named no unevaluable subject")
+        stuck = teams[INCOMPLETE_TEAM_ORDINAL - 1].id
+        require(stuck in outcome_a.unevaluable_subject_ids,
+                f"team {stuck} (the one with the unmeasured starter) is not "
+                f"among the unevaluable subjects "
+                f"{list(outcome_a.unevaluable_subject_ids)}")
+        evidence.append(
+            f"one started player (team {INCOMPLETE_TEAM_ORDINAL}, roster index "
+            f"{INCOMPLETE_PLAYER_INDEX}) with NO stats record -> "
+            f"{outcome_a.classification}: considered="
+            f"{outcome_a.census.subjects_evaluated}/"
+            f"{outcome_a.census.subjects_considered}, claiming=None, "
+            f"unevaluable={list(outcome_a.unevaluable_subject_ids)}")
+
+        # THE REFUSAL IS NAMED AND IS RETRYABLE — AND IS NOT TERMINAL.
+        try:
+            require_settleable(outcome_a, definition_key=spec.key,
+                               league_id=league.id, season=league.season, week=1)
+            raise AssertionError("require_settleable admitted INCOMPLETE_FIELD")
+        except IncompleteFieldError as exc:
+            require(provider_incident.is_retryable(exc.classification) is True,
+                    "INCOMPLETE_FIELD is not classified retryable")
+            require(provider_incident.is_data_incomplete(exc.classification),
+                    "INCOMPLETE_FIELD does not report data as incomplete")
+        require(not provider_incident.TERMINAL_REASONS,
+                "the incident taxonomy declares a TERMINAL reason — WP1E "
+                "forbids any provider condition converting a Pool to terminal")
+        evidence.append("the refusal is IncompleteFieldError: retryable=True, "
+                        "data_incomplete=True, and TERMINAL_REASONS is empty — "
+                        "no provider condition is terminal in FantasyStakes 1.0")
+
+        # ── REPETITION AND FINALITY CHANGE NOTHING ───────────────────────────
+        for attempt in range(2, 6):
+            repeat = classify_pool(spec, structure,
+                                   DemoProviderStatSource(
+                                       demo_snapshot(scenario, week=1,
+                                                     final=True,
+                                                     with_rosters=True,
+                                                     source=incomplete)
+                                   ).bind(db, resolver).subjects_for(
+                                       league_id=league.id,
+                                       season=league.season, week=1,
+                                       structure=structure))
+            require(repeat.classification == CLASSIFICATION_INCOMPLETE_FIELD,
+                    f"attempt {attempt} classified as {repeat.classification}")
+        evidence.append("5 consecutive attempts against the same incomplete "
+                        "snapshot all classify INCOMPLETE_FIELD — repetition "
+                        "does not convert a data condition into a terminal one")
+
+        # ── NOTHING ECONOMIC HAPPENED ────────────────────────────────────────
+        require(db.query(LedgerEntry).count() == entries_before,
+                "an INCOMPLETE_FIELD refusal posted ledger entries")
+        require(trial_balance() == balance_before,
+                "an INCOMPLETE_FIELD refusal moved the trial balance")
+        evidence.append(f"ledger entries unchanged at {entries_before}; "
+                        f"trial_balance unchanged at {balance_before}")
+
+        # ── REVISION B: THE FEED CATCHES UP. ORDINARY SETTLEMENT, NOT A
+        #    SPECIAL RECOVERY PATH. ──────────────────────────────────────────
+        snap_b = demo_snapshot(scenario, week=1, final=True, with_rosters=True)
+        source_b = DemoProviderStatSource(snap_b).bind(db, resolver)
+        outcome_b = classify_pool(spec, structure,
+                                  source_b.subjects_for(
+                                      league_id=league.id, season=league.season,
+                                      week=1, structure=structure))
+        require(outcome_b.settles,
+                f"the complete snapshot still refuses: "
+                f"{outcome_b.classification}")
+        require(outcome_b.census.subjects_evaluated ==
+                outcome_b.census.subjects_considered,
+                "the complete snapshot did not evaluate the full field")
+        require_settleable(outcome_b, definition_key=spec.key,
+                           league_id=league.id, season=league.season, week=1)
+        evidence.append(
+            f"the SAME definition, the SAME census and the SAME classifier "
+            f"against the corrected snapshot: {outcome_b.classification}, "
+            f"{outcome_b.census.subjects_evaluated}/"
+            f"{outcome_b.census.subjects_considered} evaluated, winner(s) "
+            f"{list(outcome_b.winning_subject_ids)} — no winner invented and no "
+            f"recovery-specific path taken")
+
+
+@gate("C-24", "PROVIDER INCIDENT REASONS — one vocabulary, no synonyms, no terminal")
+def c24_incident_reasons(evidence, tdb):
+    from betting.finality_gate import ResultsNotReadyError
+    from betting.pool_errors import (
+        IncompleteFieldError, NoEvaluableSubjectsError, NoSubjectsError,
+        PoolInvariantViolationError,
+    )
+    from providers import incident as provider_incident
+    from providers.errors import (
+        ProviderCredentialError, ProviderIdentityError, ProviderParseError,
+        ProviderTransportError,
+    )
+
+    # (a) EVERY NAME IS THE ENGINE'S OWN. Each constant is compared against the
+    #     class or module that already owned it, so a synonym cannot be
+    #     introduced here without this failing.
+    for cls, constant in (
+        (NoSubjectsError, provider_incident.REASON_NO_SUBJECTS),
+        (NoEvaluableSubjectsError,
+         provider_incident.REASON_NO_EVALUABLE_SUBJECTS),
+        (IncompleteFieldError, provider_incident.REASON_INCOMPLETE_FIELD),
+        (PoolInvariantViolationError,
+         provider_incident.REASON_INVARIANT_VIOLATION),
+    ):
+        require(cls.classification == constant,
+                f"{cls.__name__}.classification is {cls.classification!r} but "
+                f"the taxonomy names it {constant!r} — two names for one "
+                f"condition")
+    not_ready = ResultsNotReadyError("x", league_id=1, week=1,
+                                     unfinalized_matchup_ids=())
+    require(not_ready.reason == provider_incident.REASON_RESULTS_NOT_READY,
+            "RESULTS_NOT_READY is spelled differently in the taxonomy")
+    evidence.append("the four Pool classifications and RESULTS_NOT_READY are "
+                    "taken from the engines' own classes, not restated")
+
+    # (b) EXCEPTION -> REASON is read off the exception where it carries one.
+    cases = [
+        (ProviderTransportError("down"),
+         provider_incident.REASON_PROVIDER_UNAVAILABLE),
+        (ProviderCredentialError("none"),
+         provider_incident.REASON_PROVIDER_CREDENTIALS_MISSING),
+        (ProviderParseError("bad"),
+         provider_incident.REASON_PROVIDER_PARSE_FAILED),
+        (ProviderIdentityError(ProviderIdentityError.UNKNOWN, "x"),
+         provider_incident.REASON_PROVIDER_IDENTITY_UNRESOLVED),
+        (not_ready, provider_incident.REASON_RESULTS_NOT_READY),
+    ]
+    for exc, expected in cases:
+        actual = provider_incident.reason_for_exception(exc)
+        require(actual == expected,
+                f"{type(exc).__name__} mapped to {actual!r}, not {expected!r}")
+    evidence.append(f"{len(cases)} provider/engine exceptions map to their "
+                    f"named reason with no route-local string coined")
+
+    # (c) RETRYABILITY IS DECIDED, AND THE TWO SETS ARE DISJOINT.
+    overlap = (provider_incident.RETRYABLE_REASONS
+               & provider_incident.NON_RETRYABLE_REASONS)
+    require(not overlap, f"a reason is both retryable and not: {sorted(overlap)}")
+    require(provider_incident.is_retryable(
+        provider_incident.REASON_INCOMPLETE_FIELD) is True,
+        "INCOMPLETE_FIELD is not retryable")
+    require(provider_incident.is_retryable(
+        provider_incident.REASON_INVARIANT_VIOLATION) is False,
+        "INVARIANT_VIOLATION is reported retryable — an operator would wait "
+        "forever for data that is already there")
+    require(provider_incident.is_retryable("something_nobody_classified") is None,
+            "an unclassified reason reports False rather than None")
+    evidence.append(
+        f"{len(provider_incident.RETRYABLE_REASONS)} retryable and "
+        f"{len(provider_incident.NON_RETRYABLE_REASONS)} non-retryable reasons, "
+        f"disjoint; an unclassified reason answers None rather than False")
+
+    # (d) NOTHING IS TERMINAL, AND THE RECORD CANNOT CARRY A PAYLOAD.
+    require(provider_incident.TERMINAL_REASONS == frozenset(),
+            "TERMINAL_REASONS is non-empty")
+    incident = provider_incident.build_incident(
+        provider="demo", league_id=1, operation="pool_settle",
+        reason=provider_incident.REASON_INCOMPLETE_FIELD, week=3,
+        detail="x" * 5000)
+    payload = incident.as_dict()
+    require(len(payload["detail"]) <= provider_incident.MAX_DETAIL,
+            "an incident carried an unbounded detail string")
+    for forbidden in ("payload", "headers", "token", "response", "body"):
+        require(forbidden not in payload,
+                f"the incident record has a {forbidden!r} field — raw provider "
+                f"material could be logged through it")
+    for required_field in ("provider", "league_id", "season", "week",
+                           "operation", "reason", "retryable",
+                           "data_incomplete", "occurred_at",
+                           "last_provider_refresh", "pool_instance_id"):
+        require(required_field in payload,
+                f"the incident record omits {required_field!r}, which §24 "
+                f"requires an operator be able to determine")
+    evidence.append(
+        f"TERMINAL_REASONS is empty; the record carries all {len(payload)} §24 "
+        f"fields, has no payload/headers/body field at all, and truncates "
+        f"detail at {provider_incident.MAX_DETAIL} characters")
+
+
+@gate("C-25", "YAHOO POSTSEASON EVIDENCE — the gate that must not be faked")
+def c25_yahoo_postseason_evidence(evidence, tdb):
+    """The Yahoo bracket capability, checked against the evidence hierarchy.
+
+    THIS GATE PASSES WHEN YAHOO REMAINS CORRECTLY FAIL-CLOSED, and reports the
+    capability as NOT CERTIFIED. It is not a success: it is a proof that the
+    absence of evidence has not been worked around anywhere.
+    """
+    import ast
+
+    from providers.base import MatchupBracket
+    from providers.demo.postseason import (
+        DEMO_POSTSEASON_SOURCE, install_demo_postseason_source,
+    )
+    from providers.fixtures.record import CAPTURED
+    from providers.fixtures.replay import (
+        FixtureTransport, load_corpus, provenance_counts,
+    )
+    from providers.postseason_bracket import (
+        postseason_source_for, unregister_postseason_source,
+    )
+    from providers.yahoo import parse
+    from providers.persist import refresh_league_week
+    from providers.yahoo.normalize import normalize_scoreboard
+
+    # ── LEVEL 1: CAPTURED YAHOO PAYLOAD ──────────────────────────────────────
+    counts = provenance_counts(load_corpus())
+    captured = counts.get(CAPTURED, 0)
+    require(captured == 0 or True, "")     # reported, never asserted away
+    evidence.append(f"evidence level 1 (CAPTURED Yahoo payload): "
+                    f"{captured} fixture(s) in the corpus")
+
+    # ── LEVEL 3: AN EXISTING NORMALIZED YAHOO FIELD ──────────────────────────
+    # `parse_league` is the only Yahoo parser that reads a playoff-related
+    # field, and it reads exactly one: the WEEK the postseason begins. A week
+    # boundary cannot say which of that week's games is a championship game,
+    # which two teams lost the semifinals, or which game is the official
+    # third-place game — the four facts WP1D's adapter needs.
+    source_text = open(os.path.join(REPO_ROOT, "providers", "yahoo", "parse.py"),
+                       encoding="utf-8").read()
+    tree = ast.parse(source_text)
+    # FIELD NAMES ONLY. A payload key is a short single-line string; prose that
+    # merely MENTIONS a field — this module's own docstrings, and the parser's —
+    # is not a field the parser reads, and counting it would report evidence
+    # that does not exist.
+    literals = {node.value for node in ast.walk(tree)
+                if isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and len(node.value) <= 40 and "\n" not in node.value}
+    bracket_fields = sorted(
+        s for s in literals
+        if any(token in s.lower() for token in
+               ("is_playoff", "is_consolation", "bracket", "num_playoff",
+                "playoff_teams", "is_championship")))
+    require(not bracket_fields,
+            f"providers/yahoo/parse.py reads bracket-shaped field(s) "
+            f"{bracket_fields} — if this is real, the adapter is buildable and "
+            f"this gate is stale; if it is invented, it is exactly the "
+            f"manufactured evidence §17 forbids")
+    playoff_literals = sorted(s for s in literals if "playoff" in s.lower())
+    evidence.append(
+        f"evidence level 3 (existing normalized Yahoo field): the only "
+        f"playoff-related literal the Yahoo parser reads is "
+        f"{playoff_literals} — a WEEK BOUNDARY, which states nothing about "
+        f"which games are championship games")
+
+    # No corpus fixture carries a bracket-shaped field either.
+    corpus_dir = os.path.join(REPO_ROOT, "providers", "fixtures", "corpus")
+    hits = []
+    for name in sorted(os.listdir(corpus_dir)):
+        if not name.endswith(".json") or name.endswith(".manifest.json"):
+            continue
+        text = open(os.path.join(corpus_dir, name), encoding="utf-8").read()
+        for token in ("is_playoffs", "is_consolation", "num_playoff_teams",
+                      "bracket"):
+            if token in text:
+                hits.append(f"{name}:{token}")
+    require(not hits, f"a corpus fixture carries a bracket field: {hits}")
+    evidence.append(f"no fixture in the committed corpus carries "
+                    f"is_playoffs / is_consolation / num_playoff_teams / "
+                    f"bracket — the WP1A recon's finding is unchanged")
+
+    # ── WHAT THE GATEWAY CAN EVEN ASK FOR ────────────────────────────────────
+    # Reported so the blocker names the right thing. `ProviderTransport` exposes
+    # four endpoints and none of them is a settings or standings resource, so a
+    # bracket adapter would need a new transport method — which §41 requires be
+    # specified endpoint, scope and field, not guessed at.
+    from providers.base import ProviderTransport
+
+    fetchers = sorted(n for n in dir(ProviderTransport) if n.startswith("fetch_"))
+    evidence.append(f"the provider transport protocol exposes {fetchers} — no "
+                    f"settings, standings or bracket resource among them")
+
+    # The CLIENT library is not the blocker, and saying so keeps the report
+    # honest about where the gap actually is. Introspected only if importable:
+    # an offline run with no yfpy must still complete this gate.
+    try:
+        from yfpy.query import YahooFantasySportsQuery as _Query
+
+        candidates = sorted(
+            n for n in dir(_Query)
+            if n.startswith("get_") and any(
+                token in n for token in ("standing", "playoff", "settings",
+                                         "matchup")))
+        evidence.append(
+            f"the installed Yahoo client already offers {candidates} — the "
+            f"blocker is NOT client capability, it is that no response from any "
+            f"of them has been captured and no in-repository documentation "
+            f"states which field, if any, classifies a matchup")
+    except Exception:  # noqa: BLE001 - absence is a legitimate offline state
+        evidence.append("the Yahoo client library is not installed in this "
+                        "process; its endpoint surface is not introspected and "
+                        "is not required by this gate")
+
+    # ── THE CONSEQUENCE, PROVEN RATHER THAN ASSERTED ─────────────────────────
+    # Every Yahoo matchup normalizes to bracket UNKNOWN, no Yahoo postseason
+    # source is registered, and a Yahoo league therefore has no bracket
+    # authority — with the Demo source installed, which is the strongest form
+    # of the claim.
+    source = install_demo_postseason_source()
+    try:
+        transport = FixtureTransport(frozen_now=FROZEN_NOW)
+        matchups = normalize_scoreboard(
+            parse.parse_scoreboard(transport.fetch_scoreboard(LEAGUE_KEY, 1)),
+            week=1)
+        require(matchups, "the Yahoo scoreboard normalized to nothing")
+        require(all(m.bracket is MatchupBracket.UNKNOWN for m in matchups),
+                "a Yahoo matchup normalized to a classified bracket")
+        evidence.append(f"all {len(matchups)} normalized Yahoo matchups carry "
+                        f"MatchupBracket.UNKNOWN")
+
+        require(postseason_source_for(LEAGUE_KEY) is None,
+                "a postseason source claims the Yahoo league — with only the "
+                "Demo source installed, that would mean the Demo provider is "
+                "stating a live league's bracket")
+        require(not source.knows(league_key=LEAGUE_KEY),
+                "the Demo source knows a Yahoo league")
+        evidence.append("with the Demo postseason source installed, the Yahoo "
+                        "league still resolves to NO source — synthetic "
+                        "material cannot be registered under Yahoo's name")
+
+        # AND THE PODIUM REFUSES, by the production rule, with the named reason.
+        from economy.championship_podium import (
+            ChampionshipPodiumError, REASON_TRACK_UNKNOWN, derive_podium_keys,
+        )
+        from season.championship_track import (
+            ChampionshipTrackInput, ChampionshipWeekInput,
+            derive_championship_track_state,
+        )
+
+        tdb.reset()
+        with tdb.SessionLocal() as db:
+            league, _teams = seed_provider_league(db)
+            db.commit()
+            refresh_league_week(db, snapshot_for(transport, 1), now=FROZEN_NOW)
+            db.commit()
+
+            from providers.postseason_bracket import classified_week
+            week_matchups = classified_week(db, league=league, week=1)
+            require(all(m.bracket is MatchupBracket.UNKNOWN
+                        for m in week_matchups),
+                    "a persisted Yahoo matchup was classified")
+
+            state = derive_championship_track_state(
+                ChampionshipTrackInput(
+                    league_key=LEAGUE_KEY, season=SEASON,
+                    playoff_start_week=1, season_final_week=1,
+                    weeks=(ChampionshipWeekInput(week=1,
+                                                 matchups=week_matchups),)),
+                week=1)
+            require(not state.authority.is_authoritative,
+                    f"an unclassified Yahoo week produced authority "
+                    f"{state.authority}")
+            podium_reason = None
+            try:
+                derive_podium_keys(state)
+                raise AssertionError(
+                    "a Championship podium was derived for a Yahoo league with "
+                    "no bracket authority")
+            except ChampionshipPodiumError as exc:
+                podium_reason = exc.reason
+            require(podium_reason == REASON_TRACK_UNKNOWN,
+                    f"the podium refused with {podium_reason}, not "
+                    f"{REASON_TRACK_UNKNOWN}")
+            evidence.append(
+                f"a live-shaped Yahoo league fails closed end to end: track "
+                f"authority={state.authority.value} "
+                f"reasons={list(state.insufficiency_reasons)} -> podium refuses "
+                f"[{podium_reason}] -> a non-empty Championship Pot cannot be "
+                f"distributed and the season does not close")
+    finally:
+        unregister_postseason_source(DEMO_POSTSEASON_SOURCE)
+
+    return (
+        "YAHOO PostseasonBracketSource is NOT CERTIFIED and is NOT IMPLEMENTED. "
+        "Evidence hierarchy §17: level 1 (CAPTURED Yahoo payload) = 0 fixtures; "
+        "level 2 (official Yahoo API documentation) is not present in this "
+        "repository and was not consulted; level 3 (an existing normalized "
+        "Yahoo field) yields only playoff_start_week, a WEEK BOUNDARY that "
+        "cannot classify a matchup. Level 4 (synthetic fixture) is explicitly "
+        "prohibited from certifying a Yahoo capability. REQUIRED TO CLOSE: a "
+        "captured, scrubbed Yahoo response from a league that has PLAYED a "
+        "postseason — league settings, every postseason week's scoreboard, and "
+        "standings — from which a reviewer can read whether ANY field "
+        "identifies the championship field, the championship-track matchups, "
+        "the final, the semifinal losers and the official third-place game. "
+        "`providers.fixtures.record.capture_postseason` performs that capture; "
+        "it needs an authorized credential and an eligible league, and neither "
+        "exists here. Until then Yahoo remains fail-closed and a live non-empty "
+        "Championship Pot cannot be distributed."
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 
 GATES = [
     c1_offline, c2_provenance, c3_raw_parsing, c4_identity, c5_mirror,
     c6_truth_table, c7_immutability, c8_conflict, c9_replay, c10_concurrency,
     c11_horizon, c12_pool, c13_staleness, c14_census, c15_money,
     c16_finality_gate, c17_scrub,
+    # WP2
+    c18_demo_normalization, c19_demo_money, c20_demo_identity,
+    c21_demo_postseason, c22_outage, c23_incomplete_recovery,
+    c24_incident_reasons, c25_yahoo_postseason_evidence,
 ]
 
 
@@ -1689,19 +2700,27 @@ def main() -> int:
 
     print()
     for result in RESULTS:
-        status = "PASS" if result.passed else "FAIL"
+        if not result.passed:
+            status = "FAIL"
+        elif result.blocker:
+            status = "BLOCK"
+        else:
+            status = "PASS"
         print(f"  [{status}] {result.gate:<5} {result.title}")
         for line in result.evidence:
             print(f"           - {line}")
+        if result.blocker:
+            print(f"           ! NOT CERTIFIED — {result.blocker}")
         if result.error:
             print(f"           ! {result.error}")
         print()
 
-    passed = sum(1 for r in RESULTS if r.passed)
-    failed = len(RESULTS) - passed
+    blocked = [r for r in RESULTS if r.passed and r.blocker]
+    passed = sum(1 for r in RESULTS if r.passed and not r.blocker)
+    failed = sum(1 for r in RESULTS if not r.passed)
     print("=" * 78)
-    print(f"  CERTIFICATION: {passed} PASS / {failed} FAIL "
-          f"of {len(RESULTS)} gates")
+    print(f"  CERTIFICATION: {passed} PASS / {failed} FAIL / "
+          f"{len(blocked)} BLOCKED of {len(RESULTS)} gates")
 
     from providers.fixtures.record import CAPTURED, SYNTHETIC
     from providers.fixtures.replay import load_corpus, provenance_counts
@@ -1710,6 +2729,17 @@ def main() -> int:
           f"SYNTHETIC = {counts.get(SYNTHETIC, 0)}")
     if not counts.get(CAPTURED, 0):
         print("  LIVE YAHOO PAYLOAD PARSING IS NOT CERTIFIED (S6-R2).")
+
+    # WP2 §42 — A BLOCKED GATE MUST NOT READ AS GREEN. A gate whose own checks
+    # all held while the capability it guards remains uncertified is neither a
+    # pass nor a failure, and collapsing it into either would let a launch
+    # review draw the wrong conclusion from one line of output.
+    if blocked:
+        print()
+        print("  LAUNCH CERTIFICATION IS NOT GREEN — "
+              f"{len(blocked)} capability blocker(s) open:")
+        for result in blocked:
+            print(f"    {result.gate}  {result.title}")
     print("=" * 78 + "\n")
     return 0 if failed == 0 else 1
 

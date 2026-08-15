@@ -195,19 +195,23 @@ def write_fixture(directory: str, *, fixture_id: str, provenance: str,
 
 def capture_live(transport, directory: str, *, league_key: str, week: int,
                  season: int, fixture_prefix: str,
-                 client_library: str | None = None) -> list[FixtureManifest]:
+                 client_library: str | None = None,
+                 team_keys: tuple[str, ...] = ()) -> list[FixtureManifest]:
     """Record L1 fixtures from a LIVE transport. Provenance is CAPTURED.
 
     THE ONLY FUNCTION IN THE REPOSITORY PERMITTED TO WRITE CAPTURED PROVENANCE,
     and it can only be reached with a live transport in hand — which requires
-    real credentials and real network access. That is the mechanical reason
-    Sprint 6's corpus is entirely SYNTHETIC: this function has never been able
-    to run, because the Yahoo application is not authorized for the Fantasy
-    Sports API (the blocker recorded in
-    spec/pool_stat_vocabulary_rev1_0.json).
+    real credentials and real network access. That is the mechanical reason the
+    corpus is entirely SYNTHETIC: this function has never been able to run,
+    because the Yahoo application is not authorized for the Fantasy Sports API
+    (the blocker recorded in spec/pool_stat_vocabulary_rev1_0.json).
 
     It is written and kept ready so that the day authorization lands, capturing
     a real corpus is a command rather than a project.
+
+    `team_keys` additionally captures each team's roster for the week. WP2 added
+    it because a week captured without rosters cannot certify the Pool stat
+    source against real bytes, which is half of what a captured corpus is for.
     """
     now = datetime.now(timezone.utc).isoformat()
     manifests = []
@@ -224,4 +228,121 @@ def capture_live(transport, directory: str, *, league_key: str, week: int,
             week=week, captured_at=now, http_status=200,
             client_library=client_library, replay_now=now,
         ))
+
+    for team_key in team_keys:
+        ordinal = team_key.rsplit(".", 1)[-1]
+        manifest = write_fixture(
+            directory,
+            fixture_id=f"{fixture_prefix}_roster_t{ordinal}_w{week}",
+            provenance=CAPTURED, layer="L1_RAW", endpoint="roster",
+            league_key=league_key,
+            payload=transport.fetch_team_roster(league_key, team_key, week),
+            season=season, week=week, captured_at=now, http_status=200,
+            client_library=client_library, replay_now=now)
+        # The roster lookup is keyed on team_key as well as week, so the
+        # manifest must carry it or `FixtureTransport._find` cannot serve it.
+        manifest.notes = f"team_key={team_key}"
+        _rewrite_manifest(directory, manifest, extra={"team_key": team_key})
+        manifests.append(manifest)
+    return manifests
+
+
+def _rewrite_manifest(directory: str, manifest: FixtureManifest,
+                      *, extra: dict) -> None:
+    """Re-emit one manifest with extra top-level keys. Payload untouched.
+
+    The payload hash is computed over the PAYLOAD, never over the manifest, so
+    adding a lookup key here cannot invalidate the provenance claim it carries.
+    """
+    payload = manifest.as_dict()
+    payload.update(extra)
+    with open(os.path.join(directory, f"{manifest.fixture_id}.manifest.json"),
+              "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+#: The weeks a POSTSEASON capture must cover, expressed as a rule rather than as
+#: numbers: from the league's own `playoff_start_week` through its
+#: `season_final_week`, inclusive.
+#:
+#: WHY A DEDICATED ENTRY POINT (WP2 §21, §40). C-25 reports the Yahoo
+#: PostseasonBracketSource as NOT CERTIFIED because no captured payload exists
+#: for a league that has PLAYED a postseason — and a regular-season capture, of
+#: which any number could be taken, cannot close that gap. This function states
+#: precisely what would: every postseason week's scoreboard and league settings
+#: from a real league whose bracket has run to completion.
+def capture_postseason(transport, directory: str, *, league_key: str,
+                       season: int, playoff_start_week: int,
+                       season_final_week: int, fixture_prefix: str,
+                       team_keys: tuple[str, ...] = (),
+                       client_library: str | None = None
+                       ) -> list[FixtureManifest]:
+    """Capture every postseason week of a real league. Provenance is CAPTURED.
+
+    THE EXACT EVIDENCE THE YAHOO BRACKET ADAPTER IS BLOCKED ON, and nothing
+    beyond it. Each week's scoreboard is recorded as it arrives, scrubbed and
+    hashed, so a reviewer can read the raw bytes and answer the four questions
+    WP1D's adapter needs an authoritative answer to:
+
+        which teams entered the championship field
+        which of the week's matchups are on the championship track
+        which matchup is the championship final
+        which final-week matchup is the official third-place game
+
+    IT ANSWERS NONE OF THEM ITSELF, AND MUST NOT. Capturing is not certifying.
+    If the captured bytes turn out to carry no bracket discriminator, that is a
+    finding — the adapter stays unbuilt and Yahoo stays fail-closed — and this
+    function's job is to make that finding checkable rather than assumed. Under
+    no circumstance may a synthetic payload be written through here; §16 forbids
+    fabricating CAPTURED provenance and `write_fixture` validates the word.
+
+    STORAGE BOUNDARY (WP2 §22). What this writes is a fixture corpus for
+    OFFLINE CERTIFICATION, not application persistence: nothing here is read by
+    a running league, and no Yahoo response is stored in the database. Before a
+    capture is committed, the Yahoo storage-boundary review must confirm the
+    corpus may hold it.
+    """
+    if playoff_start_week > season_final_week:
+        raise ValueError(
+            f"playoff_start_week {playoff_start_week} is after "
+            f"season_final_week {season_final_week}; there is no postseason "
+            f"window to capture.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    manifests = [write_fixture(
+        directory, fixture_id=f"{fixture_prefix}_league",
+        provenance=CAPTURED, layer="L1_RAW", endpoint="league",
+        league_key=league_key, payload=transport.fetch_league(league_key),
+        season=season, captured_at=now, http_status=200,
+        client_library=client_library, replay_now=now,
+        notes="postseason capture — league settings and boundaries")]
+    manifests.append(write_fixture(
+        directory, fixture_id=f"{fixture_prefix}_teams",
+        provenance=CAPTURED, layer="L1_RAW", endpoint="teams",
+        league_key=league_key, payload=transport.fetch_teams(league_key),
+        season=season, captured_at=now, http_status=200,
+        client_library=client_library, replay_now=now))
+
+    for week in range(playoff_start_week, season_final_week + 1):
+        manifests.append(write_fixture(
+            directory, fixture_id=f"{fixture_prefix}_scoreboard_w{week}",
+            provenance=CAPTURED, layer="L1_RAW", endpoint="scoreboard",
+            league_key=league_key,
+            payload=transport.fetch_scoreboard(league_key, week),
+            season=season, week=week, captured_at=now, http_status=200,
+            client_library=client_library, replay_now=now,
+            notes=("postseason week — the bracket evidence C-25 is blocked on")))
+        for team_key in team_keys:
+            ordinal = team_key.rsplit(".", 1)[-1]
+            manifest = write_fixture(
+                directory,
+                fixture_id=f"{fixture_prefix}_roster_t{ordinal}_w{week}",
+                provenance=CAPTURED, layer="L1_RAW", endpoint="roster",
+                league_key=league_key,
+                payload=transport.fetch_team_roster(league_key, team_key, week),
+                season=season, week=week, captured_at=now, http_status=200,
+                client_library=client_library, replay_now=now)
+            _rewrite_manifest(directory, manifest, extra={"team_key": team_key})
+            manifests.append(manifest)
     return manifests

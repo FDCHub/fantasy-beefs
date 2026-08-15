@@ -593,11 +593,28 @@ def main(tdb) -> None:
               unknown_row is None or unknown_row.finalized_at is None)
 
         # Nothing outside the finality module set it.
-        finality_src = open(os.path.join(root, "providers", "yahoo",
-                                         "finality.py"), encoding="utf-8").read()
-        check("B2-6: apply_finality is the only assignment site in the mapping "
+        #
+        # WP2 MOVED THE WRITER, NOT THE RULE. `apply_finality` and
+        # `assert_never_retracted` now live in `providers/finality.py` because
+        # they are provider-neutral — they take a `Finality` tristate and a row
+        # and know nothing about Yahoo — while `providers/yahoo/finality.py`
+        # keeps the part that IS Yahoo's, the status-string mapping, and
+        # re-exports the writer. The PROPERTY this check asserts is unchanged
+        # and is now stronger: there is one assignment site, in one file, that
+        # EVERY provider reaches, rather than one per provider package.
+        finality_src = open(os.path.join(root, "providers", "finality.py"),
+                            encoding="utf-8").read()
+        check("B2-6: apply_finality is the only assignment site in the writer "
               "module", finality_src.count("matchup.finalized_at =") == 1,
               str(finality_src.count("matchup.finalized_at =")))
+
+        yahoo_finality_src = open(
+            os.path.join(root, "providers", "yahoo", "finality.py"),
+            encoding="utf-8").read()
+        check("B2-6: the Yahoo status mapping assigns finalized_at NOWHERE — "
+              "it maps a status string and delegates the write",
+              yahoo_finality_src.count("finalized_at =") == 0,
+              str(yahoo_finality_src.count("finalized_at =")))
 
 
 if __name__ == "__main__":

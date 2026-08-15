@@ -4028,6 +4028,17 @@ class LeagueContextOut(BaseModel):
     provider:            Optional[str]
     provider_league_key: Optional[str]
     provider_state:      str
+    #: WP2 §14 — the DEMO marker, for the UI to render unmistakably.
+    #:
+    #: DERIVED FROM THE PROVIDER BINDING, NEVER FROM THE LEAGUE NAME. A live
+    #: Yahoo league named "Demo League" must not carry this flag, and a Demo
+    #: league renamed by its owner must not lose it. The binding is also what
+    #: decides which feed answers for the league, so the badge and the behaviour
+    #: cannot disagree.
+    #:
+    #: THE CONTRACT ONLY. WP2 §65 keeps the rendering itself in UI Launch Polish;
+    #: this is the field that work will read.
+    demo:                bool = False
 
     acting_team_id:           int
     acting_team_name:         str
@@ -4105,6 +4116,8 @@ def league_context_me(
     except LeagueReadError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
+    league_row = db.query(League).filter(League.id == league_id).first()
+
     return LeagueContextOut(
         league_id=context.league_id,
         league_name=context.league_name,
@@ -4114,6 +4127,7 @@ def league_context_me(
         provider=context.provider,
         provider_league_key=context.provider_league_key,
         provider_state=context.provider_state,
+        demo=bool(league_row is not None and _is_demo(league_row)),
         acting_team_id=context.acting_team_id,
         acting_team_name=context.acting_team_name,
         acting_team_owner=context.acting_team_owner,
@@ -5288,6 +5302,155 @@ def _pool_settlement_transport():
     return YahooLiveTransport()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# WP2 — THE PROVIDER COMPOSITION BOUNDARY
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# THIS IS THE ONLY PLACE IN THE PRODUCT THAT BRANCHES ON A PROVIDER NAME, and
+# that is the WP2 architecture stated as code. Yahoo and Demo differ in how they
+# PRODUCE facts; they must not differ in how FantasyStakes CONSUMES them. So the
+# branch lives here, at composition, and everything downstream — persistence,
+# identity, the stat source, the Pool engine, the Ledger, the postseason
+# determination, the season close — takes a provider-neutral object and never
+# asks which provider made it.
+#
+# WHAT USED TO BE HERE: `fetch_week_snapshot(YahooLiveTransport(), ...)` inlined
+# into two routes, with `PROVIDER` imported from the Yahoo Pool source as a
+# constant and passed to the gate-2 lookups. A Demo league reaching either route
+# measured its readiness under the provider "yahoo", drew its slate from Yahoo's
+# gate rows, and resolved its teams against Yahoo identity — three ways to be
+# told it did not exist.
+#
+# THE LEAGUE'S OWN BINDING IS THE AUTHORITY. `League.provider` is set once by
+# `bind_league_identity` and refuses to change (WP2 §9), so there is exactly one
+# unambiguous answer per league and no request parameter can influence it.
+
+PROVIDER_YAHOO = "yahoo"
+
+
+def _league_provider(league) -> str:
+    """The provider this league is bound to, or a named refusal.
+
+    NO DEFAULT. A league with no binding cannot be refreshed, measured or
+    settled from provider data, and substituting Yahoo would send a Demo league
+    — or an unbound one — down a path that needs credentials it has no reason to
+    hold. The refusal is the accepted `no_provider_identity` code the Pool routes
+    have returned since WP2A.
+    """
+    from providers.incident import REASON_NO_PROVIDER_IDENTITY
+
+    provider = getattr(league, "provider", None)
+    if not provider or not getattr(league, "provider_league_key", None):
+        raise HTTPException(status_code=409, detail={
+            "reason_code": REASON_NO_PROVIDER_IDENTITY,
+            "message": (f"League {league.id} carries no provider identity "
+                        f"(provider={provider!r}, key="
+                        f"{getattr(league, 'provider_league_key', None)!r}); "
+                        f"its provider data cannot be read."),
+            "league_id": league.id})
+    return provider
+
+
+def _provider_week_snapshot(db, league, week: int, *,
+                            with_rosters: bool = False):
+    """One normalized `ProviderWeek` for this league-week, from its own provider.
+
+    Both branches return the SAME DTO. The Yahoo one fetches, parses and
+    normalizes through the certified gateway; the Demo one asks its deterministic
+    scenario. Neither is visible to the caller, which receives a `ProviderWeek`
+    and cannot tell them apart — the property that makes one settlement engine
+    enough.
+    """
+    from providers.demo import DEMO_PROVIDER
+
+    provider = _league_provider(league)
+    if provider == DEMO_PROVIDER:
+        from api.demo_routes import demo_week_snapshot
+
+        return demo_week_snapshot(db, league, week, with_rosters=with_rosters)
+
+    from providers.yahoo.week_snapshot import fetch_week_snapshot
+
+    return fetch_week_snapshot(_pool_settlement_transport(),
+                               league_key=league.provider_league_key, week=week,
+                               with_rosters=with_rosters)
+
+
+def _provider_stat_source(db, league, snapshot):
+    """The certified `PoolStatSource` for this league's provider.
+
+    Both branches construct `providers.week_stat_source.ProviderWeekStatSource`
+    with a different stat map — Yahoo's governed id mapping, or the Demo feed's
+    canonical identity map — and both bind the same league-scoped identity
+    resolver. There is one subject-construction implementation and one coverage
+    rule, so a Demo Pool and a Yahoo Pool are evaluated by the same code.
+    """
+    from providers.demo import DEMO_PROVIDER
+
+    provider = _league_provider(league)
+    if provider == DEMO_PROVIDER:
+        from api.demo_routes import demo_stat_source
+
+        return demo_stat_source(db, snapshot, league_id=league.id)
+
+    from providers.yahoo.week_snapshot import bind_pool_stat_source
+
+    return bind_pool_stat_source(db, snapshot, league_id=league.id)
+
+
+def _provider_measure_activation(db, league, snapshot):
+    """Gate-2 readiness measurement, recorded under the league's own provider."""
+    from providers.demo import DEMO_PROVIDER
+    from providers.identity import build_team_identity_resolver
+
+    provider = _league_provider(league)
+    resolver = build_team_identity_resolver(db, league_id=league.id,
+                                            provider=provider)
+    if provider == DEMO_PROVIDER:
+        from providers.demo.pool_source import measure_league_activation
+    else:
+        from providers.yahoo.pool_source import measure_league_activation
+
+    return measure_league_activation(db, league_id=league.id, snapshot=snapshot,
+                                     resolver=resolver, provider=provider)
+
+
+def _provider_incident_http(db, league, *, operation: str, exc: Exception,
+                            status_code: int = 502, week: int | None = None,
+                            pool_instance_id: int | None = None) -> HTTPException:
+    """Turn a provider failure into a NAMED, retryable-flagged HTTP refusal.
+
+    ONE PAYLOAD, LOGGED AND RETURNED. `providers.incident.record` emits the
+    structured record an operator's log pipeline selects on and hands back the
+    same dictionary this response carries, so the diagnostic and the client's
+    answer cannot disagree about what happened.
+
+    NEVER A 500 AND NEVER A TRACEBACK (WP2 §50). Every governed provider refusal
+    reaches a client as a named 4xx/5xx reason code with no exception text beyond
+    the refusal's own bounded message.
+
+    THE STATUS COMES FROM THE REASON, NOT FROM THE CALL SITE. `status_code` is a
+    fallback for a reason the taxonomy does not classify. Deciding it here keeps
+    "the provider did not answer" (502/503) apart from "this league is not bound
+    for that" (409) everywhere at once, instead of each route making its own
+    call and drifting.
+    """
+    from providers import incident as provider_incident
+
+    reason = provider_incident.reason_for_exception(exc)
+    status_code = provider_incident.http_status_for(reason, status_code)
+    payload = provider_incident.record(
+        provider=getattr(league, "provider", None) or "",
+        league_id=league.id, season=league.season, week=week,
+        operation=operation, reason=reason,
+        detail=f"{type(exc).__name__}: {exc}",
+        pool_instance_id=pool_instance_id,
+        last_provider_refresh=provider_incident.last_provider_refresh(
+            db, league_id=league.id),
+        provider_current_week=league.provider_current_week)
+    return HTTPException(status_code=status_code, detail=payload)
+
+
 class PoolActivationOut(BaseModel):
     league_id:              int
     provider:               str
@@ -5330,35 +5493,25 @@ def activate_league_pool_support(
     from betting.pool_gates import selectable_definitions
     from betting.pool_season_boundary import PHASE_REGULAR
     from providers.errors import ProviderError
-    from providers.yahoo.identity import build_team_identity_resolver
-    from providers.yahoo.pool_source import PROVIDER, measure_league_activation
-    from providers.yahoo.week_snapshot import fetch_week_snapshot
 
     league = db.query(League).filter(League.id == league_id).first()
     if league is None:
         raise HTTPException(status_code=404, detail={
             "reason_code": "league_not_found",
             "message": f"League {league_id} not found."})
-    if not league.provider_league_key:
-        raise HTTPException(status_code=409, detail={
-            "reason_code": "no_provider_identity",
-            "message": (f"League {league_id} carries no provider league key, so "
-                        f"its Pool support cannot be measured.")})
+
+    # WP2 — THE LEAGUE'S OWN PROVIDER, not a Yahoo constant. A Demo league is
+    # measured by the Demo feed and its gate-2 rows are written under "demo", so
+    # its readiness can never be read as a Yahoo league's or vice versa.
+    provider = _league_provider(league)
 
     try:
-        snapshot = fetch_week_snapshot(
-            _pool_settlement_transport(),
-            league_key=league.provider_league_key, week=week,
-            with_rosters=True)
-        resolver = build_team_identity_resolver(db, league_id=league_id)
+        snapshot = _provider_week_snapshot(db, league, week, with_rosters=True)
+        report = _provider_measure_activation(db, league, snapshot)
     except ProviderError as exc:
         db.rollback()
-        raise HTTPException(status_code=502, detail={
-            "reason_code": "provider_unavailable",
-            "message": f"{type(exc).__name__}: {exc}"})
-
-    report = measure_league_activation(db, league_id=league_id,
-                                       snapshot=snapshot, resolver=resolver)
+        raise _provider_incident_http(db, league, operation="pool_activate",
+                                      exc=exc, status_code=502, week=week)
     db.commit()
 
     # THE RETURN CONTRACT, READ FROM THE IMPLEMENTATION, NOT INFERRED.
@@ -5379,10 +5532,10 @@ def activate_league_pool_support(
     measured_at = report["measured_at"]
 
     eligible = selectable_definitions(db, league_id=league_id,
-                                      provider=PROVIDER, phase=PHASE_REGULAR)
+                                      provider=provider, phase=PHASE_REGULAR)
 
     return PoolActivationOut(
-        league_id=league_id, provider=PROVIDER, week_measured=week,
+        league_id=league_id, provider=provider, week_measured=week,
         definitions_measured=len(definitions),
         definitions_ready=ready_count,
         supported_stats=list(report["supported_stats"]),
@@ -5425,11 +5578,46 @@ class PoolInstanceSettlementOut(BaseModel):
     replayed:                    bool
 
 
+class PoolRefusalOut(BaseModel):
+    """WP2 §23 — one fail-closed Pool refusal, in structured form.
+
+    THE GAP THIS CLOSES. `refused` below is a list of stringified exceptions and
+    is kept, unchanged, so no existing client breaks. What it could not give an
+    operator is the thing they actually need: WHICH occurrence, under WHICH
+    classification, over what census, naming WHICH subjects could not be
+    evaluated, and whether waiting for the feed is the remedy. Parsing that back
+    out of a formatted message is not a contract.
+
+    `retryable` IS READ FROM THE NAMED TAXONOMY, NOT GUESSED HERE. The three
+    §6.2 data conditions are retryable — obtain the authoritative data and run
+    the ordinary settlement again — and INVARIANT_VIOLATION is not, because its
+    cause is the evaluator and no amount of waiting fixes it.
+
+    NOTHING IN THIS SHAPE IS TERMINAL. WP1E rules that missing provider data is
+    never proof that no winner exists, so there is no field here for a void, a
+    refund, a forced completion or a commissioner override, and no code path
+    that could populate one.
+    """
+    pool_instance_id:        Optional[int]
+    definition_key:          str
+    classification:          str
+    retryable:               Optional[bool]
+    data_incomplete:         bool
+    subjects_considered:     int
+    subjects_evaluated:      int
+    subjects_claiming:       Optional[int]
+    unevaluable_subject_ids: list[int]
+    message:                 str
+
+
 class PoolWeekSettlementOut(BaseModel):
     league_id:              int
     week:                   int
     settled:                list[PoolInstanceSettlementOut]
     refused:                list[str]
+    #: WP2 — the same refusals, structured. Additive: `refused` above is
+    #: unchanged and still carries the formatted strings.
+    refusals:               list[PoolRefusalOut] = []
     week_container_settled: bool
     all_settled:            bool
 
@@ -5458,8 +5646,24 @@ def collect_governed_pool_week(
     if not 1 <= week <= 17:
         raise HTTPException(status_code=400, detail="week must be 1–17")
 
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    # WP2 — THE SLATE IS DRAWN FROM THE LEAGUE'S OWN PROVIDER'S GATE ROWS.
+    # `collect_weekly_entries` has always taken `provider`, defaulting to Yahoo,
+    # and `build_and_persist_slate` uses it to look up which definitions this
+    # league's feed was MEASURED to support. Passing the league's own binding is
+    # what lets a Demo league draw the four Pools its own feed can evaluate; the
+    # default would have had it draw from Yahoo's (empty) measurements and find
+    # nothing eligible.
+    provider = _league_provider(league)
+
     try:
-        result = collect_weekly_entries(db, league_id=league_id, week=week)
+        result = collect_weekly_entries(db, league_id=league_id, week=week,
+                                        provider=provider)
         db.commit()
     except PoolFundingError as exc:
         db.rollback()
@@ -5508,9 +5712,6 @@ def settle_governed_pool_week(
     """
     from betting.pool_settlement import PoolSettlementError
     from providers.errors import ProviderError
-    from providers.yahoo.week_snapshot import (
-        bind_pool_stat_source, fetch_week_snapshot,
-    )
 
     if not 1 <= week <= 17:
         raise HTTPException(status_code=400, detail="week must be 1–17")
@@ -5520,23 +5721,22 @@ def settle_governed_pool_week(
         raise HTTPException(status_code=404, detail={
             "reason_code": "league_not_found",
             "message": f"League {league_id} not found."})
-    if not league.provider_league_key:
-        raise HTTPException(status_code=409, detail={
-            "reason_code": "no_provider_identity",
-            "message": (f"League {league_id} carries no provider league key; "
-                        f"its Pools cannot be settled from provider data.")})
 
     try:
-        snapshot = fetch_week_snapshot(
-            _pool_settlement_transport(),
-            league_key=league.provider_league_key, week=week,
-            with_rosters=True)
-        stat_source = bind_pool_stat_source(db, snapshot, league_id=league_id)
+        # WP2 — THE LEAGUE'S OWN PROVIDER, through the composition boundary.
+        # A Demo league reconstructs its week from its deterministic scenario
+        # and a Yahoo league from the live gateway; `settle_week` below receives
+        # a `PoolStatSource` either way and cannot tell which.
+        snapshot = _provider_week_snapshot(db, league, week, with_rosters=True)
+        stat_source = _provider_stat_source(db, league, snapshot)
     except ProviderError as exc:
+        # NOTHING WAS SETTLED, NOTHING WAS POSTED, AND THE FAILURE IS NAMED.
+        # A provider that cannot be read is a RETRYABLE incident, not a
+        # statement that the week has no data — so no Pool is classified, no
+        # winner is invented and the week stays exactly as settleable as it was.
         db.rollback()
-        raise HTTPException(status_code=502, detail={
-            "reason_code": "provider_unavailable",
-            "message": f"{type(exc).__name__}: {exc}"})
+        raise _provider_incident_http(db, league, operation="pool_settle",
+                                      exc=exc, status_code=502, week=week)
 
     try:
         from betting.pool_settlement import settle_week as settle_governed_week
@@ -5588,6 +5788,62 @@ def settle_governed_pool_week(
         db.rollback()
         raise
 
+    # ── WP2 §23-§24 — EVERY REFUSAL IS RECORDED AND REPORTED, NAMED ──────────
+    #
+    # The WP1E recon found that a fail-closed settlement persisted NOTHING about
+    # why it refused: the classification, the census and the unevaluable subject
+    # ids lived only on the in-memory result and in this response body, so an
+    # operator had to RERUN SETTLEMENT to learn why a Pool was stuck. Each
+    # refusal is now emitted as a structured provider incident carrying every
+    # field §24 requires — league, season, week, provider, operation, the Pool
+    # occurrence, the named reason, retryability, the instant, the last
+    # successful provider refresh and the census — and the same payload shape is
+    # returned to the caller.
+    #
+    # NOTHING ABOUT POOL ECONOMICS CHANGES HERE. The refusal already happened
+    # inside the engine, before any economic work, and its savepoint already
+    # rolled back. This is a report of a decision, not a decision.
+    from providers import incident as provider_incident
+
+    refusals: list[PoolRefusalOut] = []
+    last_refresh = provider_incident.last_provider_refresh(
+        db, league_id=league_id)
+    for refusal in result.refused:
+        census = refusal.census
+        provider_incident.record(
+            provider=league.provider or "", league_id=league_id,
+            season=league.season, week=week, operation="pool_settle",
+            reason=refusal.classification,
+            definition_key=refusal.definition_key,
+            detail=str(refusal),
+            last_provider_refresh=last_refresh,
+            provider_current_week=league.provider_current_week,
+            subjects_considered=census.subjects_considered,
+            subjects_evaluated=census.subjects_evaluated,
+            unevaluable_subject_ids=[
+                i for i in refusal.unevaluable_subject_ids
+                if isinstance(i, int)])
+        refusals.append(PoolRefusalOut(
+            # The engine's refusal names the DEFINITION, which is the stable
+            # identity of the occurrence within the week; the instance id is
+            # reported where it can be resolved from the persisted slate.
+            pool_instance_id=_pool_instance_id_for(
+                db, league_id=league_id, season=league.season, week=week,
+                definition_key=refusal.definition_key),
+            definition_key=refusal.definition_key,
+            classification=refusal.classification,
+            retryable=provider_incident.is_retryable(refusal.classification),
+            data_incomplete=provider_incident.is_data_incomplete(
+                refusal.classification),
+            subjects_considered=census.subjects_considered,
+            subjects_evaluated=census.subjects_evaluated,
+            subjects_claiming=census.subjects_claiming,
+            unevaluable_subject_ids=[int(i)
+                                     for i in refusal.unevaluable_subject_ids
+                                     if isinstance(i, int)],
+            message=str(refusal),
+        ))
+
     return PoolWeekSettlementOut(
         league_id=result.league_id, week=result.week,
         settled=[
@@ -5604,9 +5860,213 @@ def settle_governed_pool_week(
             ) for s in result.settled
         ],
         refused=[str(r) for r in result.refused],
+        refusals=refusals,
         week_container_settled=result.week_container_settled,
         all_settled=result.all_settled,
     )
+
+
+def _pool_instance_id_for(db, *, league_id: int, season: int, week: int,
+                          definition_key: str) -> Optional[int]:
+    """The occurrence a refusal belongs to, or None.
+
+    A READ, AND A TOLERANT ONE. It exists so an operator can address the stuck
+    occurrence directly; a refusal whose instance cannot be located is still a
+    complete report without it, so this returns None rather than raising and
+    turning a diagnostic into a second failure.
+    """
+    from db.schema import PoolInstance
+
+    row = (db.query(PoolInstance)
+           .filter(PoolInstance.league_id == league_id,
+                   PoolInstance.season == season,
+                   PoolInstance.week == week,
+                   PoolInstance.definition_key == definition_key)
+           .order_by(PoolInstance.slot)
+           .first())
+    return row.id if row is not None else None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WP2 §24 — PROVIDER STATUS AND DIAGNOSIS
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# WHY A READ ROUTE AND NOT A TABLE. The WP1E recon found that a fail-closed Pool
+# settlement persisted nothing about its refusal, so the only way to learn why a
+# week was stuck was to run settlement again — a money path used as a
+# diagnostic. Two fixes were available: persist every refusal, or make the
+# question answerable as a pure read. WP2 does the second, because the refusal
+# is not a fact about the past that needs preserving; it is a statement about
+# the CURRENT state of provider data, and re-deriving it is both cheaper and
+# always right. (Every refusal is ALSO emitted as a structured incident record
+# when it happens, so the history is not lost — see providers/incident.py.)
+#
+# IT POSTS NOTHING AND SETTLES NOTHING. `providers/diagnosis.py` calls the pure
+# classifier, not the settlement engine, so this route cannot move a cent, take
+# a settlement lock or mark an occurrence settled.
+
+class PoolDiagnosisOut(BaseModel):
+    pool_instance_id:        int
+    definition_key:          str
+    slot:                    int
+    classification:          str
+    settleable:              bool
+    retryable:               Optional[bool]
+    data_incomplete:         bool
+    subjects_considered:     int
+    subjects_evaluated:      int
+    subjects_claiming:       Optional[int]
+    unevaluable_subject_ids: list[int]
+    detail:                  str
+
+
+class ProviderStatusOut(BaseModel):
+    league_id:               int
+    season:                  int
+    provider:                Optional[str]
+    provider_league_key:     Optional[str]
+    demo:                    bool
+    #: The provider's own current week, and when its feed last persisted a
+    #: matchup for this league. NULL is an answer to both: no refresh has ever
+    #: stated a week, or none has ever written a row.
+    provider_current_week:   Optional[int]
+    last_provider_refresh:   Optional[str]
+    open_provider_conflicts: int
+    week:                    Optional[int]
+    week_final:              bool
+    matchups_total:          int
+    matchups_finalized:      int
+    unfinalized_matchup_ids: list[int]
+    pools_total:             int
+    pools_settled:           int
+    #: Named when the Pool level could not be diagnosed at all — a non-final
+    #: week, or a provider that could not be read. Reported rather than left as
+    #: an empty list, which would read as "nothing is stuck".
+    blocked_reason:          Optional[str]
+    stuck_pools:             list[PoolDiagnosisOut]
+
+
+@app.get("/league/{league_id}/provider/status", response_model=ProviderStatusOut)
+def league_provider_status(
+    league_id: int,
+    week:      Optional[int] = Query(default=None, ge=1, le=17,
+                                     description="Week to diagnose; omit for "
+                                                 "the provider's current week."),
+    db:        Session = Depends(get_db),
+    _comm:     User    = Depends(require_league_commissioner),
+):
+    """Why is this league's week stuck? Answered without rerunning settlement.
+
+    THE PROVIDER-FACING HALF OF THE PROVIDER DATA RECOVERY REQUIREMENT. An
+    operator gets, in one read: which provider answers for this league, when it
+    last spoke, whether the week is economically final and which matchups are
+    not, how many contradictions are unresolved, and — for every unsettled Pool
+    occurrence — the classification the ordinary settlement path would refuse it
+    with, its census, the subjects it could not evaluate, and whether retry is
+    the remedy.
+
+    A PROVIDER OUTAGE DOES NOT MAKE THIS ROUTE FAIL. The finality, freshness and
+    conflict picture is read from persisted state and is answered regardless;
+    only the Pool level needs the feed, and its absence is reported as
+    `blocked_reason` rather than as a 502. An operator investigating an outage
+    must not be locked out by it.
+
+    NOTHING HERE IS A REMEDY. Every classification it can report is retryable or
+    is an evaluator fault, and WP1E rules that none is terminal — so there is no
+    force, void, refund or override on this surface, and nothing to add one to.
+    """
+    from providers.diagnosis import diagnose_week
+    from providers.errors import ProviderError
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    target = week or league.provider_current_week
+    if target is None:
+        # No week to diagnose and none stated. Reported as an empty answer
+        # rather than guessed at — substituting a number here is the hard-coded
+        # week the S8-P4C-3 read model exists to have removed.
+        from providers.incident import last_provider_refresh
+
+        refreshed = last_provider_refresh(db, league_id=league_id)
+        return ProviderStatusOut(
+            league_id=league_id, season=league.season,
+            provider=league.provider,
+            provider_league_key=league.provider_league_key,
+            demo=_is_demo(league),
+            provider_current_week=None,
+            last_provider_refresh=(refreshed.isoformat() if refreshed
+                                   else None),
+            open_provider_conflicts=0, week=None, week_final=False,
+            matchups_total=0, matchups_finalized=0, unfinalized_matchup_ids=[],
+            pools_total=0, pools_settled=0,
+            blocked_reason="no_provider_week", stuck_pools=[])
+
+    stat_source = None
+    try:
+        snapshot = _provider_week_snapshot(db, league, target, with_rosters=True)
+        stat_source = _provider_stat_source(db, league, snapshot)
+    except (ProviderError, HTTPException):
+        # Deliberately swallowed HERE AND NOWHERE ELSE. On a settlement path a
+        # provider failure must refuse loudly; on the diagnostic that exists to
+        # investigate it, refusing would leave an operator with no information
+        # at exactly the moment they need it. The gap is named below.
+        stat_source = None
+
+    diagnosis = diagnose_week(db, league=league, week=target,
+                              stat_source=stat_source)
+
+    return ProviderStatusOut(
+        league_id=diagnosis.league_id,
+        season=diagnosis.season,
+        provider=diagnosis.provider,
+        provider_league_key=league.provider_league_key,
+        demo=_is_demo(league),
+        provider_current_week=diagnosis.provider_current_week,
+        last_provider_refresh=diagnosis.last_provider_refresh,
+        open_provider_conflicts=diagnosis.open_provider_conflicts,
+        week=diagnosis.week,
+        week_final=diagnosis.week_final,
+        matchups_total=diagnosis.matchups_total,
+        matchups_finalized=diagnosis.matchups_finalized,
+        unfinalized_matchup_ids=list(diagnosis.unfinalized_matchup_ids),
+        pools_total=diagnosis.pools_total,
+        pools_settled=diagnosis.pools_settled,
+        blocked_reason=diagnosis.blocked_reason,
+        stuck_pools=[
+            PoolDiagnosisOut(
+                pool_instance_id=p.pool_instance_id,
+                definition_key=p.definition_key,
+                slot=p.slot,
+                classification=p.classification,
+                settleable=p.settleable,
+                retryable=p.retryable,
+                data_incomplete=p.data_incomplete,
+                subjects_considered=p.subjects_considered,
+                subjects_evaluated=p.subjects_evaluated,
+                subjects_claiming=p.subjects_claiming,
+                unevaluable_subject_ids=list(p.unevaluable_subject_ids),
+                detail=p.detail,
+            ) for p in diagnosis.pools
+        ],
+    )
+
+
+def _is_demo(league) -> bool:
+    """WP2 §14 — the unmistakable DEMO marker, derived from the PROVIDER BINDING.
+
+    NEVER FROM THE LEAGUE NAME. A league called "Demo League" that is bound to
+    Yahoo is a live league with a misleading name, and rendering a DEMO badge on
+    it would be the most dangerous thing this contract could do. The binding is
+    also what decides which feed answers for the league, so the marker and the
+    behaviour cannot disagree.
+    """
+    from api.demo_routes import is_demo_league
+
+    return is_demo_league(league)
 
 
 def _postseason_track_state(db, league, *, week: int):
@@ -6119,7 +6579,6 @@ def league_lifecycle_state(
     from economy.season_reconciliation import SeasonReconciliationError
     from economy.skunk import SkunkError
     from economy.weekly_minimum import is_release_week
-    from providers.yahoo.pool_source import PROVIDER
 
     league = db.query(League).filter(League.id == league_id).first()
     if league is None:
@@ -6136,10 +6595,17 @@ def league_lifecycle_state(
     season_closed_at = league.season_closed_at
     current_week = league.provider_current_week
 
+    # WP2 — THE LEAGUE'S OWN PROVIDER. Gate-2 rows are keyed (league, provider,
+    # definition), so reading them under a Yahoo constant reported a Demo
+    # league's Pool support as NOT_MEASURED however thoroughly it had been
+    # measured. A league with no binding at all still has no measurements, and
+    # the fallback preserves exactly the answer it gave before.
+    provider = league.provider or PROVIDER_YAHOO
+
     # ── Pool support ────────────────────────────────────────────────────────
     measurements = (db.query(PoolLeagueActivation)
                     .filter(PoolLeagueActivation.league_id == league_id,
-                            PoolLeagueActivation.provider == PROVIDER).all())
+                            PoolLeagueActivation.provider == provider).all())
     ready_rows = [m for m in measurements if m.league_activation_ready]
     stamps = [m.measured_at for m in measurements if m.measured_at]
 
@@ -6147,7 +6613,7 @@ def league_lifecycle_state(
     # is one input; `selectable_definitions` additionally applies Gate 1 and the
     # staleness window, and it is what the slate builder actually draws from.
     eligible = selectable_definitions(db, league_id=league_id,
-                                      provider=PROVIDER, phase=PHASE_REGULAR)
+                                      provider=provider, phase=PHASE_REGULAR)
 
     if not measurements:
         support_state = POOL_SUPPORT_NOT_MEASURED
@@ -6251,7 +6717,7 @@ def league_lifecycle_state(
             definitions_ready=len(ready_rows),
             eligible_for_slate=len(eligible),
             required_for_slate=DEFAULT_SLOT_COUNT,
-            provider=PROVIDER,
+            provider=provider,
         ),
         week=week_out,
         season_close=LifecycleSeasonOut(
@@ -6274,3 +6740,26 @@ from api.war_room_routes import router as war_room_router  # noqa: E402
 app.include_router(war_room_router)
 from api.pool_routes import router as pool_router  # noqa: E402
 app.include_router(pool_router)
+
+# ── WP2 — Demo Mode ───────────────────────────────────────────────────────────
+#
+# MOUNTING THE ROUTER AND REGISTERING THE BRACKET SOURCE ARE TWO SEPARATE ACTS,
+# and both happen here because both are deployment decisions.
+#
+# `providers/postseason_bracket.py`'s registry is EMPTY at import on purpose: a
+# deployment that registers nothing classifies nothing and pays no Championship
+# Pot. Registering the Demo source is the statement that this deployment runs
+# Demo Mode. It claims only keys beginning with `demo.l.`, so it cannot take
+# over a Yahoo league — which matters, because two sources claiming one league
+# is a refusal rather than a precedence rule, and a source that claimed
+# everything would block every real season close.
+#
+# NOTHING ABOUT YAHOO CHANGES. No Yahoo postseason source is registered here or
+# anywhere else, so a live Yahoo league's bracket remains UNKNOWN and its
+# non-empty Championship Pot still cannot close. That is the open launch
+# blocker, and mounting Demo does not paper over it.
+from api.demo_routes import router as demo_router  # noqa: E402
+from providers.demo.postseason import install_demo_postseason_source  # noqa: E402
+
+app.include_router(demo_router)
+install_demo_postseason_source()
