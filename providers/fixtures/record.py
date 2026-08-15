@@ -302,6 +302,22 @@ def capture_postseason(transport, directory: str, *, league_key: str,
     a running league, and no Yahoo response is stored in the database. Before a
     capture is committed, the Yahoo storage-boundary review must confirm the
     corpus may hold it.
+
+    ── WHAT THIS DOES NOT YET CAPTURE (WP2B finding) ────────────────────────
+
+    IT COVERS LEAGUE METADATA, TEAMS, PER-WEEK SCOREBOARDS AND ROSTERS — and
+    NOT `league/{key}/settings` or `league/{key}/standings`. Those two are named
+    in the WP2B evidence set because `num_playoff_teams` (the championship field
+    SIZE) and the standings resource are the two places a bracket discriminator
+    might live outside the scoreboard, and neither is reachable through the
+    current `ProviderTransport`, which exposes only fetch_league / fetch_teams /
+    fetch_scoreboard / fetch_team_roster.
+
+    THEY WERE DELIBERATELY NOT ADDED BLIND. Extending the transport and this
+    helper for two payloads whose shape nobody has ever seen would be plumbing
+    built on an assumption, and WP2B's own gate forbids that. The extension is a
+    ten-line change and belongs to the package that can finally run it against a
+    real response — see YAHOO_API_AUTHORIZATION_FINDING in providers/certify.
     """
     if playoff_start_week > season_final_week:
         raise ValueError(

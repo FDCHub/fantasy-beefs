@@ -35,6 +35,47 @@ REPO_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 LEAGUE_KEY = "461.l.488800"
 SEASON = 2025
 PROVIDER = "yahoo"
+
+#: WP2B — WHY LEVEL-1 EVIDENCE STILL CANNOT BE OBTAINED, recorded from a live
+#: probe rather than assumed.
+#:
+#: WP2 stated the blocker as "an authorized credential and an eligible league,
+#: and neither exists here." WP2B established that BOTH halves of that sentence
+#: were wrong, and in opposite directions, so it is corrected here rather than
+#: left to mislead a launch review:
+#:
+#:   THE LEAGUE EXISTS AND IS IDENTIFIED. 461.l.488800, season 2025, resolved
+#:   from the repository's own configuration — no discovery call was needed.
+#:
+#:   THE CREDENTIAL EXISTS AND WORKS. It loads through the certified
+#:   `load_credentials` path, and an OAuth REFRESH SUCCEEDS — so the refresh
+#:   token, the consumer key and the consumer secret are all valid.
+#:
+#:   THE APPLICATION IS NOT AUTHORIZED. With a freshly refreshed access token,
+#:   EVERY Fantasy Sports API resource returns HTTP 403 "This application is not
+#:   authorized to perform this action" — including `game/nfl`, which is public
+#:   game metadata requiring no league access, and `users;use_login=1`, which is
+#:   the credential's own identity. A resource-scoped or league-scoped problem
+#:   could not produce that pattern; only an application-registration one can.
+#:
+#: THIS STRING IS A RECORDED FINDING, NOT A MEASUREMENT THIS GATE RE-TAKES.
+#: C-25 runs offline with no credentials by construction (C-1), so it cannot
+#: re-derive a 403 and does not pretend to. What it can do — and does below — is
+#: prove that nothing in the repository has been altered to work around the
+#: absence.
+YAHOO_API_AUTHORIZATION_FINDING = (
+    "BLOCKER, MEASURED 2026-08-15: the Yahoo APPLICATION is not authorized for "
+    "the Fantasy Sports API. The eligible league exists and is identified "
+    "(461.l.488800, season 2025); the credential exists, loads through the "
+    "certified path, and its OAuth refresh SUCCEEDS. With a freshly refreshed "
+    "access token every Fantasy Sports resource returned HTTP 403 'This "
+    "application is not authorized to perform this action', including "
+    "`game/nfl` (public game metadata, no league access required) and "
+    "`users;use_login=1` (the credential's own identity). The missing thing is "
+    "therefore Fantasy Sports API permission on the registered Yahoo "
+    "application — not a token, not a league, not a game id, not a scope on "
+    "this credential."
+)
 #: Frozen certification clock. Matches the corpus manifests' replay_now, so a
 #: 24-hour staleness window can be crossed by arithmetic rather than by waiting.
 FROZEN_NOW = datetime(2025, 9, 23, 12, 0, 0, tzinfo=timezone.utc)
@@ -2476,6 +2517,9 @@ def c25_yahoo_postseason_evidence(evidence, tdb):
     evidence.append(f"evidence level 1 (CAPTURED Yahoo payload): "
                     f"{captured} fixture(s) in the corpus")
 
+    # WP2B — WHY, stated from a live probe rather than left to inference.
+    evidence.append(f"WP2B live probe: {YAHOO_API_AUTHORIZATION_FINDING}")
+
     # ── LEVEL 3: AN EXISTING NORMALIZED YAHOO FIELD ──────────────────────────
     # `parse_league` is the only Yahoo parser that reads a playoff-related
     # field, and it reads exactly one: the WEEK the postseason begins. A week
@@ -2644,16 +2688,12 @@ def c25_yahoo_postseason_evidence(evidence, tdb):
         "repository and was not consulted; level 3 (an existing normalized "
         "Yahoo field) yields only playoff_start_week, a WEEK BOUNDARY that "
         "cannot classify a matchup. Level 4 (synthetic fixture) is explicitly "
-        "prohibited from certifying a Yahoo capability. REQUIRED TO CLOSE: a "
-        "captured, scrubbed Yahoo response from a league that has PLAYED a "
-        "postseason — league settings, every postseason week's scoreboard, and "
-        "standings — from which a reviewer can read whether ANY field "
-        "identifies the championship field, the championship-track matchups, "
-        "the final, the semifinal losers and the official third-place game. "
-        "`providers.fixtures.record.capture_postseason` performs that capture; "
-        "it needs an authorized credential and an eligible league, and neither "
-        "exists here. Until then Yahoo remains fail-closed and a live non-empty "
-        "Championship Pot cannot be distributed."
+        "prohibited from certifying a Yahoo capability. "
+        + YAHOO_API_AUTHORIZATION_FINDING +
+        " Until the application is authorized, no level-1 evidence can be "
+        "obtained by any means available to this repository, Yahoo remains "
+        "fail-closed, and a live non-empty Championship Pot cannot be "
+        "distributed."
     )
 
 
