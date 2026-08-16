@@ -70,22 +70,53 @@ def _read(*parts: str) -> str:
 
 # ── 1 · The governing conflict, resolved and recorded ────────────────────────
 
-_section("1 · The close control stays UPPER-RIGHT, per the governing POR")
+_section("1 · The close control is UPPER-LEFT, per the owner ruling")
 
-# THE WP3E BRIEF ASKED FOR UPPER-LEFT. Rev 4.3 §25 says the opposite, in terms
-# that anticipate exactly this instruction: "positioned upper-right ... The
-# close control is not moved to upper-left. Any earlier upper-left treatment is
-# superseded." The brief's own authority order puts the Rev 4.3 FINAL POR first,
-# and its scope rules forbid redesign, so the POR governs and the control does
-# not move. Moving it would also have broken the S7 and WP3C certifications that
-# pin the upper-right geometry.
+# WP3E CERTIFIED THIS UPPER-RIGHT AND SAID SO. Rev 4.3 §25 required it, in terms
+# that anticipated the request to move it, and WP3E followed the POR because the
+# POR was the highest authority then in evidence. That has changed: the
+# FantasyStakes owner ruling delivered with WP3E-FIX sets a universal upper-left
+# treatment and explicitly supersedes §25. The ruling outranks the POR, so the
+# control moved and this section records the reversal rather than hiding it.
+#
+# THE POR TEXT ITSELF IS UNCHANGED, deliberately. It is a governed artifact and
+# revising it is the owner's act, not a test package's. Both facts are asserted
+# below so the contradiction stays visible until the POR is reissued.
 POR = _read("spec", "FantasyStakes_UIUX_Rev4_3_FINAL_POR.md")
-_assert("Rev 4.3 §25 requires the close control upper-right",
+_assert("Rev 4.3 §25 still carries the superseded upper-right language",
         "positioned **upper-right**" in POR)
-_assert("and explicitly supersedes any upper-left treatment",
-        "not moved to upper-left" in POR)
-_assert("the shipped control is still described as upper-right",
-        "upper-right" in _read("web", "index.html"))
+_assert("the shipped control is described as upper-left",
+        "upper-left" in _read("web", "index.html")
+        and "upper-right" not in _read("web", "index.html"))
+
+# ONE AUTHORITY, NOT A PER-SURFACE SWEEP. Every dismissible overlay renders
+# through `sheet()`, so the ruling is kept by a single rule and a single markup
+# helper. Asserting that is what makes "everywhere" checkable at all.
+_COMPONENTS_JS = _read("web", "js", "components.js")
+_assert("exactly one close control is emitted in the whole frontend",
+        _COMPONENTS_JS.count("data-fs-close") == 1)
+_assert("and every sheet is composed through the helper that emits it",
+        "return closeControl() + titleHtml" in _COMPONENTS_JS)
+
+_COMPONENTS_CSS = _read("web", "styles", "components.css")
+_CLOSE_BODIES = re.findall(r"\.fs-sheet__close[^{]*\{([^}]*)\}", _COMPONENTS_CSS)
+_assert("the shared rule anchors it left", any(re.search(r"(^|;)\s*left:", b)
+                                               for b in _CLOSE_BODIES))
+_RIGHTS = [m.strip().lower() for b in _CLOSE_BODIES
+           for m in re.findall(r"(?:^|;)\s*right:\s*([^;]+)", b)]
+_assert("and releases the right anchor rather than leaving it inherited",
+        _RIGHTS == ["auto"], ", ".join(_RIGHTS) or "none")
+
+# NO SURFACE OPTS OUT. A stylesheet that re-anchored this control to the right
+# for one panel would be invisible in the shared rule and obvious only on that
+# one screen, which is precisely the failure a universal treatment is for.
+for _name in sorted(os.listdir(os.path.join(ROOT, "web", "styles"))):
+    if not _name.endswith(".css") or _name == "components.css":
+        continue
+    _other = _read("web", "styles", _name)
+    _assert(f"{_name} does not re-anchor the close control",
+            not re.search(r"\.fs-sheet__close[^{]*\{[^}]*(^|[;\s])(right|left)\s*:",
+                          _other))
 
 
 # ── 2 · The manifest ─────────────────────────────────────────────────────────

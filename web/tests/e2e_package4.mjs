@@ -8,7 +8,7 @@
  * questions this suite answers cannot be answered from source: do twelve GM
  * cards fit a phone without overflowing it, are the decision controls really
  * inert when clicked, does the legal line sit at the bottom and stay
- * subordinate, and does every sheet on this tab close from the same upper-right
+ * subordinate, and does every sheet on this tab close from the same upper-left
  * control.
  * ========================================================================== */
 
@@ -122,10 +122,10 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     ruleSheetState.text.slice(0, 160));
   check('betting vocabulary survives', /ML|Spread|O\/U/.test(ruleSheetState.text));
   check('exactly one close control', ruleSheetState.closes === 1);
-  check('the close control is upper-right',
-    ruleSheetState.fromRight >= 0 && ruleSheetState.fromRight < ruleSheetState.fromLeft
+  check('the close control is upper-left',
+    ruleSheetState.fromLeft >= 0 && ruleSheetState.fromLeft < ruleSheetState.fromRight
     && ruleSheetState.fromTop >= 0,
-    `${ruleSheetState.fromRight.toFixed(1)}px from right`);
+    `${ruleSheetState.fromLeft.toFixed(1)}px from left`);
 
   await evaluate(`document.querySelector('#fs-sheet [data-fs-close]').click(); return true;`);
 

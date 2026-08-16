@@ -194,10 +194,10 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
     check('it duplicates no betting market',
       preview.hasMarketCells === false
       && !preview.titles.includes('SPORTSBOOK VIEW'));
-    check('the close control is upper-right (§9)',
-      preview.fromRight >= 0 && preview.fromRight < preview.fromLeft
+    check('the close control is upper-left (owner ruling, superseding §9/§25)',
+      preview.fromLeft >= 0 && preview.fromLeft < preview.fromRight
       && preview.fromTop >= 0,
-      `${preview.fromRight.toFixed(1)}px from right`);
+      `${preview.fromLeft.toFixed(1)}px from left`);
 
     const closed = await evaluate(`
       document.querySelector('#fs-sheet [data-fs-close]').click();

@@ -7,7 +7,7 @@ Two halves, both required:
   1. STRUCTURAL, in Python. Assertions the browser cannot make for us and that
      must hold in the source itself — the layout contract that keeps the
      persistent bottom navigation out from over the content, the four-column
-     strip grid, the upper-right close control, the exact disclaimer string,
+     strip grid, the upper-left close control, the exact disclaimer string,
      and the absence of superseded Rev4.1 copy.
 
   2. BEHAVIOURAL, in Node. The shipped ES modules are executed directly by
@@ -280,23 +280,38 @@ _assert("the disclaimer has a style of its own", ".fs-disclaimer" in COMPONENTS_
 
 # ── Universal close control ──────────────────────────────────────────────────
 
-print("\nThe universal close control is upper-right")
+# THE OWNER RULING PUTS THIS UPPER-LEFT, and it supersedes Rev 4.3 FINAL POR
+# §25. The assertions below previously pinned upper-right in both directions —
+# `right` present and `left` absent — which is exactly what a superseded rule
+# looks like from the inside. They now pin the ruling instead: upper-left,
+# with its own band, and no surface allowed to opt out.
+print("\nThe universal close control is upper-left")
 
 close_rule = _rule(COMPONENTS_CSS, ".fs-sheet__close")
 _assert("the close control is positioned", "position: absolute" in close_rule)
 _assert("it is anchored to the top", re.search(r"top:\s*[^;]+;", close_rule) is not None)
-_assert("it is anchored to the right", re.search(r"right:\s*[^;]+;", close_rule) is not None)
+_assert("it is anchored to the left",
+        re.search(r"(^|;)\s*left:\s*[^;]+;", close_rule) is not None)
 _assert(
-    "it is never anchored left — the Rev4.1 upper-left treatment is superseded",
-    re.search(r"(^|;)\s*left:", close_rule) is None,
+    "and the right anchor is explicitly released, not merely omitted",
+    re.search(r"right:\s*auto", close_rule) is not None,
 )
+_close_bodies = re.findall(r"\.fs-sheet__close[^{]*\{([^}]*)\}", COMPONENTS_CSS)
+_right_values = [m.strip().lower() for body in _close_bodies
+                 for m in re.findall(r"(?:^|;)\s*right:\s*([^;]+)", body)]
 _assert(
-    "no rule anywhere moves the close control to the left",
-    not re.search(r"\.fs-sheet__close[^{]*\{[^}]*(^|[;\s])left:", COMPONENTS_CSS),
+    "no rule anywhere moves the close control back to the right",
+    all(value == "auto" for value in _right_values),
+    ", ".join(_right_values) or "no right declaration",
 )
+# THE CONTROL HAS ITS OWN BAND rather than sharing the title's line, so nothing
+# can run under it whether or not a given sheet carries a title. That is a
+# stronger guarantee than the title-side inset it replaces.
+_sheet_padding = re.search(r"padding:\s*(\d+)px", _rule(COMPONENTS_CSS, ".fs-sheet"))
 _assert(
-    "a long sheet title cannot run under the close control",
-    "padding-right" in _rule(COMPONENTS_CSS, ".fs-sheet__title"),
+    "the sheet reserves a band above its content for the close control",
+    _sheet_padding is not None and int(_sheet_padding.group(1)) >= 52,
+    _sheet_padding.group(0) if _sheet_padding else "no top padding",
 )
 
 

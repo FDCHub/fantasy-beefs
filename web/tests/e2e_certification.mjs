@@ -490,7 +490,7 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
       titleId: sheet.querySelector('.fs-sheet__title').id,
       closeName: close.getAttribute('aria-label'),
       focused: document.activeElement === close,
-      upperRight: (s.right - r.right) >= 0 && (s.right - r.right) < (r.left - s.left) && (r.top - s.top) >= 0,
+      upperLeft: (r.left - s.left) >= 0 && (r.left - s.left) < (s.right - r.right) && (r.top - s.top) >= 0,
       hidden: overlay.getAttribute('aria-hidden'),
     };
     // Navigating away must dismiss the sheet.
@@ -504,8 +504,8 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
     `${sheetSemantics.role}/${sheetSemantics.modal}/${sheetSemantics.labelledby}`);
   check('the close control has an accessible name',
     sheetSemantics.closeName === 'Close', String(sheetSemantics.closeName));
-  check('the close control is upper-right and takes focus',
-    sheetSemantics.upperRight === true && sheetSemantics.focused === true);
+  check('the close control is upper-left and takes focus',
+    sheetSemantics.upperLeft === true && sheetSemantics.focused === true);
   check('the sheet is exposed to assistive tech while open',
     sheetSemantics.hidden === 'false');
   check('a destination change dismisses the sheet',

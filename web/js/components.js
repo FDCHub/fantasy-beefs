@@ -5,7 +5,7 @@
  * Every component is a pure function from data to an HTML string. Nothing here
  * touches the DOM, reads global state, or performs I/O, so the rules the POR
  * fixes — four cells and only four, one disclaimer per tab, the close control
- * upper-right — are enforced in code and testable directly.
+ * upper-left — are enforced in code and testable directly.
  * ========================================================================== */
 
 import {
@@ -283,8 +283,17 @@ export function note(text, options = {}) {
 /* ── Pop-out / bottom sheet ─────────────────────────────────────────────── */
 
 /**
- * The universal close control: an upper-right X on the active sheet or card.
- * Rev4.2 — this supersedes any older upper-left treatment.
+ * The universal close control: an UPPER-LEFT X on the active sheet, card or
+ * modal, visually attached to the surface it dismisses and matching the Versus
+ * composer.
+ *
+ * THIS IS THE ONLY CLOSE CONTROL IN THE PRODUCT. Every dismissible overlay is
+ * rendered through `sheet()` below, so there is one implementation to change
+ * and no per-surface variant to keep in step.
+ *
+ * The FantasyStakes owner ruling supersedes Rev 4.3 FINAL POR §25, which had
+ * required upper-right. Position lives in `.fs-sheet__close`; this function
+ * decides the markup and the accessible name and nothing else.
  *
  * @returns {string}
  */
@@ -298,7 +307,7 @@ export function closeControl() {
 
 /**
  * Sheet body markup. The close control is emitted first so it is the first
- * focusable element inside the sheet, and positioned upper-right by
+ * focusable element inside the sheet, and positioned upper-left by
  * `.fs-sheet__close`.
  *
  * @param {{title?: string, sub?: string, body?: string}} spec

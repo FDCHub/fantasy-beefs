@@ -12,7 +12,7 @@
  * browser-native interaction in the product.
  *
  * WHAT REPLACES IT IS THE GRAMMAR ALREADY IN USE. This is an ordinary sheet
- * level, pushed on the stack, closing from the same upper-right control as
+ * level, pushed on the stack, closing from the same upper-left control as
  * every other sheet (§25). It reuses `composer.js`'s stake-field conventions
  * rather than inventing a second way to type an amount.
  *

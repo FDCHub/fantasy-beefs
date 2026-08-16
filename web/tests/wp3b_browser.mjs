@@ -86,13 +86,13 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
       opened: document.getElementById('fs-overlay').classList.contains('is-open'),
       entries: menu ? [...menu.querySelectorAll('[data-menu]')]
         .map(e => e.dataset.menu) : [],
-      // The close control on the menu, like every sheet, is upper-right.
-      closeRight: (() => {
+      // The close control on the menu, like every sheet, is upper-left.
+      closeLeft: (() => {
         const c = sheet.querySelector('[data-fs-close]');
         if (!c) return null;
         const s = sheet.getBoundingClientRect();
         const b = c.getBoundingClientRect();
-        return (s.right - b.right) < (b.left - s.left);
+        return (b.left - s.left) < (s.right - b.right);
       })(),
     };
   `);
@@ -108,8 +108,8 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
   check('the menu offers Rules and League Settings',
     gear.entries.includes('rules') && gear.entries.includes('settings'),
     gear.entries.join(','));
-  check('the menu sheet closes from the upper-right, like every sheet',
-    gear.closeRight === true);
+  check('the menu sheet closes from the upper-left, like every sheet',
+    gear.closeLeft === true);
 
   const reached = await evaluate(`
     ${GO_RULES}

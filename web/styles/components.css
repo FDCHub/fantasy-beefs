@@ -211,15 +211,20 @@
   background: var(--card);
   border: var(--fs-border);
   border-radius: var(--fs-radius-sheet) var(--fs-radius-sheet) 0 0;
-  padding: var(--fs-space-6) var(--fs-space-6) calc(20px + var(--fs-safe-bottom));
+  /* THE TOP PADDING IS THE CLOSE CONTROL'S BAND, and it is why nothing here
+   * has to know whether a given sheet has a title. The control is 44px tall
+   * and sits 8px down, so content begins at 56px and clears it whatever the
+   * sheet turns out to contain. */
+  padding: 56px var(--fs-space-6) calc(20px + var(--fs-safe-bottom));
 }
 
 .fs-sheet__title {
   font-size: var(--fs-size-title);
   font-weight: var(--fs-weight-medium);
   margin-bottom: 3px;
-  /* Never let a long title run under the close control. */
-  padding-right: 28px;
+  /* NO SIDE INSET IS NEEDED ANY MORE. The control used to share this line and
+   * the title had to be kept out from under it; it now has its own band above,
+   * so the title gets the sheet's full width back. */
 }
 
 .fs-sheet__sub {
@@ -228,13 +233,29 @@
   color: var(--g1);
 }
 
-/* Universal close X — always upper-right of the active sheet/card.
- * Rev4.2: this supersedes any older upper-left treatment. No rule anywhere
- * may set `left` on this control. */
+/* ── The universal close X — UPPER-LEFT of the active sheet, card or modal ──
+ *
+ * ONE RULE, ONE CONTROL, EVERY SURFACE. Every dismissible overlay in the
+ * product — modal sheets, matchup previews, the Versus composer, Pool
+ * composers and details, Rules and Settings sheets — is rendered into the one
+ * sheet host by `sheet()` in components.js, so this is the only place the
+ * close treatment is decided. There is no per-surface variant to keep in step.
+ *
+ * WHY UPPER-LEFT, AND WHAT IT SUPERSEDES. The FantasyStakes owner ruling sets
+ * a universal upper-left treatment, visually attached to the active surface
+ * and matching the Versus composer. That ruling supersedes Rev 4.3 FINAL POR
+ * §25, which required upper-right — and note that the Rev 4.2 prototype POR
+ * had already specified `left:14px; right:auto; top:10px` with a padded sheet.
+ * This rule is that treatment, at the Rev 4.3 touch size.
+ *
+ * `right: auto` is explicit rather than merely omitted, because the shorthand
+ * this replaced set it and a half-applied override would leave the control
+ * stretched across the whole sheet. */
 .fs-sheet__close {
   position: absolute;
-  top: var(--fs-space-5);
-  right: 14px;
+  top: 8px;
+  left: 14px;
+  right: auto;
   z-index: 2;
   width: 28px;
   height: 28px;

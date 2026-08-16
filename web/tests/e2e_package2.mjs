@@ -887,9 +887,9 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
     PROTOCOL_STATES.test((detail.body || '').replace(/\s+/g, ' ')),
     (detail.body || '').replace(/\s+/g, ' ').slice(0, 140));
   check('the sheet names the Response Card', /Response card/.test(detail.body || ''));
-  check('the sheet uses the shared upper-right close control',
-    detail.fromRight >= 0 && detail.fromRight < detail.fromLeft && detail.fromTop >= 0,
-    `${detail.fromRight.toFixed(1)}px from right, ${detail.fromTop.toFixed(1)}px from top`);
+  check('the sheet uses the shared upper-left close control',
+    detail.fromLeft >= 0 && detail.fromLeft < detail.fromRight && detail.fromTop >= 0,
+    `${detail.fromLeft.toFixed(1)}px from left, ${detail.fromTop.toFixed(1)}px from top`);
 
   await evaluate(`document.getElementById('fs-sheet').querySelector('[data-fs-close]').click(); return true;`);
 });

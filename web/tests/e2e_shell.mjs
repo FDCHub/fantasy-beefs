@@ -8,7 +8,7 @@
  * MEASURED GEOMETRY. Source inspection can show that the navigation is in
  * normal flow; only a laid-out page can show that it does not overlap the
  * active panel at a phone viewport, that nothing overflows horizontally, and
- * that the close control really lands in the upper-right of the sheet.
+ * that the close control really lands in the upper-left of the sheet.
  *
  * S8-P1 — NOW ON THE SHARED HARNESS. This suite was written before Package 2
  * extracted `browser-harness.mjs`, and carried its own copy of the Chrome
@@ -275,7 +275,7 @@ await withPage({ port: 9333 }, async ({ evaluate }) => {
     }
   }
 
-  console.log('\nThe shared pop-out closes from an upper-right control');
+  console.log('\nThe shared pop-out closes from an upper-left control');
 
   // Opened from Ledger's Request Top-Off control. Package 1 opened this sheet
   // from the ledger strip's gold cell; Package 3 gave that strip the POR's four
@@ -299,24 +299,30 @@ await withPage({ port: 9333 }, async ({ evaluate }) => {
       sheetWidth: s.width,
       sheetHeight: s.height,
       focused: document.activeElement === close,
+      closeW: c.width,
+      closeH: c.height,
       anchoredBottom: Math.abs(s.bottom - window.innerHeight) < 1,
     };
   `);
   check('the sheet opens', sheetGeometry.open === true);
   check('the sheet is exposed to assistive tech', sheetGeometry.hidden === 'false');
   check('the sheet is anchored to the bottom edge', sheetGeometry.anchoredBottom === true);
+  // THE OWNER RULING PUTS THIS UPPER-LEFT and supersedes Rev 4.3 POR §25.
+  // Measured from the sheet's own edges, so it is the attachment that is under
+  // test and not a coordinate in the viewport.
   check(
-    'the close control sits in the upper-right of the sheet',
-    sheetGeometry.fromRight >= 0 &&
-    sheetGeometry.fromRight < sheetGeometry.sheetWidth / 4 &&
+    'the close control sits in the upper-left of the sheet',
+    sheetGeometry.fromLeft >= 0 &&
+    sheetGeometry.fromLeft < sheetGeometry.sheetWidth / 4 &&
+    sheetGeometry.fromLeft < sheetGeometry.fromRight &&
     sheetGeometry.fromTop >= 0 &&
     sheetGeometry.fromTop < sheetGeometry.sheetHeight / 3,
-    `${sheetGeometry.fromRight.toFixed(1)}px from right, ${sheetGeometry.fromTop.toFixed(1)}px from top`,
+    `${sheetGeometry.fromLeft.toFixed(1)}px from left, ${sheetGeometry.fromTop.toFixed(1)}px from top`,
   );
   check(
-    'the close control is nearer the right edge than the left',
-    sheetGeometry.fromRight < sheetGeometry.fromLeft,
-    `right ${sheetGeometry.fromRight.toFixed(1)}px vs left ${sheetGeometry.fromLeft.toFixed(1)}px`,
+    'and it is a full 44px touch target',
+    sheetGeometry.closeW >= 44 && sheetGeometry.closeH >= 44,
+    `${sheetGeometry.closeW.toFixed(1)}x${sheetGeometry.closeH.toFixed(1)}`,
   );
   check('the close control takes focus on open', sheetGeometry.focused === true);
 

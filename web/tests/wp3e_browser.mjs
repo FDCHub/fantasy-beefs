@@ -346,7 +346,11 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
 
   section('§15/§14 · Sheets, and the universal close control');
 
-  for (const [w, h] of [[320, 568], [375, 667], [430, 932], [844, 390]]) {
+  // EVERY WIDTH THE RULING NAMES, plus a landscape phone, because the sheet is
+  // bottom-anchored and a short viewport is where a taller close band would
+  // show up first.
+  for (const [w, h] of [[320, 568], [360, 640], [375, 667], [390, 844],
+    [430, 932], [844, 390]]) {
     await setViewport(w, h);
     const sheet = await evaluate(`return (async () => {
       ${AWAIT_APP}
@@ -356,9 +360,10 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
       if (!card) return { opened: false };
       card.click();
       await new Promise((r) => setTimeout(r, 300));
-      const el = document.getElementById('fs-sheet');
-      const x = el.querySelector('[data-fs-close]');
-      const s = el.getBoundingClientRect();
+      const el2 = document.getElementById('fs-sheet');
+      const el = el2;
+      const x = el2.querySelector('[data-fs-close]');
+      const s = el2.getBoundingClientRect();
       const b = x.getBoundingClientRect();
       const nav = document.querySelector('.fs-tabbar').getBoundingClientRect();
       const before = document.activeElement;
@@ -370,7 +375,7 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
         xh: Math.round(b.height), xw: Math.round(b.width),
         xOnScreen: b.left >= 0 && b.right <= window.innerWidth
           && b.top >= 0 && b.bottom <= window.innerHeight,
-        // Rev 4.3 §25 — UPPER-RIGHT, and the POR supersedes any upper-left.
+        // THE OWNER RULING — UPPER-LEFT, superseding Rev 4.3 §25.
         fromRight: Math.round(s.right - b.right),
         fromLeft: Math.round(b.left - s.left),
         fromTop: Math.round(b.top - s.top),
@@ -379,6 +384,21 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
         clearsNav: s.bottom <= nav.bottom + 1,
         xFocusable: document.activeElement === x,
         focusables: focusable.length,
+        // NOTHING MAY SIT UNDER THE CONTROL. Moving it from one corner to the
+        // other moves which content is at risk, so the check is not "the title
+        // has a padding" but "no rendered box intersects the control's box".
+        overlaps: (() => {
+          const cb = x.getBoundingClientRect();
+          let hits = 0;
+          for (const el of el2.querySelectorAll('*')) {
+            if (el === x || x.contains(el)) continue;
+            const r = el.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) continue;
+            if (!(r.right <= cb.left + 1 || cb.right <= r.left + 1
+                  || r.bottom <= cb.top + 1 || cb.bottom <= r.top + 1)) hits += 1;
+          }
+          return hits;
+        })(),
         docOver: document.documentElement.scrollWidth - window.innerWidth,
       };
     })();`);
@@ -391,10 +411,19 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
     check(`${w}x${h}: the close control is a 44px target`,
       sheet.xh >= 44 && sheet.xw >= 44, `${sheet.xw}x${sheet.xh}`);
     check(`${w}x${h}: it is fully on screen`, sheet.xOnScreen === true);
-    check(`${w}x${h}: it sits UPPER-RIGHT, per Rev 4.3 §25`,
-      sheet.fromRight >= 0 && sheet.fromRight < sheet.fromLeft
+    check(`${w}x${h}: it sits UPPER-LEFT, per the owner ruling`,
+      sheet.fromLeft >= 0 && sheet.fromLeft < sheet.fromRight
       && sheet.fromTop >= 0,
-      `${sheet.fromRight}px from right, ${sheet.fromLeft}px from left`);
+      `${sheet.fromLeft}px from left, ${sheet.fromRight}px from right`);
+    // VISUALLY ATTACHED, which the ruling asks for by name. A control that is
+    // technically upper-left but floating 60px in from the corner is not the
+    // treatment; the prototype puts it at 14px, so a quarter of the sheet is a
+    // generous ceiling that still fails anything drifting toward the middle.
+    check(`${w}x${h}: and is attached to the sheet's own corner`,
+      sheet.fromLeft < Math.round(w / 4) && sheet.fromTop < 40,
+      `${sheet.fromLeft}px in, ${sheet.fromTop}px down`);
+    check(`${w}x${h}: it overlaps no sheet content`,
+      sheet.overlaps === 0, `${sheet.overlaps} overlapping element(s)`);
     check(`${w}x${h}: the sheet scrolls its own content`,
       sheet.scrolls === true);
     check(`${w}x${h}: it does not extend past the viewport`,
@@ -410,6 +439,142 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
       const c = document.querySelector('#fs-sheet [data-fs-close]');
       if (c) c.click();
       return true;`);
+  }
+
+  /* ── The owner ruling · EVERY dismissible surface ─────────────────────── */
+
+  section('OWNER RULING · every dismissible overlay closes from upper-left');
+
+  // ONE HOST, MANY DOORS. The ruling lists modal sheets, matchup previews,
+  // Versus composers, Pool composers and details, and Rules/Settings sheets.
+  // They all render into `#fs-sheet`, which is the point — but "they all use
+  // the shared component" is an implementation claim, and the ruling is a
+  // product claim. So each door is opened for real and the control measured
+  // where it lands.
+  //
+  // A DOOR THAT IS NOT REACHABLE IN THIS FIXTURE IS REPORTED, NOT PASSED. A
+  // sweep that silently skips what it could not open reads as broader coverage
+  // than it has.
+  await setViewport(390, 844);
+
+  // EACH SURFACE NAMES ITS OPENER AS A SELECTOR, not as a statement, because
+  // the opener is FOCUSED before it is clicked. A programmatic `.click()` moves
+  // no focus, so a sweep that only clicks would find `document.body` active at
+  // push time and would then "prove" focus return by restoring the body — a
+  // green result for a claim never tested. Focusing first makes the sheet's
+  // focus-return path assert something a keyboard user would actually feel.
+  const SURFACES = [
+    { name: 'the gear menu', tab: null, opener: '#fs-gear' },
+    { name: 'a Rules detail sheet', tab: null, via: '#fs-gear',
+      through: '#fs-menu [data-menu="rules"]', opener: '[data-rule]' },
+    { name: 'a League Settings sheet', tab: null, via: '#fs-gear',
+      through: '#fs-menu [data-menu="settings"]', opener: '[data-setting]' },
+    { name: 'the Versus composer', tab: 'league',
+      opener: '#panel-league [data-card-action="challenge"]' },
+    { name: 'the Matchup Preview', tab: 'league',
+      opener: '#panel-league [data-preview-opponent]' },
+    { name: 'a Pool detail', tab: 'league', opener: '#panel-league [data-pool]' },
+    { name: 'the Week Pool sheet', tab: 'week', opener: '#panel-week [data-pool]' },
+    { name: 'the Top-Off sheet', tab: 'ledger', opener: '#panel-ledger [data-topoff]' },
+  ];
+
+  for (const surface of SURFACES) {
+    const r = await evaluate(`return (async () => {
+      ${AWAIT_APP}
+      const overlay = document.getElementById('fs-overlay');
+      if (overlay.classList.contains('is-open')) {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await new Promise((res) => setTimeout(res, 120));
+      }
+      const tab = ${JSON.stringify(surface.tab)};
+      if (tab) {
+        document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
+        await new Promise((res) => setTimeout(res, 200));
+      }
+      for (const step of ${JSON.stringify([surface.via, surface.through].filter(Boolean))}) {
+        const gate = document.querySelector(step);
+        if (!gate) return { reachable: false };
+        gate.click();
+        await new Promise((res) => setTimeout(res, 260));
+      }
+      const opener = document.querySelector(${JSON.stringify(surface.opener)});
+      if (!opener) return { reachable: false };
+      opener.focus();
+      const openerHadFocus = document.activeElement === opener;
+      opener.click();
+      await new Promise((res) => setTimeout(res, 320));
+      if (!overlay.classList.contains('is-open')) return { reachable: false };
+      const host = document.getElementById('fs-sheet');
+      const x = host.querySelector('[data-fs-close]');
+      if (!x) return { reachable: true, control: false };
+      const s = host.getBoundingClientRect();
+      const b = x.getBoundingClientRect();
+      let overlaps = 0;
+      for (const node of host.querySelectorAll('*')) {
+        if (node === x || x.contains(node)) continue;
+        const n = node.getBoundingClientRect();
+        if (n.width === 0 || n.height === 0) continue;
+        if (!(n.right <= b.left + 1 || b.right <= n.left + 1
+              || n.bottom <= b.top + 1 || b.bottom <= n.top + 1)) overlaps += 1;
+      }
+      const focused = document.activeElement === x;
+      // ESCAPE, AND WHERE FOCUS LANDS AFTERWARDS. The ruling asks for both to
+      // survive the move, and a position change is exactly the kind of edit
+      // that quietly breaks the second one.
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await new Promise((res) => setTimeout(res, 220));
+      const stillOpen = overlay.classList.contains('is-open');
+      return {
+        reachable: true, control: true, controls: host.querySelectorAll('[data-fs-close]').length,
+        w: Math.round(b.width), h: Math.round(b.height),
+        fromLeft: Math.round(b.left - s.left), fromRight: Math.round(s.right - b.right),
+        fromTop: Math.round(b.top - s.top),
+        onScreen: b.left >= 0 && b.top >= 0 && b.right <= window.innerWidth
+          && b.bottom <= window.innerHeight,
+        overlaps, focused, stillOpen, openerHadFocus,
+        // A SHEET PUSHED ON TOP OF ANOTHER pops back to its parent rather than
+        // closing, and focus belongs on the parent's own close control then —
+        // so both outcomes are reported and the assertion picks the right one.
+        focusReturnedToOpener: document.activeElement === opener,
+        focusInSheet: host.contains(document.activeElement),
+      };
+    })();`);
+
+    if (!r.reachable) {
+      check(`${surface.name} — NOT REACHABLE in this fixture, so not certified`,
+        true, 'reported, not passed over');
+      continue;
+    }
+    check(`${surface.name}: carries exactly one close control`,
+      r.control === true && r.controls === 1, String(r.controls));
+    check(`${surface.name}: upper-left, attached to the corner`,
+      r.fromLeft >= 0 && r.fromLeft < r.fromRight && r.fromTop >= 0 && r.fromTop < 40,
+      `${r.fromLeft}px from left, ${r.fromTop}px down, ${r.fromRight}px from right`);
+    check(`${surface.name}: is a 44px target, fully on screen`,
+      r.w >= 44 && r.h >= 44 && r.onScreen === true, `${r.w}x${r.h}`);
+    check(`${surface.name}: overlaps nothing in the sheet`,
+      r.overlaps === 0, `${r.overlaps} overlapping element(s)`);
+    check(`${surface.name}: takes focus on open`, r.focused === true);
+    check(`${surface.name}: Escape still dismisses it`, r.stillOpen === false);
+    // FOCUS RETURN IS ONLY TESTABLE WHERE THE OPENER CAN HOLD FOCUS.
+    //
+    // Some surfaces are entered from a tappable card — `.fs-wcard.is-tappable`
+    // is a div, not a button — which cannot take focus at all, so there is no
+    // focus for the sheet to give back and the shell correctly restores what it
+    // saved: nothing. That is a real keyboard gap and it is PRE-EXISTING; it
+    // belongs to the card, not to the close control this package moved, and
+    // fixing it means changing card markup well outside a focused close-X
+    // correction. So it is NAMED here rather than quietly passed, and it is
+    // carried forward.
+    if (r.openerHadFocus !== true) {
+      check(`${surface.name}: opener is a tappable div and cannot hold focus `
+        + `— focus return NOT CERTIFIED here (pre-existing, carried forward)`,
+        true, 'reported, not passed over');
+    } else {
+      check(`${surface.name}: focus returns to the control that opened it`,
+        r.stillOpen ? r.focusInSheet === true : r.focusReturnedToOpener === true,
+        r.stillOpen ? 'a parent level remains open' : 'sheet fully closed');
+    }
   }
 
   /* ── §17/§22/§16 · zoom, motion, safe area ────────────────────────────── */

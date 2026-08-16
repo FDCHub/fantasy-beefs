@@ -212,7 +212,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
    *   · production — a provider card offers no preview and opens no sheet;
    *   · the preview itself — still certified in the shared sheet, driven
    *     through the real modules, so the four sections, the source banner and
-   *     the upper-right close control remain browser-certified rather than
+   *     the upper-left close control remain browser-certified rather than
    *     demoted to a source check.
    */
   const notTappable = await evaluate(`
@@ -267,7 +267,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     /not a FantasyStakes wager/.test(preview.text));
   check('it explains the unquoted moneyline rather than deriving one',
     /No moneyline is quoted/.test(preview.text));
-  check('it uses the one shared upper-right close control', preview.closes === 1);
+  check('it uses the one shared upper-left close control', preview.closes === 1);
 
   await evaluate(`document.querySelector('#fs-sheet [data-fs-close]').click(); return true;`);
 
