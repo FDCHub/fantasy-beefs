@@ -14,7 +14,7 @@
  *   · nothing in the running application can post, mutate, or issue.
  * ========================================================================== */
 
-import { createReporter, withPage } from './browser-harness.mjs';
+import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
 
 const { check, section, finish } = createReporter();
 
@@ -24,8 +24,15 @@ const VIEWPORTS = [
   { width: 430, height: 932, label: 'iPhone 15 Pro Max' },
 ];
 
-const TABS = ['league', 'action', 'ledger', 'week', 'rules'];
-const go = (tab) => `document.querySelector('.fs-tabbar__item[data-destination="${tab}"]').click();`;
+// WP3B — Rev 4.3 §3 replaced the five destinations, and `standings` joins the
+// sweep as the new default landing tab. `rules` stays in the list because its
+// panel still exists and still has to hold up at every viewport; it is reached
+// through the gear menu now rather than the tab bar, which is what `go` below
+// accounts for.
+const TABS = ['standings', 'league', 'action', 'ledger', 'week', 'rules'];
+const go = (tab) => (tab === 'rules'
+  ? GO_RULES
+  : `document.querySelector('.fs-tabbar__item[data-destination="${tab}"]').click();`);
 
 await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
   /* ── Responsive certification ─────────────────────────────────────────── */
@@ -330,7 +337,10 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
   const a11y = await evaluate(`
     const out = { badLists: [], nameless: [], smallTargets: [], loudIcons: 0, inertDivs: [] };
     for (const tab of ${JSON.stringify(TABS)}) {
-      document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
+      // WP3B: Rules & Settings has no tab-bar item any more (Rev 4.3 §3.1), so
+      // the accessibility sweep reaches it the way a GM does.
+      if (tab === 'rules') { ${GO_RULES} }
+      else document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
       const panel = document.getElementById('panel-' + tab);
 
       for (const list of panel.querySelectorAll('[role="list"]')) {
@@ -379,7 +389,9 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
     // affordance at all — so the control genuinely is not there, and throwing
     // on it lost every assertion after this point.
     const activate = (tab, sel, key) => {
-      document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
+      // WP3B: Rules & Settings is reached through the gear menu now.
+      if (tab === 'rules') { ${GO_RULES} }
+      else document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
       const el = document.querySelector(sel);
       if (!el) return { focused: null, opened: null, absent: true };
       el.focus();
@@ -510,7 +522,10 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
     const realOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (...a) { calls += 1; return realOpen.apply(this, a); };
     for (const tab of ${JSON.stringify(TABS)}) {
-      document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
+      // WP3B: Rules & Settings is reached through the gear menu now. Sweeping
+      // it via the menu also puts the menu itself under this no-network claim.
+      if (tab === 'rules') { ${GO_RULES} }
+      else document.querySelector('.fs-tabbar__item[data-destination="' + tab + '"]').click();
     }
     document.querySelector('#panel-rules [data-topoff]') && document.querySelector('#panel-rules [data-topoff]').click();
     if (document.getElementById('fs-overlay').classList.contains('is-open')) {

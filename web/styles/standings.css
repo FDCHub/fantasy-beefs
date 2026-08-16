@@ -1,0 +1,170 @@
+/* ============================================================================
+ * FantasyStakes — Standings
+ * WP3B · Rev 4.3 §7
+ *
+ * Three complete tables, stacked, on one vertically scrolling page. The layout
+ * contract is short and the whole of it is load-bearing:
+ *
+ *   · ONE scroll region, scrolling VERTICALLY only. There is no horizontal
+ *     rail, no scroll-snap and no carousel here, because §7 forbids all three.
+ *   · The tables are `<table>` elements in normal flow. Nothing positions,
+ *     hides, collapses or transforms one, so there is no mechanism by which a
+ *     table could be off screen while its siblings are on it.
+ *   · Column widths are fixed by the RANK and TEAM columns; every figure column
+ *     takes an equal share of what is left. A long team name truncates rather
+ *     than pushing the NET column off the right edge.
+ * ========================================================================== */
+
+.fs-st__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* VERTICAL ONLY. `overflow-x: hidden` is the structural half of "no
+   * carousel" — even a mis-sized table cannot become a horizontal rail. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 var(--fs-gutter) var(--fs-space-6);
+}
+
+.fs-st {
+  margin-top: var(--fs-space-5);
+}
+
+.fs-st__heading {
+  font-size: var(--fs-r43-section);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.25;
+  letter-spacing: .01em;
+  color: var(--bone);
+  margin-bottom: var(--fs-space-2);
+}
+
+.fs-st__table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Fixed layout is what keeps the three tables in column alignment with each
+   * other. Without it each table sizes to its own content and the NET columns
+   * land at three different x positions down the page. */
+  table-layout: fixed;
+}
+
+.fs-st__table th {
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-medium);
+  letter-spacing: .04em;
+  color: var(--fs-r43-tertiary);
+  text-align: right;
+  padding: var(--fs-space-2) var(--fs-space-2);
+  border-bottom: var(--fs-border);
+}
+
+.fs-st__table td {
+  font-size: var(--fs-r43-card);
+  padding: var(--fs-space-3) var(--fs-space-2);
+  border-bottom: var(--fs-border-hair);
+  vertical-align: middle;
+}
+
+/* Rows are a 44px target in practice even though they are not interactive in
+ * WP3B — §5.1 sizing applies to the row rhythm, and a later package that makes
+ * a row tappable then needs no further change. */
+.fs-st__row { min-height: var(--fs-r43-touch); }
+
+.fs-st__rank {
+  width: 2.4em;
+  text-align: left;
+  color: var(--fs-r43-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-st__team {
+  width: auto;
+  text-align: left;
+  /* A long team name truncates. It does not wrap onto a second line, because a
+   * mixed one- and two-line table is much harder to scan than a truncated one,
+   * and it does not overflow, because that would push NET off the edge. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-st__num {
+  width: 4.6em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Money keeps the tabular monospace grammar the POR fixes for it. */
+.fs-st__num.fs-money {
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-card-secondary);
+}
+
+.fs-st__num.is-positive { color: var(--green2); }
+.fs-st__num.is-negative { color: var(--red); }
+
+/* ── The acting GM's own row — §7.4 ───────────────────────────────────────── */
+
+/* SUBTLE, AND AT ANY RANK. A tint plus a left rule, not a colour inversion:
+ * the row has to be findable in a glance down the table without becoming the
+ * loudest thing on the page, because the page is about the whole league. The
+ * `YOU` chip and `aria-current` carry the same fact for readers who cannot see
+ * the tint at all. */
+.fs-st__row.is-me {
+  background: var(--goldbg);
+}
+
+.fs-st__row.is-me .fs-st__rank {
+  box-shadow: inset 2px 0 0 var(--gold);
+  color: var(--gold);
+}
+
+.fs-st__row.is-me .fs-st__team {
+  color: var(--bone);
+  font-weight: var(--fs-weight-strong);
+}
+
+.fs-st__you {
+  display: inline-block;
+  margin-left: var(--fs-space-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--gold);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .06em;
+  vertical-align: middle;
+}
+
+/* ── Intentional states — WP3B §8 ─────────────────────────────────────────── */
+
+.fs-st__state {
+  margin-top: var(--fs-space-5);
+  padding: var(--fs-space-5) var(--fs-space-4);
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-card);
+}
+
+.fs-st__state-head {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  margin-bottom: var(--fs-space-2);
+}
+
+.fs-st__state-body {
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.5;
+  color: var(--fs-r43-secondary);
+}
+
+/* The three headings remain present in every state, so the page's shape is the
+ * same whether or not it has rows — and so "three tables, no selector" is true
+ * of the empty page too. They are dimmed, because they head nothing yet. */
+.fs-st.is-empty .fs-st__heading {
+  color: var(--fs-r43-tertiary);
+  border-bottom: var(--fs-border-hair);
+  padding-bottom: var(--fs-space-2);
+}

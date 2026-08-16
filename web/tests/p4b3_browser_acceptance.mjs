@@ -15,7 +15,7 @@
  * it does not decide the fixture.
  * ========================================================================== */
 
-import { createReporter, withPage } from './browser-harness.mjs';
+import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
 
 const report = createReporter();
 const asyncProbe = (body) => `return (async () => { ${body} })();`;
@@ -108,7 +108,7 @@ await withPage({ port: 9371, settleMs: 1500 }, async ({ evaluate }) => {
   /* ── 2 · Rules & Settings, as the commissioner sees them ──────────────── */
 
   const settings = MODE === 'undrawn' ? null : await evaluate(asyncProbe(`
-    document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+    ${GO_RULES}
     const served = await (await fetch('/league/' + ${league} + '/settings',
       { credentials: 'same-origin' })).json();
     const region = document.querySelector('[data-region="settings"]');

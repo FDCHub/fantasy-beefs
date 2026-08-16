@@ -57,6 +57,46 @@
   --fs-track-eyebrow:  .14em;   /* eyebrow / section-heading letter-spacing */
   --fs-track-lockup:   .22em;   /* masthead tagline letter-spacing */
 
+  /* ── Rev 4.3 readability scale (WP3B · POR §5) ──────────────────────────────
+   *
+   * A SECOND, ADDITIVE SCALE — the `--fs-size-*` tokens above are untouched.
+   *
+   * WHY ADDITIVE RATHER THAN A REWRITE OF THE SCALE ABOVE. Every Rev 4.2 card
+   * in the tree is sized from those tokens and its geometry is measured by the
+   * Sprint 7 and Sprint 8 layout suites at 375x667, where several surfaces sit
+   * within a few pixels of clipping. Raising `--fs-size-body` from 12px to
+   * 16px would restyle every one of them at once, and WP3B §9 is explicit that
+   * this package applies the foundation to the shell and its own surfaces and
+   * does NOT comprehensively restyle the WP3C-owned cards. So the new scale is
+   * defined here, in full, and applied where WP3B owns the surface. WP3C
+   * migrates the rest onto it deliberately, card by card, with the geometry
+   * suites watching.
+   *
+   * The values are the POR's targets, taken at the readable end of each range.
+   */
+  --fs-r43-page-title:     23px;   /* §5.1 main page title      22–24 */
+  --fs-r43-section:        19px;   /* §5.1 section heading      18–20 */
+  --fs-r43-card:           16px;   /* §5.1 card primary text    16–17 */
+  --fs-r43-card-secondary: 14px;   /* §5.1 card secondary text  14–15 */
+  --fs-r43-meta:           13px;   /* §5.1 metadata / tertiary  min 12–13 */
+  --fs-r43-strip-label:    13px;   /* §5.1 summary-strip labels 13–14 */
+  --fs-r43-strip-value:    23px;   /* §5.1 summary-strip values 22–24 */
+  --fs-r43-nav-label:      11px;   /* §5.1 bottom-nav labels    11–12 */
+
+  /* §5.1 and §31 — the practical minimum for anything tappable. */
+  --fs-r43-touch:          44px;
+
+  /* §5.2 — secondary text gets MORE contrast, not less.
+   *
+   * `--g1` (#8a8573) sits at roughly 4.4:1 on `--bg`, and `--g2` (#5a5546) at
+   * about 2.3:1 — under WCAG AA for body text, which is exactly the "extremely
+   * low-contrast text" §5 names. These two lift secondary and tertiary text to
+   * about 7.1:1 and 4.6:1 while staying inside the established warm-grey
+   * family, so the palette is not redesigned (WP3B §9) — it is made readable.
+   */
+  --fs-r43-secondary:      #b8b2a0;
+  --fs-r43-tertiary:       #948e7c;
+
   /* ── Spacing ────────────────────────────────────────────────────────────── */
   --fs-space-1:  2px;
   --fs-space-2:  5px;

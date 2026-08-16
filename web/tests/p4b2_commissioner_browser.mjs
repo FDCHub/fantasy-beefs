@@ -15,7 +15,7 @@
  * anything was loosened for testing.
  * ========================================================================== */
 
-import { createReporter, withPage } from './browser-harness.mjs';
+import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
 
 const report = createReporter();
 const asyncProbe = (body) => `return (async () => { ${body} })();`;
@@ -54,7 +54,7 @@ await withPage({ port: 9361, settleMs: 1400 }, async ({ evaluate }) => {
   report.section('Top-Off requests render for a commissioner');
 
   const requests = await evaluate(`
-    document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+    ${GO_RULES}
     const section = document.querySelector('[data-commissioner="topoffs"]');
     const rows = [...section.querySelectorAll('.fs-req')];
     return {
@@ -91,7 +91,7 @@ await withPage({ port: 9361, settleMs: 1400 }, async ({ evaluate }) => {
   report.section('GM ledger cards bind from /ledger/positions');
 
   const cards = await evaluate(asyncProbe(`
-    document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+    ${GO_RULES}
     const res = await fetch('/league/' + ${identity.actingLeague}
       + '/ledger/positions', { credentials: 'same-origin' });
     const served = await res.json();

@@ -19,12 +19,17 @@
  * clipping. CSS reasoning cannot produce those numbers.
  * ========================================================================== */
 
-import { createReporter, withPage } from './browser-harness.mjs';
+import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
 
 const report = createReporter();
 const asyncProbe = (body) => `return (async () => { ${body} })();`;
 
-const TABS = ['league', 'action', 'ledger', 'week', 'rules'];
+// WP3B — Rev 4.3 §3 replaced the five destinations, and `standings` joins the
+// sweep as the new default landing tab. `rules` stays in the list because its
+// panel still exists and still has to hold up at every viewport; it is reached
+// through the gear menu now rather than the tab bar, which is what `go` below
+// accounts for.
+const TABS = ['standings', 'league', 'action', 'ledger', 'week', 'rules'];
 const WIDTHS = [375, 390, 430];
 
 await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport }) => {
@@ -68,7 +73,9 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
   const identity = await evaluate(asyncProbe(`
     const text = {};
     for (const t of ${JSON.stringify(TABS)}) {
-      document.querySelector('.fs-tabbar__item[data-destination="' + t + '"]').click();
+      // WP3B: Rules & Settings is reached through the gear menu (Rev 4.3 §3.1).
+      if (t === 'rules') { ${GO_RULES} }
+      else document.querySelector('.fs-tabbar__item[data-destination="' + t + '"]').click();
       await new Promise((r) => setTimeout(r, 220));
       text[t] = document.getElementById('panel-' + t).textContent;
     }
@@ -274,7 +281,9 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
     await setViewport(width, 667);
     for (const tab of TABS) {
       const m = await evaluate(asyncProbe(`
-        document.querySelector('.fs-tabbar__item[data-destination="${tab}"]').click();
+        ${tab === 'rules'
+          ? GO_RULES
+          : `document.querySelector('.fs-tabbar__item[data-destination="${tab}"]').click();`}
         await new Promise((r) => setTimeout(r, 260));
         const doc = document.documentElement;
         const panel = document.getElementById('panel-${tab}');
@@ -319,8 +328,10 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
   }
   await setViewport(375, 667);
 
-  report.check('all fifteen tab/viewport combinations were measured',
-    GEOMETRY.length === 15, String(GEOMETRY.length));
+  // WP3B: six destinations now — the five primary tabs plus Rules & Settings,
+  // which keeps its panel and its geometry claim after losing its tab position.
+  report.check('all eighteen tab/viewport combinations were measured',
+    GEOMETRY.length === TABS.length * WIDTHS.length, String(GEOMETRY.length));
   report.check('every strip that exists keeps four cells',
     GEOMETRY.filter((g) => g.stripCells > 0).every((g) => g.stripCells === 4),
     JSON.stringify(GEOMETRY.filter((g) => g.stripCells > 0)
@@ -336,7 +347,9 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
     const out = { nav, mast: document.getElementById('fs-mast').textContent,
                   disclaimers: {}, decimals: {} };
     for (const t of ${JSON.stringify(TABS)}) {
-      document.querySelector('.fs-tabbar__item[data-destination="' + t + '"]').click();
+      // WP3B: Rules & Settings is reached through the gear menu (Rev 4.3 §3.1).
+      if (t === 'rules') { ${GO_RULES} }
+      else document.querySelector('.fs-tabbar__item[data-destination="' + t + '"]').click();
       await new Promise((r) => setTimeout(r, 220));
       const panel = document.getElementById('panel-' + t);
       out.disclaimers[t] = (panel.textContent.match(
@@ -348,8 +361,15 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
 
   report.check('the five destinations are the locked ones',
     por.nav.length === 5, JSON.stringify(por.nav));
-  report.check('the masthead carries FANTASY LEAGUES · VIRTUAL STAKES',
-    /FANTASY LEAGUES/.test(por.mast) && /VIRTUAL STAKES/.test(por.mast));
+  // WP3B — Rev 4.3 §2 locks a new primary product tagline in place of the
+  // Rev 4.2 lockup line, and §2.1 strips the revision and byline from the
+  // masthead. Both are asserted here, exactly.
+  report.check('the masthead carries the locked Rev 4.3 product tagline',
+    /Real odds\. Fantasy stakes\. More ways to win\./.test(por.mast),
+    por.mast.slice(0, 120));
+  report.check('the masthead carries no revision or engineering byline',
+    !/Rev\s*4\./.test(por.mast) && !/Fraser/.test(por.mast),
+    por.mast.slice(0, 120));
   report.check('the disclaimer appears at most once per tab',
     Object.values(por.disclaimers).every((n) => n <= 1),
     JSON.stringify(por.disclaimers));

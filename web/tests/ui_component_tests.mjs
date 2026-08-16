@@ -342,21 +342,29 @@ check('escapeHtml handles quotes', escapeHtml('"a"') === '&quot;a&quot;');
 section('Navigation — five destinations, POR order');
 
 check('there are exactly five primary destinations', NAV_DESTINATIONS.length === 5);
+// WP3B RE-POINTED THESE AT REV 4.3. The three assertions below asserted the
+// Rev 4.2 navigation, which Rev 4.3 §3 supersedes outright — the labels, the
+// order and the landing tab all changed, and `Wrap Up` went from a label the
+// Rev 4.2 POR had RETIRED to one it now REQUIRES. The claims are not weakened:
+// each still pins the whole locked set exactly, against the governing POR
+// instead of the superseded one.
 check(
-  'the order is League · Action · Ledger · The Week · Rules & Settings',
+  'the order is Standings · Play · Status · Wrap Up · Account',
   NAV_DESTINATIONS.map((d) => d.label).join(' · ') ===
-    'League · Action · Ledger · The Week · Rules & Settings',
+    'Standings · Play · Status · Wrap Up · Account',
   NAV_DESTINATIONS.map((d) => d.label).join(' · '),
 );
-check('no Wrap Up label survives in the navigation',
-  !NAV_DESTINATIONS.some((d) => /wrap/i.test(d.label)));
+check('no superseded Rev 4.2 primary label survives in the navigation',
+  !NAV_DESTINATIONS.some((d) => /^(League|Action|Ledger|The Week)$/.test(d.label)
+    || /rules|settings/i.test(d.label)));
 check('there is no My Team primary tab',
   !NAV_DESTINATIONS.some((d) => /my team/i.test(d.label)));
 check('every destination has a unique panel',
   new Set(NAV_DESTINATIONS.map((d) => d.panelId)).size === 5);
 check('every destination carries an inline SVG icon and no emoji',
-  NAV_DESTINATIONS.every((d) => /<(path|rect)/.test(d.icon)));
-check('the default destination is League', DEFAULT_DESTINATION_ID === 'league');
+  NAV_DESTINATIONS.every((d) => /<(path|rect|circle)/.test(d.icon)));
+check('the default destination is Standings',
+  DEFAULT_DESTINATION_ID === 'standings');
 
 for (const d of NAV_DESTINATIONS) {
   const state = selectDestination(d.id);
@@ -428,17 +436,23 @@ check(
   }).includes('is-pending'),
 );
 
-/* ── Rev4.2 locked global copy ──────────────────────────────────────────── */
+/* ── Rev4.3 locked global copy ──────────────────────────────────────────── */
 
-section('Rev4.2 locked global copy');
+section('Rev4.3 locked global copy');
 
+// WP3B RE-POINTED THESE AT REV 4.3. §2 locks a new primary tagline and §2.1
+// removes the revision and byline from the production app entirely — so the
+// assertion that the masthead "identifies the build as Rev 4.2" now asserts
+// the opposite, that it identifies no build at all. Both remain exact.
 check(
-  'the tagline is FANTASY LEAGUES · VIRTUAL STAKES',
-  MASTHEAD.tagline === 'FANTASY LEAGUES · VIRTUAL STAKES',
+  'the tagline is the locked Rev 4.3 primary product tagline',
+  MASTHEAD.tagline === 'Real odds. Fantasy stakes. More ways to win.',
   MASTHEAD.tagline,
 );
 check('the superseded Rev4.1 tagline is gone',
   !MASTHEAD.tagline.includes('OUR THING'));
+check('the superseded Rev4.2 lockup line is gone',
+  !MASTHEAD.tagline.includes('FANTASY LEAGUES'));
 check(
   'the league identity is the league name alone',
   LEAGUE_IDENTITY.name === 'CULV APPRECIATION SOCIETY',
@@ -446,8 +460,12 @@ check(
 );
 check('the superseded Fantasy Sportsbook suffix is gone',
   !JSON.stringify(LEAGUE_IDENTITY).includes('Fantasy Sportsbook'));
-check('the masthead identifies the build as Rev 4.2',
-  MASTHEAD.revision.includes('Rev 4.2'));
+check('the masthead carries no revision designation (§2.1)',
+  !('revision' in MASTHEAD)
+  && !JSON.stringify(MASTHEAD).includes('Rev 4.'));
+check('the masthead carries no engineering byline (§2.1)',
+  !('author' in MASTHEAD)
+  && !JSON.stringify(MASTHEAD).includes('Fraser'));
 check(
   'illustrative money is held as exact integer cents',
   [

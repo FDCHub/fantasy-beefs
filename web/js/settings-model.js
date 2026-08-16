@@ -96,7 +96,7 @@ export function settingsRows() {
         + `${formatCredits(stop.reserve_cents)} championship reserve, advanced as `
         + `${formatCredits(stop.buyin_cents)} at season open. Fixed for the `
         + 'season: changing it would re-price obligations GMs have already funded.',
-      source: 'GET /league/{league_id}/settings · payments/economy_config.py',
+      source: 'League economy configuration',
     }),
     Object.freeze({
       id: 'pool-bet',
@@ -114,8 +114,7 @@ export function settingsRows() {
         + (pool.frozen
           ? 'Frozen for this season — the first Pool week has been collected.'
           : 'It freezes for the season once the first week is collected.'),
-      source: 'PUT /league/{league_id}/settings/pool-entry · '
-        + 'betting/pool_funding.py',
+      source: 'League Pool settings',
     }),
     Object.freeze({
       id: 'skunk-fee',
@@ -128,7 +127,7 @@ export function settingsRows() {
         `${formatCredits(s.skunk.weekly_cents)} a week, regular season only, `
         + `accumulating to at most ${formatCredits(s.skunk.season_maximum_cents)} `
         + 'across a season. Fixed for the season.',
-      source: 'GET /league/{league_id}/settings · economy/skunk.py',
+      source: 'Skunk rules',
     }),
     Object.freeze({
       id: 'championship-split',
@@ -138,7 +137,7 @@ export function settingsRows() {
       detail:
         'How the championship pot divides by place. Fixed for the season — '
         + 'changing it would re-price a pot GMs have already funded.',
-      source: 'GET /league/{league_id}/settings · league_treasury.payout_split_json',
+      source: 'Championship rules',
     }),
   ]);
 }

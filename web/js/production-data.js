@@ -98,7 +98,7 @@ export async function loadProductionData({ leagueId, week }) {
   );
 
   const [ledger, settings, slate, positions, reconciliation, action,
-         weekMatchups, lifecycle, skunk] = await Promise.all([
+         weekMatchups, lifecycle, skunk, standings] = await Promise.all([
     optional(apiFetch(`/league/${leagueId}/ledger/me`)),
     optional(apiFetch(`/league/${leagueId}/settings`)),
     resolvedWeek === null
@@ -134,6 +134,12 @@ export async function loadProductionData({ leagueId, week }) {
     resolvedWeek === null
       ? Promise.resolve(null)
       : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek}/skunk`)),
+    // WP3B — the competitive standings. NOT WEEK-SCOPED, deliberately: a
+    // standings table is season-to-date, so it is the one surface here that
+    // stays readable in a league whose provider has not yet stated a week.
+    // Asked for by EVERY member on the same grounds as the Skunk read — the
+    // league table is not a commissioner's private view.
+    optional(apiFetch(`/league/${leagueId}/standings`)),
   ]);
 
   snapshot = Object.freeze({
@@ -149,6 +155,7 @@ export async function loadProductionData({ leagueId, week }) {
     action,
     lifecycle,
     skunk,
+    standings,
   });
   return snapshot;
 }

@@ -1,0 +1,285 @@
+/* ============================================================================
+ * FantasyStakes — commissioner economy setup
+ * WP3B · Rev 4.3 §16
+ *
+ * The visual hierarchy encodes the ruling. Rev 4.3 §16.3 and OR-5 make the
+ * per-player Season-Opening Allocation PRIMARY and the league total SECONDARY
+ * informational context beneath it, so the per-player figure is set at the
+ * page-title scale and the league total at secondary — the difference is
+ * deliberate and is what the certification measures.
+ * ========================================================================== */
+
+.fs-econ__block {
+  margin-top: var(--fs-space-6);
+}
+
+.fs-econ__block-head {
+  font-size: var(--fs-r43-card-secondary);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--fs-r43-tertiary);
+  margin-bottom: var(--fs-space-3);
+}
+
+/* ── Read-only rows ───────────────────────────────────────────────────────── */
+
+.fs-econ__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-4);
+  padding: var(--fs-space-3) 0;
+  border-bottom: var(--fs-border-hair);
+}
+
+.fs-econ__row-label {
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+  min-width: 0;
+}
+
+.fs-econ__row-value {
+  flex: 0 0 auto;
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-medium);
+  color: var(--bone);
+}
+
+.fs-econ__row-value .fs-money,
+.fs-econ__alloc-value.fs-money,
+.fs-econ__alloc-total .fs-money {
+  font-family: var(--fs-font-money);
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-econ__pending { color: var(--fs-r43-tertiary); }
+
+.fs-econ__hint {
+  margin-top: var(--fs-space-3);
+  font-size: var(--fs-r43-meta);
+  line-height: 1.45;
+  color: var(--fs-r43-tertiary);
+}
+
+/* ── Editable fields ──────────────────────────────────────────────────────── */
+
+.fs-econ__field {
+  display: block;
+  padding: var(--fs-space-3) 0;
+  border-bottom: var(--fs-border-hair);
+}
+
+.fs-econ__field-label {
+  display: block;
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-medium);
+  color: var(--bone);
+  margin-bottom: var(--fs-space-2);
+}
+
+.fs-econ__field-input {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-space-1);
+  background: var(--tile);
+  border: var(--fs-border-edge);
+  border-radius: var(--fs-radius-cell);
+  padding: 0 var(--fs-space-4);
+  /* §5.1 — a 44px target. */
+  min-height: var(--fs-r43-touch);
+}
+
+.fs-econ__cur {
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-card);
+  color: var(--g1);
+}
+
+.fs-econ__field-input input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: var(--bone);
+  font-family: var(--fs-font-money);
+  /* 16px MINIMUM, DELIBERATELY. Below 16px, mobile Safari zooms the page on
+   * focus — which is the behaviour the removed `user-scalable=no` used to
+   * suppress. Sizing the input correctly is the fix; disabling zoom was not. */
+  font-size: var(--fs-r43-card);
+  font-variant-numeric: tabular-nums;
+  padding: var(--fs-space-3) 0;
+}
+
+.fs-econ__field-input input:focus { outline: none; }
+.fs-econ__field-input:focus-within { border-color: var(--gold); }
+
+.fs-econ__field-help {
+  display: block;
+  margin-top: var(--fs-space-2);
+  font-size: var(--fs-r43-meta);
+  line-height: 1.45;
+  color: var(--fs-r43-tertiary);
+}
+
+/* ── Allocation — the primary/secondary hierarchy §16.3 requires ─────────── */
+
+.fs-econ__alloc {
+  margin-top: var(--fs-space-6);
+  padding: var(--fs-space-5) var(--fs-space-4);
+  background: var(--goldbg);
+  border: 1px solid var(--gold);
+  border-radius: var(--fs-radius-card);
+  text-align: center;
+}
+
+.fs-econ__alloc.is-unresolved {
+  background: var(--card);
+  border: var(--fs-border);
+}
+
+.fs-econ__alloc-label {
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .08em;
+  color: var(--gold);
+  margin-bottom: var(--fs-space-2);
+}
+
+/* PRIMARY. Page-title scale — the largest figure on the surface. */
+.fs-econ__alloc-value {
+  font-size: var(--fs-r43-page-title);
+  font-weight: var(--fs-weight-heavy);
+  line-height: 1.15;
+  color: var(--bone);
+}
+
+/* SECONDARY. Informational context, and visibly subordinate to the figure
+ * above it — OR-5 asks for it to be shown, and §16.3 for it not to read as an
+ * amount FantasyStakes holds. */
+.fs-econ__alloc-total {
+  margin-top: var(--fs-space-3);
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-econ__alloc-note {
+  margin-top: var(--fs-space-3);
+  font-size: var(--fs-r43-meta);
+  line-height: 1.45;
+  color: var(--fs-r43-tertiary);
+}
+
+/* ── Frozen ───────────────────────────────────────────────────────────────── */
+
+.fs-econ__frozen {
+  margin-top: var(--fs-space-4);
+  padding: var(--fs-space-4);
+  background: var(--tile);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--fs-radius-cell);
+}
+
+.fs-econ__frozen-head {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--amber);
+  margin-bottom: var(--fs-space-2);
+}
+
+.fs-econ__frozen-body {
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.5;
+  color: var(--fs-r43-secondary);
+}
+
+/* ── Actions ──────────────────────────────────────────────────────────────── */
+
+.fs-econ__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-3);
+  margin-top: var(--fs-space-6);
+}
+
+.fs-econ__save,
+.fs-econ__activate,
+.fs-econ__confirm-go,
+.fs-econ__confirm-back {
+  min-height: var(--fs-r43-touch);
+  padding: var(--fs-space-3) var(--fs-space-5);
+  border-radius: var(--fs-radius-cell);
+  font-family: inherit;
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  cursor: pointer;
+}
+
+.fs-econ__save {
+  background: var(--tile);
+  border: var(--fs-border-edge);
+  color: var(--bone);
+}
+
+/* The activation entry is deliberately NOT the loudest control on the setup
+ * sheet — it opens a confirmation, and dressing it as the final action would
+ * blur the two steps §16.4 keeps apart. The gold, committing treatment belongs
+ * to the confirmation's own button. */
+.fs-econ__activate {
+  background: none;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+}
+
+.fs-econ__confirm-go {
+  width: 100%;
+  margin-top: var(--fs-space-5);
+  background: var(--gold);
+  border: none;
+  color: var(--bg);
+}
+
+.fs-econ__confirm-back {
+  width: 100%;
+  margin-top: var(--fs-space-3);
+  background: none;
+  border: var(--fs-border-edge);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-econ__save:disabled,
+.fs-econ__confirm-go:disabled { opacity: .55; cursor: default; }
+
+.fs-econ__error {
+  margin-top: var(--fs-space-3);
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.45;
+  color: var(--red);
+}
+
+.fs-econ__error:empty { margin-top: 0; }
+
+/* ── Confirmation ─────────────────────────────────────────────────────────── */
+
+.fs-econ__confirm-body {
+  margin-top: var(--fs-space-4);
+  font-size: var(--fs-r43-card);
+  line-height: 1.5;
+  color: var(--bone);
+}
+
+.fs-econ__confirm-figures {
+  margin-top: var(--fs-space-5);
+  padding: var(--fs-space-4);
+  background: var(--tile);
+  border-radius: var(--fs-radius-cell);
+}
+
+.fs-econ__confirm-figures .fs-econ__row:last-child { border-bottom: none; }
+
+.fs-econ__state {
+  margin-top: var(--fs-space-5);
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.5;
+  color: var(--fs-r43-secondary);
+}

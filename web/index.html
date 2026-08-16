@@ -3,8 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <!-- viewport-fit=cover exposes env(safe-area-inset-*) so the bottom navigation
-     can clear the home indicator without covering tab content. -->
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+     can clear the home indicator without covering tab content.
+
+     PINCH ZOOM IS ENABLED — WP3B §10. `maximum-scale=1.0, user-scalable=no`
+     stood here and disabled it outright, which takes away the one accommodation
+     a reader with low vision can apply themselves and does it on every surface
+     at once. Rev 4.3 §26 puts pinch zoom and accessibility zoom inside the
+     certification, and §5 raises the type scale so the app is legible without
+     it — neither is a reason to keep the restriction, and both are reasons not
+     to. The usual justification for the lock is preventing double-tap zoom on
+     form controls; that is addressed by sizing tap targets to 44px and inputs
+     at 16px, which §5.1 requires anyway, rather than by removing the gesture. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="FantasyStakes">
@@ -18,6 +28,12 @@
 <link rel="stylesheet" href="./styles/ledger.css">
 <link rel="stylesheet" href="./styles/rules.css">
 <link rel="stylesheet" href="./styles/auth.css">
+<!-- Rev 4.3 (WP3B). Loaded LAST so the readability foundation and the shell
+     adjustments land on top of the Rev 4.2 sheets they supersede, without
+     those sheets having to be rewritten in this package. -->
+<link rel="stylesheet" href="./styles/rev43.css">
+<link rel="stylesheet" href="./styles/standings.css">
+<link rel="stylesheet" href="./styles/economy.css">
 </head>
 <body>
 

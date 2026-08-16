@@ -12,12 +12,12 @@
  * control.
  * ========================================================================== */
 
-import { VIEWPORT, createReporter, withPage } from './browser-harness.mjs';
+import { GO_RULES, VIEWPORT, createReporter, withPage } from './browser-harness.mjs';
 
 const { check, section, finish } = createReporter();
 
 await withPage({ port: 9339 }, async ({ evaluate }) => {
-  const goRules = `document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();`;
+  const goRules = `${GO_RULES}`;
 
   /* ── Frame ────────────────────────────────────────────────────────────── */
 
@@ -169,8 +169,15 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     return { text, inputs };
   `);
   check('a setting opens its detail', /League configuration/.test(settingSheetState.text));
+  // WP3B — Rev 4.3 §2.1 removes internal file citations from user-visible copy,
+  // so a setting's provenance line now names the governing RULES rather than
+  // the Python module that implements them. The claim is unchanged: the detail
+  // still has to say where the value comes from.
   check('the detail names its governing source',
-    /economy_config/.test(settingSheetState.text));
+    /League economy configuration/.test(settingSheetState.text),
+    settingSheetState.text.slice(0, 160));
+  check('and it names no internal module or file path',
+    !/\.py\b|web\/js\//.test(settingSheetState.text));
   check('the detail offers no editor', settingSheetState.inputs === 0);
   // GOVERNED REVISION, S8-P4B-3. Bound to real settings, a row says WHY it
   // cannot change rather than that no command exists — the B2 ruling, not a
@@ -373,7 +380,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     const crossTab = await evaluate(`
       document.querySelector('.fs-tabbar__item[data-destination="ledger"]').click();
       const own = Number(document.querySelector('#fs-current-settle .fs-settle__total').dataset.exactCents);
-      document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+      ${GO_RULES}
       const commish = Number(document.querySelector('[data-gm="you"] .fs-gmcard__settle').dataset.exactCents);
       return { own, commish };
     `);

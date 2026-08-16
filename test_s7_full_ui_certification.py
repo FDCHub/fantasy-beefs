@@ -149,10 +149,16 @@ const rules = await import(base + 'rules.js');
 
 week.resetWeek();
 const panels = {};
-for (const d of nav.NAV_DESTINATIONS) panels[d.id] = shell.buildPanelContent(d.id);
+// WP3B: ALL destinations, not only the tab bar's five. Rules & Settings is a
+// secondary destination now (Rev 4.3 §3.1) and its panel still has to be
+// certified — harvesting only the primary five would silently drop it from
+// every matrix below and report the omission as a pass.
+for (const d of nav.ALL_DESTINATIONS) panels[d.id] = shell.buildPanelContent(d.id);
 
 console.log(JSON.stringify({
   destinations: nav.NAV_DESTINATIONS.map((d) => ({ id: d.id, label: d.label, panelId: d.panelId })),
+  secondary: nav.SECONDARY_DESTINATIONS.map((d) => ({ id: d.id, label: d.label })),
+  defaultDestination: nav.DEFAULT_DESTINATION_ID,
   panels,
   disclaimerText: components.CREDITS_DISCLAIMER,
   disclaimerCounts: Object.fromEntries(
@@ -222,7 +228,16 @@ def _run_suite(script: str, label: str) -> None:
 
 
 _assert("node is available", _NODE is not None)
-_assert("the five tabs build", len(PANELS) == 5, str(len(PANELS)))
+# SIX PANELS, FIVE TABS. Rev 4.3 §3.1 keeps Rules & Settings as a real
+# destination with a real panel and takes away only its bottom-navigation
+# position, so the panel count and the tab count are no longer the same number.
+# Both are pinned, because losing either would be a defect: five in the bar, and
+# every destination able to build.
+_assert("the five primary tabs and the one secondary destination all build",
+        len(PANELS) == 6, str(len(PANELS)))
+_assert("the bottom navigation holds exactly five",
+        len(APP.get("destinations", [])) == 5,
+        str(len(APP.get("destinations", []))))
 
 _run_suite("test_s7_p1_ui_shell.py", "Package 1 — shared shell and global components")
 _run_suite("test_s7_p2_league_action.py", "Package 2 — League and Action")
@@ -234,8 +249,36 @@ _run_suite("test_s7_p4_rules_commissioner.py", "Package 4 — Rules, Settings an
 
 print("\nLocked global copy, certified across all five tabs")
 
-_assert("the masthead tagline is the Rev 4.2 tagline",
-        "FANTASY LEAGUES · VIRTUAL STAKES" in _strip_comments(_read("js", "demo-state.js")))
+# WP3B re-pointed at Rev 4.3 §2: a new locked tagline, and §2.1's removal of
+# the revision and byline from the production application.
+_assert("the masthead tagline is the locked Rev 4.3 primary product tagline",
+        "Real odds. Fantasy stakes. More ways to win."
+        in _strip_comments(_read("js", "demo-state.js")))
+_assert("the superseded Rev 4.2 lockup line appears nowhere",
+        "FANTASY LEAGUES · VIRTUAL STAKES" not in APP_RENDERED_SOURCE)
+# §2.1 GOVERNS WHAT A USER CAN SEE, so these scan the RENDERED PANELS and the
+# masthead module rather than every line of JS. Internal seam registers name
+# backend computations on purpose and are never drawn; scanning source would
+# fail on those and prove nothing about the product.
+#
+# THE LEGAL LINE IS NOT A BYLINE. §2.1 removes the Fraser D. Coleman MASTHEAD
+# byline; the copyright notice is legal content, and §3.1 keeps Legal in the
+# secondary menu — which is where Rules & Settings already carries it, asserted
+# exactly once further down.
+_MAST = _strip_comments(_read("js", "demo-state.js"))
+_assert("no UI revision designation is drawn anywhere in the app (§2.1)",
+        not re.search(r"Rev\s*4\.\d", ALL_PANELS)
+        and not re.search(r"Rev\s*4\.\d", _MAST))
+_assert("the masthead carries no engineering byline (§2.1)",
+        "Fraser D. Coleman" not in _MAST
+        and "revision" not in _MAST and "author" not in _MAST)
+_assert("the byline survives only as the legal notice, on Rules & Settings",
+        sum("Fraser D. Coleman" in v for v in PANELS.values()) == 1
+        and "Fraser D. Coleman" in PANELS.get("rules", ""))
+_assert("no internal file or module citation is drawn to a user (§2.1)",
+        not re.search(r"\.py|web/js/|\.js", ALL_PANELS),
+        (re.search(r"[^\s\"'>]*(\.py|web/js/|\.js)", ALL_PANELS) or [""])[0]
+        if re.search(r"\.py|web/js/|\.js", ALL_PANELS) else "")
 _assert("the league identity is the league name alone",
         "CULV APPRECIATION SOCIETY" in _strip_comments(_read("js", "demo-state.js")))
 _assert("the superseded OUR THING · YOUR LEAGUE appears nowhere",
@@ -249,14 +292,29 @@ _assert("the Credits disclaimer string is the approved one",
 DESTINATIONS = APP.get("destinations", [])
 _assert("the navigation is the five locked destinations in order",
         [d["label"] for d in DESTINATIONS]
-        == ["League", "Action", "Ledger", "The Week", "Rules & Settings"],
+        == ["Standings", "Play", "Status", "Wrap Up", "Account"],
         " · ".join(d["label"] for d in DESTINATIONS))
+_assert("Standings is the default landing tab (Rev 4.3 §3)",
+        APP.get("defaultDestination") == "standings",
+        str(APP.get("defaultDestination")))
+_assert("Rules & Settings is secondary, not a bottom-navigation position",
+        [d["label"] for d in APP.get("secondary", [])] == ["Rules & Settings"]
+        and not any(d["id"] == "rules" for d in DESTINATIONS))
 
 print("\nThe strip and disclaimer matrix is the POR's, tab by tab")
 
-# League, Action and Ledger summarise a position. The Week and Rules & Settings
-# do not, so they take no strip — and the disclaimer appears only under one.
+# Play, Status and Account summarise a position. Wrap Up and Rules & Settings do
+# not, so they take no strip — and the disclaimer appears only under one.
+#
+# WP3B ADDS STANDINGS, WHICH IS THE FIRST TAB TO CARRY THE DISCLAIMER WITHOUT A
+# STRIP. Rev 4.3 §6 requires the virtual-Credits disclosure wherever monetary
+# figures are prominent, and §7 fixes this page's contents at three tables — so
+# there is money above the disclaimer but no four-cell strip. The invariant
+# below is widened from "a strip above it" to "money above it", which is what it
+# was always for; it is not relaxed, and it now covers a case the strip-only
+# form would have passed blind.
 EXPECTED = {
+    "standings": (0, 1),
     "league": (1, 1), "action": (1, 1), "ledger": (2, 1), "week": (0, 0), "rules": (0, 0),
 }
 for tab, (strips, disclaimers) in EXPECTED.items():
@@ -268,8 +326,14 @@ for tab, (strips, disclaimers) in EXPECTED.items():
             str(APP.get("disclaimerCounts", {}).get(tab)))
 _assert("the Ledger's second strip is its approved My Season strip",
         'id="fs-strip-season"' in PANELS.get("ledger", ""))
-_assert("no tab carries a disclaimer without a strip above it",
-        all(APP["disclaimerCounts"][t] == 0 or APP["stripCounts"][t] > 0 for t in EXPECTED))
+_assert("no tab carries a disclaimer unless it presents Credit figures",
+        all(APP["disclaimerCounts"][t] == 0
+            or APP["stripCounts"][t] > 0
+            # Standings has no strip; its money is the NET column every one of
+            # its three tables ranks on, and that heading is present in every
+            # state including the empty one.
+            or ">NET<" in PANELS.get(t, "")
+            for t in EXPECTED))
 
 print("\nLocked tab copy")
 for label, value in (("Action header", APP.get("actionHeader")),
@@ -543,19 +607,23 @@ _assert("no protocol module is imported into the web app",
 
 print("\nNo payment processing anywhere in the application")
 
-# Source citations are provenance, not product copy, and one of them names the
-# addendum that REMOVED Stripe — a scan that tripped on the record of the removal
-# would be punishing the evidence. The scan runs over everything else.
-PAYMENT_SCAN = re.sub(r"source:\s*'[^']*'", " ",
-                      APP_RENDERED_SOURCE + INDEX + APP_CSS)
+# WP3B: THE SCAN NO LONGER HAS TO EXEMPT ANYTHING.
+#
+# This used to strip `source:` citations before scanning, because one of them
+# named the engineering addendum that REMOVED Stripe and a scan tripping on the
+# record of the removal would have been punishing the evidence. Rev 4.3 §2.1
+# removes engineering package names and internal file citations from
+# user-visible copy outright, so that citation is gone and the exemption with
+# it — the scan now runs over the whole app, unfiltered, which is strictly
+# stronger than what it replaced.
+PAYMENT_SCAN = APP_RENDERED_SOURCE + INDEX + APP_CSS
 for banned in ("Stripe", "PayPal", "Apple Pay", "credit card", "debit card",
                "payment method", "billing address", "billing information",
                "checkout", "routing number", "card number", "cvv"):
     _assert(f"no {banned!r} in the shipped app",
             not re.search(banned, PAYMENT_SCAN, re.I), banned)
-_assert("the only Stripe reference left is the citation of its removal",
-        APP_RENDERED_SOURCE.count("Stripe") == 1
-        and "Stripe Removal Addendum" in APP_RENDERED_SOURCE)
+_assert("no Stripe reference survives anywhere, citations included",
+        "Stripe" not in PAYMENT_SCAN)
 _assert("Credits are declared to carry no cash value",
         "NO CASH VALUE" in APP_SOURCE)
 _assert("the Stripe removal is still asserted by its own regression suite",

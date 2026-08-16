@@ -27,11 +27,30 @@
  * ========================================================================== */
 
 import {
+  ALL_DESTINATIONS,
   DEFAULT_DESTINATION_ID,
   NAV_DESTINATIONS,
   destinationById,
   selectDestination,
 } from './nav.js';
+
+// WP3B — the Rev 4.3 additions: the Standings landing tab, the secondary gear
+// menu that Rules & Settings now lives behind, and the commissioner economy
+// setup the menu opens.
+import {
+  bindStandings, buildStandingsPanel, setStandingsContext,
+} from './standings.js';
+import {
+  bindStandings as bindStandingsModel,
+  markStandingsUnavailable,
+  unbindStandings,
+} from './standings-model.js';
+import { bindMenu, menuButton, setMenuHook } from './menu.js';
+import { economySheet, setEconomyHook } from './economy.js';
+import {
+  bindEconomy, markEconomyUnavailable, setEconomyCapability, unbindEconomy,
+} from './economy-model.js';
+import { readEconomyConfig } from './economy-command.js';
 
 import { escapeHtml, sheet } from './components.js';
 
@@ -114,30 +133,44 @@ import {
 /* ── Masthead ───────────────────────────────────────────────────────────── */
 
 function renderMasthead(root) {
-  // Each half of the tagline is held unbreakable, so a narrow viewport wraps at
-  // the middot rather than mid-phrase — the same rule the POR applies to the
-  // league identity.
+  // Each sentence of the tagline is held unbreakable, so a narrow viewport
+  // wraps BETWEEN sentences rather than mid-phrase. The locked string is
+  // `Real odds. Fantasy stakes. More ways to win.` — three sentences, and the
+  // split/join reassembles it character for character, which is the property
+  // the certification asserts.
   const tagline = MASTHEAD.tagline
-    .split(' · ')
+    .split(' ')
+    .reduce((lines, word) => {
+      if (lines.length === 0 || lines[lines.length - 1].endsWith('.')) {
+        lines.push(word);
+      } else {
+        lines[lines.length - 1] += ` ${word}`;
+      }
+      return lines;
+    }, [])
     .map((phrase) => `<span class="fs-nowrap">${escapeHtml(phrase)}</span>`)
-    .join(' · ');
+    .join(' ');
 
-  // WHERE THE IDENTITY GOES, AND WHY IT IS INSIDE THE META COLUMN.
+  // WHERE THE IDENTITY AND THE GEAR GO.
   //
   // The masthead is a two-item row: a shrinkable lockup and a fixed-width meta
-  // column. Adding the identity as a THIRD item was measurably wrong — it took
-  // 122px from the lockup, which forced the tagline from its certified two
-  // lines onto three, grew the masthead by 15px, and cost the panel enough
-  // height that every wager card on the League tab clipped its own content at
-  // 375x667. That is not a styling nit; it is the precise failure the Sprint 7
-  // geometry suite exists to catch, and it caught it.
+  // column. Adding a THIRD top-level item was measurably wrong when Sprint 8
+  // tried it — it took 122px from the lockup, forced the tagline onto a third
+  // line, grew the masthead by 15px, and cost the panel enough height that
+  // every wager card clipped its own content at 375x667. So the gear and the
+  // identity both live INSIDE the meta column, which is the pattern that
+  // already works.
   //
-  // Stacking it under the revision and author lines costs nothing, because the
-  // masthead's height is set by the taller of the two columns and that is the
-  // lockup (56px) not the meta column (30px). A third meta line stays inside
-  // that. The identity is right-aligned with the lines above it, the locked
-  // Rev4.2 grammar is untouched, and it renders as nothing at all when no one
-  // is signed in.
+  // WP3B TAKES HEIGHT OUT RATHER THAN PUTTING IT IN. Rev 4.3 §2.1 removed the
+  // revision and author lines from this column, which is two lines of meta
+  // gone; the gear replaces one of them. The masthead's height is set by the
+  // taller column and that is the lockup, so this is neutral to the panel
+  // geometry the suite measures — which matters, because §5 also raises the
+  // bottom-nav labels and touch targets, and the two changes have to pay for
+  // each other.
+  //
+  // The gear renders on every tab and is the ONLY way to Rules & Settings now
+  // that §3 has taken its bottom-navigation position (WP3B §20).
   root.innerHTML =
     '<div class="fs-mast__lockup">' +
     '<div class="fs-mast__word">' +
@@ -146,11 +179,12 @@ function renderMasthead(root) {
     `<div class="fs-mast__tagline">${tagline}</div>` +
     '</div>' +
     '<div class="fs-mast__meta">' +
-    `${escapeHtml(MASTHEAD.revision)}<br>${escapeHtml(MASTHEAD.author)}` +
+    menuButton() +
     buildIdentityBlock() +
     '</div>';
 
   bindIdentityBlock(root);
+  bindMenu(root, { openSheet });
 }
 
 /* ── Bottom navigation ──────────────────────────────────────────────────── */
@@ -170,11 +204,27 @@ function renderTabBar(root) {
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 
+/**
+ * Panel hosts for EVERY destination, primary and secondary alike.
+ *
+ * Rules & Settings is no longer in the tab bar but is still a destination with
+ * a panel (Rev 4.3 §3.1, WP3B §20). Building hosts from `NAV_DESTINATIONS`
+ * would leave `goTo('rules')` navigating to an element that does not exist.
+ *
+ * A secondary panel is labelled by nothing, because it has no tab to be
+ * labelled by; it takes an accessible name of its own instead.
+ */
 function renderPanelHosts(root) {
-  root.innerHTML = NAV_DESTINATIONS.map((d) => (
-    `<section class="fs-panel" id="${escapeHtml(d.panelId)}" role="tabpanel" ` +
-    `aria-labelledby="fs-tab-${escapeHtml(d.id)}" data-destination="${escapeHtml(d.id)}"></section>`
-  )).join('');
+  root.innerHTML = ALL_DESTINATIONS.map((d) => {
+    const isPrimary = NAV_DESTINATIONS.some((p) => p.id === d.id);
+    const label = isPrimary
+      ? `aria-labelledby="fs-tab-${escapeHtml(d.id)}"`
+      : `aria-label="${escapeHtml(d.label)}"`;
+    return (
+      `<section class="fs-panel" id="${escapeHtml(d.panelId)}" role="tabpanel" ` +
+      `${label} data-destination="${escapeHtml(d.id)}"></section>`
+    );
+  }).join('');
 }
 
 /**
@@ -185,6 +235,7 @@ function renderPanelHosts(root) {
  * @returns {string}
  */
 export function buildPanelContent(destinationId) {
+  if (destinationId === 'standings') return buildStandingsPanel();
   if (destinationId === 'league') return buildLeaguePanel();
   if (destinationId === 'action') return buildActionPanel();
   if (destinationId === 'week') return buildWeekPanel();
@@ -435,11 +486,16 @@ function bindSheet() {
  *
  * @param {string} destinationId
  */
-export function goTo(destinationId) {
+export function goTo(destinationId, zone = null) {
   const next = selectDestination(destinationId);
 
   next.forEach((d) => {
     const tab = document.querySelector(`.fs-tabbar__item[data-destination="${d.id}"]`);
+    // A SECONDARY DESTINATION HAS NO TAB, and that is why the lookup may miss.
+    // Navigating to Rules & Settings still runs this loop over every
+    // destination, which is what un-lights whichever primary tab was active —
+    // if the transition covered only the five, the previous tab would stay lit
+    // above a panel it no longer owns.
     if (tab) {
       tab.classList.toggle('is-active', d.active);
       tab.setAttribute('aria-selected', d.active ? 'true' : 'false');
@@ -450,7 +506,47 @@ export function goTo(destinationId) {
 
   // A destination change is a context change: the sheet does not survive it.
   closeSheet();
+
+  scrollToZone(destinationId, zone);
 }
+
+/**
+ * Bring one region of a destination into view.
+ *
+ * WHY THE MENU SCROLLS RATHER THAN FILTERS. Rules & Settings is one continuous
+ * page — rules, settings, the lifecycle and the commissioner area, in that
+ * locked order. The secondary menu offers those as separate entries because
+ * they are separate errands, but they are not separate screens, and WP3B §20
+ * says to preserve access rather than refactor the surface. Scrolling to the
+ * region is the whole of the difference between the four entries.
+ *
+ * A ZONE THAT IS NOT PRESENT SCROLLS NOWHERE, silently. The commissioner
+ * regions do not render for an ordinary member, and an entry that could not
+ * find its region should land the reader at the top of the page rather than
+ * throw.
+ *
+ * @param {string} destinationId
+ * @param {string|null} zone
+ */
+function scrollToZone(destinationId, zone) {
+  if (!zone) return;
+  const panel = document.getElementById(destinationById(destinationId).panelId);
+  if (!panel) return;
+
+  const selector = ZONE_SELECTORS[zone];
+  if (!selector) return;
+  const target = panel.querySelector(selector);
+  if (target && target.scrollIntoView) {
+    target.scrollIntoView({ block: 'start' });
+  }
+}
+
+/** Menu zone → the region it names, on the destination's own panel. */
+const ZONE_SELECTORS = Object.freeze({
+  rules: '[data-region="rules"]',
+  settings: '[data-region="settings"]',
+  commish: '#fs-lifecycle',
+});
 
 function bindNavigation() {
   const bar = document.getElementById('fs-tabbar');
@@ -513,6 +609,11 @@ async function bindAuthoritativeData() {
     markCommissionerUnavailable();
     markActionUnavailable();
     markSkunkUnavailable();
+    markStandingsUnavailable();
+    markEconomyUnavailable();
+    setEconomyCapability(false);
+    setEconomyHook(null);
+    setStandingsContext(null);
     markLifecycleUnavailable(null);
     setLifecycleCapability(false);
     setLifecycleDispatch(null);
@@ -532,6 +633,11 @@ async function bindAuthoritativeData() {
     markCommissionerUnavailable();
     markActionUnavailable();
     markSkunkUnavailable();
+    markStandingsUnavailable();
+    markEconomyUnavailable();
+    setEconomyCapability(false);
+    setEconomyHook(null);
+    setStandingsContext(null);
     markLifecycleUnavailable(leagueId);
     setLifecycleDispatch(null);
     setSeasonBlocker(null);
@@ -571,9 +677,21 @@ async function bindAuthoritativeData() {
   if (data && data.action) bindActionModel(data.action);
   else markActionUnavailable();
 
+  // WP3B — the competitive standings. Read by EVERY member, like the Skunk and
+  // unlike the commissioner reads: a standings page the league cannot all see
+  // is not a standings page. An empty league is a successful read carrying no
+  // rows, which the model reports as "not activated" rather than as a failure;
+  // only a refused or failed read is unavailable.
+  if (data && data.standings) bindStandingsModel(data.standings);
+  else markStandingsUnavailable();
+
   // LEAGUE CONTEXT, and the week every other surface is scoped to.
   if (data && data.context) bindLeagueContext(data.context);
   else markLeagueUnavailable();
+
+  // Standings draws its own league/week line from the same context read every
+  // other surface uses, so there is one answer to "which league, which week".
+  setStandingsContext(data ? data.context : null);
 
   // The provider-backed matchups for that week, when there is a week.
   if (data && data.week !== null && data.weekMatchups) {
@@ -632,6 +750,56 @@ async function bindAuthoritativeData() {
   const holdsCommission = Array.isArray(caps.commissioner_league_ids)
     && caps.commissioner_league_ids.includes(leagueId);
   setCommissionerCapability(holdsCommission);
+
+  // ── WP3B · the commissioner economy setup (Rev 4.3 §16) ───────────────
+  //
+  // BOUND ONLY FOR A COMMISSIONER OF THIS LEAGUE, on the same two grounds as
+  // the lifecycle read below: `GET /league/{id}/economy-config` is
+  // `require_league_commissioner`, so asking anyway would put a 403 in the
+  // operator's log on every ordinary GM's page load, and an unbound model
+  // draws no editing surface — which is what WP3B §17 requires for a member.
+  //
+  // THE CAPABILITY IS THE SERVER'S ANSWER, not a guess from the read
+  // succeeding. It decides what is DRAWN; both routes refuse regardless.
+  setEconomyCapability(holdsCommission);
+
+  if (holdsCommission) {
+    try {
+      bindEconomy(await readEconomyConfig(leagueId));
+    } catch {
+      markEconomyUnavailable();
+    }
+    setEconomyHook({
+      leagueId,
+      // ONE WAY TO LEARN WHAT IS TRUE. The PUT returns the whole configuration,
+      // so a save binds its own response — there is no second read to fall out
+      // of step with what was just written.
+      onChanged: (config) => { bindEconomy(config); },
+      // ACTIVATION RE-READS. The POST returns an allocation result, not a
+      // configuration, and the freeze it performed is visible only on the
+      // config read. Deciding locally that the season must now be frozen would
+      // be the shell asserting a lifecycle state it did not observe.
+      onActivated: async () => {
+        try {
+          bindEconomy(await readEconomyConfig(leagueId));
+        } catch {
+          markEconomyUnavailable();
+        }
+        mountApplication();
+      },
+    });
+  } else {
+    markEconomyUnavailable();
+    setEconomyHook(null);
+  }
+
+  // The secondary menu needs a way to navigate and a way to open the economy
+  // sheet. Both are the shell's to know, so they are installed here rather than
+  // reached for from inside the menu.
+  setMenuHook({
+    goTo: (destination, zone) => { goTo(destination, zone); },
+    openEconomy: () => { openSheet(() => economySheet()); },
+  });
 
   // ── The commissioner lifecycle (WP4) ──────────────────────────────────
   //
@@ -930,6 +1098,16 @@ function clearAuthoritativeData() {
   unbindSettings();
   unbindSlate();
   unbindSkunk();
+  // WP3B — the standings and the economy go with the session too. A signed-out
+  // page holding the previous league's table would be the same defect as one
+  // holding their Ledger, and `unbindEconomy` also drops the capability flag so
+  // the next mount cannot draw an editing surface before the server has said
+  // who is acting.
+  unbindStandings();
+  unbindEconomy();
+  setEconomyHook(null);
+  setStandingsContext(null);
+  setMenuHook(null);
   setCommissionerCapability(false);
   setSettingSheetMount(null);
   // WP6C — the Pool pick goes with the session too. A signed-out page holding a
@@ -978,10 +1156,15 @@ function mountApplication() {
   renderPanelHosts(panels);
   renderTabBar(tabbar);
 
-  NAV_DESTINATIONS.forEach((d) => {
+  // EVERY destination, not only the five in the tab bar — Rules & Settings has
+  // a panel and it has to be built for the gear menu to have anywhere to go.
+  ALL_DESTINATIONS.forEach((d) => {
     const panel = document.getElementById(d.panelId);
     if (panel) panel.innerHTML = buildPanelContent(d.id);
   });
+
+  const standingsPanel = document.getElementById('panel-standings');
+  if (standingsPanel) bindStandings(standingsPanel);
 
   const leaguePanel = document.getElementById('panel-league');
   if (leaguePanel) bindLeague(leaguePanel, { openComposer, openSheet });

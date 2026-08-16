@@ -13,7 +13,7 @@
  * fail these.
  * ========================================================================== */
 
-import { createReporter, withPage } from './browser-harness.mjs';
+import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
 
 const report = createReporter();
 const probe = (body) => `return (async () => { ${body} })();`;
@@ -52,7 +52,7 @@ await withPage({ port: 9402, settleMs: 2000 }, async ({ evaluate }) => {
   report.section('No actionable lifecycle control is drawn');
 
   const view = await evaluate(probe(`
-    document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+    ${GO_RULES}
     ${'await new Promise((r) => setTimeout(r, 400));'}
     const region = document.getElementById('fs-lifecycle');
     return {

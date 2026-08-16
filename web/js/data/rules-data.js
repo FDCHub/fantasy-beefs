@@ -44,7 +44,7 @@ export const ECONOMY_STOP = Object.freeze({
   minReserveCents: 14000,      // $140
   reserveCents: 8000,          // $80
   buyinCents: 22000,           // $220
-  source: 'payments/economy_config.py · DEFAULT_STOP',
+  source: 'League economy configuration',
 });
 
 /** Commissioner-set weekly Pool entry, bounded to $1–$5 by the schema. */
@@ -52,7 +52,7 @@ export const POOL_ENTRY = Object.freeze({
   cents: 100,                  // $1
   minCents: 100,
   maxCents: 500,
-  source: 'leagues.pool_weekly_entry_cents · ck_pool_config_weekly_entry_bounds',
+  source: 'League Pool settings',
 });
 
 /** Weekly Skunk contribution and its season ceiling. */
@@ -60,13 +60,13 @@ export const SKUNK = Object.freeze({
   weeklyCents: 1000,           // $10
   seasonMaximumCents: 14000,   // $140
   weeks: '1–14, regular season only',
-  source: 'economy/skunk.py · BAB-504',
+  source: 'Skunk rules',
 });
 
 /** Championship payout split, by place. */
 export const CHAMPIONSHIP_SPLIT = Object.freeze({
   split: Object.freeze([60, 30, 10]),
-  source: 'league_treasury.payout_split_json · economy/championship.py',
+  source: 'Championship rules',
 });
 
 /** Exactly four active Pools per fantasy week. */
@@ -157,7 +157,7 @@ export const SETTINGS_SEAM = Object.freeze({
   readEndpoint: 'GET /league/{league_id}/settings',
   mutable: ['pool-bet'],
   readOnly: ['economy-stop', 'skunk-fee', 'championship-split'],
-  readSource: 'payments/economy_config.py · db/schema.py · economy/skunk.py',
+  readSource: 'League settings',
   uiState: 'read-only',
   needs: 'a governed, commissioner-authorised configuration command before any row can be edited',
 });
@@ -184,7 +184,7 @@ export const RULE_GROUPS = Object.freeze([
           `${formatCredits(ECONOMY_STOP.reserveCents)} as the championship reserve. That advance is an ` +
           'obligation for the whole season. It is subtracted in Current Settle, ' +
           'so a GM who has wagered nothing sits at a deficit rather than at zero.',
-        source: 'economy/season_allocation.py · payments/economy_config.py',
+        source: 'Season-Opening Allocation rules',
       }),
       Object.freeze({
         heading: 'The championship reserve is committed from the moment it lands',
@@ -193,7 +193,7 @@ export const RULE_GROUPS = Object.freeze([
           'never releasable. It is economically committed to the championship pot ' +
           'from activation, which is why it is not counted as one of your ' +
           'settlement-relevant assets — counting it would overstate every GM all season.',
-        source: 'economy/current_settle.py',
+        source: 'Current Settle rules',
       }),
       Object.freeze({
         heading: 'Current Settle is derived, never stored',
@@ -203,7 +203,7 @@ export const RULE_GROUPS = Object.freeze([
           'means the league owes you, negative means you owe. There is no ' +
           'Current Settle column anywhere and no cached total that could disagree ' +
           'with the money.',
-        source: 'economy/current_settle.py',
+        source: 'Current Settle rules',
       }),
       Object.freeze({
         heading: 'More stakes come from a Top-Off, and a Top-Off is approved',
@@ -213,7 +213,7 @@ export const RULE_GROUPS = Object.freeze([
           'to the ledger and the Credits land in the GM’s wallet. A Top-Off ' +
           'raises Total Virtual Stakes, so it lowers Current Settle by the same ' +
           'amount — it is an advance, not winnings.',
-        source: 'economy/top_off.py §10',
+        source: 'Top-Off rules',
       }),
       Object.freeze({
         heading: 'Credits are virtual',
@@ -221,7 +221,7 @@ export const RULE_GROUPS = Object.freeze([
           'Credits display as dollars for legibility. They are not money, carry ' +
           'no cash value, and cannot be deposited, withdrawn or redeemed. There ' +
           'is no funding path into this league and none is planned.',
-        source: 'Rev 4.2 §3 · SPEC_B2 Stripe Removal Addendum',
+        source: 'League economy rules',
       }),
     ]),
   }),
@@ -239,7 +239,7 @@ export const RULE_GROUPS = Object.freeze([
           'for fourteen regular-season weeks. A release can never exceed what ' +
           'remains in the reserve, so a fifteenth release posts nothing rather ' +
           'than driving the account negative.',
-        source: 'economy/weekly_minimum.py §2',
+        source: 'Weekly Minimum rules',
       }),
       Object.freeze({
         heading: 'Wagers fund from the weekly minimum first, then your wallet',
@@ -247,7 +247,7 @@ export const RULE_GROUPS = Object.freeze([
           'Spending draws down the week’s minimum before it touches your wallet. ' +
           'That order is fixed, and it is why Weekly Min Left falls before ' +
           'Available does.',
-        source: 'economy/spend_sourcing.py · economy/weekly_minimum.py',
+        source: 'Weekly Minimum rules',
       }),
       Object.freeze({
         heading: 'Unspent minimum leaves circulation — it is not taken from you',
@@ -256,7 +256,7 @@ export const RULE_GROUPS = Object.freeze([
           'circulation. Both accounts are your own settlement-relevant assets, ' +
           'so your Current Settle moves by exactly zero. The Ledger shows it as ' +
           'Weekly Min · out of circulation.',
-        source: 'economy/weekly_minimum.py §4',
+        source: 'Weekly Minimum rules',
       }),
       Object.freeze({
         heading: `The Skunk is ${formatCredits(SKUNK.weeklyCents)} a week, capped at ${formatCredits(SKUNK.seasonMaximumCents)}`,
@@ -265,7 +265,7 @@ export const RULE_GROUPS = Object.freeze([
           'ledger obligation against the GM rather than seizing Credits, and the ' +
           'accumulated pot distributes at season close. Nothing collects a Skunk ' +
           'receivable automatically — no controlling authority provides for it.',
-        source: 'economy/skunk.py · owner ruling S5-R1',
+        source: 'Skunk rules',
       }),
     ]),
   }),
@@ -281,7 +281,7 @@ export const RULE_GROUPS = Object.freeze([
           'Not three, not a variable count. Each is a governed definition from ' +
           'the Pool catalog with its own settling rule, and each is scoped to ' +
           'either one league team or one scheduled matchup.',
-        source: 'SPEC_Pool_Catalog_Rotation_POR_Rev1_3 §5',
+        source: 'Pool rules',
       }),
       Object.freeze({
         heading: 'A Pool that finds no qualifier carries its pot forward',
@@ -289,7 +289,7 @@ export const RULE_GROUPS = Object.freeze([
           'Rolling over is a modifier on a Pool, never a different kind of Pool. ' +
           'A continuation occupies one of the week’s four slots and carries its ' +
           'accumulated pot into it.',
-        source: 'SPEC_Pool_Catalog_Rotation_POR_Rev1_3',
+        source: 'Pool rules',
       }),
       Object.freeze({
         heading: 'Pool entry is set by the commissioner and then frozen',
@@ -298,7 +298,7 @@ export const RULE_GROUPS = Object.freeze([
           'fixed for the season once the first week is built. Entering a Pool ' +
           'genuinely reduces your Current Settle: the contribution has left you ' +
           'and funds an outcome that is not yet yours.',
-        source: 'ck_pool_config_weekly_entry_bounds · economy/current_settle.py',
+        source: 'Pool entry rules',
       }),
       Object.freeze({
         heading: `The championship pot pays ${CHAMPIONSHIP_SPLIT.split.join(' / ')} by place`,
@@ -307,7 +307,7 @@ export const RULE_GROUPS = Object.freeze([
           'close, joined by the Skunk distribution. Payouts are integer cents: ' +
           'each ordinary place takes the floor of its share and first place takes ' +
           'the remainder, so the pot distributes exactly with nothing stranded.',
-        source: 'economy/championship.py · economy/season_reconciliation.py',
+        source: 'Championship rules',
       }),
     ]),
   }),
@@ -323,7 +323,7 @@ export const RULE_GROUPS = Object.freeze([
           'Every wager is one of the three. They persist as straight, spread and ' +
           'over_under respectively — ML is the display label for straight, not a ' +
           'fourth kind of bet.',
-        source: 'beefs/proposal_lifecycle.py · VALID_WAGER_TYPES',
+        source: 'Versus wager rules',
       }),
       Object.freeze({
         heading: `The minimum stake is ${formatCredits(MIN_STAKE_CENTS)}`,
@@ -331,19 +331,19 @@ export const RULE_GROUPS = Object.freeze([
           'Stakes are whole cents. A stake below the minimum, or one you cannot ' +
           'fund, is refused before it is offered — the composer applies the same ' +
           'rules in the same order the engine does.',
-        source: 'wallet/wallet_manager.py · MIN_BET',
+        source: 'Stake rules',
       }),
       Object.freeze({
         heading: `${MODE_COPY[MODE_LOCKED].label} — ${MODE_COPY[MODE_LOCKED].headline}`,
         // Quoted from the adopted ruling through wager-model, so this sheet and
         // the composer cannot drift apart.
         body: MODE_COPY[MODE_LOCKED].body,
-        source: 'spec/LOCKED_VS_DYNAMIC_WAGER_MODEL_RULING.md §1, §4',
+        source: 'Locked and Dynamic wager rules',
       }),
       Object.freeze({
         heading: `${MODE_COPY[MODE_DYNAMIC].label} — ${MODE_COPY[MODE_DYNAMIC].headline}`,
         body: MODE_COPY[MODE_DYNAMIC].body,
-        source: 'spec/LOCKED_VS_DYNAMIC_WAGER_MODEL_RULING.md §5.3',
+        source: 'Locked and Dynamic wager rules',
       }),
       Object.freeze({
         heading: 'One counter, and then a decision',
@@ -353,7 +353,7 @@ export const RULE_GROUPS = Object.freeze([
           'terms, the participants or the week — and the issuer keeps the Anchor ' +
           'role. Once countered, the issuer accepts or declines; there is no ' +
           're-counter.',
-        source: 'beefs/proposal_lifecycle.py §7.2, §8',
+        source: 'Versus lifecycle rules',
       }),
       Object.freeze({
         heading: 'An offer holds your Credits without spending them',
@@ -361,7 +361,7 @@ export const RULE_GROUPS = Object.freeze([
           'A pending offer reduces what you can spend while it is outstanding. ' +
           'It is not counted again in Current Settle until a proposal is ' +
           'accepted and the funds become escrow.',
-        source: 'economy/challenge_funding.py · economy/current_settle.py',
+        source: 'Versus funding rules',
       }),
     ]),
   }),
@@ -377,7 +377,7 @@ export const RULE_GROUPS = Object.freeze([
           'Lineups, scoring and matchup results come from your Yahoo league ' +
           'through the provider gateway. FantasyStakes reads them and never ' +
           'writes to them: nothing here changes a fantasy result.',
-        source: 'providers/ · S6 provider gateway',
+        source: 'Provider rules',
       }),
       Object.freeze({
         heading: 'The ledger balances, always',
@@ -385,16 +385,16 @@ export const RULE_GROUPS = Object.freeze([
           'Every posting is double-entry and every batch sums to zero, so the ' +
           'trial balance across all accounts is zero at all times. That is the ' +
           'continuous integrity check the league rests on.',
-        source: 'ledger/ledger.py · trial_balance()',
+        source: 'Ledger integrity',
       }),
       Object.freeze({
         heading: 'Displayed dollars are rounded; the accounting is not',
         body:
-          'Rev 4.2 draws Credit values as whole dollars. The underlying figures ' +
+          'FantasyStakes draws Credit values as whole Credits. The underlying figures ' +
           'are exact integer cents throughout, and every drawn figure carries its ' +
           'exact cents alongside it — the rounded string is never the accounting ' +
           'value.',
-        source: 'web/js/credits.js · Rev 4.2 §4',
+        source: 'Credits display rules',
       }),
       Object.freeze({
         heading: 'The specifications win',
@@ -403,7 +403,7 @@ export const RULE_GROUPS = Object.freeze([
           'accounting, settlement, economy or provider protocols, the protocol is ' +
           'right and the screen is wrong. This manual transcribes those rules; it ' +
           'does not create them.',
-        source: 'Rev 4.2 §7 · protocol safety',
+        source: 'Protocol safety',
       }),
     ]),
   }),

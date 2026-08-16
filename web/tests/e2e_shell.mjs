@@ -46,11 +46,15 @@ await withPage({ port: 9333 }, async ({ evaluate }) => {
   check('the masthead rendered its lockup', await evaluate(`
     return document.querySelector('.fs-mast__word').textContent === 'FantasyStakes';
   `));
+  // WP3B — Rev 4.3 §2 locks a new primary product tagline, exact to the
+  // character. The assertion is unchanged in kind: the RENDERED text must equal
+  // the locked string, which is also what proves the sentence-wrapping spans
+  // reassemble it without adding or losing a space.
   check('the tagline rendered', await evaluate(`
     return document.querySelector('.fs-mast__tagline').textContent
-      === 'FANTASY LEAGUES · VIRTUAL STAKES';
+      === 'Real odds. Fantasy stakes. More ways to win.';
   `));
-  check('neither half of the tagline is broken across lines', await evaluate(`
+  check('no sentence of the tagline is broken across lines', await evaluate(`
     return [...document.querySelectorAll('.fs-mast__tagline .fs-nowrap')]
       .every(span => span.getClientRects().length === 1);
   `));
@@ -234,8 +238,22 @@ await withPage({ port: 9333 }, async ({ evaluate }) => {
         id: panel.id,
         count: found.length,
         text: found[0] ? found[0].textContent : null,
+        // WP3B: the anchor is the tab's MONEY REGION, which is the four-cell
+        // strip on every tab that has one and the standings tables on the one
+        // that does not. Rev 4.3 §7 fixes Standings' contents at three tables,
+        // so it carries no strip — and §6 still requires the Credits
+        // disclosure there, because every table ranks on a money column.
         belowStrip: found[0] && strip
           ? found[0].getBoundingClientRect().top >= strip.getBoundingClientRect().top
+          : null,
+        aboveMoney: found[0] && !strip
+          ? (() => {
+              const money = panel.querySelector('.fs-st__scroll');
+              return money
+                ? found[0].getBoundingClientRect().bottom
+                  <= money.getBoundingClientRect().top + 0.5
+                : null;
+            })()
           : null,
         fits: found[0] ? found[0].scrollWidth <= found[0].clientWidth : null,
       });
@@ -250,7 +268,9 @@ await withPage({ port: 9333 }, async ({ evaluate }) => {
         panel.text === 'VIRTUAL CREDITS · $ IS DISPLAY ONLY · NO CASH VALUE',
         panel.text,
       );
-      check(`${panel.id}: the disclaimer sits under the strip`, panel.belowStrip === true);
+      check(`${panel.id}: the disclaimer sits with the tab's money region`,
+        panel.belowStrip === true || panel.aboveMoney === true,
+        `belowStrip=${panel.belowStrip} aboveMoney=${panel.aboveMoney}`);
       check(`${panel.id}: the disclaimer is not clipped`, panel.fits === true);
     }
   }

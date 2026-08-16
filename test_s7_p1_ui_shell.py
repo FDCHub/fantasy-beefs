@@ -317,13 +317,23 @@ _assert(
 )
 
 
-# ── Rev4.2 locked copy, and superseded Rev4.1 copy ───────────────────────────
+# ── Rev4.3 locked copy, and superseded Rev4.1/4.2 copy ───────────────────────
 
-print("\nRev4.2 locked global copy")
+print("\nRev4.3 locked global copy")
 
+# WP3B RE-POINTED THIS SECTION AT REV 4.3. Two of these assertions asserted
+# copy the governing POR has since replaced: the Rev 4.2 lockup line, and the
+# Rev 4.2-era rule that no `Wrap Up` label may appear anywhere. Rev 4.3 §2 locks
+# a different tagline and §3 makes `Wrap Up` a required primary label — so the
+# second assertion now runs in the opposite direction and checks that the label
+# is PRESENT and correctly spelled. Neither claim is loosened.
 _assert(
-    "the masthead tagline is FANTASY LEAGUES · VIRTUAL STAKES",
-    "FANTASY LEAGUES · VIRTUAL STAKES" in DEMO_JS,
+    "the masthead tagline is the locked Rev 4.3 primary product tagline",
+    "Real odds. Fantasy stakes. More ways to win." in DEMO_JS,
+)
+_assert(
+    "the superseded Rev4.2 lockup line appears nowhere in the app",
+    "FANTASY LEAGUES · VIRTUAL STAKES" not in ALL_WEB_RENDERED,
 )
 _assert(
     "the league identity is the league name alone",
@@ -338,8 +348,8 @@ _assert(
     "Fantasy Sportsbook" not in ALL_WEB_RENDERED,
 )
 _assert(
-    "no Wrap Up label appears in the app",
-    not re.search(r"wrap\s*up", ALL_WEB_RENDERED, re.IGNORECASE),
+    "Wrap Up is a primary navigation label (Rev 4.3 §3)",
+    "'Wrap Up'" in _read("js", "nav.js"),
 )
 
 DELTA_SPEC = os.path.join(ROOT, "spec", "SPEC_Mobile_UI_UX_Rev4_2_Global_Delta.md")

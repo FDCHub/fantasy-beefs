@@ -1,0 +1,291 @@
+/* ============================================================================
+ * FantasyStakes — UI/UX Rev 4.3 · readability foundation and shell
+ * WP3B · POR §5, §10, §31
+ *
+ * A REUSABLE FOUNDATION, NOT PER-CARD PATCHES. WP3B §9 asks for the Rev 4.3
+ * readability system as tokens and shared classes rather than one-off fixes.
+ * The scale itself lives in `tokens.css` as `--fs-r43-*`; this sheet applies it
+ * to the shell chrome — masthead, tab header, bottom navigation, sheets — and
+ * publishes the `.fs-r43-*` helpers the WP3B surfaces and later packages use.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO. It does not restyle the Rev 4.2 wager
+ * cards, Pool cards, Action tiles, Week rails or Ledger statement. Those are
+ * WP3C's, their geometry is measured at 375x667 by suites that would fail
+ * loudly and correctly if their type changed underneath them, and §9 says not
+ * to. The one exception is where the shell's own change would otherwise break
+ * them — see the panel-height note on the tab bar.
+ *
+ * LOADED LAST. Several rules below intentionally override `shell.css` and
+ * `components.css`; load order is what makes that work without editing those
+ * files, and keeps the Rev 4.2 baseline legible as a baseline.
+ * ========================================================================== */
+
+/* ── Shared helpers, for WP3B surfaces and WP3C after it ──────────────────── */
+
+.fs-r43-page-title {
+  font-size: var(--fs-r43-page-title);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.2;
+  color: var(--bone);
+  letter-spacing: 0;
+}
+
+.fs-r43-section {
+  font-size: var(--fs-r43-section);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.25;
+  color: var(--bone);
+  /* §5.2 — reduce excessive tracking. The Rev 4.2 eyebrow ran at .14em, which
+   * at 9px was most of what made section headings hard to read at a glance. */
+  letter-spacing: .01em;
+  /* §5.2 — reduce unnecessary uppercase. Headings that name a table keep their
+   * caps because the caps ARE the POR's wording (OVERALL STANDINGS); nothing
+   * here forces caps onto copy that did not ask for them. */
+  text-transform: none;
+}
+
+.fs-r43-card      { font-size: var(--fs-r43-card); line-height: 1.35; }
+.fs-r43-secondary {
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.45;
+  color: var(--fs-r43-secondary);
+}
+.fs-r43-meta {
+  font-size: var(--fs-r43-meta);
+  line-height: 1.4;
+  color: var(--fs-r43-tertiary);
+}
+
+/* Anything tappable reaches the practical minimum — §5.1, §31. */
+.fs-r43-touch {
+  min-height: var(--fs-r43-touch);
+  min-width: var(--fs-r43-touch);
+}
+
+/* ── Masthead ─────────────────────────────────────────────────────────────── */
+
+/* THE MASTHEAD PAYS FOR THE TAB BAR, and this is where it does it.
+ *
+ * §31's 44px navigation target makes the bottom bar about 5px taller, and every
+ * pixel it gains comes off the panel above it. At 375x667 — the shortest
+ * certified viewport — the Rev 4.2 wager cards had roughly 8px of slack, so
+ * that alone would have clipped them, and §9 says not to restyle those cards in
+ * this package.
+ *
+ * So the height is recovered HERE, in the shell WP3B owns, rather than by
+ * shrinking a WP3C card: tighter masthead padding (the column carries two fewer
+ * lines since §2.1 removed the revision and byline), a tagline at the metadata
+ * step rather than the secondary one, and closer leading on it. The tagline is
+ * brand rather than game state, which is why it is the line that gives way and
+ * the tab header, cards and figures do not.
+ *
+ * The measured result at 375x667 is in the certification, not in this comment. */
+.fs-mast {
+  padding: 8px var(--fs-space-6) 6px;
+}
+
+/* A sentence now, not a spaced-out lockup line. Rev 4.2 ran it at .22em
+ * tracking in all caps; the locked Rev 4.3 string is mixed-case prose.
+ *
+ * It wraps to two lines at 375px, which is what makes the lockup the taller of
+ * the masthead's two columns and therefore what sets the masthead's height.
+ * That is why the leading here is tight: this line is the one paying for the
+ * navigation's touch targets. */
+.fs-mast__tagline {
+  margin-top: 2px;
+  font-size: var(--fs-r43-meta);
+  letter-spacing: 0;
+  line-height: 1.2;
+  color: var(--fs-r43-secondary);
+}
+
+/* The lockup word carries the brand and keeps its size; its leading does not
+ * need to be loose when the tagline sits right under it. */
+.fs-mast__word { line-height: 1; }
+
+.fs-mast__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--fs-space-2);
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-tertiary);
+}
+
+/* ── The secondary gear (§3.1) ────────────────────────────────────────────── */
+
+.fs-gear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* A 44px target, achieved with negative margin so the ICON stays optically
+   * aligned with the meta column while the TOUCH AREA is full size. Padding
+   * alone would have pushed the masthead 26px taller. */
+  width: var(--fs-r43-touch);
+  height: var(--fs-r43-touch);
+  margin: -11px -12px -11px 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--g1);
+  cursor: pointer;
+}
+
+.fs-gear:active,
+.fs-gear:hover { color: var(--gold); }
+
+.fs-gear:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: -8px;
+  border-radius: var(--fs-radius-cell);
+}
+
+.fs-gear__icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+/* ── Tab header ───────────────────────────────────────────────────────────── */
+
+.fs-tabhead__title {
+  font-size: var(--fs-r43-page-title);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.2;
+}
+
+.fs-tabhead__sub {
+  margin-top: 3px;
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+}
+
+/* ── Bottom navigation — §31 ──────────────────────────────────────────────── */
+
+/* THE PANEL-HEIGHT TRADE, STATED. Raising the label from 8px to 11px and the
+ * target to 44px makes this bar taller, and the panel above it correspondingly
+ * shorter — which is the exact mechanism that clipped the Rev 4.2 wager cards
+ * when Sprint 8 grew the masthead. WP3B pays for it in the same frame: §2.1
+ * removed the masthead's revision and author lines, which were two lines of
+ * 11px meta plus their leading. The tab bar's padding is trimmed here so the
+ * bar grows by less than the masthead shrank, and the layout suites measure
+ * the result rather than taking this paragraph's word for it. */
+.fs-tabbar {
+  padding: var(--fs-space-1) var(--fs-space-1);
+  padding-bottom: calc(var(--fs-space-1) + var(--fs-safe-bottom));
+}
+
+.fs-tabbar__item {
+  /* §31 — a practical 44px target, and it is the ITEM that carries it rather
+   * than the label, so the whole column is tappable. */
+  min-height: var(--fs-r43-touch);
+  justify-content: center;
+  gap: 2px;
+  padding: var(--fs-space-1) 1px;
+}
+
+.fs-tabbar__label {
+  /* §5.1 — 11–12px, and 11px is what lets all five labels sit on one line at
+   * 320px without crowding. `Standings` is the longest at nine characters. */
+  font-size: var(--fs-r43-nav-label);
+  line-height: 1.15;
+  letter-spacing: 0;
+  /* Never wrap. A two-line label makes one tab taller than its neighbours and
+   * is how `Rules &<br>Settings` used to look. */
+  white-space: nowrap;
+}
+
+/* §5.2 — the inactive label was `--g2` at roughly 2.3:1, which is not readable
+ * at a glance and is precisely what the POR calls out. */
+.fs-tabbar__item { color: var(--fs-r43-tertiary); }
+.fs-tabbar__item.is-active { color: var(--gold); }
+
+.fs-tabbar__icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* ── Sheets ───────────────────────────────────────────────────────────────── */
+
+/* The close control stays UPPER-RIGHT — Rev 4.3 §25, and OR-1 before it. This
+ * rule changes its SIZE to a 44px target and nothing about its corner. */
+.fs-sheet__close {
+  min-width: var(--fs-r43-touch);
+  min-height: var(--fs-r43-touch);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fs-sheet__title { font-size: var(--fs-r43-section); }
+.fs-sheet__sub {
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+}
+
+/* ── The secondary menu ───────────────────────────────────────────────────── */
+
+.fs-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-1);
+  margin-top: var(--fs-space-3);
+}
+
+.fs-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-space-4);
+  width: 100%;
+  min-height: var(--fs-r43-touch);
+  padding: var(--fs-space-3) var(--fs-space-4);
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-cell);
+  font-family: inherit;
+  color: var(--bone);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-menu__row.is-pending {
+  cursor: default;
+  background: none;
+  border-style: dashed;
+}
+
+.fs-menu__row:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.fs-menu__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fs-menu__label {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-medium);
+}
+
+.fs-menu__help {
+  font-size: var(--fs-r43-meta);
+  line-height: 1.4;
+  color: var(--fs-r43-secondary);
+}
+
+.fs-menu__chev {
+  flex: 0 0 auto;
+  font-size: var(--fs-r43-section);
+  color: var(--g1);
+}
+
+.fs-menu__soon {
+  flex: 0 0 auto;
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-tertiary);
+}

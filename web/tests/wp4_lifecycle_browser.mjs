@@ -14,7 +14,7 @@
  * the lifecycle READ afterwards rather than against the message the page drew.
  * ========================================================================== */
 
-import { createReporter, withPage } from './browser-harness.mjs';
+import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
 
 const report = createReporter();
 const probe = (body) => `return (async () => { ${body} })();`;
@@ -25,18 +25,24 @@ await withPage({ port: 9401, settleMs: 2000 }, async ({ evaluate, setViewport })
 
   /* ── Where the controls live ──────────────────────────────────────────── */
 
-  report.section('The lifecycle lives inside Rules & Settings — no sixth tab');
+  report.section('The lifecycle lives inside Rules & Settings — off the tab bar');
 
   const nav = await evaluate(probe(`
     return [...document.querySelectorAll('.fs-tabbar__item')]
       .map((el) => el.dataset.destination);
   `));
 
-  report.check('the navigation is still the locked five destinations',
-    nav.join(',') === 'league,action,ledger,week,rules', nav.join(','));
+  // WP3B — Rev 4.3 §3 relocks the five, and Rules & Settings is no longer one
+  // of them (§3.1). The claim this section makes is unchanged and if anything
+  // stronger: the lifecycle still gets no tab of its own, and the surface it
+  // lives on does not either.
+  report.check('the navigation is the locked Rev 4.3 five destinations',
+    nav.join(',') === 'standings,league,action,week,ledger', nav.join(','));
+  report.check('Rules & Settings holds no bottom-navigation position',
+    !nav.includes('rules'), nav.join(','));
 
   const placement = await evaluate(probe(`
-    document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+    ${GO_RULES}
     ${settle(400)}
     const panel = document.getElementById('panel-rules');
     const region = panel.querySelector('#fs-lifecycle');
@@ -328,7 +334,7 @@ await withPage({ port: 9401, settleMs: 2000 }, async ({ evaluate, setViewport })
   report.section('375 / 390 / 430 px — no overflow, no clipping');
 
   const measure = probe(`
-    document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+    ${GO_RULES}
     ${settle(400)}
     const panel = document.getElementById('panel-rules');
     const region = panel.querySelector('#fs-lifecycle');

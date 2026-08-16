@@ -9,7 +9,7 @@
  * must not appear anywhere in its place.
  * ========================================================================== */
 
-import { createReporter, withPage } from './browser-harness.mjs';
+import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
 
 const report = createReporter();
 const asyncProbe = (body) => `return (async () => { ${body} })();`;
@@ -125,7 +125,7 @@ await withPage({ port: 9363, settleMs: 1400 }, async ({ evaluate }) => {
   report.section('Commissioner surfaces are unavailable, and leak nothing');
 
   const commish = await evaluate(asyncProbe(`
-    document.querySelector('.fs-tabbar__item[data-destination="rules"]').click();
+    ${GO_RULES}
     const league = ${identity.actingLeague};
     const positions = await fetch('/league/' + league + '/ledger/positions',
       { credentials: 'same-origin' });

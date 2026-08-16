@@ -17,12 +17,26 @@
  * those cells as unresolved.
  * ========================================================================== */
 
-/** Masthead — fixed and identical on every tab. */
+/**
+ * Masthead — fixed and identical on every tab.
+ *
+ * REV 4.3 §2 AND §2.1. The tagline is the LOCKED PRIMARY PRODUCT TAGLINE, exact
+ * to the character:
+ *
+ *     Real odds. Fantasy stakes. More ways to win.
+ *
+ * It supersedes the Rev 4.2 lockup line `FANTASY LEAGUES · VIRTUAL STAKES`.
+ *
+ * THE REVISION AND AUTHOR LINES ARE GONE, and their absence is the point.
+ * §2.1 removes prototype and internal material from the production
+ * application by name — the UI revision designation, the FINAL POR marker,
+ * engineering dates and the Fraser D. Coleman byline. A masthead is the most
+ * visible surface in the app and it was carrying all four on every tab. The
+ * legal notice is not lost with them: it remains on Rules & Settings, which is
+ * where §3.1 puts Legal.
+ */
 export const MASTHEAD = Object.freeze({
-  /** Rev4.2 tagline. Supersedes `OUR THING · YOUR LEAGUE`. */
-  tagline: 'FANTASY LEAGUES · VIRTUAL STAKES',
-  revision: 'UI/UX Rev 4.2 · 2026',
-  author: 'Fraser D. Coleman',
+  tagline: 'Real odds. Fantasy stakes. More ways to win.',
 });
 
 /**

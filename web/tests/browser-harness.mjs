@@ -27,6 +27,26 @@ export const WEB_ROOT = resolve(HERE, '..');
 /** The phone viewport every geometry assertion is measured in. */
 export const VIEWPORT = Object.freeze({ width: 390, height: 844 });
 
+/**
+ * Navigate to Rules & Settings the way a GM now has to — WP3B, Rev 4.3 §3.1.
+ *
+ * Rules & Settings no longer holds a bottom-navigation position, so
+ * `.fs-tabbar__item[data-destination="rules"]` does not exist and every suite
+ * that used it would fail at the first line. This is the replacement, and it is
+ * DELIBERATELY THE REAL PATH rather than a `FantasyStakes.goTo('rules')` short
+ * cut: six suites reach Rules through it, so every one of them now also proves
+ * WP3B §20 — that removing the tab did not make the surface unreachable.
+ *
+ * A JS SNIPPET RATHER THAN A FUNCTION, because these suites navigate from
+ * inside `evaluate()` template strings and the snippet has to run in the page.
+ *
+ * @type {string}
+ */
+export const GO_RULES = `
+  document.getElementById('fs-gear').click();
+  document.querySelector('#fs-menu [data-menu="rules"]').click();
+`;
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',

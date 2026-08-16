@@ -287,7 +287,7 @@ function adjustmentsSection(r) {
       `${escapeHtml(formatSignedCredits(adj.seasonWinningsCents))}</span>` +
       '</button>' +
       `<div class="fs-lexp__body">${awardsDetail}` +
-      '<div class="fs-note">Rev 4.2 fixes the total; the per-award split is not yet ' +
+      '<div class="fs-note">The total is fixed; the per-award split is not yet ' +
       'specified, and the Skunk pot distributes at season close rather than weekly.</div>' +
       '</div></div>' +
       CHAMPIONSHIPS.map((c) => ledgerRow({ label: c.label, text: c.state })).join('') +

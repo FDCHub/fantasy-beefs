@@ -4357,6 +4357,103 @@ def ledger_reconciliation(
     return LeagueReconciliationOut(**report.as_dict())
 
 
+# ── The Rev 4.3 competitive standings (WP3B) ─────────────────────────────────
+#
+# ADDITIVE READ MODEL (YELLOW). It posts nothing and decides nothing; every
+# figure is a sum of ledger legs that were already posted, grouped by the door
+# that posted them. `reports/standings_read_model.py` carries the derivation and
+# the reasoning; this route resolves authority and serializes.
+#
+# READ BY EVERY MEMBER, WHICH IS WHY IT CARRIES NO ACCOUNTING. Standings is the
+# one surface where a GM reads figures ABOUT OTHER GMs, so the read model
+# projects only the competitive result — record, wins and NET. Wallet,
+# Available, Current Settle and every obligation stay on the Ledger routes,
+# which serve a GM their own position and nobody else's. Rev 4.3 §7.5 keeps the
+# scoreboard and the accounting apart, and this is where that separation is
+# actually enforced rather than merely presented.
+
+class StandingsRowOut(BaseModel):
+    """One ranked team. `rank` is this ORDERING's rank, not a stored value."""
+    rank:             int
+    team_id:          int
+    team_name:        str
+    owner:            str
+    versus_wins:      int
+    versus_losses:    int
+    versus_pushes:    int
+    versus_record:    str
+    pool_wins:        int
+    versus_net_cents: int
+    pool_net_cents:   int
+    net_cents:        int
+
+
+class LeagueStandingsOut(BaseModel):
+    """Three orderings over one row set — Rev 4.3 §7.
+
+    All three are served together because the surface shows all three stacked
+    with no selector and no second tap. Serving one and making the browser
+    re-sort for the others would put the ranking rule in two places.
+    """
+    league_id:      int
+    season:         int
+    #: The reader's own team, so the UI can mark their row in all three tables
+    #: without matching on a name. Never null on this route — membership is
+    #: what authorizes the read.
+    acting_team_id: int
+    overall:        list[StandingsRowOut]
+    versus:         list[StandingsRowOut]
+    pools:          list[StandingsRowOut]
+
+
+@app.get("/league/{league_id}/standings", response_model=LeagueStandingsOut)
+def league_competitive_standings(
+    league_id:    int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """This league's competitive standings — Overall, Versus and Pools.
+
+    MEMBERSHIP AUTHORIZES IT, not the commissioner role. Every GM sees the
+    league table; that is what a standings page is. A caller who owns no team
+    here is refused before anything is read, so the route cannot be used to
+    probe another league's roster or existence.
+
+    THE RANK IS ASSIGNED HERE, OVER THE MODEL'S OWN ORDERING. The read model
+    decides the order — including the documented ascending-team-id tie-break —
+    and this only numbers it. A browser that numbered its own rows would be a
+    second place the ordering rule lives.
+    """
+    from reports.standings_read_model import league_standings
+
+    team_id = _member_team_id(current_user, league_id, db)
+    if team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+
+    try:
+        standings = league_standings(db, league_id=league_id,
+                                     acting_team_id=team_id)
+    except LedgerReadModelError as e:
+        raise _read_model_error(e)
+
+    def rank(rows) -> list[StandingsRowOut]:
+        return [StandingsRowOut(rank=i, **row.as_dict())
+                for i, row in enumerate(rows, 1)]
+
+    return LeagueStandingsOut(
+        league_id=standings.league_id,
+        season=standings.season,
+        acting_team_id=team_id,
+        overall=rank(standings.overall),
+        versus=rank(standings.versus),
+        pools=rank(standings.pools),
+    )
+
+
 # ── League settings: authoritative read + the one governed command (S8-P4) ───
 #
 # READ IS FOR EVERY LEAGUE MEMBER; WRITE IS COMMISSIONER-ONLY, and only one
