@@ -12,6 +12,7 @@
  * net. Nothing here re-skins a settled wager as a transaction row.
  * ========================================================================== */
 
+import { attributionFooter } from './attribution.js';
 import { PanelComposer, escapeHtml, sectionHeading, tabHeader } from './components.js';
 import { counterStakeSheet } from './counter-stake.js';
 import { headingWithPhase } from './phase.js';
@@ -202,6 +203,12 @@ export function buildActionPanel() {
     }).join('') +
     '</div>',
   );
+
+  // WP3D — Status names the opponent on every wager card and is scoped to the
+  // provider's current week, both of which are Yahoo Fantasy Information. The
+  // wagers, their terms and their economics are FantasyStakes'; the footer
+  // attributes the league facts and says nothing about them.
+  composer.add(attributionFooter());
 
   return composer.toHTML();
 }

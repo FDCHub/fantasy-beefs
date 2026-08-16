@@ -436,8 +436,13 @@ print("\nA Yahoo fixture never presents as a FantasyStakes wager")
 _assert("Yahoo cards are badged as fixtures", ">YAHOO<" in PANELS.get("week", ""))
 _assert("no Yahoo card offers a challenge affordance",
         "Challenge" not in PANELS.get("week", ""))
-_assert("the preview states the Yahoo source context",
-        "OFFICIAL YAHOO FANTASY MATCHUP" in _read("js", "preview.js"))
+# WP3D — see the recorded reason in test_s7_p3_week_ledger.py. The banner is
+# retired; the exact contractual attribution replaces it where Yahoo-backed, and
+# the sentence below still keeps a fixture from reading as a wager.
+_assert("the preview claims no official standing for a Yahoo matchup",
+        not re.search(r"official\s+yahoo", _read("js", "preview.js"), re.I))
+_assert("and it is attributed only when it is showing Yahoo information",
+        "showsYahooInformation: fromYahoo" in _read("js", "preview.js"))
 _assert("and says it is not a FantasyStakes wager",
         "not a FantasyStakes wager" in _read("js", "preview.js"))
 

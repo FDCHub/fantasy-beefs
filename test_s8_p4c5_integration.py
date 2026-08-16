@@ -186,8 +186,33 @@ _foreign = [(n, t) for n, c in _all_js
 # or SVG namespace; anything pointing at a host is a finding.
 _hosts = [(n, t) for n, t in _foreign
           if t in ("yahoo.com", "api.github", "raw.githubusercontent")]
+
+# WP3D — ONE MODULE MAY NAME A YAHOO HOST, AND ONLY AS A LINK TARGET.
+#
+# What §17 exists to prevent is the BROWSER TALKING TO A PROVIDER: a fetch, an
+# XHR, a script tag, anything that would make the page a second client of
+# Yahoo's API and route provider data around the server. `attribution.js` does
+# none of that. It holds one constant — the destination of the hyperlink the
+# executed Yahoo agreement requires the attribution to carry — and renders it as
+# an `href` the GM may choose to follow.
+#
+# THE EXEMPTION IS THE MODULE, AND THE GUARD BELOW IS WHAT KEEPS IT HONEST: that
+# module must contain no network call of any kind, so naming a host cannot
+# quietly become calling one. Every other module is unexempted.
+_ATTRIBUTION_ONLY = [(n, t) for n, t in _hosts
+                     if not (n == "attribution.js" and t == "yahoo.com")]
 _assert("§17: no frontend module references a provider or third-party host",
-        not _hosts, str(_hosts))
+        not _ATTRIBUTION_ONLY, str(_ATTRIBUTION_ONLY))
+
+_attribution_src = dict(_all_js).get("attribution.js", "")
+_assert("§17: and the one module naming a Yahoo host makes no request to it",
+        not any(call in _attribution_src for call in
+                ("fetch(", "apiFetch", "XMLHttpRequest", "WebSocket",
+                 "import(", "<script", "sendBeacon")),
+        "link target only")
+_assert("§17: the host it names is the attribution's link target and nothing else",
+        _attribution_src.count("yahoo.com") == 1
+        and "href=" in _attribution_src)
 _assert("§17: no frontend module persists a token",
         not any("localStorage" in c or "sessionStorage" in c
                 for _, c in _all_js),

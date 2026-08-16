@@ -37,6 +37,7 @@
  * is applied. Rev 4.3 §28.
  * ========================================================================== */
 
+import { attributionFooter } from './attribution.js';
 import { escapeHtml } from './components.js';
 import { theRead, whyTheLine } from './narrative.js';
 
@@ -45,27 +46,48 @@ import { theRead, whyTheLine } from './narrative.js';
  * @returns {{title: string, sub: string, body: string, onMount: Function}}
  */
 export function previewSheet(m) {
-  // Where the matchup came from is stated, not implied. An official Yahoo
-  // league matchup is not a FantasyStakes wager, and the preview must not let a
-  // GM mistake one for the other just because the grammar is shared.
+  // Where the matchup came from is stated, not implied. A Yahoo league matchup
+  // is not a FantasyStakes wager, and the preview must not let a GM mistake one
+  // for the other just because the grammar is shared.
   const fromYahoo = m.source === 'yahoo';
   const week = m.weekLabel || '';
 
-  const sourceBanner = fromYahoo
-    ? '<div class="fs-srcbanner" data-source="yahoo">OFFICIAL YAHOO FANTASY MATCHUP</div>'
-    : '';
-
+  // WP3D — THE OLD SOURCE BANNER IS GONE, and the exact contractual
+  // attribution replaces it.
+  //
+  // The banner was written to keep a GM from mistaking a Yahoo league matchup
+  // for a FantasyStakes wager, which is a real and worthwhile distinction — and
+  // the sentence below still draws it. What the banner ALSO did, unintentionally,
+  // was claim official standing for the matchup, in a product Yahoo does not
+  // operate, endorse or approve. Rev 4.3 §23 permits a data-source statement
+  // and no more, so that claim had to go whether or not the attribution
+  // replaced it. The retired wording is named in the WP3D report and in the
+  // suites that used to pin it; it is deliberately not spelled here, because
+  // the shipped source is scanned for it.
+  //
+  // The attribution is not a substitute for the distinction, and the closing
+  // note is not a substitute for the attribution. Both are kept, each doing its
+  // own job: one says where the matchup came from, the other says what it is
+  // not.
   const closingNote = fromYahoo
-    ? '<div class="fs-note">Analysis only. This is an official Yahoo league ' +
-      'matchup, not a FantasyStakes wager — nothing here stakes Credits.</div>'
+    ? '<div class="fs-note">Analysis only. This is a Yahoo league matchup, ' +
+      'not a FantasyStakes wager — nothing here stakes Credits.</div>'
     : '<div class="fs-note">Analysis only — no wager runs through this card. ' +
       'Close to return to your challenge; nothing you have entered is lost.</div>';
+
+  // ATTRIBUTED ONLY WHEN THIS SHEET IS ACTUALLY SHOWING YAHOO INFORMATION.
+  //
+  // Two conditions, both required, and they are different questions. `fromYahoo`
+  // is whether THIS MATCHUP came from the provider; `attributionFooter` checks
+  // whether the SESSION's league is Yahoo-backed at all. A Demo session fails
+  // the second and gets nothing, which is the hard rule — the same component
+  // renders both, and only the authoritative provider binding decides.
+  const sourceFooter = attributionFooter({ showsYahooInformation: fromYahoo });
 
   return {
     title: 'Matchup Preview',
     sub: [`${m.you.name} vs ${m.name}`, week].filter(Boolean).join(' · '),
     body:
-      sourceBanner +
       identitySection(m) +
       // ANALYSIS FIRST, BOTH OPEN. §10.
       collapsible('WHY THE LINE LOOKS THIS WAY', paragraphs(whyTheLine(m)),
@@ -73,7 +95,8 @@ export function previewSheet(m) {
       collapsible('THE READ', paragraphs(theRead(m)), { open: true }) +
       // DENSE CONTENT LAST, AND COLLAPSED.
       lineupsSection(m) +
-      closingNote,
+      closingNote +
+      sourceFooter,
     onMount: (host) => {
       host.querySelectorAll('[data-collapse]').forEach((headEl) => {
         headEl.addEventListener('click', () => {

@@ -25,6 +25,7 @@
  * rename can break.
  * ========================================================================== */
 
+import { attributionFooter } from './attribution.js';
 import { creditsDisclaimer, escapeHtml } from './components.js';
 import { creditsTone, exactCentsAttr, formatSignedCredits } from './credits.js';
 import {
@@ -207,6 +208,16 @@ export function buildStandingsPanel() {
     + '</div>'
     + creditsDisclaimer()
     + `<div class="fs-st__scroll" id="fs-standings-scroll">${body}</div>`
+    // WP3D — EVERY ROW ON EVERY TABLE IS A YAHOO-GIVEN TEAM NAME, and the
+    // subheading states the provider's league and week. The columns those
+    // teams are RANKED on are FantasyStakes' — net winnings, Versus record,
+    // Pool wins — so the attribution sits in the page footer as a source
+    // disclosure and is not attached to any column.
+    //
+    // Standings is the default tab, so for most sessions this is the first
+    // attribution a GM meets. It is also the reason the line must be quiet:
+    // it is the first thing after the league's own standings, not before them.
+    + attributionFooter()
   );
 }
 

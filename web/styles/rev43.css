@@ -289,3 +289,113 @@
   font-size: var(--fs-r43-meta);
   color: var(--fs-r43-tertiary);
 }
+
+/* ── WP3D · source identity and Yahoo attribution ──────────────────────────
+ *
+ * TWO TREATMENTS, BOTH DELIBERATELY QUIET.
+ *
+ * The source chip states where the league's data comes from. It lives in the
+ * masthead meta column beside the gear and the COMMISSIONER badge, because it
+ * is the same kind of fact — true, persistent, and secondary to the product.
+ * It must never compete with FantasyStakes, the league name, the week or the
+ * gameplay (Rev 4.3 §22, WP3D §16).
+ *
+ * THE LABEL CARRIES THE MEANING, NOT THE COLOUR. Every state is readable text;
+ * the accent only distinguishes. A GM who cannot perceive the accent still
+ * reads DEMO, and a screen reader reads it too. Colour is never the signal.
+ */
+
+/* ONE ROW FOR THE CHIP AND THE GEAR. Measured: giving the chip a row of its
+ * own added 16px to the masthead and clipped both wager cards at 375x667.
+ * The chip is shorter than the gear, so sharing its line is free. */
+.fs-mast__metarow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--fs-space-2);
+  /* The row may not grow the column past what the lockup can spare. */
+  max-width: 100%;
+  min-width: 0;
+}
+
+.fs-source {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.fs-source__label {
+  font-size: var(--fs-size-eyebrow);
+  /* TIGHTER THAN THE EYEBROW TRACK. The standard tracking is set for headings
+   * with room; here every em of letter-spacing is width taken off the wordmark
+   * beside it, and the label is short enough to stay legible without it. */
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--g2);
+  border: var(--fs-border-edge);
+  border-radius: var(--fs-radius-cell);
+  padding: 1px 5px;
+  white-space: nowrap;
+  /* Bounded so no state string can widen the meta column and squeeze the
+   * lockup — the failure mode recorded in shell.js renderMasthead(). The
+   * longest label is YAHOO · NOT SYNCED YET; this fits it whole at 320px. */
+  max-width: 148px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* DEMO IS THE ONE STATE THAT MUST BE UNMISTAKABLE (Rev 4.3 §21), so it takes
+ * the gold treatment the COMMISSIONER badge already uses for "this session is
+ * not ordinary". It is a product accent, not a debug badge: no alarm red, no
+ * hazard hatching, no monospace, no brackets. */
+.fs-source[data-source-state="demo"] .fs-source__label {
+  color: var(--gold);
+  background: var(--goldbg);
+  border-color: var(--gold);
+}
+
+/* ── The Yahoo attribution ─────────────────────────────────────────────────
+ *
+ * A page-footer source disclosure. Last thing on the panel, smallest type,
+ * tertiary colour — the same subordination `.fs-legal` uses, and for the same
+ * reason. It is required, it is readable, and it is not the headline.
+ *
+ * IT SITS ABOVE THE BOTTOM NAVIGATION, never over it: the panel scrolls inside
+ * its own region and this is ordinary flow content at the end of it, not a
+ * fixed overlay. Rev 4.3 §23 forbids anything that impairs the persistent nav.
+ */
+
+.fs-attribution {
+  margin-top: var(--fs-space-3);
+  padding-top: var(--fs-space-2);
+  border-top: var(--fs-border-hair);
+  text-align: center;
+  /* NEVER SHRINKS AND NEVER GROWS. On the flexed panels it is terminal content,
+   * not a participant in the height negotiation above it. */
+  flex: 0 0 auto;
+}
+
+/* PLAY PAYS FOR IT OUT OF ITS OWN BOTTOM PADDING. `.fs-zones` ended the panel
+ * with `space-4` of breathing room; the source line now ends the Pools zone and
+ * its own margin provides that separation, so the padding is redundant. This
+ * matters at 375x667, where the Versus carousel has almost no slack — measured
+ * 128px of rail for a 128px card at HEAD — and every pixel spent below the
+ * zones comes out of a wager card. With the line inside Pools and this padding
+ * released, the card measures 133px in 133px. */
+#panel-league .fs-zones { padding-bottom: 0; }
+
+.fs-attribution__link {
+  font-size: var(--fs-size-micro);
+  line-height: 1.4;
+  color: var(--g2);
+  /* UNDERLINED, so it is recognisable as a link without relying on colour —
+   * and it keeps normal anchor semantics, so it is keyboard-focusable and
+   * announced as a link with no ARIA needed. */
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.fs-attribution__link:hover,
+.fs-attribution__link:focus-visible {
+  color: var(--g1);
+}

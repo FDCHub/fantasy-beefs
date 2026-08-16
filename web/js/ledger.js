@@ -17,6 +17,7 @@
  * inert — it is the result of the page, not a door to another.
  * ========================================================================== */
 
+import { attributionFooter } from './attribution.js';
 import { PanelComposer, escapeHtml } from './components.js';
 import { currentWeek } from './league-model.js';
 import { weekPhaseLabel } from './phase.js';
@@ -472,6 +473,19 @@ export function buildLedgerPanel() {
     currentSettleCard(r) +
     '</div>',
   );
+
+  // WP3D — ACCOUNT CARRIES YAHOO CONTEXT, NOT YAHOO MONEY.
+  //
+  // Every figure on this tab is FantasyStakes' own: the Wallet, the Weekly
+  // Minimum, Current Settle, the Ledger and net winnings are produced by this
+  // product's accounting and by nothing else. What is Yahoo-derived here is the
+  // league and week context the page is scoped to, and the opponent names on
+  // the settled rows.
+  //
+  // So the attribution goes in the page footer, where it reads as a source
+  // disclosure for the surface. Putting it near the balances would say Yahoo
+  // supplied them, which is false.
+  composer.add(attributionFooter());
 
   return composer.toHTML();
 }

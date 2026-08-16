@@ -166,8 +166,17 @@ for (const heading of ['MATCHUP', 'WHY THE LINE LOOKS THIS WAY', 'THE READ',
 }
 check('the Yahoo preview carries no odds-market block either (§10)',
   !yahooPreview.body.includes('SPORTSBOOK VIEW'));
-check('the preview states the matchup is an official Yahoo fixture',
-  yahooPreview.body.includes('OFFICIAL YAHOO FANTASY MATCHUP'));
+// WP3D RETIRED THE SOURCE BANNER, AND KEPT WHAT IT WAS FOR.
+//
+// The banner claimed official standing for a Yahoo matchup, in a product Yahoo
+// does not operate, endorse or approve — which Rev 4.3 §23 does not permit
+// whatever the intent. The exact contractual attribution now carries the source
+// statement on Yahoo-backed surfaces, and the sentence asserted below still
+// keeps a league fixture from reading as a FantasyStakes wager, which is the
+// confusion the banner actually existed to prevent.
+check('the preview claims no official standing for a Yahoo fixture',
+  !yahooPreview.body.includes('OFFICIAL YAHOO FANTASY MATCHUP')
+  && !/official\s+yahoo/i.test(yahooPreview.body));
 check('the preview says it is not a FantasyStakes wager',
   /not a FantasyStakes wager/.test(yahooPreview.body));
 check('a third-party preview names no players at all',

@@ -44,6 +44,7 @@ import { POOLS, poolBadge } from './data/league-data.js';
 import {
   LEAGUE_MODE_DEMO, currentWeek, leagueMode, leagueName,
 } from './league-model.js';
+import { attributionFooter } from './attribution.js';
 import { marketFor } from './market-model.js';
 import { formatSpread } from './narrative.js';
 import { weekPhaseLabel } from './phase.js';
@@ -125,10 +126,32 @@ export function buildLeaguePanel() {
 
   composer.addDisclaimer();
 
+  // WP3D — PLAY DISPLAYS YAHOO FANTASY INFORMATION, so it carries the exact
+  // attribution. The league's own name is the provider's once a refresh has
+  // bound it; every opponent on the rail is a provider-given team name; the
+  // week and phase in the header are the provider's current week; and the
+  // market board behind each card is simulated over provider-given starters
+  // and projections.
+  //
+  // WHAT THE LINE DOES NOT CLAIM is everything FantasyStakes generates on this
+  // same surface — the moneyline, the spread, the total, the Pool draw, the
+  // Credits in the strip. It is a source disclosure at the foot of the page,
+  // not a label attached to any figure.
+  //
+  // IT ENDS THE POOLS ZONE RATHER THAN THE PANEL, AND THAT IS A MEASURED
+  // DECISION. Play's two zones split whatever height the panel has left, and
+  // at 375x667 the Versus carousel has exactly none to give: measured at HEAD,
+  // the rail was 128px for a card that needs 128px. A block placed after the
+  // zones takes its height from BOTH of them, and the wager card is the one
+  // that cannot afford it — it clipped its own markets the moment the line was
+  // added there. The Pools grid is compact and has the room, so the line ends
+  // that zone instead. It is still the last thing on the surface, still one
+  // instance, still above the bottom navigation.
   composer.add(
     '<div class="fs-zones">' +
     `<div class="fs-zone fs-zone--bets">${versusZone()}</div>` +
-    `<div class="fs-zone fs-zone--pools">${poolsZone()}</div>` +
+    '<div class="fs-zone fs-zone--pools">'
+    + poolsZone() + attributionFooter() + '</div>' +
     '</div>',
   );
 

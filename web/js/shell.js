@@ -63,6 +63,9 @@ import {
 } from './market-model.js';
 import { requestMarketBoard } from './versus-market-command.js';
 
+// WP3D — where this league's data comes from, stated once in the chrome.
+import { sourceChip } from './attribution.js';
+
 import { previewSheet } from './preview.js';
 import { weekPhaseLabel } from './phase.js';
 
@@ -200,7 +203,20 @@ function renderMasthead(root) {
     `<div class="fs-mast__tagline">${tagline}</div>` +
     '</div>' +
     '<div class="fs-mast__meta">' +
+    // THE CHIP SHARES THE GEAR'S ROW, AND THAT IS A MEASURED DECISION.
+    //
+    // Given its own row it cost 16px of masthead height — 71px to 87px — and
+    // at 375x667 that came straight off the panel: both wager cards clipped
+    // their own content (127px of content in 99px of card). The note above
+    // records the same failure from Sprint 8's attempt at a third masthead
+    // item, and the same rule applies to a third meta ROW.
+    //
+    // Sharing the gear's line costs nothing vertically, because the chip is
+    // shorter than the gear it sits beside.
+    '<div class="fs-mast__metarow">' +
+    sourceChip() +
     menuButton() +
+    '</div>' +
     buildIdentityBlock() +
     '</div>';
 

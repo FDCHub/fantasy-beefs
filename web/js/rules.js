@@ -19,6 +19,7 @@
  * a defensive banner on every screen was the treatment this supersedes.
  * ========================================================================== */
 
+import { attributionFooter } from './attribution.js';
 import { PanelComposer, escapeHtml, note, sectionHeading, tabHeader } from './components.js';
 import { LEGAL_LINE, RULE_GROUPS, SETTINGS, SETTINGS_SEAM } from './data/rules-data.js';
 import {
@@ -249,7 +250,34 @@ export function setSettingSheetMount(fn) {
 /* ── D · Legal ──────────────────────────────────────────────────────────────*/
 
 function legalFooter() {
-  return `<div class="fs-legal" id="fs-legal">${escapeHtml(LEGAL_LINE)}</div>`;
+  // WP3D — THE ATTRIBUTION JOINS THE LEGAL FOOTER, and only here.
+  //
+  // Rev 4.3 §22 draws a line this surface sits exactly on. The rules PROSE
+  // mentions Yahoo repeatedly — Yahoo decides the podium, Yahoo decides what
+  // happened on the field — and a reference to Yahoo inside an explanation of a
+  // FantasyStakes rule is NOT a display of Yahoo Fantasy Information. It is
+  // this product describing its own rules. Attributing it would be
+  // over-attribution.
+  //
+  // What IS Yahoo Fantasy Information on this surface is the league's own name
+  // in the header, which is the provider's name for it once a refresh has
+  // bound one, and the provider-backed values the commissioner area below
+  // reports. That is what the line attributes.
+  //
+  // ONE INSTANCE FOR THE WHOLE PANEL. The commissioner and provider views are
+  // regions of this same visible surface, not separate pages, so a second copy
+  // beside them would be the duplication §18 forbids.
+  // NESTED INSIDE THE LEGAL BLOCK, not appended beside it. The rules scroller's
+  // direct children are a certified sequence — rules, settings, lifecycle,
+  // commissioner, legal — and a sixth child would change it. It also reads
+  // correctly: the legal line and the source line are the same kind of thing,
+  // and they belong in the same footer.
+  return (
+    '<div class="fs-legal" id="fs-legal">'
+    + `<div>${escapeHtml(LEGAL_LINE)}</div>`
+    + attributionFooter()
+    + '</div>'
+  );
 }
 
 /* ── Panel ──────────────────────────────────────────────────────────────────*/

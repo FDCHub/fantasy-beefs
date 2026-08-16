@@ -89,8 +89,10 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('the week switch reads WEEK 4 · REGULAR SEASON · WEEK 5',
     head.text === 'WEEK 4 · REGULAR SEASON · WEEK 5', head.text);
   check('both weeks are tappable controls', head.tappable === true);
-  check('the subtitle is the locked wording',
-    head.sub === 'Official Yahoo matchups + FantasyStakes action', head.sub);
+  // WP3D — `Official` removed. Rev 4.3 §23 permits a statement of source and
+  // not a claim of standing; the provenance the wording carried is unchanged.
+  check('the subtitle names the source without claiming official standing',
+    head.sub === 'Yahoo matchups + FantasyStakes action', head.sub);
   check('the current week is selected by default',
     head.selected.length === 1 && head.selected[0] === '5', head.selected.join(','));
   check('there is no FIRST KICKOFF clock', !/FIRST KICKOFF/i.test(head.bodyText));
@@ -246,8 +248,12 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     };
   })();`);
   check('the Matchup Preview opens in the shared sheet', preview.open === true);
-  check('the preview states the Yahoo source context',
-    preview.banner === 'OFFICIAL YAHOO FANTASY MATCHUP', preview.banner);
+  // WP3D — see the recorded reason in package3_component_tests.mjs. The banner
+  // is retired; a Yahoo-backed session gets the exact contractual attribution
+  // instead, and this fixture's league is not Yahoo-backed, so it gets neither.
+  check('the preview claims no official standing for a Yahoo fixture',
+    !preview.banner && !/official\s+yahoo/i.test(preview.text),
+    String(preview.banner));
   // WP3C -- Rev 4.3 §10: no odds-market block, and analysis before the dense
   // lineup table. Same rebuild the package 2 suite measures; asserted here on
   // the Yahoo-sourced preview as well, because both open the same sheet.

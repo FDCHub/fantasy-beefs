@@ -20,6 +20,7 @@
  * strip — and therefore no Credits disclaimer, which appears only under one.
  * ========================================================================== */
 
+import { attributionFooter } from './attribution.js';
 import { PanelComposer, escapeHtml, note, sectionHeading } from './components.js';
 import { formatCredits } from './credits.js';
 import { CURRENT_WEEK, PAST_WEEK, WEEKS, weekBets, weekPools, yahooMatchups } from './data/week-data.js';
@@ -46,7 +47,15 @@ import { onActivate } from './interaction.js';
 import { skunkOfTheWeek, skunkWeek } from './skunk-model.js';
 
 /** Locked Rev 4.2 subtitle. */
-export const WEEK_SUBTITLE = 'Official Yahoo matchups + FantasyStakes action';
+// WP3D — `Official` IS GONE, AND THE PROVENANCE IS NOT.
+//
+// Rev 4.3 §23 permits a statement of where data came from and nothing more.
+// "Official Yahoo matchups" goes further than provenance: in a product Yahoo
+// does not operate, endorse or approve, "official" reads as standing rather
+// than as source. The subtitle still says exactly where the matchups come
+// from — which §11 requires it not to weaken — and the exact contractual
+// attribution at the foot of the tab now carries the formal statement.
+export const WEEK_SUBTITLE = 'Yahoo matchups + FantasyStakes action';
 
 /**
  * Locked Rev 4.2 heading for the FantasyStakes Bets module.
@@ -487,6 +496,13 @@ export function buildWeekPanel() {
     poolsModule() +
     '</div>',
   );
+
+  // WP3D — THE DENSEST YAHOO SURFACE IN THE PRODUCT. Wrap Up draws the
+  // provider's own matchups, their scores and their finality, under the
+  // provider's week. It also draws FantasyStakes results beside them, which is
+  // exactly why the attribution is a page-footer source disclosure rather than
+  // a caption on any block.
+  composer.add(attributionFooter());
 
   return composer.toHTML();
 }

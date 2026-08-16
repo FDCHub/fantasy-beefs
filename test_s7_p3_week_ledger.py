@@ -389,8 +389,11 @@ _assert("both weeks are tappable text controls",
         'data-week="4"' in WEEK_PANEL and 'data-week="5"' in WEEK_PANEL)
 _assert("the selected week is emphasised",
         "fs-wkswitch__opt is-selected" in WEEK_PANEL)
-_assert("the subtitle is the locked wording",
-        "Official Yahoo matchups + FantasyStakes action" in WEEK_PANEL)
+# WP3D — the same ruling applied to the tab subtitle: the provenance stays,
+# the claim of official standing goes.
+_assert("the subtitle names the source without claiming official standing",
+        "Yahoo matchups + FantasyStakes action" in WEEK_PANEL
+        and "Official Yahoo" not in WEEK_PANEL)
 _assert("the current week represents four FantasyStakes bets",
         APP.get("betsCurrent") == 4, str(APP.get("betsCurrent")))
 _assert("the Yahoo module identifies official Yahoo matchups",
@@ -517,9 +520,20 @@ _assert("the only named players are the viewer's own",
         ", ".join(sorted(set(invented))[:4]))
 _assert("previews state that starters bind from Yahoo",
         "bind from Yahoo" in RENDERED)
-_assert("a Yahoo matchup preview states its source context",
-        RENDERED.count("OFFICIAL YAHOO FANTASY MATCHUP") == 12,
-        str(RENDERED.count("OFFICIAL YAHOO FANTASY MATCHUP")))
+# WP3D SUPERSEDED THE OLD SOURCE COPY, AND KEPT WHAT IT WAS PROTECTING.
+#
+# `OFFICIAL YAHOO FANTASY MATCHUP` was written so a GM could not mistake a Yahoo
+# league fixture for a FantasyStakes wager. That distinction still matters and
+# is still asserted below. What the banner ALSO did was call the matchup
+# "official" in a product Yahoo does not operate, endorse or approve — which
+# Rev 4.3 §23 does not permit, whatever the intent. The exact contractual
+# attribution now carries the source statement, and the plain sentence carries
+# the distinction.
+_assert("no preview claims official standing for a Yahoo matchup",
+        "OFFICIAL YAHOO FANTASY MATCHUP" not in RENDERED)
+_assert("and every Yahoo preview still says it is not a FantasyStakes wager",
+        RENDERED.count("not a FantasyStakes wager") == 12,
+        str(RENDERED.count("not a FantasyStakes wager")))
 
 
 # ── Behavioural suite, in Node ───────────────────────────────────────────────

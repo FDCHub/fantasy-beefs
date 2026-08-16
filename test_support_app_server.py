@@ -69,8 +69,8 @@ with SessionLocal() as db:
     # figures were always built for. What changed is that the league now SAYS
     # so, rather than the browser guessing it.
     league = League(name="Certification League", season=2026,
-                    provider="yahoo",
-                    provider_league_key="461.l.certification",
+                    provider={provider!r},
+                    provider_league_key={provider_key!r},
                     provider_current_week={provider_week})
     db.add(league); db.flush()
 
@@ -393,6 +393,7 @@ class AppServer:
                  action_shape: str | None = None,
                  seed_skunk_week: bool = False,
                  seed_priceable_versus: bool = False,
+                 provider_binding: str = "yahoo",
                  provider_week: int | None = 5) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
@@ -413,6 +414,19 @@ class AppServer:
         # projection context carries a real board and the Versus quote route
         # can price a matchup instead of refusing one.
         self._seed_priceable_versus = seed_priceable_versus
+        # WP3D: which provider answers for the fixture league.
+        #
+        #   "yahoo"  the default every earlier suite was certified on;
+        #   "demo"   the governed synthetic provider — `provider="demo"` with a
+        #            `demo.l.` league key, which is what `is_demo_league` reads.
+        #            The binding is the ONLY thing that makes a league Demo; a
+        #            name would not, and must not;
+        #   "none"   no provider binding at all, which is the NOT CONNECTED
+        #            state a league has before anyone connects one.
+        #
+        # Parameterised rather than given a `demo=True` boolean because there
+        # are three states and a boolean can only carry two.
+        self._provider_binding = provider_binding
         # S8-P4C-3: the week the fixture league STATES. Defaults to 5 — the week
         # every earlier suite was certified on — so their fixtures are
         # unchanged. `None` seeds a provider-bound league that has never been
@@ -506,8 +520,16 @@ class AppServer:
         if self._seed_skunk_week:
             extra += _SEED_SKUNK_WEEK.format(slate_week=slate_week)
 
+        binding = {
+            "yahoo": ("yahoo", "461.l.certification"),
+            "demo": ("demo", "demo.l.certification"),
+            "none": (None, None),
+        }[self._provider_binding]
+
         script = _SEED_SCRIPT.format(db_url=db_url, root=ROOT, gm=GM_EMAIL,
                                      comm=COMMISSIONER_EMAIL, password=PASSWORD,
+                                     provider=binding[0],
+                                     provider_key=binding[1],
                                      provider_week=self._provider_week,
                                      extra_seed=extra)
         result = subprocess.run([sys.executable, "-c", script],
