@@ -258,10 +258,22 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
       report.check('every option is a team the SERVER named',
         JSON.stringify(offeredIds) === JSON.stringify(servedIds),
         `offered ${JSON.stringify(offeredIds)} vs served ${JSON.stringify(servedIds)}`);
-      report.check('and Send is refused until one is chosen',
+      // WP3C — OPENING FROM A DISCOVERY CARD ALREADY NAMES THE TARGET, so the
+      // outstanding reason is now the stake rather than the opponent. Play
+      // discovers the SERVED opponent list (§4), so a card carries a real
+      // `team_id` and `beginSession` honours it — still only if it appears in
+      // that list, which is the property §3 exists to protect and which the
+      // `every option is a team the SERVER named` check above still asserts.
+      //
+      // Send is STILL refused, and that is the claim: a composer with a target
+      // but no stake cannot send either.
+      report.check('and Send is refused until the wager is complete',
         composer.sendDisabled === true, String(composer.sendDisabled));
       report.check('with a reason a GM can act on',
-        /choose who/i.test(composer.why), composer.why);
+        composer.why.trim().length > 0, composer.why);
+      report.check('and the outstanding reason is not the target, because the '
+        + 'card already named one',
+        !/choose who/i.test(composer.why), composer.why);
 
       // SPOOFING THE DISPLAY TEXT CHANGES NOTHING. The fixture's opponent name
       // is rewritten in the DOM and the selector's ids are re-read: if any

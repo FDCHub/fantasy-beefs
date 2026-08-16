@@ -52,6 +52,15 @@ import {
 } from './economy-model.js';
 import { readEconomyConfig } from './economy-command.js';
 
+// WP3C — Play's Versus discovery is bound to the server's own opponent list,
+// and the Matchup Preview is reachable from the discovery card as well as from
+// inside the composer.
+import {
+  bindVersus, markVersusUnavailable, unbindVersus,
+} from './versus-model.js';
+import { previewSheet } from './preview.js';
+import { weekPhaseLabel } from './phase.js';
+
 import { escapeHtml, sheet } from './components.js';
 
 import { ILLUSTRATIVE, MASTHEAD } from './demo-state.js';
@@ -77,8 +86,11 @@ import { bindRules, buildRulesPanel } from './rules.js';
 import {
   beginSession, composerSheet, endSession, setIssueHook,
 } from './composer.js';
+// WP3C dropped `ActionCommandError` from this import. It was thrown by
+// `promptCounterStake` to reject an unparseable prompt string; the stake is
+// now validated inside `counter-stake.js`, which reports the problem beside
+// the field instead of throwing a command error for a typo.
 import {
-  ActionCommandError,
   acceptChallenge, counterChallenge, declineChallenge,
   explainRefusal as explainActionRefusal, issueChallenge, readActionState,
 } from './action-command.js';
@@ -246,31 +258,6 @@ export function buildPanelContent(destinationId) {
 }
 
 /**
- * Ask for a counter stake, in exact cents.
- *
- * `window.prompt` deliberately: a counter is a stake entry the approved Rev 4.2
- * Response Card composition does not include a field for, and inventing one
- * would be a product change this package does not own. The value is parsed
- * strictly and sent unclamped — the server owns every bound, and a client that
- * quietly adjusted the number would report success for a stake the GM did not
- * choose.
- *
- * @param {object} card
- * @returns {Promise<number|null>} exact cents, or null if cancelled
- */
-async function promptCounterStake(card) {
-  const raw = window.prompt(
-    `Counter ${card.opponent} with what stake, in Credits?`, '');
-  if (raw === null) return null;
-  const trimmed = String(raw).trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
-    throw new ActionCommandError(400, 'invalid_stake',
-      'Enter a stake like 25 or 25.50.');
-  }
-  return Math.round(Number(trimmed) * 100);
-}
-
-/**
  * Redraw the Action panel from current model state.
  *
  * ONLY THE ACTION PANEL. A command changes what Action shows; re-mounting the
@@ -383,6 +370,48 @@ export function closeSheet() {
  *
  * @param {{matchupId: string, marketId?: string|null}} spec
  */
+/**
+ * Open the Matchup Preview for a discovery card — WP3C, Rev 4.3 §9, §10.
+ *
+ * REACHABLE FROM TWO PLACES NOW, and the difference is deliberate. Inside the
+ * composer, the preview is PUSHED so closing it returns to a composer still
+ * holding the market, mode and stake the GM entered. From a Play discovery
+ * card there is no composer yet, so it opens as a single level and closing it
+ * returns to the carousel — which is what §10 means by "closing the Preview
+ * returns the user to the Versus card".
+ *
+ * WHAT IT IS GIVEN IS WHAT THE SURFACE HOLDS. The discovery card knows the
+ * opponent and this session knows the acting team; nothing else about the
+ * pairing is bound, so the preview draws its analysis from that and states the
+ * rest as unresolved rather than inventing a projection or a line.
+ *
+ * @param {{opponentId: string}} spec
+ */
+export function openPreview(spec) {
+  const opponent = authoritativeOpponents()
+    .find((o) => String(o.team_id) === String(spec.opponentId));
+  if (!opponent) return;
+
+  openSheet(() => previewSheet({
+    name: opponent.team_name,
+    record: '',
+    you: { name: actingTeamName() || 'Your team', record: '' },
+    weekLabel: weekPhaseLabel(authoritativeWeek()) || '',
+    // NO LINE, NO TOTAL, NO PROJECTION — and each is NULL rather than zero.
+    // Zero is a number, and `preview.js` reads a number as a quoted line: a
+    // spread of `0` means pick'em, not "unpriced". Null is what makes the
+    // absence legible to the surface that has to draw it.
+    ml: null,
+    spread: null,
+    total: null,
+    yourProjection: null,
+    opponentProjection: null,
+    yourLineup: [],
+    opponentLineup: [],
+    settled: false,
+  }));
+}
+
 export function openComposer(spec) {
   beginSession({
     matchupId: spec.matchupId,
@@ -608,6 +637,7 @@ async function bindAuthoritativeData() {
     markLedgerUnavailable();
     markCommissionerUnavailable();
     markActionUnavailable();
+    markVersusUnavailable();
     markSkunkUnavailable();
     markStandingsUnavailable();
     markEconomyUnavailable();
@@ -632,6 +662,7 @@ async function bindAuthoritativeData() {
     markLedgerUnavailable();
     markCommissionerUnavailable();
     markActionUnavailable();
+    markVersusUnavailable();
     markSkunkUnavailable();
     markStandingsUnavailable();
     markEconomyUnavailable();
@@ -674,8 +705,17 @@ async function bindAuthoritativeData() {
   // sections for a GM with no wagers, which is an answer; only a failed or
   // refused read is unavailable. Testing the body rather than its contents is
   // what keeps those two apart.
-  if (data && data.action) bindActionModel(data.action);
-  else markActionUnavailable();
+  if (data && data.action) {
+    bindActionModel(data.action);
+    // DISCOVERY READS THE SAME BODY. `versus-model` holds no state of its own
+    // beyond its mode — the opponents, their eligibility and the phase all come
+    // from the Action read that just bound, so a second fetch could not
+    // disagree with it.
+    bindVersus();
+  } else {
+    markActionUnavailable();
+    markVersusUnavailable();
+  }
 
   // WP3B — the competitive standings. Read by EVERY member, like the Skunk and
   // unlike the commissioner reads: a standings page the league cannot all see
@@ -738,7 +778,10 @@ async function bindAuthoritativeData() {
       counter: counterChallenge,
       refresh: refreshAction,
       explain: explainActionRefusal,
-      promptStake: promptCounterStake,
+      // WP3C — the stake is collected by `counter-stake.js` in a product sheet
+      // (Rev 4.3 §12.4). The hook supplies what that sheet needs to SHOW rather
+      // than a way to ask: `window.prompt` is gone from the application.
+      availableCents: boundAvailableCents(),
     });
   } else {
     setIssueHook(null);
@@ -1104,6 +1147,7 @@ function clearAuthoritativeData() {
   // the next mount cannot draw an editing surface before the server has said
   // who is acting.
   unbindStandings();
+  unbindVersus();
   unbindEconomy();
   setEconomyHook(null);
   setStandingsContext(null);
@@ -1167,7 +1211,9 @@ function mountApplication() {
   if (standingsPanel) bindStandings(standingsPanel);
 
   const leaguePanel = document.getElementById('panel-league');
-  if (leaguePanel) bindLeague(leaguePanel, { openComposer, openSheet });
+  if (leaguePanel) {
+    bindLeague(leaguePanel, { openComposer, openSheet, openPreview });
+  }
 
   const actionPanel = document.getElementById('panel-action');
   if (actionPanel) bindAction(actionPanel, { openSheet });

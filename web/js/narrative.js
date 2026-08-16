@@ -176,6 +176,20 @@ export function sportsbookView(m) {
  * @returns {string[]} paragraphs
  */
 export function whyTheLine(m) {
+  // WP3C — NO LINE, NOTHING TO EXPLAIN. Rev 4.2's opponents all carried a
+  // fixture spread, so this function could assume one. Play now discovers real
+  // opponents (§4) and a pairing has no line until the pricing engine prices
+  // the market the GM chooses. Explaining a line that does not exist would mean
+  // inventing one, so the absence is stated instead.
+  if (typeof m.spread !== 'number') {
+    return [
+      'This matchup has not been priced yet. A line is produced when you pick a '
+      + 'market, against both teams’ projected lineups for the week.',
+      'Until then there is nothing here to explain — a number shown now would '
+      + 'be one nobody quoted.',
+    ];
+  }
+
   const gap = Math.abs(m.spread).toFixed(1);
   const subjectIsDog = m.spread > 0;
   const v = voice(m);
@@ -228,6 +242,18 @@ export function whyTheLine(m) {
  */
 export function theRead(m) {
   const v = voice(m);
+
+  // WP3C — the same absence as `whyTheLine`, and for the same reason. The Read
+  // ranks a lineup against a line; with neither bound there is no read to give,
+  // and saying so beats ranking nothing.
+  if (typeof m.spread !== 'number') {
+    return [
+      'Starting lineups and projections for this matchup bind from the '
+      + 'provider. Once they do, the read is what those lineups say about the '
+      + 'price.',
+    ];
+  }
+
   const gap = Math.abs(m.spread).toFixed(1);
 
   // A settled matchup has no per-slot figures to read — see `lineupFor` in

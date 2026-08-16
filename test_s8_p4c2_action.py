@@ -688,9 +688,15 @@ _assert("P4C-2R: the composer accepts a target only from the served list",
         "is not an authoritative opponent" in _composer_src
         and "session.opponents.find((o) => o.team_id === teamId)"
         in _composer_src)
+# WP3C — THE HANDED-IN ID MAY NOW ALSO BE PLAY'S CARD ID, and it is validated
+# by the same rule. Play discovers the server's own opponents (§4), so a
+# discovery card carries a real `team_id` and opening the composer from one
+# names the target immediately. The PROPERTY this asserts is unchanged and is
+# what matters: whatever id is handed in, it is honoured only if it appears in
+# the served list. Nothing resolves a target from display text.
 _assert("P4C-2R: and a handed-in id is validated against that list too",
-        "opponents.some((o) => o.team_id === spec.opponentTeamId)"
-        in _composer_src,
+        "opponents.some((o) => o.team_id === handed)" in _composer_src
+        and "? handed : null" in _composer_src,
         "an unlisted id is treated as absent, never trusted")
 
 # §4 — the season record. Both halves: gone in production, kept in demo.
@@ -726,9 +732,18 @@ _assert("P4C-2R: a pending strip cell draws the unresolved figure, never its tex
         and "cell.text || PENDING_FIGURE" not in _components_code)
 
 # §5 — the tab header asserted a week it could not know.
+# WP3C — AND IT ASSERTS NO PHASE EITHER (Rev 4.3 §13, §27). P4C-2R stopped the
+# header claiming a week it could not know; P4C-3 bound the week and left
+# `REGULAR SEASON` a literal, so a league in its championship week still read
+# the wrong thing. Both are now read from the league's own boundaries through
+# `phase.js`, and the header writes neither.
 _assert("P4C-2R: the Action header asserts no week outside demo",
-        "'REGULAR SEASON ACTION'" in _action_ui
-        and "export function actionHeader()" in _action_ui)
+        "export function actionHeader()" in _action_ui
+        and "headingWithPhase(currentWeek(), 'ACTION')" in _action_ui)
+_assert("WP3C: and it hard-codes no season phase",
+        "REGULAR SEASON ACTION" not in _action_ui.split(
+            "export function actionHeader()")[1][:600],
+        "the phase is read, not written")
 
 # §6 — the Final Lock wording.
 _assert("P4C-2R: Action's Dynamic copy no longer says 'at kickoff'",

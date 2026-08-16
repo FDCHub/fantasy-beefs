@@ -108,18 +108,37 @@ const allRuleText = RULE_GROUPS
   .flatMap((g) => g.rules.map((r) => `${r.heading} ${r.body}`))
   .join(' ');
 
-check('the season advance is the governed $220',
-  /\$220/.test(allRuleText) && ECONOMY_STOP.buyinCents === 22000);
-check('the regular-season minimum reserve is the governed $140',
-  /\$140/.test(allRuleText) && ECONOMY_STOP.minReserveCents === 14000);
-check('the championship reserve is the governed $80',
-  /\$80/.test(allRuleText) && ECONOMY_STOP.reserveCents === 8000);
-check('the economy stop invariants hold',
-  ECONOMY_STOP.minReserveCents + ECONOMY_STOP.reserveCents === ECONOMY_STOP.buyinCents
-  && ECONOMY_STOP.minReserveCents === ECONOMY_STOP.weeklyMinCents * 14
-  && ECONOMY_STOP.reserveCents * 11 === ECONOMY_STOP.buyinCents * 4);
-check('the Skunk is the governed $10 weekly and $140 season maximum',
-  SKUNK.weeklyCents === 1000 && SKUNK.seasonMaximumCents === 14000);
+// WP3C RE-POINTED THIS BLOCK AT REV 4.3 §21 AND §22, and the direction of the
+// claim is now inverted for a reason.
+//
+// These assertions REQUIRED the rule prose to quote $220, $140 and $80 as
+// governed universal figures. Rev 4.3 §15 replaced the five-stop ladder with a
+// configurable economy — the commissioner sets the Weekly Bet Minimum and the
+// Championship Pot Contribution, and the server derives the allocation from
+// them and the league's own regular-season week count — so a league playing
+// thirteen weeks is advanced $210 and one on a $20 minimum is advanced more
+// again. Prose asserting $220 was telling most leagues the wrong number.
+//
+// So the rule text must now NOT quote them, and that is what is checked. The
+// fixture constants survive as the DEMO figures they always were, and the
+// certification for a bound session's real values lives in the settings rows
+// below, which read them from the server.
+check('the rule prose quotes no universal allocation figure (§21, §22)',
+  !/\$220|\$140|\$80\b/.test(allRuleText),
+  (allRuleText.match(/\$220|\$140|\$80\b/) || [''])[0]);
+check('it names the configurable inputs instead',
+  /Weekly Bet Minimum/.test(allRuleText)
+  && /Championship Pot Contribution/.test(allRuleText)
+  && /Season-Opening Allocation/.test(allRuleText));
+check('it asserts no fixed regular-season week count',
+  !/fourteen|14 weeks|14-week/i.test(allRuleText));
+check('the demo fixture figures still add up',
+  ECONOMY_STOP.minReserveCents + ECONOMY_STOP.reserveCents === ECONOMY_STOP.buyinCents);
+check('the Skunk fixture is a fee with NO season maximum (§24)',
+  SKUNK.feeCents === 1000 && SKUNK.seasonMaximumCents === undefined);
+check('and the rule prose shows no Skunk cap',
+  !/capped at|season maximum of|\bmax\b/i.test(allRuleText)
+  || /no enforced season maximum/i.test(allRuleText));
 check('the minimum stake quoted is the engine minimum',
   allRuleText.includes('$5') && MIN_STAKE_CENTS === 500);
 check('Current Settle is described as derived, never stored',
@@ -192,7 +211,10 @@ check('the sheet defers to the specifications',
 
 section('The four locked settings rows');
 
-const LOCKED_SETTINGS = ['Economy Stop', 'Standard Pool Bet', 'Skunk Fee', 'Championship split'];
+// WP3C — `Economy Stop` was the retired five-stop model's name for the row;
+// Rev 4.3 §22 replaces it with the governing term, Season-Opening Allocation.
+const LOCKED_SETTINGS = ['Season-Opening Allocation', 'Standard Pool Bet',
+  'Skunk Fee', 'Championship split'];
 check('exactly four settings', SETTINGS.length === 4, String(SETTINGS.length));
 check('the labels are the locked labels',
   SETTINGS.map((s) => s.label).join(' / ') === LOCKED_SETTINGS.join(' / '),
@@ -201,14 +223,16 @@ for (const label of LOCKED_SETTINGS) {
   check(`${label} renders`, panel.includes(`>${label}</span>`), label);
 }
 
-check('Economy Stop shows the governed stop',
-  SETTINGS[0].value === '$10 / week · $220 season', SETTINGS[0].value);
+check('Season-Opening Allocation shows the demo fixture allocation',
+  SETTINGS[0].value === '$220', SETTINGS[0].value);
 check('Standard Pool Bet shows the governed entry',
   SETTINGS[1].value === '$1' && POOL_ENTRY.cents === 100, SETTINGS[1].value);
 check('the Pool entry sits inside its governed bounds',
   POOL_ENTRY.cents >= POOL_ENTRY.minCents && POOL_ENTRY.cents <= POOL_ENTRY.maxCents);
-check('Skunk Fee shows the governed figures',
-  SETTINGS[2].value === '$10 weekly · $140 max', SETTINGS[2].value);
+// §24 — the fee alone. The old `$140 max` was a conceptual ceiling nothing
+// enforces, shown as though it capped a GM's exposure.
+check('Skunk Fee shows the configured fee and no cap',
+  SETTINGS[2].value === '$10', SETTINGS[2].value);
 check('Championship split shows the governed split',
   SETTINGS[3].value === '60 / 30 / 10'
   && CHAMPIONSHIP_SPLIT.split.reduce((a, b) => a + b, 0) === 100,

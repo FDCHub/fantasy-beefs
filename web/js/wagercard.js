@@ -18,7 +18,7 @@
 
 import { PENDING_FIGURE, escapeHtml } from './components.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
-import { formatOdds } from './wager-model.js';
+import { MARKETS, formatOdds } from './wager-model.js';
 import { formatSpread, hasQuotedMoneyline } from './narrative.js';
 
 /**
@@ -66,20 +66,41 @@ export function marketRow(cells, options = {}) {
  * @param {object} m
  * @returns {MarketCell[]}
  */
+/** The card-cell abbreviation for one market — one spelling, one place. */
+function shortLabel(id) {
+  const market = MARKETS.find((x) => x.id === id);
+  return market ? market.short : id.toUpperCase();
+}
+
 export function matchupMarketCells(m) {
   // The moneyline is the one cell that may be unquoted: it comes from the
   // pricing engine, while the spread and total are arithmetic on projections
   // this build already holds. An unquoted cell draws as unresolved.
+  //
+  // WP3C — ALL THREE MAY NOW BE UNRESOLVED. Rev 4.2's carousel was eleven
+  // fixture opponents, so the spread and the total were always present; Play
+  // now discovers real opponents (§4) and no read model publishes a board of
+  // lines per pairing. A quote exists once the composer prices the market the
+  // GM chooses, and until then the honest cell is a dash — not a zero, and not
+  // a number computed here from nothing.
   const quoted = hasQuotedMoneyline(m);
+  const hasSpread = typeof m.spread === 'number';
+  const hasTotal = typeof m.total === 'number';
   return [
     {
       id: 'ml',
-      label: 'ML',
+      label: shortLabel('ml'),
       value: quoted ? formatOdds(m.ml) : PENDING_FIGURE,
       tone: quoted ? (m.ml < 0 ? 'fav' : 'dog') : 'neu',
     },
-    { id: 'spread', label: 'SPR', value: formatSpread(m.spread), tone: m.spread < 0 ? 'fav' : 'dog' },
-    { id: 'ou', label: 'O/U', value: m.total.toFixed(1), tone: 'neu' },
+    { id: 'spread',
+      label: shortLabel('spread'),
+      value: hasSpread ? formatSpread(m.spread) : PENDING_FIGURE,
+      tone: hasSpread ? (m.spread < 0 ? 'fav' : 'dog') : 'neu' },
+    { id: 'ou',
+      label: shortLabel('ou'),
+      value: hasTotal ? m.total.toFixed(1) : PENDING_FIGURE,
+      tone: 'neu' },
   ];
 }
 

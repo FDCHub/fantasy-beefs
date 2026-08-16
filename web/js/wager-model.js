@@ -37,10 +37,15 @@ import { assertIntegerCents, formatCredits } from './credits.js';
  * value the proposal record stores (beefs/proposal_lifecycle.py
  * VALID_WAGER_TYPES) so the UI label and the protocol value never drift:
  * "Moneyline"/"ML" is a display label for the persisted `straight`. */
+// WP3C ADDED `short`, THE CARD-CELL ABBREVIATION. Rev 4.3 §9 fixes the market
+// row as `ML | SPR | O/U`, and `SPR` was previously a literal inside
+// `wagercard.matchupMarketCells` while `label` said `Spread`. Two spellings of
+// one market in two files is how they come to disagree; the abbreviation now
+// lives beside the market it abbreviates.
 export const MARKETS = Object.freeze([
-  Object.freeze({ id: 'ml', label: 'ML', longLabel: 'Moneyline', persisted: 'straight' }),
-  Object.freeze({ id: 'spread', label: 'Spread', longLabel: 'Spread', persisted: 'spread' }),
-  Object.freeze({ id: 'ou', label: 'O/U', longLabel: 'Over / Under', persisted: 'over_under' }),
+  Object.freeze({ id: 'ml', label: 'ML', short: 'ML', longLabel: 'Moneyline', persisted: 'straight' }),
+  Object.freeze({ id: 'spread', label: 'Spread', short: 'SPR', longLabel: 'Spread', persisted: 'spread' }),
+  Object.freeze({ id: 'ou', label: 'O/U', short: 'O/U', longLabel: 'Over / Under', persisted: 'over_under' }),
 ]);
 
 export const MODE_LOCKED = 'locked';

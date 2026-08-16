@@ -19,6 +19,7 @@
 
 import { PanelComposer, escapeHtml } from './components.js';
 import { currentWeek } from './league-model.js';
+import { weekPhaseLabel } from './phase.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
 import {
   CHAMPIONSHIPS,
@@ -60,10 +61,23 @@ export const LEDGER_SUBTITLE = 'My Week 5 · Regular Season';
  */
 export function ledgerSubtitle() {
   if (ledgerMode() === MODE_DEMO) return LEDGER_SUBTITLE;
-  const week = currentWeek();
-  return week === null ? 'My Week · Regular Season'
-                       : `My Week ${week} · Regular Season`;
+  // WP3C — THE PHASE IS AUTHORITATIVE TOO (Rev 4.3 §17, §27). `Regular Season`
+  // was a literal here, so a GM reading their Account in the championship week
+  // was told it was the regular season. `phase.js` resolves week and phase from
+  // the league's own boundaries; a session with neither says `My Week` alone
+  // rather than asserting a phase it cannot state.
+  const label = weekPhaseLabel(currentWeek());
+  return label ? `My ${label}` : 'My Week';
 }
+/**
+ * The locked Ledger / trust anchor — Rev 4.3 §2.
+ *
+ * EXACT TO THE CHARACTER, and asserted as such by the certification. It is a
+ * locked brand string: the wording, the punctuation and the capitalisation may
+ * not be altered, abbreviated or paraphrased.
+ */
+export const LEDGER_TRUST_ANCHOR = 'Real odds. Fantasy stakes. Ledger keeps score.';
+
 export const MY_SEASON_LABEL = 'My Season';
 export const TOPOFF_LABEL = 'Request Top-Off';
 
@@ -172,11 +186,34 @@ function expandableRow(spec) {
 }
 
 function ledgerSection(spec) {
-  const { number, title, sub, body, elevated = false } = spec;
+  const { number, title, sub, body, elevated = false, open = false } = spec;
+
+  // WP3C — THE SECTION IS A DISCLOSURE NOW (Rev 4.3 §14.2).
+  //
+  // WHAT THIS FIXES. The Account tab opened onto three full accounting sections
+  // at once — advances, the whole wagering statement, adjustments — and a GM
+  // whose question was "what is my Current Settle?" had to scroll past forty
+  // rows to reach it. §14.2 asks for the top-level view to answer four
+  // questions quickly and for the detail to move behind disclosure.
+  //
+  // NOTHING IS REMOVED, AND THAT IS THE OTHER HALF OF THE RULING. §14.2 is
+  // explicit that authoritative detail stays available: every row that was on
+  // the page is still on the page, one tap away, and the expanded section is
+  // byte-identical to what Rev 4.2 rendered. Collapsing is presentation state
+  // and nothing else — no read is deferred, no figure is dropped, and the
+  // section is in the DOM whether it is open or shut, so assistive tech and
+  // find-in-page still reach it.
+  //
+  // A REAL BUTTON WITH REAL `aria-expanded`, matching `expandableRow` above
+  // rather than inventing a second disclosure grammar for the same tab.
   return (
-    `<section class="fs-lsec${elevated ? ' is-elevated' : ''}" data-section="${number}">` +
-    `<div class="fs-lsec__head"><span class="fs-lsec__num">${number}</span>` +
-    `<span class="fs-lsec__title">${escapeHtml(title)}</span></div>` +
+    `<section class="fs-lsec${elevated ? ' is-elevated' : ''}` +
+    `${open ? ' is-open' : ''}" data-section="${number}" data-disclosure>` +
+    '<button type="button" class="fs-lsec__head" data-lsec-toggle ' +
+    `aria-expanded="${open ? 'true' : 'false'}">` +
+    `<span class="fs-lsec__num">${number}</span>` +
+    `<span class="fs-lsec__title">${escapeHtml(title)}</span>` +
+    '<span class="fs-lsec__chev" aria-hidden="true">›</span></button>' +
     `<div class="fs-lsec__sub">${escapeHtml(sub)}</div>` +
     `<div class="fs-lsec__body">${body}</div>` +
     '</section>'
@@ -328,6 +365,14 @@ function currentSettleCard(r) {
     '</div>' +
     '<div class="fs-note">You owe the league when this is negative. Figures are ' +
     'derived from posted Ledger state; nothing on this card moves Credits.</div>' +
+    // THE LOCKED TRUST ANCHOR — Rev 4.3 §2 and §14.1, exact to the character.
+    //
+    // HERE AND NOWHERE ELSE. §14.1 asks for it "where appropriate" on Account
+    // and the POR warns against over-repetition; the foot of the Current Settle
+    // card is the one place on the tab where the claim is being made — this is
+    // the number the whole page exists to derive, and the line says what
+    // derived it.
+    `<div class="fs-anchor">${escapeHtml(LEDGER_TRUST_ANCHOR)}</div>` +
     '</section>'
   );
 }
@@ -439,6 +484,18 @@ export function buildLedgerPanel() {
  * @param {{openSheet: Function}} api
  */
 export function bindLedger(panel, api) {
+  // WP3C — the section-level disclosures (§14.2). Same grammar as the row-level
+  // one below: a real button, a real `aria-expanded`, and a class toggle that
+  // changes nothing but what is visible.
+  panel.querySelectorAll('[data-lsec-toggle]').forEach((head) => {
+    head.addEventListener('click', () => {
+      const section = head.closest('[data-disclosure]');
+      if (!section) return;
+      const open = section.classList.toggle('is-open');
+      head.setAttribute('aria-expanded', String(open));
+    });
+  });
+
   panel.querySelectorAll('[data-expand] .fs-lexp__head').forEach((head) => {
     head.addEventListener('click', () => {
       const holder = head.parentElement;

@@ -125,10 +125,15 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('the modules are Yahoo, Bets and Pools',
     modules.map(m => m.id).join(',') === 'yahoo,bets,pools',
     modules.map(m => m.id).join(','));
+  // WP3C -- Rev 4.3 §11 removed the redundant directional arrow from every
+  // swipe heading. The wording is otherwise unchanged and still pinned exactly.
   check('the Yahoo module names official Yahoo matchups',
-    modules[0].heading === 'YAHOO LEAGUE MATCHUPS · SWIPE ↕', modules[0].heading);
+    modules[0].heading === 'YAHOO LEAGUE MATCHUPS · SWIPE', modules[0].heading);
   check('the Bets module states its derived count',
-    modules[1].heading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕', modules[1].heading);
+    modules[1].heading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', modules[1].heading);
+  check('no rail heading carries a directional arrow',
+    modules.every((m) => !m.heading.includes('↕')),
+    modules.map((m) => m.heading).join(' | '));
   // GOVERNED REVISION, S8-P4B-3. Which Pools a week has is the authoritative
   // SLATE's answer now, not a fixed frontend list. The Rev1.3 selector needs
   // four definitions passing BOTH catalog gates, and gate 2 is a per-league,
@@ -243,9 +248,15 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('the Matchup Preview opens in the shared sheet', preview.open === true);
   check('the preview states the Yahoo source context',
     preview.banner === 'OFFICIAL YAHOO FANTASY MATCHUP', preview.banner);
-  check('the preview carries the four shared sections',
-    preview.titles.join('|') === 'SPORTSBOOK VIEW|STARTING LINEUPS & PROJECTIONS|WHY THE LINE LOOKS THIS WAY|THE READ',
+  // WP3C -- Rev 4.3 §10: no odds-market block, and analysis before the dense
+  // lineup table. Same rebuild the package 2 suite measures; asserted here on
+  // the Yahoo-sourced preview as well, because both open the same sheet.
+  check('the preview carries the four shared sections in the §10 order',
+    preview.titles.join('|')
+      === 'MATCHUP|WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
     preview.titles.join('|'));
+  check('and it carries no odds-market block',
+    !preview.titles.includes('SPORTSBOOK VIEW'));
   check('it says this is not a FantasyStakes wager',
     /not a FantasyStakes wager/.test(preview.text));
   check('it explains the unquoted moneyline rather than deriving one',
@@ -389,7 +400,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // not a count of records, and a week holding three settled wagers still shows
   // three rather than gaining a fabricated fourth.
   check('the locked bets heading is unchanged on a past week',
-    past.betsHeading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕', past.betsHeading);
+    past.betsHeading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', past.betsHeading);
   // The claim in the heading comment above, asserted rather than restated: a
   // week draws the wagers it really has and never gains a fabricated one.
   check('the past week draws only the wagers it really has',
@@ -745,7 +756,20 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   section('Supporting detail expands as an audit surface');
 
   const expanded = await evaluate(`
+    // WP3C -- THE SECTION OPENS FIRST. Rev 4.3 §14.2 put the three accounting
+    // sections behind their own disclosure so the top of Account answers its
+    // four questions without scrolling past forty rows. The row-level expander
+    // this block tests now lives inside one, so reaching it means opening the
+    // section — which is itself the §14.2 requirement that collapsed detail
+    // stays REACHABLE rather than removed, and is asserted below.
     const holder = document.querySelector('[data-expand="versus-wins"]');
+    const section = holder.closest('[data-disclosure]');
+    const sectionToggle = section ? section.querySelector('[data-lsec-toggle]') : null;
+    const sectionHiddenBefore = section
+      ? holder.getBoundingClientRect().height === 0 : false;
+    if (sectionToggle && !section.classList.contains('is-open')) sectionToggle.click();
+    const sectionAria = sectionToggle
+      ? sectionToggle.getAttribute('aria-expanded') : null;
     const head = holder.querySelector('.fs-lexp__head');
     const before = holder.querySelector('.fs-lexp__body').getBoundingClientRect().height;
     head.click();
@@ -753,8 +777,15 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     const rows = [...holder.querySelectorAll('.fs-lexp__row [data-exact-cents]')]
       .map(el => Number(el.dataset.exactCents));
     const headerCents = Number(head.querySelector('[data-exact-cents]').dataset.exactCents);
-    return { before, after, rows, headerCents, aria: head.getAttribute('aria-expanded') };
+    return { before, after, rows, headerCents, aria: head.getAttribute('aria-expanded'),
+             sectionHiddenBefore, sectionAria };
   `);
+  check('the section is collapsed until asked (§14.2)',
+    expanded.sectionHiddenBefore === true);
+  check('opening it is announced to assistive tech',
+    expanded.sectionAria === 'true', String(expanded.sectionAria));
+  check('and the detail inside is fully reachable, not removed',
+    expanded.rows.length > 0, `${expanded.rows.length} supporting rows`);
   check('the row is collapsed until asked', expanded.before === 0);
   check('expanding reveals the supporting rows', expanded.after > 0);
   check('the expansion is announced to assistive tech', expanded.aria === 'true');

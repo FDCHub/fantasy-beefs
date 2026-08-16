@@ -83,19 +83,36 @@ export function settingsRows() {
   const pool = s.pool_entry;
 
   return Object.freeze([
+    // WP3C — SEASON-OPENING ALLOCATION, not "Economy Stop" (Rev 4.3 §15, §22).
+    //
+    // THREE STALE THINGS WENT. The label named the retired five-stop model; the
+    // detail asserted "fourteen weeks", which is wrong for any league that does
+    // not play fourteen; and both implied a fixed ladder the configurable
+    // economy replaced. Every figure below is the SERVER's own — a configured
+    // league reports its own derived terms and an unconfigured one reports the
+    // historical fixed stop, and this surface cannot tell the difference
+    // because it does not do the arithmetic.
+    //
+    // THE WEEK COUNT IS DESCRIBED, NOT STATED. It would be `min_reserve ÷
+    // weekly_min`, and Rev 4.3 §16.2 forbids reimplementing the economic
+    // formula in the browser to explain it. The components are shown; the
+    // multiplication that relates them is the server's.
     Object.freeze({
       id: 'economy-stop',
-      label: 'Economy Stop',
-      value: `${formatCredits(stop.weekly_min_cents)} / week · `
-        + `${formatCredits(stop.buyin_cents)} season`,
+      label: 'Season-Opening Allocation',
+      value: formatCredits(stop.buyin_cents),
       exactCents: stop.buyin_cents,
       editable: stop.editable,
       detail:
-        `${formatCredits(stop.weekly_min_cents)} released each week for fourteen `
-        + `weeks (${formatCredits(stop.min_reserve_cents)}), plus a `
-        + `${formatCredits(stop.reserve_cents)} championship reserve, advanced as `
-        + `${formatCredits(stop.buyin_cents)} at season open. Fixed for the `
-        + 'season: changing it would re-price obligations GMs have already funded.',
+        `Each GM is advanced ${formatCredits(stop.buyin_cents)} at season open: `
+        + `${formatCredits(stop.min_reserve_cents)} as the Weekly Minimum `
+        + `reserve — your league's ${formatCredits(stop.weekly_min_cents)} Weekly `
+        + 'Bet Minimum across its regular-season weeks — plus '
+        + `${formatCredits(stop.reserve_cents)} as the Championship Pot `
+        + 'Contribution. The commissioner sets those two before the season and '
+        + 'they lock at activation, because changing them would re-price '
+        + 'obligations GMs have already funded. The Skunk Fee is contingent and '
+        + 'is not part of this allocation.',
       source: 'League economy configuration',
     }),
     Object.freeze({
@@ -116,17 +133,25 @@ export function settingsRows() {
           : 'It freezes for the season once the first week is collected.'),
       source: 'League Pool settings',
     }),
+    // WP3C — THE "max" IS GONE (Rev 4.3 §19, WP3C §24).
+    //
+    // The row read `$10 weekly · $140 max`, and both halves misdescribed the
+    // rule. "Weekly" implied every GM pays every week; in fact exactly ONE GM
+    // pays per completed regular-season week — the largest margin-of-defeat
+    // loser. And the "max" was a CONCEPTUAL ceiling the backend computes for
+    // reporting and NOTHING ENFORCES, presented as though it capped a GM's
+    // exposure. §24 says not to show it, so it is not shown.
     Object.freeze({
       id: 'skunk-fee',
       label: 'Skunk Fee',
-      value: `${formatCredits(s.skunk.weekly_cents)} weekly · `
-        + `${formatCredits(s.skunk.season_maximum_cents)} max`,
+      value: formatCredits(s.skunk.weekly_cents),
       exactCents: s.skunk.weekly_cents,
       editable: s.skunk.editable,
       detail:
-        `${formatCredits(s.skunk.weekly_cents)} a week, regular season only, `
-        + `accumulating to at most ${formatCredits(s.skunk.season_maximum_cents)} `
-        + 'across a season. Fixed for the season.',
+        `${formatCredits(s.skunk.weekly_cents)} per completed regular-season `
+        + 'week, charged to the team that lost its Yahoo matchup by the largest '
+        + 'margin. Tied largest losers split one fee. There is no postseason '
+        + 'Skunk and no enforced season maximum. Fixed for the season.',
       source: 'Skunk rules',
     }),
     Object.freeze({
@@ -135,8 +160,11 @@ export function settingsRows() {
       value: s.championship_split.split.join(' / '),
       editable: s.championship_split.editable,
       detail:
-        'How the championship pot divides by place. Fixed for the season — '
-        + 'changing it would re-price a pot GMs have already funded.',
+        'How the championship pot divides: 60 to the champion, 30 to the '
+        + 'runner-up, 10 to the official third place. Yahoo is authoritative for '
+        + 'all three; there is no commissioner override and no standings-based '
+        + 'fallback. Fixed for the season — changing it would re-price a pot GMs '
+        + 'have already funded.',
       source: 'Championship rules',
     }),
   ]);

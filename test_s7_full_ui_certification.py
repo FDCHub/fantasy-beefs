@@ -347,8 +347,12 @@ _assert("the Ledger title is the locked wording",
         APP.get("ledgerTitle") == "FANTASYSTAKES LEDGER")
 _assert("the Rules title is the locked wording",
         APP.get("rulesTitle") == "RULES & SETTINGS")
+# WP3C — Rev 4.3 §11 removed the redundant directional arrow from every swipe
+# heading. Wording otherwise unchanged and still pinned exactly.
 _assert("The Week's bets heading is the locked viewport treatment",
-        APP.get("betsHeading") == "FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕")
+        APP.get("betsHeading") == "FANTASYSTAKES BETS · 4 SHOWN · SWIPE")
+_assert("no rendered heading carries a directional arrow (§11)",
+        "↕" not in ALL_PANELS, "↕ found")
 _assert("the legal line is exact and lives on Rules & Settings only",
         APP.get("legalLine") == "© 2026 Fraser D. Coleman. All Rights Reserved. FantasyStakes™."
         and PANELS.get("rules", "").count('id="fs-legal"') == 1
@@ -366,9 +370,17 @@ _assert("three markets, persisted as the lifecycle's own values",
 _assert("the display labels are ML, Spread and O/U",
         [m["label"] for m in MARKETS] == ["ML", "Spread", "O/U"])
 
-for tab in ("league", "action", "week"):
+# WP3C — PLAY IS UNBOUND IN THIS PROBE, so it renders its intentional empty
+# state rather than cards. The probe imports the modules directly and binds no
+# session, and §4 forbids Play falling back to invented opponents — so "no
+# cards" is the correct output here and the browser tier below is where a BOUND
+# Play is measured with real ones.
+for tab in ("action", "week"):
     _assert(f"{tab} renders the shared wager card",
             'class="fs-wcard' in PANELS.get(tab, ""))
+_assert("unbound Play renders its intentional state, not invented cards",
+        'data-versus-state' in PANELS.get("league", "")
+        and 'class="fs-wcard' not in PANELS.get("league", ""))
 _assert("the lifecycle card is shared by Action and The Week",
         "fs-wcard--lifecycle" in PANELS.get("action", "")
         and "fs-wcard--lifecycle" in PANELS.get("week", ""))

@@ -122,14 +122,26 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
       const cols = new Set(cards.map(c => Math.round(c.getBoundingClientRect().left))).size;
       const rows = new Set(cards.map(c => Math.round(c.getBoundingClientRect().top))).size;
       const grid = document.getElementById('fs-pools-grid');
-      return { count: cards.length, cols, rows,
+      if (!grid) {
+        const empty = document.querySelector('#panel-league [data-pools-state]');
+        return { drawn: false, state: empty ? empty.dataset.poolsState : null };
+      }
+      return { drawn: true, count: cards.length, cols, rows,
                scrolls: grid.scrollHeight > grid.clientHeight + 1,
                allVisible: cards.every(c => c.getBoundingClientRect().height > 0) };
     `);
-    check('League Pools stay a 2×2 grid with all four visible',
-      pools.count === 4 && pools.cols === 2 && pools.rows === 2
-      && pools.allVisible === true && pools.scrolls === false,
-      `${pools.cols}×${pools.rows}, scrolls=${pools.scrolls}`);
+    // WP3C — Play's Pools are the governed weekly draw now (§11). A league with
+    // no drawn slate has no grid, and saying so is the required behaviour rather
+    // than a failure — four Pools are never invented to fill the layout.
+    if (!pools.drawn) {
+      check('no slate drawn — Play shows its intentional state, not four invented Pools',
+        pools.state !== null, String(pools.state));
+    } else {
+      check('League Pools stay a 2-column grid with all of them visible',
+        pools.count > 0 && pools.cols === 2
+        && pools.allVisible === true && pools.scrolls === false,
+        `${pools.count} in ${pools.cols}×${pools.rows}, scrolls=${pools.scrolls}`);
+    }
 
     // The commissioner's twelve cards and the legal footer must remain usable.
     const commish = await evaluate(`
@@ -160,9 +172,12 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
       commish.legalReachable === true);
 
     // A sheet must fit and stay closable at every size.
+    // WP3C — the discovery card lost its `Challenge ›` foot (§9), so the sheet
+    // is opened from the card itself. The claim is unchanged: whatever opens a
+    // sheet, the sheet must fit the viewport and stay closable at every size.
     const sheet = await evaluate(`
       ${go('league')}
-      document.querySelector('#panel-league .fs-wcard__cta').click();
+      document.querySelector('#panel-league .fs-wcard').click();
       const s = document.getElementById('fs-sheet').getBoundingClientRect();
       const close = document.querySelector('#fs-sheet [data-fs-close]').getBoundingClientRect();
       const fits = s.right <= ${vp.width} + 0.5 && s.left >= -0.5 && s.bottom <= window.innerHeight + 0.5;
@@ -252,7 +267,10 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
 
     // Push the preview on top, then come back.
     document.querySelector('[data-composer-preview]').click();
-    const previewOpen = /SPORTSBOOK VIEW/.test(document.getElementById('fs-sheet').textContent);
+    // WP3C — §10 removed the SPORTSBOOK VIEW block. The preview is now
+    // identified by its own heading, which is what the sheet is titled.
+    const previewOpen = /Matchup Preview/.test(document.getElementById('fs-sheet').textContent)
+      && /WHY THE LINE LOOKS THIS WAY/.test(document.getElementById('fs-sheet').textContent);
     document.querySelector('#fs-sheet [data-fs-close]').click();
     const backInComposer = /YOUR STAKE/.test(document.getElementById('fs-sheet').textContent);
     const stakeAfter = document.querySelector('#fs-stake-input').value;
@@ -437,7 +455,10 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
     ${go('week')}
     const weeks = [...document.querySelectorAll('#panel-week [data-week]')]
       .map(w => w.getAttribute('aria-pressed'));
-    document.querySelector('#panel-league .fs-wcard__cta').click();
+    // WP3C — the discovery card lost its foot row (§9); the card itself opens
+    // the composer.
+    ${go('league')}
+    document.querySelector('#panel-league .fs-wcard').click();
     const modes = [...document.querySelectorAll('[data-composer-mode]')]
       .map(m => m.getAttribute('aria-pressed'));
     document.querySelector('#fs-sheet [data-fs-close]').click();

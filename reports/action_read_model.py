@@ -105,6 +105,19 @@ _STATUS_WORD = {
 }
 
 
+#: The two Versus subject phases, as this API contract spells them.
+#:
+#: DELIBERATELY LOWERCASE AND DELIBERATELY SEPARATE from
+#: `betting/pool_season_boundary`'s `REGULAR`/`POSTSEASON`. That module's
+#: constants are a governed internal vocabulary; these are a wire format. They
+#: are the same DISTINCTION, decided by that module and reported by this one —
+#: `_versus_subject_field` calls `is_postseason_week` and translates. Importing
+#: the internal constants to serve them raw would tie the wire format to an
+#: internal rename, and `reports/` keeps a narrow import surface besides.
+PHASE_REGULAR = "regular"
+PHASE_POSTSEASON = "postseason"
+
+
 class ActionReadError(RuntimeError):
     """The Action state cannot be derived. Never a fallback to illustrative data."""
 
@@ -190,6 +203,20 @@ class ActionOpponent:
     team_id: int
     team_name: str
     owner: str
+    #: WP3C — whether this team may be a Versus subject RIGHT NOW.
+    #:
+    #: TRUE FOR EVERY MEMBER IN THE REGULAR SEASON, and in the postseason only
+    #: for the championship-track field the governed authority names. It is
+    #: REPORTED here, never decided: the caller supplies the eligible set, which
+    #: it obtained from `beefs/postseason_versus`, and the funding gate refuses
+    #: an ineligible pairing regardless of what this said.
+    #:
+    #: WHY THE LIST IS ANNOTATED RATHER THAN FILTERED. An eliminated opponent
+    #: that simply vanished from the composer would leave a GM wondering where
+    #: their league-mate went; a flagged one lets the surface say WHY. It also
+    #: keeps this list usable by the Action cards, which must still name the
+    #: opponent on a wager struck before elimination.
+    versus_eligible: bool = True
 
 
 @dataclass(frozen=True)
@@ -201,6 +228,21 @@ class ActionState:
     week: int
     cards: tuple[ActionCard, ...] = field(default_factory=tuple)
     opponents: tuple[ActionOpponent, ...] = field(default_factory=tuple)
+
+    # -- WP3C: the Versus subject phase ---------------------------------------
+    #
+    #: `regular` or `postseason`, from the league's own governed boundary.
+    versus_phase: str = PHASE_REGULAR
+    #: Whether the eligible field could be determined at all. FALSE in a
+    #: postseason week whose championship track the provider has not classified
+    #: -- and then NO opponent is eligible, because the honest answer to "who
+    #: may I challenge?" is "we cannot tell yet", not "everyone".
+    versus_field_determinable: bool = True
+
+    @property
+    def eligible_opponents(self) -> tuple[ActionOpponent, ...]:
+        """The subset a new wager may actually be offered against."""
+        return tuple(o for o in self.opponents if o.versus_eligible)
 
     def section(self, name: str) -> tuple[ActionCard, ...]:
         return tuple(c for c in self.cards if c.section == name)
@@ -312,12 +354,22 @@ def _settlement(db: Session, challenge_id: int, team_id: int
 
 
 def gm_action_state(db: Session, *, team_id: int, league_id: int,
-                    week: Optional[int] = None) -> ActionState:
+                    week: Optional[int] = None,
+                    eligible_team_ids: Optional[frozenset] = None,
+                    versus_phase: str = PHASE_REGULAR,
+                    versus_field_determinable: bool = True) -> ActionState:
     """Every Action card for one GM, already classified.
 
     LEAGUE-SCOPED. A challenge is only this GM's Action if it belongs to the
     league being read — the acting league comes from the session, and reading
     across leagues would be the boundary violation P2 closed.
+
+    WP3C — `eligible_team_ids` IS SUPPLIED, NOT COMPUTED. Postseason Versus
+    eligibility belongs to `beefs/postseason_versus`, is derived from the
+    championship track, and reaching it needs the provider layer `reports/` is
+    not allowed to import. The composition layer assembles it and hands it in;
+    this module marks the list and invents nothing. `None` means "no restriction
+    applies", which is the regular season and every pre-WP3C caller.
     """
     team = db.query(Team).filter(Team.id == team_id).first()
     if team is None:
@@ -436,8 +488,19 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
     # EVERY OTHER TEAM IN THIS LEAGUE, and no team outside it. The cross-league
     # refusal exists on the route too; excluding them here means the UI never
     # offers a target that is going to be refused.
+    #
+    # WP3C EXTENDS THAT SAME REASONING INTO THE POSTSEASON. Before this, every
+    # league member was offered as a Versus target in every week -- including,
+    # in week 16, two consolation teams whose wager `beefs/postseason_versus`
+    # refuses at the funding gate. The list is now MARKED with the governed
+    # answer, so the surface can decline to offer what the engine will decline
+    # to accept.
     opponents = tuple(
-        ActionOpponent(team_id=t.id, team_name=t.team_name, owner=t.owner)
+        ActionOpponent(
+            team_id=t.id, team_name=t.team_name, owner=t.owner,
+            versus_eligible=(eligible_team_ids is None
+                             or t.id in eligible_team_ids),
+        )
         for t in db.query(Team)
         .filter(Team.league_id == league_id, Team.id != team_id)
         .order_by(Team.team_name).all()
@@ -445,4 +508,6 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
 
     return ActionState(team_id=team_id, league_id=league_id,
                        week=week or 0, cards=tuple(cards),
-                       opponents=opponents)
+                       opponents=opponents,
+                       versus_phase=versus_phase,
+                       versus_field_determinable=versus_field_determinable)

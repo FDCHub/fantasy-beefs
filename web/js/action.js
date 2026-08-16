@@ -13,6 +13,8 @@
  * ========================================================================== */
 
 import { PanelComposer, escapeHtml, sectionHeading, tabHeader } from './components.js';
+import { counterStakeSheet } from './counter-stake.js';
+import { headingWithPhase } from './phase.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
 import {
   RAILS,
@@ -61,10 +63,15 @@ export function actionHeader() {
   // the provider has always stated its current week and the gateway now
   // persists it. Where no refresh has stated one the header still drops the
   // claim rather than guessing — the repair is not undone, it is satisfied.
-  const week = currentWeek();
-  return week === null
-    ? 'REGULAR SEASON ACTION'
-    : `WEEK ${week} · REGULAR SEASON ACTION`;
+  // WP3C — THE PHASE IS READ TOO, not only the week. S8-P4C-3 bound the week
+  // and left `REGULAR SEASON` as a literal, so a league in its championship
+  // week read `WEEK 16 · REGULAR SEASON ACTION`. `phase.js` resolves both from
+  // the league's own boundaries and this surface writes neither.
+  //
+  // `ACTION` STAYS. Rev 4.3 §12.2 keeps it as content terminology on this
+  // heading even though the tab is now named Status — it describes what the
+  // page holds, and the nav label describes where the page is.
+  return headingWithPhase(currentWeek(), 'ACTION');
 }
 
 /**
@@ -75,8 +82,14 @@ export function actionHeader() {
  * When it is null the sheet draws no controls and says why, rather than drawing
  * dead buttons.
  *
+ * WP3C REPLACED `promptStake` WITH `availableCents`. The stake is now collected
+ * by `counter-stake.js` in a product sheet, so the hook no longer supplies a
+ * way to ASK for one — it supplies what the sheet needs to show, which is the
+ * GM's spendable Credits, and the command to send.
+ *
  * @type {null|{accept: Function, counter: Function, decline: Function,
- *              refresh: Function, explain: Function, promptStake: Function}}
+ *              refresh: Function, explain: Function,
+ *              availableCents: number|null}}
  */
 let RESPOND_HOOK = null;
 
@@ -445,13 +458,30 @@ function bindResponseControls(host, api, card) {
         } else if (control === 'decline') {
           await RESPOND_HOOK.decline(card.challengeId);
         } else {
-          const cents = await RESPOND_HOOK.promptStake(card);
-          if (cents === null) {
-            buttons.forEach((b) => { b.disabled = false; });
-            if (why) why.textContent = '';
-            return;
-          }
-          await RESPOND_HOOK.counter(card.challengeId, cents);
+          // COUNTER OPENS A SHEET LEVEL — Rev 4.3 SS12.4, WP3C SS15. It used to
+          // call `window.prompt`, which showed the origin's hostname, could not
+          // restate what was being countered, had no Credits grammar, and is
+          // suppressed outright by several mobile browsers — where the control
+          // then silently did nothing.
+          //
+          // THE SEND LIVES INSIDE THE SHEET, so this handler does not await a
+          // stake and then send it. It hands the sheet the command and the
+          // refresh; the sheet owns the exchange from there, which is what lets
+          // a refusal be rendered beside the field the GM must correct rather
+          // than behind a dialog that has already closed.
+          buttons.forEach((b) => { b.disabled = false; });
+          if (why) why.textContent = '';
+          api.push(() => counterStakeSheet({
+            card,
+            availableCents: RESPOND_HOOK.availableCents ?? null,
+            explain: RESPOND_HOOK.explain,
+            onSubmit: async (cents) => {
+              await RESPOND_HOOK.counter(card.challengeId, cents);
+              await RESPOND_HOOK.refresh();
+              api.close();
+            },
+          }));
+          return;
         }
         await RESPOND_HOOK.refresh();
         api.close();

@@ -224,12 +224,21 @@ _assert("the three certified invariants hold on the UI's copy",
         and stop.get("reserveCents", 0) * 11 == stop.get("buyinCents", 0) * 4)
 
 skunk = APP.get("skunk", {})
+# WP3C — the FIXTURE fee, and no season maximum in the UI at all.
+#
+# Rev 4.3 §19 and WP3C §24 removed the cap from user-visible copy: the backend
+# still computes `season_maximum_cents` as a REPORTED ceiling for its own
+# purposes, and nothing enforces it, so presenting it as a GM's maximum exposure
+# was describing a limit that does not exist. The backend constant is still
+# asserted, because it is still the backend's; what the UI must not do is show
+# it, and that is what changed.
 _assert("the governed weekly Skunk is 1000 cents",
         "DEFAULT_SKUNK_CONTRIBUTION_CENTS = 1000" in SKUNK_PY
-        and skunk.get("weeklyCents") == 1000)
-_assert("the governed season maximum is 14000 cents",
-        "DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS = 14000" in SKUNK_PY
-        and skunk.get("seasonMaximumCents") == 14000)
+        and skunk.get("feeCents") == 1000)
+_assert("the backend still computes a reported season ceiling",
+        "DEFAULT_SKUNK_SEASON_MAXIMUM_CENTS = 14000" in SKUNK_PY)
+_assert("but the UI fixture carries no season maximum (§24)",
+        skunk.get("seasonMaximumCents") is None, str(skunk.get("seasonMaximumCents")))
 _assert("the Skunk window is the regular season only",
         "regular season only (weeks 1-14), never" in SKUNK_PY)
 
@@ -250,9 +259,12 @@ _assert("the split totals 100", sum(split.get("split", [])) == 100)
 
 settings = APP.get("settings", [])
 _assert("exactly four settings rows", len(settings) == 4, str(len(settings)))
+# WP3C — `Economy Stop` named the retired five-stop model. Rev 4.3 §22 replaces
+# it with the governing term.
 _assert("the labels are the locked labels",
         [s["label"] for s in settings]
-        == ["Economy Stop", "Standard Pool Bet", "Skunk Fee", "Championship split"],
+        == ["Season-Opening Allocation", "Standard Pool Bet", "Skunk Fee",
+            "Championship split"],
         " / ".join(s["label"] for s in settings))
 _assert("every settings row names its governing source",
         all(len(s.get("source", "")) > 3 for s in settings))
@@ -633,8 +645,10 @@ _assert("the GM cards lay out in two columns",
 
 print("\nCarry-forward: The Week's locked bets heading")
 
-_assert("the heading is the locked Rev 4.2 wording",
-        APP.get("betsHeading") == "FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕",
+# WP3C — Rev 4.3 §11 removed the redundant directional arrow. The wording is
+# otherwise unchanged and is still pinned exactly.
+_assert("the heading is the locked Rev 4.3 wording",
+        APP.get("betsHeading") == "FANTASYSTAKES BETS · 4 SHOWN · SWIPE",
         str(APP.get("betsHeading")))
 _assert("it renders unchanged on the current week", APP.get("weekCurrentHasHeading") is True)
 _assert("and unchanged on a past week", APP.get("weekPastHasHeading") is True)

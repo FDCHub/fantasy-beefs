@@ -58,7 +58,9 @@ export const WEEK_SUBTITLE = 'Official Yahoo matchups + FantasyStakes action';
  * heading must not be invented, and neither must a fourth historical wager to
  * satisfy it. The heading is fixed here and the module shows at most four.
  */
-export const BETS_HEADING = 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕';
+// Rev 4.3 §11 — the word SWIPE carries the affordance; the redundant
+// directional arrow is removed and not replaced with another glyph.
+export const BETS_HEADING = 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE';
 
 /** The viewport cap the heading states. */
 export const BETS_SHOWN = 4;
@@ -221,7 +223,7 @@ function yahooModule() {
 
   return (
     '<section class="fs-wkmod" data-module="yahoo">' +
-    sectionHeading('YAHOO LEAGUE MATCHUPS · SWIPE ↕') +
+    sectionHeading('YAHOO LEAGUE MATCHUPS · SWIPE') +
     `<div class="fs-vcar" id="fs-yahoo-carousel"`
     + `${isList ? ' role="list"' : ''}>${body}</div>` +
     '</section>'

@@ -4047,6 +4047,11 @@ class LeagueContextOut(BaseModel):
 
     season_final_week:  Optional[int]
     playoff_start_week: Optional[int]
+    #: WP3C -- the authoritative season phase for presentation:
+    #: `regular` | `postseason` | `championship` | `complete`, or null when no
+    #: refresh has stated a week. Rev 4.3 SS17/SS27: no surface hard-codes
+    #: "Regular Season" and none infers eligibility from this.
+    phase: Optional[str] = None
 
     #: The acting GM's season W/L, from decided matchups only.
     record_resolved: bool
@@ -4134,6 +4139,7 @@ def league_context_me(
         acting_provider_team_key=context.acting_provider_team_key,
         season_final_week=context.season_final_week,
         playoff_start_week=context.playoff_start_week,
+        phase=context.phase,
         record_resolved=record.resolved,
         wins=record.wins,
         losses=record.losses,
@@ -4248,6 +4254,11 @@ class ActionOpponentOut(BaseModel):
     team_id:   int
     team_name: str
     owner:     str
+    #: WP3C -- whether a NEW Versus wager may name this team right now.
+    #: Always true in the regular season; in the postseason, true only for the
+    #: championship-track field. Presentation guidance: the funding gate refuses
+    #: an ineligible pairing whatever this said.
+    versus_eligible: bool = True
 
 
 class ActionStateOut(BaseModel):
@@ -4257,6 +4268,68 @@ class ActionStateOut(BaseModel):
     counts:    dict[str, int]
     sections:  dict[str, list[ActionCardOut]]
     opponents: list[ActionOpponentOut]
+    #: WP3C -- `regular` or `postseason`, from the league's governed boundary.
+    versus_phase: str = "regular"
+    #: WP3C -- false when the postseason field is not yet determinable. No
+    #: opponent is eligible then, and the surface says so rather than listing
+    #: everyone.
+    versus_field_determinable: bool = True
+
+
+def _versus_subject_field(db: Session, league_id: int, week: Optional[int]):
+    """Who may be a Versus subject in this league-week -- WP3C.
+
+    THE COMPOSITION LAYER ASSEMBLES IT, WHICH IS WHY IT LIVES HERE. The rule is
+    `beefs/postseason_versus`'s and the championship facts are
+    `season/championship_track.py`'s; neither may reach the provider, and
+    `reports/` may reach neither. This function is the one place those three are
+    allowed to meet -- the same reason `_postseason_track_state` sits here.
+
+    IT DECIDES NOTHING AND REFUSES NOTHING. It reports the field the governed
+    authority names so the composer can avoid OFFERING a wager the funding gate
+    is certain to refuse. The gate still runs, unchanged, on every write.
+
+    FAILS CLOSED, THREE WAYS. A postseason week whose track cannot be classified,
+    a provider that errors, and an eligibility helper that refuses all return
+    "not determinable" -- and a not-determinable field admits NOBODY. Returning
+    the league's teams there would be exactly the pre-WP1C defect: consolation
+    teams offered a wager they may not take.
+
+    THE REGULAR SEASON SHORT-CIRCUITS BEFORE ANY PROVIDER WORK, on one phase
+    comparison against a column the league row already carries. An ordinary
+    page load in week 5 does no extra I/O at all.
+
+    @returns (eligible_team_ids | None, phase, determinable)
+    """
+    from beefs.postseason_versus import (
+        PostseasonVersusError, eligible_team_ids, is_postseason_week,
+    )
+    from reports.action_read_model import PHASE_POSTSEASON, PHASE_REGULAR
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None or week is None:
+        return None, PHASE_REGULAR, True
+
+    if not is_postseason_week(league, week):
+        return None, PHASE_REGULAR, True
+
+    try:
+        from providers.postseason_bracket import league_provider
+        from providers.yahoo.identity import (
+            PROVIDER as DEFAULT_PROVIDER, build_team_identity_resolver,
+        )
+        state = _postseason_track_state(db, league, week=week)
+        provider = league_provider(db, league_id=league_id) or DEFAULT_PROVIDER
+        resolver = build_team_identity_resolver(db, league_id=league_id,
+                                                provider=provider)
+        return eligible_team_ids(state, resolver), PHASE_POSTSEASON, True
+    except Exception:                                   # noqa: BLE001
+        # EVERY failure mode lands here on purpose and lands in the SAME place:
+        # an unclassified track, a provider error, an unresolvable team key. The
+        # distinction between them matters to an operator, not to a GM deciding
+        # whom to challenge, and all three have one honest answer -- we cannot
+        # tell, so nobody is offered.
+        return frozenset(), PHASE_POSTSEASON, False
 
 
 @app.get("/league/{league_id}/action/me", response_model=ActionStateOut)
@@ -4284,8 +4357,19 @@ def action_me(
             "message": (f"User {current_user.id} owns no team in league "
                         f"{league_id}."),
         })
+    # WP3C -- the week the Versus subject question is asked about. The provider's
+    # own current week; `None` when no refresh has stated one, which
+    # short-circuits to the regular-season answer rather than guessing a week.
+    league_row = db.query(League).filter(League.id == league_id).first()
+    current_week = league_row.provider_current_week if league_row else None
+    eligible, phase, determinable = _versus_subject_field(
+        db, league_id, current_week)
+
     try:
-        state = gm_action_state(db, team_id=team_id, league_id=league_id)
+        state = gm_action_state(db, team_id=team_id, league_id=league_id,
+                                eligible_team_ids=eligible,
+                                versus_phase=phase,
+                                versus_field_determinable=determinable)
     except ActionReadError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -4301,8 +4385,11 @@ def action_me(
         sections={name: [out(c) for c in state.section(name)]
                   for name in ACTION_SECTIONS},
         opponents=[ActionOpponentOut(team_id=o.team_id, team_name=o.team_name,
-                                     owner=o.owner)
+                                     owner=o.owner,
+                                     versus_eligible=o.versus_eligible)
                    for o in state.opponents],
+        versus_phase=state.versus_phase,
+        versus_field_determinable=state.versus_field_determinable,
     )
 
 

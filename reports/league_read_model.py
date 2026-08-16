@@ -58,6 +58,15 @@ from db.schema import League, Matchup, Team
 PROVIDER_BOUND = "bound"
 #: The league is bound to a provider but no refresh has stated anything yet.
 PROVIDER_PENDING = "pending"
+
+# -- WP3C: the season phases a surface may render -----------------------------
+#
+# Lowercase wire values, for the same reason the Action contract's are: these
+# are an API vocabulary, not `pool_season_boundary`'s internal one.
+PHASE_REGULAR = "regular"
+PHASE_POSTSEASON = "postseason"
+PHASE_CHAMPIONSHIP = "championship"
+PHASE_COMPLETE = "complete"
 #: The league has no provider identity at all — a local or fixture league.
 PROVIDER_ABSENT = "absent"
 
@@ -91,6 +100,25 @@ class LeagueContext:
 
     season_final_week: Optional[int]
     playoff_start_week: Optional[int]
+
+    # -- WP3C: the authoritative season phase, for presentation -----------------
+    #
+    #: One of `regular` | `postseason` | `championship` | `complete`, or None
+    #: when no provider refresh has stated a week and there is therefore no
+    #: phase to state.
+    #:
+    #: DECIDED BY THE GOVERNED BOUNDARY, NEVER BY A WEEK LITERAL. The
+    #: regular/postseason split is `betting/pool_season_boundary.phase_for_week`
+    #: reading this league's own `playoff_start_week`; `championship` is the
+    #: league's own final week; `complete` is `season_closed_at` being stamped.
+    #: Four surfaces render this and none of them re-derives it.
+    #:
+    #: PRESENTATION ONLY, AND THE DISTINCTION MATTERS. This says WHAT PART OF
+    #: THE SEASON IT IS. It says nothing about who may be a Versus subject --
+    #: that is `versus_eligible` on the Action contract, decided from the
+    #: championship track. A surface that inferred eligibility from this field
+    #: would be inferring it from a week number, which WP3C forbids.
+    phase: Optional[str] = None
 
     @property
     def week_resolved(self) -> bool:
@@ -175,6 +203,39 @@ class WeekState:
 
 # ── League context ────────────────────────────────────────────────────────────
 
+def _season_phase(league: League, week: Optional[int]) -> Optional[str]:
+    """This league-week's phase, from the league's own governed boundaries.
+
+    ORDERED MOST-FINAL FIRST. A closed season is `complete` whatever week the
+    provider last stated -- the season is over, and reporting `postseason`
+    because week 17 is still on the row would be describing a season that has
+    already paid out.
+
+    `championship` IS THE FINAL WEEK OF THE POSTSEASON, not a separate span.
+    Rev 4.3 lists it as its own user-facing state because the podium is decided
+    there and the surfaces say so; underneath it is still the postseason, and
+    Versus eligibility does not change at that boundary.
+
+    NULL WHEN THERE IS NO WEEK. A league whose provider has never stated one has
+    no phase to state, and every surface renders that as unresolved rather than
+    assuming the season has started.
+    """
+    if league.season_closed_at is not None:
+        return PHASE_COMPLETE
+    if week is None:
+        return None
+
+    from betting.pool_season_boundary import (
+        PHASE_POSTSEASON as BOUNDARY_POSTSEASON, phase_for_week,
+        season_final_week,
+    )
+
+    if phase_for_week(league, week) != BOUNDARY_POSTSEASON:
+        return PHASE_REGULAR
+    return (PHASE_CHAMPIONSHIP if week >= season_final_week(league)
+            else PHASE_POSTSEASON)
+
+
 def _provider_state(league: League) -> str:
     if not league.provider or not league.provider_league_key:
         return PROVIDER_ABSENT
@@ -216,6 +277,7 @@ def league_context(db: Session, *, team_id: int, league_id: int
         acting_provider_team_key=team.provider_team_key,
         season_final_week=league.season_final_week,
         playoff_start_week=league.playoff_start_week,
+        phase=_season_phase(league, league.provider_current_week),
     )
 
 

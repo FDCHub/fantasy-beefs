@@ -9,7 +9,9 @@
  *
  * Fixed order, top to bottom:
  *
- *     identity → ML / Spread / O-U → VIEW MATCHUP PREVIEW → LOCKED | DYNAMIC
+ *     identity → VIEW MATCHUP PREVIEW → ML / Spread / O-U → LOCKED | DYNAMIC
+ *
+ * WP3C reordered the second and third of those to the Rev 4.3 §9 hierarchy.
  *     → selected-mode explanation → YOUR STAKE $0 → economics → send
  *
  * The stake opens at $0 untouched. Send stays disabled until the market, the
@@ -91,7 +93,7 @@ export function endSession() {
  * @param {{matchupId: string, marketId?: string|null, availableCents: number}} spec
  */
 export function beginSession(spec) {
-  const m = matchup(spec.matchupId);
+  const m = entryMatchup(spec);
 
   // THE AUTHORITATIVE TARGET LIST, or none. `opponents` are `ActionState` rows
   // — real team ids the server served. In demo it is empty, and the composer
@@ -103,8 +105,16 @@ export function beginSession(spec) {
   // `opponentTeamId`, but it is honoured only if it appears in the served list
   // — an id that does not is treated as absent rather than trusted. Nothing
   // resolves a target from display text.
-  const preselected = opponents.some((o) => o.team_id === spec.opponentTeamId)
-    ? spec.opponentTeamId : null;
+  // WP3C — PLAY'S CARD ID IS ITSELF AN AUTHORITATIVE TARGET. A discovery card
+  // carries the served `team_id`, so opening the composer from one already
+  // names the opponent and the GM does not have to pick them again. It is still
+  // honoured ONLY if it appears in the served list, which is the S8-P4C-2R rule
+  // and the reason a display name can never steer the command.
+  const handed = spec.opponentTeamId !== undefined && spec.opponentTeamId !== null
+    ? spec.opponentTeamId
+    : Number(spec.matchupId);
+  const preselected = opponents.some((o) => o.team_id === handed)
+    ? handed : null;
 
   session = {
     matchup: m,
@@ -122,6 +132,58 @@ export function beginSession(spec) {
     }),
   };
   return session;
+}
+
+/**
+ * The composer's ENTRY CONTEXT — who this was opened against.
+ *
+ * WP3C — TWO SOURCES NOW, AND ONLY ONE OF THEM IS A FIXTURE.
+ *
+ * Rev 4.2's Play carousel was eleven invented opponents, so `matchupId` was
+ * always a fixture key and `matchup()` always resolved. WP3C bound discovery to
+ * the server's own opponent list (§4), so Play now hands over a real TEAM ID —
+ * and `matchup()` throws for one, which took the composer down with it.
+ *
+ * So the fixture is tried first and a served opponent is the fallback. That
+ * order matters: the demo carousel and every component suite still pass fixture
+ * keys and must keep the rich fixture card, while production passes a team id
+ * and gets an entry context built from what the server actually said.
+ *
+ * THE PRODUCTION CONTEXT CARRIES NO LINE, NO TOTAL AND NO PROJECTION, and that
+ * is not an omission. None of the three has an authoritative source for an
+ * arbitrary pairing before it is priced; the composer prices the market the GM
+ * chooses, and until then there is nothing true to show. `null` is what the
+ * market cells draw as unresolved.
+ *
+ * @param {object} spec
+ * @returns {object} a matchup view model
+ */
+function entryMatchup(spec) {
+  try {
+    return matchup(spec.matchupId);
+  } catch {
+    // Not a fixture key. It is a served team id, or nothing.
+    const opponents = Array.isArray(spec.opponents) ? spec.opponents : [];
+    const served = opponents.find(
+      (o) => String(o.team_id) === String(spec.matchupId));
+    return {
+      id: spec.matchupId,
+      name: served ? served.team_name : 'Opponent',
+      record: '',
+      rank: '',
+      you: { id: 'you', name: spec.actingTeamName || 'Your team', record: '', rank: '' },
+      // NO INVENTED NUMBERS. Each is null and each draws unresolved.
+      ml: null,
+      spread: null,
+      total: null,
+      yourProjection: null,
+      opponentProjection: null,
+      teaser: '',
+      yourLineup: [],
+      opponentLineup: [],
+      settled: false,
+    };
+  }
 }
 
 /**
@@ -189,8 +251,14 @@ export function composerSheet() {
     sub,
     body:
       opponentSelector(state) +
-      marketSelector(m, state) +
+      // REV 4.3 SS9 — PREVIEW ABOVE MARKETS. Rev 4.2 put the market row first
+      // and the preview button under it. The POR inverts that because the two
+      // answer different questions in a fixed order: the preview answers "why
+      // does this matchup look this way?" and the markets answer "what do I
+      // want to play?", so the explanation is offered before the choice rather
+      // than after it.
       previewButton() +
+      marketSelector(m, state) +
       modeSelector(state) +
       modeExplanation(state) +
       stakeField(state) +
@@ -313,6 +381,22 @@ function economicsBlock(m, state) {
  * re-rendering the field the GM is typing into.
  */
 function economicsRows(m, state) {
+  // WP3C — NO QUOTE, NO ECONOMICS. Rev 4.2's carousel always carried a fixture
+  // moneyline, so `m.ml` was always a number. A real opponent has no quote until
+  // the pricing engine produces one for the chosen market, and
+  // `deriveOpponentStakeCents` refuses a null outright — correctly, because the
+  // opponent's stake is a function of the odds and there are none.
+  //
+  // The honest surface is to say so. Inventing even-money would put a pot and a
+  // payout in front of the GM that nothing had priced.
+  if (typeof m.ml !== 'number') {
+    return (
+      '<div class="fs-note">Your opponent’s stake and the pot are priced when '
+      + 'you pick a market and enter a stake. Nothing is shown here until then '
+      + '— an estimate would be a number nobody quoted.</div>'
+    );
+  }
+
   const line = { odds: m.ml };
   const econ = composerEconomics(state, line);
   const rows = [

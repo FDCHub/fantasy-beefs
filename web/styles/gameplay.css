@@ -1,0 +1,598 @@
+/* ============================================================================
+ * FantasyStakes — UI/UX Rev 4.3 · gameplay surfaces
+ * WP3C · POR §5 (readability), §9–§14
+ *
+ * The WP3B foundation applied to the surfaces WP3C owns: Play, the Versus
+ * composer and Preview, Status, Wrap Up and Account.
+ *
+ * IT USES THE WP3B SCALE AND ADDS NO SECOND ONE. Every size below is a
+ * `--fs-r43-*` token from `tokens.css`. WP3C §30 is explicit that a parallel
+ * readability system must not be created, and the certification greps this
+ * sheet for hard-coded px sizes to hold that true.
+ *
+ * WHY IT IS A SEPARATE FILE FROM `rev43.css`. That sheet is the FOUNDATION —
+ * the tokens, the shared helpers and the shell chrome — and it is loaded by
+ * every surface including WP3D's and WP3E's. This one is the WP3C application
+ * of it. Keeping them apart means a later package can see at a glance which
+ * rules are the system and which are one package's use of it.
+ *
+ * LOADED AFTER `rev43.css`, so the foundation's helpers are available and these
+ * rules layer over the Rev 4.2 sheets they supersede.
+ * ========================================================================== */
+
+/* ── Play · Versus discovery ──────────────────────────────────────────────── */
+
+/* The card identity is the opponent's name and it is the loudest thing on the
+ * card. Rev 4.2 ran it at 10.5px inside a card that also carried records,
+ * ranks, three market cells, two projections and a line of analysis — §5's
+ * "favor fewer readable facts over more unreadable facts", almost verbatim. */
+/* The discovery card's own padding, trimmed for the same reason as the preview
+ * row's margins — see the note there. The Rev 4.2 card carried 10px and had
+ * five children; this one carries three and needs the height for their
+ * targets. */
+.fs-wcard--matchup {
+  padding: var(--fs-space-2) var(--fs-space-4);
+}
+
+.fs-wcard--matchup .fs-wcard__identity {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.25;
+}
+
+.fs-wcard--matchup .fs-wcard__context {
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+  letter-spacing: 0;
+}
+
+/* ── The preview row — Rev 4.3 §9 ─────────────────────────────────────────── */
+
+/* FULL WIDTH, ABOVE THE MARKETS, AND UNMISTAKABLY AN ACTION. The POR asks for a
+ * "clear full-width action row"; a text link would satisfy the position and not
+ * the clarity. It is deliberately quieter than the market cells beneath it —
+ * the preview explains, the markets commit — which is the same reasoning that
+ * makes the economy sheet's activate button quieter than its confirmation. */
+.fs-previewrow {
+  display: block;
+  width: 100%;
+  min-height: var(--fs-r43-touch);
+  /* TIGHT, BECAUSE THE ROW IS 44px OF ITS OWN. §5.1 fixes the target and this
+   * card has to hold identity, the row and three market cells inside a rail
+   * that is 130px at 375x667 — so the space between them is what gives way,
+   * not the targets. */
+  margin: var(--fs-space-1) 0 var(--fs-space-1);
+  padding: var(--fs-space-2) var(--fs-space-4);
+  background: none;
+  border: 1px solid var(--edge);
+  border-radius: var(--fs-radius-cell);
+  color: var(--gold);
+  font-family: inherit;
+  font-size: var(--fs-r43-card-secondary);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .04em;
+  text-align: center;
+  cursor: pointer;
+}
+
+.fs-previewrow:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* ── Market cells ─────────────────────────────────────────────────────────── */
+
+.fs-markets .fs-market {
+  min-height: var(--fs-r43-touch);
+}
+
+.fs-markets .fs-market__label {
+  font-size: var(--fs-r43-card-secondary);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .02em;
+}
+
+.fs-markets .fs-market__value {
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-secondary);
+}
+
+/* ── Play · Pool cards ────────────────────────────────────────────────────── */
+
+/* STILL A 2×2 GRID — OR-3 and §8.5. Nothing here changes the layout; what
+ * changed is that the card carries four facts instead of six, so each of them
+ * can be read. The descriptive rule line moved to the detail sheet. */
+.fs-pool .fs-pool__name {
+  font-size: var(--fs-r43-card-secondary);
+  font-weight: var(--fs-weight-medium);
+  line-height: 1.25;
+}
+
+.fs-pool .fs-pool__badge {
+  font-size: var(--fs-r43-meta);
+  letter-spacing: .04em;
+}
+
+.fs-pool .fs-pool__entry,
+.fs-pool .fs-pool__pot {
+  font-size: var(--fs-r43-meta);
+}
+
+.fs-pool .fs-pool__entry { color: var(--fs-r43-secondary); }
+
+/* ── Intentional empty zones — §27 ────────────────────────────────────────── */
+
+.fs-emptyzone {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--fs-space-5) var(--fs-space-4);
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-card);
+}
+
+.fs-emptyzone__head {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  margin-bottom: var(--fs-space-2);
+}
+
+.fs-emptyzone__body {
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.5;
+  color: var(--fs-r43-secondary);
+}
+
+/* ── Section headings, everywhere WP3C owns ───────────────────────────────── */
+
+/* Rev 4.2 ran every section heading at 9px with .14em tracking. §5.2 asks for
+ * less tracking and §5.1 for an 18–20px section step; these are the rail and
+ * zone headings on Play, Status and Wrap Up.
+ *
+ * `.fs-heading__text` IS THE ELEMENT — `sectionHeading()` in `components.js`
+ * emits `.fs-heading > .fs-heading__text`, and it is the inner span that
+ * carries the size. A rule on the wrapper alone is overridden by the Rev 4.2
+ * sheet's own rule on the span. */
+.fs-zone .fs-heading__text,
+.fs-railsec .fs-heading__text,
+.fs-wkmod .fs-heading__text,
+#panel-league .fs-heading__text,
+#panel-action .fs-heading__text,
+#panel-week .fs-heading__text {
+  font-size: var(--fs-r43-section);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .01em;
+  color: var(--bone);
+  text-transform: none;
+  /* NO `white-space: nowrap`, DELIBERATELY. It was tried and it made Wrap Up's
+   * longer heading overflow the viewport at 375px — a horizontal scroll is a
+   * worse defect than a two-line heading. The height this package needed came
+   * from the leading and the margins instead, which cost nothing.
+   *
+   * EXPLICIT LEADING, because the inherited one is not. Rev 4.2's rule set no
+   * line-height on this span, so it inherited whatever the zone gave it — which
+   * at 9px was invisible and at the §5.1 section step made a 52px block out of
+   * one line of 19px text. On Play that came out of the card zone beneath. */
+  line-height: 1.2;
+}
+
+/* THE BLOCK TIGHTENS AS THE TYPE GROWS. Rev 4.2's heading sat in a 14px/7px
+ * margin around 9px text — generous, because the text was tiny. At the §5.1
+ * section step the same margins made a 52px block above every rail, and on
+ * Play that came straight out of the two card zones: the discovery card lost
+ * enough height to clip its own market row at 375x667. The leading is what
+ * gives way, not the type size the POR fixed. */
+.fs-zone .fs-heading,
+.fs-railsec .fs-heading,
+#panel-league .fs-heading,
+#panel-action .fs-heading,
+#panel-week .fs-heading {
+  margin: var(--fs-space-1) var(--fs-space-1) 0;
+  align-items: center;
+  /* The block's own leading, set explicitly for the same reason the span's is:
+   * neither was declared, and at the section step the inherited value made the
+   * heading twice the height of its text. */
+  line-height: 1.2;
+  /* THE HEADING KEEPS ITS OWN LINE. At the §5.1 section step
+   * `FANTASYSTAKES VERSUS` is about 220px wide, and sharing a 350px row with
+   * the helper left it 216px — four pixels short, so it wrapped to two lines
+   * and took 23px out of the card zone beneath it. Wrapping the FLEX ROW lets
+   * the heading take its natural width and drops the helper below only if it
+   * genuinely will not fit. */
+  flex-wrap: wrap;
+}
+
+.fs-zone .fs-heading__helper,
+.fs-railsec .fs-heading__helper,
+#panel-league .fs-heading__helper,
+#panel-action .fs-heading__helper,
+#panel-week .fs-heading__helper {
+  font-size: var(--fs-r43-meta);
+  line-height: 1.2;
+  color: var(--fs-r43-secondary);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* ── Status · the four sections — §12.1 ───────────────────────────────────── */
+
+/* ONE TYPOGRAPHY FOR ALL FOUR HEADINGS, and colour to distinguish them. The POR
+ * is explicit: "All four section headings use the same typography hierarchy.
+ * Color and state treatment may differentiate them; type scale may not." The
+ * rule above already sets the size for every `.fs-railsec`; this states the
+ * invariant rather than overriding it per section, which is what would let one
+ * drift. */
+.fs-railsec[data-rail] .fs-heading__text {
+  font-size: var(--fs-r43-section);
+}
+
+.fs-railsec .fs-wcard__identity {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+}
+
+.fs-railsec .fs-wcard__context,
+.fs-railsec .fs-wcard__copy {
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-railsec .fs-wcard__figlabel {
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-tertiary);
+  letter-spacing: 0;
+}
+
+.fs-railsec .fs-wcard__figvalue {
+  font-size: var(--fs-r43-card-secondary);
+}
+
+.fs-railsec .fs-wcard__badge {
+  font-size: var(--fs-r43-meta);
+  letter-spacing: .03em;
+}
+
+/* A card whose whole body is the tap target reaches the practical minimum. */
+.fs-railsec .fs-wcard.is-tappable,
+.fs-railsec .fs-wcard__cta {
+  min-height: var(--fs-r43-touch);
+}
+
+/* ── Wrap Up · the weekly scoreboard — §13.2 ──────────────────────────────── */
+
+/* "LARGER MATCHUP TEXT, STRONGER RESULT PROMINENCE, GREATER VERTICAL
+ * SEPARATION." Rev 4.2 compressed the whole week into one dense scroll where
+ * the team names and the scores ran at nearly the same size, and the three
+ * modules touched. A scoreboard is read by scanning outcomes, so the outcome is
+ * the biggest thing on the row and the sections are visibly apart. */
+.fs-wkscroll > * + * {
+  margin-top: var(--fs-space-6);
+}
+
+.fs-wkmod {
+  padding-top: var(--fs-space-3);
+  border-top: var(--fs-border);
+}
+
+.fs-wkmod:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.fs-wkscroll .fs-matchname,
+.fs-wkscroll .fs-ycard__name,
+.fs-wkscroll .fs-wcard__identity {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.25;
+}
+
+/* THE RESULT IS THE LOUDEST THING ON THE ROW. */
+.fs-wkscroll .fs-ycard__score,
+.fs-wkscroll .fs-twbet__status,
+.fs-wkscroll .fs-wcard__figvalue {
+  font-size: var(--fs-r43-strip-value);
+  font-weight: var(--fs-weight-heavy);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-wkscroll .fs-ycard__meta,
+.fs-wkscroll .fs-twbet__terms,
+.fs-wkscroll .fs-wcard__figlabel {
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-secondary);
+  letter-spacing: 0;
+}
+
+/* ── Account · disclosures — §14.2 ────────────────────────────────────────── */
+
+.fs-lsec__head {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-space-3);
+  width: 100%;
+  min-height: var(--fs-r43-touch);
+  padding: var(--fs-space-3) 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  color: var(--bone);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-lsec__head:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.fs-lsec__title {
+  flex: 1;
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .01em;
+}
+
+.fs-lsec__num {
+  flex: 0 0 auto;
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-tertiary);
+}
+
+.fs-lsec__chev {
+  flex: 0 0 auto;
+  font-size: var(--fs-r43-section);
+  color: var(--g1);
+  transition: transform .12s ease;
+}
+
+.fs-lsec.is-open .fs-lsec__chev {
+  transform: rotate(90deg);
+}
+
+/* COLLAPSED IS `display:none`, DELIBERATELY, and so is the sub-line.
+ *
+ * The alternative — `height: 0; overflow: hidden` — leaves the rows focusable
+ * and readable by a screen reader while invisible, which is a worse answer than
+ * either state: a sighted GM sees a collapsed section and a screen-reader user
+ * walks forty rows they were told were hidden. Nothing is REMOVED by this; the
+ * markup is in the DOM and one tap restores it. */
+.fs-lsec[data-disclosure] .fs-lsec__sub,
+.fs-lsec[data-disclosure] .fs-lsec__body {
+  display: none;
+}
+
+.fs-lsec[data-disclosure].is-open .fs-lsec__sub,
+.fs-lsec[data-disclosure].is-open .fs-lsec__body {
+  display: block;
+}
+
+.fs-lsec__sub {
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-secondary);
+  padding-bottom: var(--fs-space-3);
+}
+
+/* The Current Settle card is NEVER inside a disclosure — §14.2's "do not make
+ * Current Settle or key top-level figures require expansion". This is the
+ * styling; the structure is in `ledger.js`, where the card is a sibling of the
+ * three sections rather than a child of one. */
+.fs-settle__total {
+  font-size: var(--fs-r43-strip-value);
+  font-weight: var(--fs-weight-heavy);
+}
+
+.fs-settle__head {
+  font-size: var(--fs-r43-section);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .01em;
+}
+
+.fs-settle__label {
+  font-size: var(--fs-r43-card-secondary);
+}
+
+/* The locked trust anchor — Rev 4.3 §2, §14.1. Quiet: it is a statement of
+ * provenance under the figure it vouches for, not a banner. */
+.fs-anchor {
+  margin-top: var(--fs-space-4);
+  padding-top: var(--fs-space-3);
+  border-top: var(--fs-border-hair);
+  font-size: var(--fs-r43-meta);
+  font-style: italic;
+  color: var(--fs-r43-secondary);
+  text-align: center;
+}
+
+/* ── Matchup Preview — §10 ────────────────────────────────────────────────── */
+
+.fs-prev__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  width: 100%;
+  min-height: var(--fs-r43-touch);
+  padding: var(--fs-space-3) 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  color: var(--bone);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-prev__head.is-static { cursor: default; }
+
+.fs-prev__head:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.fs-prev__title {
+  font-size: var(--fs-r43-card-secondary);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .05em;
+}
+
+.fs-prev__p {
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.55;
+  color: var(--bone);
+  margin-bottom: var(--fs-space-3);
+}
+
+.fs-prev__label {
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-prev__value {
+  font-size: var(--fs-r43-card-secondary);
+}
+
+.fs-prev__chev {
+  transition: transform .12s ease;
+  color: var(--g1);
+}
+
+.fs-prev.is-open > .fs-prev__head .fs-prev__chev {
+  transform: rotate(90deg);
+}
+
+/* ── The counter-stake sheet — §12.4 ──────────────────────────────────────── */
+
+.fs-cstake__terms {
+  margin-top: var(--fs-space-3);
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-cstake__label {
+  display: block;
+  margin-top: var(--fs-space-5);
+  margin-bottom: var(--fs-space-2);
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-medium);
+}
+
+.fs-cstake__field {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-space-1);
+  min-height: var(--fs-r43-touch);
+  padding: 0 var(--fs-space-4);
+  background: var(--tile);
+  border: var(--fs-border-edge);
+  border-radius: var(--fs-radius-cell);
+}
+
+.fs-cstake__field:focus-within { border-color: var(--gold); }
+
+.fs-cstake__cur {
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-card);
+  color: var(--g1);
+}
+
+.fs-cstake__input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--fs-space-3) 0;
+  background: none;
+  border: none;
+  color: var(--bone);
+  font-family: var(--fs-font-money);
+  /* 16px MINIMUM. Below it, mobile Safari zooms the page on focus — and WP3B
+   * restored pinch zoom rather than suppressing that with `user-scalable=no`,
+   * so the input has to be sized correctly instead. */
+  font-size: var(--fs-r43-card);
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-cstake__input:focus { outline: none; }
+
+.fs-cstake__hint {
+  margin-top: var(--fs-space-3);
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-tertiary);
+}
+
+.fs-cstake__error {
+  margin-top: var(--fs-space-3);
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.45;
+  color: var(--red);
+}
+
+.fs-cstake__error:empty { margin-top: 0; }
+
+.fs-cstake__send,
+.fs-cstake__cancel {
+  display: block;
+  width: 100%;
+  min-height: var(--fs-r43-touch);
+  margin-top: var(--fs-space-4);
+  padding: var(--fs-space-3) var(--fs-space-5);
+  border-radius: var(--fs-radius-cell);
+  font-family: inherit;
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  cursor: pointer;
+}
+
+.fs-cstake__send {
+  background: var(--gold);
+  border: none;
+  color: var(--bg);
+}
+
+.fs-cstake__send:disabled { opacity: .55; cursor: default; }
+
+.fs-cstake__cancel {
+  margin-top: var(--fs-space-3);
+  background: none;
+  border: var(--fs-border-edge);
+  color: var(--fs-r43-secondary);
+}
+
+/* ── Rules & Settings — §15 ───────────────────────────────────────────────── */
+
+/* Denser than the gameplay tabs by design — §15 permits that, because this is
+ * reference material rather than in-game state. What it may not be is
+ * unreadable, and Rev 4.2 ran the rule body at 10px with the source citation
+ * at 8px. */
+.fs-rules .fs-rule__label,
+.fs-settings .fs-setting__label {
+  font-size: var(--fs-r43-card-secondary);
+  font-weight: var(--fs-weight-medium);
+}
+
+.fs-rule__blurb,
+.fs-setting__value {
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-rule__body {
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.55;
+}
+
+.fs-rule__src {
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-tertiary);
+}
+
+/* Every row on this tab is a real control and reaches the practical minimum. */
+.fs-rules .fs-row,
+.fs-settings .fs-row,
+.fs-rules [data-rule],
+.fs-settings [data-setting] {
+  min-height: var(--fs-r43-touch);
+}

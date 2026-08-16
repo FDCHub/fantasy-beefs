@@ -1,30 +1,63 @@
 /* ============================================================================
- * FantasyStakes — UI/UX Rev 4.2 · League
- * Sprint 7 Package 2
+ * FantasyStakes — UI/UX Rev 4.3 · Play
+ * WP3C (was League, Sprint 7 Package 2)
  *
- * Two zones under the strip: FantasyStakes Bets and FantasyStakes Pools.
+ * "What can I play?" — Rev 4.3 §4.
  *
- * BETS is a vertical carousel — one complete rich matchup card presented at a
- * time, snapped. Vertical discovery suits a large, variable opponent count and
- * lets one card carry identity, records, the market row, the projection and a
- * line of analysis without competing for width.
+ * TWO ZONES UNDER THE STRIP, and both Rev 4.2 shapes are deliberately kept:
+ * FantasyStakes Versus is a vertical carousel presenting one card at a time,
+ * and FantasyStakes Pools is a compact 2×2 grid. OR-3 preserved both, and
+ * Rev 4.3 §8.5 is explicit that Play's Pools must NOT become Status-style
+ * horizontal rails for the sake of cross-tab consistency.
  *
- * POOLS shows all four of the week's Pools at once in a 2×2 grid. Rollover is
- * a modifier on a subject type, never a third type, and a rolling Pool does
- * not take a gold card — it takes a marked badge and its carried pot in gold.
+ * WHAT WP3C CHANGED, AND WHY EACH ONE MATTERED
+ *
+ *   THE DATA IS REAL NOW. Every card on this tab used to come from
+ *   `data/league-data.js`: eleven invented opponents with invented records,
+ *   ranks, projections, moneylines, spreads and totals, plus four invented
+ *   Pools — rendered to signed-in GMs in production. Discovery now reads
+ *   `versus-model.js` (the server's own opponent list) and Pools read
+ *   `pool-slate-model.js` (the governed weekly draw). Neither has a production
+ *   fallback: a session that could not read them discovers nothing and says so.
+ *
+ *   THE COUNTDOWN IS GONE (§8.2). `FIRST KICKOFF` had no authoritative source —
+ *   the gateway captures matchups and finality, not a countdown — so in
+ *   production it drew a permanent em dash under a label promising a clock.
+ *
+ *   THE RANK IS GONE FROM THE STRIP (§8.3). `+$126 · 1st` put a standings
+ *   position inside a money cell. Rank belongs to Standings, which WP3B built.
+ *
+ *   THE PHASE IS READ (§17, §27). `Week 5 · Regular Season` was two fixture
+ *   strings; a league in its championship week read both of them wrongly.
+ *
+ * NOTHING HERE PRICES ANYTHING. A discovery card names an opponent and the
+ * markets on offer; the quote is produced by the pricing engine inside the
+ * composer, against that specific pairing. Rev 4.3 §28.
  * ========================================================================== */
 
-import { PENDING_FIGURE, PanelComposer, escapeHtml, sectionHeading, tabHeader } from './components.js';
+import {
+  PENDING_FIGURE, PanelComposer, escapeHtml, sectionHeading, tabHeader,
+} from './components.js';
 import { formatCredits } from './credits.js';
 import { ILLUSTRATIVE, LEAGUE_IDENTITY } from './demo-state.js';
-import { OPPONENTS, POOLS, allMatchups, poolBadge } from './data/league-data.js';
-import { matchupCard } from './wagercard.js';
+import { POOLS, poolBadge } from './data/league-data.js';
 import {
   LEAGUE_MODE_DEMO, currentWeek, leagueMode, leagueName,
 } from './league-model.js';
+import { weekPhaseLabel } from './phase.js';
+import { SLATE_MODE_DEMO, slateMode, slateRows } from './pool-slate-model.js';
+import {
+  VERSUS_STATE_FIELD_UNKNOWN, VERSUS_STATE_NONE_ELIGIBLE,
+  VERSUS_STATE_NO_DATA, VERSUS_STATE_READY, VERSUS_STATE_UNAVAILABLE,
+  playableCount, playableOpponents, versusMode, versusState,
+} from './versus-model.js';
+import { MARKETS } from './wager-model.js';
 import {
   boundAvailableCents, boundWeeklyMinLiveCents,
 } from './ledger-model.js';
+
+/** Rev 4.3 §11 — the word SWIPE, and no directional arrow. */
+export const SWIPE_WORD = 'SWIPE';
 
 /**
  * @returns {string}
@@ -40,41 +73,39 @@ export function buildLeaguePanel() {
   const boundName = leagueName();
   const week = currentWeek();
 
+  // NO ASIDE. Rev 4.2 put `FIRST KICKOFF` here; §8.2 removes the countdown
+  // outright. The header carries identity and context and nothing else.
   composer.add(tabHeader({
     title: production ? (boundName || 'LEAGUE UNAVAILABLE')
                       : LEAGUE_IDENTITY.name,
-    // THE WEEK, WHEN THE PROVIDER HAS STATED ONE. `Week 5 · Regular Season`
-    // was a fixture string; a league in week 9 read week 5. Where no refresh
-    // has stated a week the label drops the claim rather than guessing.
-    sub: production ? weekLabel(week) : LEAGUE_IDENTITY.week,
-    // FIRST KICKOFF has no authoritative source: the gateway captures matchups
-    // and finality, not a countdown to the next game.
-    asideValue: production ? PENDING_FIGURE : ILLUSTRATIVE.kickoffCountdown,
-    asideLabel: 'FIRST KICKOFF',
+    sub: production ? (weekPhaseLabel(week) || 'Week unavailable')
+                    : LEAGUE_IDENTITY.week,
   }));
 
   // THE STRIP SPLITS THREE WAYS, and each cell is treated on its own evidence.
   //
   //   Wallet / Weekly Min Left / Available  AUTHORITATIVE — the bound Ledger
-  //       already serves all three, and reading them from the same model the
-  //       Ledger tab totals from is what stops the two tabs disagreeing.
+  //       serves all three, and reading them from the same model the Account
+  //       tab totals from is what stops the two tabs disagreeing.
   //
-  //   Net Winnings + rank                   UNRESOLVED — P3 proved season
-  //       winnings has no posted door, and the rank is a standings position the
-  //       provider gateway does not expose. Neither is derivable, and the
-  //       illustrative +$126 / 1st was being shown as this GM's own.
+  //   Net Winnings                          UNRESOLVED. S8-P3 proved season
+  //       winnings has no posted door. WP3B's Standings does publish a
+  //       competitive NET, and it is deliberately NOT substituted here: that
+  //       figure excludes allocation and Top-Offs by construction, so it means
+  //       something different from what this label promises. The cell keeps its
+  //       place and draws unresolved rather than carrying a near-miss.
+  //
+  //   THE RANK IS GONE (§8.3) — removed, not unresolved. It was never this
+  //   cell's to carry and Standings answers it properly now.
   const unresolved = production;
   composer.addStrip({
     id: 'fs-strip-league',
-    label: 'League summary',
+    label: 'Play summary',
     cells: [
-      {
-        label: 'Net Winnings',
-        cents: ILLUSTRATIVE.netWinningsCents,
+      { label: 'Net Winnings',
+        cents: production ? 0 : ILLUSTRATIVE.netWinningsCents,
         signed: true,
-        context: production ? '' : ILLUSTRATIVE.netWinningsRank,
-        pending: unresolved,
-      },
+        pending: unresolved },
       { label: 'Wallet',
         cents: production ? (boundWalletFigure() ?? 0) : ILLUSTRATIVE.walletCents,
         pending: production && boundWalletFigure() === null },
@@ -94,24 +125,12 @@ export function buildLeaguePanel() {
 
   composer.add(
     '<div class="fs-zones">' +
-    `<div class="fs-zone fs-zone--bets">${betsZone()}</div>` +
+    `<div class="fs-zone fs-zone--bets">${versusZone()}</div>` +
     `<div class="fs-zone fs-zone--pools">${poolsZone()}</div>` +
     '</div>',
   );
 
   return composer.toHTML();
-}
-
-/**
- * `Week N · Regular Season`, or the unresolved treatment.
- *
- * @param {number|null} week
- * @returns {string}
- */
-function weekLabel(week) {
-  if (week === null) return 'Week unavailable';
-  const phase = 'Regular Season';
-  return `Week ${week} · ${phase}`;
 }
 
 /**
@@ -130,83 +149,254 @@ function boundWalletFigure() {
   return available - weeklyMin;
 }
 
-function betsZone() {
-  const cards = allMatchups()
-    .map((m) => `<div class="fs-carousel__item" role="listitem">${matchupCard(m)}</div>`)
-    .join('');
+/* ── Versus discovery ───────────────────────────────────────────────────────*/
+
+/**
+ * The empty states, in product language. Rev 4.3 §27 — no reason codes, no
+ * internal identifiers, and a different sentence for each different fact.
+ */
+const VERSUS_COPY = Object.freeze({
+  [VERSUS_STATE_NO_DATA]: {
+    heading: 'No opponents yet',
+    body: 'Your league’s teams appear here once the league is set up and its '
+      + 'roster is known.',
+  },
+  [VERSUS_STATE_UNAVAILABLE]: {
+    heading: 'Opponents unavailable',
+    body: 'We could not read your league’s teams just now. Nothing is shown '
+      + 'rather than a guess.',
+  },
+  [VERSUS_STATE_FIELD_UNKNOWN]: {
+    heading: 'Postseason field not settled yet',
+    body: 'Versus is limited to teams still alive on the championship track. '
+      + 'That field is not confirmed for this week yet, so no matchups are '
+      + 'offered.',
+  },
+  [VERSUS_STATE_NONE_ELIGIBLE]: {
+    heading: 'No Versus matchups this week',
+    body: 'Only teams still on the championship track can be played in the '
+      + 'postseason. Pools stay open to you either way.',
+  },
+});
+
+/**
+ * One opponent's discovery card.
+ *
+ * IDENTITY, THEN PREVIEW, THEN MARKETS — Rev 4.3 §9's locked hierarchy, and the
+ * reason the preview row is emitted before the market row rather than after it.
+ * The distinction the POR draws is real: the preview answers "why does this
+ * matchup look this way?" and the markets answer "what do I want to play?", so
+ * the question comes before the answer.
+ *
+ * THE MARKET CELLS CARRY NO QUOTE HERE. Rev 4.2 printed ML / SPR / O/U per
+ * opponent from the fixture. A real quote is produced by the pricing engine for
+ * one specific pairing at composition time, and no read model publishes a board
+ * of them; the cells therefore name the three markets and the composer prices
+ * the one that is chosen. That is why they are labelled and not valued.
+ *
+ * NO FOOT ROW, AND THAT IS BOTH A POR DECISION AND A MEASURED ONE. §9's locked
+ * hierarchy is identity → preview → markets → supporting content; a
+ * `Challenge ›` foot is not in it, and it offered a third way to reach a
+ * composer the two rows above already reach. It also cost 40px, which at
+ * 375x667 was the difference between a card that fits its rail and one that
+ * clips its own markets — the four controls on the card are all focusable, so
+ * removing it costs no keyboard path either.
+ *
+ * @param {{teamId: number, name: string, owner: string}} opponent
+ * @returns {string}
+ */
+function versusCard(opponent) {
+  const id = escapeHtml(String(opponent.teamId));
+  const cells = MARKETS.map((market) => (
+    `<button type="button" class="fs-market" data-market="${escapeHtml(market.id)}">`
+    + `<span class="fs-market__label">${escapeHtml(market.short)}</span>`
+    + '<span class="fs-market__value">Play ›</span>'
+    + '</button>'
+  )).join('');
 
   return (
-    sectionHeading(`FANTASYSTAKES BETS · ${OPPONENTS.length} OPPONENTS · SWIPE ↕`) +
-    `<div class="fs-carousel" id="fs-bets-carousel" role="list">${cards}</div>`
+    `<div class="fs-wcard fs-wcard--matchup is-tappable" `
+    + `data-card-action="challenge" data-card-id="${id}">`
+    + '<div class="fs-wcard__head">'
+    + `<span class="fs-wcard__identity">${escapeHtml(opponent.name)}</span>`
+    + '</div>'
+    + (opponent.owner
+      ? `<div class="fs-wcard__context">${escapeHtml(opponent.owner)}</div>`
+      : '')
+    // §9 — a clear FULL-WIDTH action row, directly above the markets.
+    + '<button type="button" class="fs-previewrow" '
+    + `data-preview-opponent="${id}">VIEW MATCHUP PREVIEW</button>`
+    + `<div class="fs-markets">${cells}</div>`
+    + '</div>'
+  );
+}
+
+function versusZone() {
+  const state = versusState();
+
+  if (state !== VERSUS_STATE_READY) {
+    const copy = VERSUS_COPY[state] || VERSUS_COPY[VERSUS_STATE_NO_DATA];
+    return (
+      sectionHeading('FANTASYSTAKES VERSUS')
+      + `<div class="fs-emptyzone" data-versus-state="${escapeHtml(state)}">`
+      + `<div class="fs-emptyzone__head">${escapeHtml(copy.heading)}</div>`
+      + `<p class="fs-emptyzone__body">${escapeHtml(copy.body)}</p>`
+      + '</div>'
+    );
+  }
+
+  const count = playableCount();
+  const cards = playableOpponents()
+    .map((o) => `<div class="fs-carousel__item" role="listitem">${versusCard(o)}</div>`)
+    .join('');
+
+  // THE COUNT AND THE AFFORDANCE GO IN THE HELPER SLOT, not the heading.
+  //
+  // `sectionHeading(text, helper)` has always had two slots and Rev 4.2 put
+  // everything in the first, because at 9px the whole string fitted one line.
+  // At the §5.1 section step it wraps to two, and on Play a two-line heading
+  // comes straight out of the card zone beneath it. The helper renders at the
+  // metadata step beside it, which is what it is for and what §5's "fewer
+  // readable facts" asks for.
+  return (
+    sectionHeading('FANTASYSTAKES VERSUS',
+      `${count} OPPONENT${count === 1 ? '' : 'S'} · ${SWIPE_WORD}`)
+    + `<div class="fs-carousel" id="fs-bets-carousel" role="list">${cards}</div>`
+  );
+}
+
+/* ── Pools ──────────────────────────────────────────────────────────────────*/
+
+/**
+ * The week's Pool rows — the governed draw, or the demo fixture.
+ *
+ * THE SAME GATE `week.js` ALREADY USED. Play was the one surface still reading
+ * the static four-Pool constant in production; this brings it onto the slate
+ * the Pool engine actually drew.
+ *
+ * @returns {Array<object>}
+ */
+function poolRows() {
+  return slateMode() === SLATE_MODE_DEMO ? POOLS : slateRows();
+}
+
+/**
+ * One compact Pool card.
+ *
+ * ESSENTIAL INFORMATION ONLY — Rev 4.3 §8.5. The Rev 4.2 card carried the
+ * definition's full settle condition as a line of microcopy under the name,
+ * which at 2×2 on a phone was three lines of 8px text nobody could read. Type,
+ * name, entry and pot/entries stay; the explanation moves to the detail sheet,
+ * which is where §8.5 puts it and where it is already rendered in full.
+ *
+ * @param {object} pool
+ * @returns {string}
+ */
+function poolCard(pool) {
+  const badge = poolBadge(pool);
+  const badgeClass = pool.scope === 'TEAM' ? 'is-team' : 'is-matchup';
+  const entered = typeof pool.entered === 'number'
+    ? `${pool.entered} in` : PENDING_FIGURE;
+
+  return (
+    `<button type="button" class="fs-pool" data-pool="${escapeHtml(String(pool.catalogNumber))}">`
+    + `<span class="fs-pool__badge ${badgeClass}${pool.continuation ? ' is-rollover' : ''}">`
+    + `${escapeHtml(badge)}</span>`
+    + `<span class="fs-pool__name">${escapeHtml(pool.name)}</span>`
+    + '<span class="fs-pool__foot">'
+    + `<span class="fs-pool__entry">${escapeHtml(formatCredits(pool.entryCents))}`
+    + ` · ${escapeHtml(entered)}</span>`
+    + `<span class="fs-pool__pot${pool.continuation ? ' is-carried' : ''}" `
+    + `data-exact-cents="${pool.potCents}">${escapeHtml(formatCredits(pool.potCents))}</span>`
+    + '</span>'
+    + '</button>'
   );
 }
 
 function poolsZone() {
-  const cards = POOLS.map((pool) => {
-    const badge = poolBadge(pool);
-    const badgeClass = pool.scope === 'TEAM' ? 'is-team' : 'is-matchup';
-    const carried = pool.continuation
-      ? `<span class="fs-pool__carried">Rolled from Wk ${pool.carriedFromWeek}</span>`
-      : '';
+  const rows = poolRows();
+
+  if (rows.length === 0) {
+    // NO SLATE IS AN ORDINARY STATE (§8.5, and `pool-slate-model`'s own note):
+    // four definitions must pass both gates for a week to be drawn, and gate 2
+    // is a per-league provider measurement. Four Pools are not invented to fill
+    // the grid.
+    const undrawn = slateMode() === 'undrawn';
     return (
-      `<button type="button" class="fs-pool" data-pool="${pool.catalogNumber}">` +
-      `<span class="fs-pool__badge ${badgeClass}${pool.continuation ? ' is-rollover' : ''}">` +
-      `${escapeHtml(badge)}</span>` +
-      `<span class="fs-pool__name">${escapeHtml(pool.name)}</span>` +
-      `<span class="fs-pool__rule">${escapeHtml(pool.rule)}</span>` +
-      '<span class="fs-pool__foot">' +
-      `<span class="fs-pool__entry">${escapeHtml(formatCredits(pool.entryCents))} · ${pool.entered} in</span>` +
-      `<span class="fs-pool__pot${pool.continuation ? ' is-carried' : ''}" ` +
-      `data-exact-cents="${pool.potCents}">${escapeHtml(formatCredits(pool.potCents))}</span>` +
-      '</span>' +
-      carried +
-      '</button>'
+      sectionHeading('FANTASYSTAKES POOLS')
+      + `<div class="fs-emptyzone" data-pools-state="${escapeHtml(slateMode())}">`
+      + `<div class="fs-emptyzone__head">${
+        undrawn ? 'No Pools drawn yet' : 'Pools unavailable'}</div>`
+      + `<p class="fs-emptyzone__body">${escapeHtml(undrawn
+        ? 'This week’s Pools are drawn once enough of the catalog is supported '
+          + 'for your league. Nothing is shown until then.'
+        : 'We could not read this week’s Pools just now.')}</p>`
+      + '</div>'
     );
-  }).join('');
+  }
 
   return (
-    sectionHeading(`FANTASYSTAKES POOLS · ${POOLS.length} THIS WEEK`) +
-    `<div class="fs-pools" id="fs-pools-grid">${cards}</div>`
+    sectionHeading('FANTASYSTAKES POOLS', `${rows.length} THIS WEEK`)
+    + `<div class="fs-pools" id="fs-pools-grid">${rows.map(poolCard).join('')}</div>`
   );
 }
 
+/* ── Binding ────────────────────────────────────────────────────────────────*/
+
 /**
- * Wire League's two tap paths.
+ * Wire Play's three tap paths.
  *
- * A market cell opens the composer with that market selected; anywhere else on
- * the card opens the same composer with none selected. The market handler runs
- * first and stops propagation, so one tap never does both.
+ * A market cell opens the composer with that market selected; the preview row
+ * opens the Matchup Preview; anywhere else on the card opens the composer with
+ * no market selected. The two inner handlers stop propagation, so one tap never
+ * does two things.
+ *
+ * THE CARD ID IS THE OPPONENT'S REAL TEAM ID in production, which is what makes
+ * the composer's target authoritative rather than a name lookup.
  *
  * @param {HTMLElement} panel
  * @param {{openComposer: Function, openSheet: Function}} api
  */
 export function bindLeague(panel, api) {
   panel.querySelectorAll('[data-card-action="challenge"]').forEach((card) => {
-    const matchupId = card.dataset.cardId;
+    const cardId = card.dataset.cardId;
+
+    const preview = card.querySelector('[data-preview-opponent]');
+    if (preview) {
+      preview.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (api.openPreview) api.openPreview({ opponentId: cardId });
+      });
+    }
 
     card.querySelectorAll('[data-market]').forEach((cell) => {
       cell.addEventListener('click', (event) => {
         event.stopPropagation();
-        api.openComposer({ matchupId, marketId: cell.dataset.market });
+        api.openComposer({ matchupId: cardId, marketId: cell.dataset.market });
       });
     });
 
-    card.addEventListener('click', () => api.openComposer({ matchupId, marketId: null }));
+    card.addEventListener('click', () => api.openComposer({
+      matchupId: cardId, marketId: null }));
   });
 
   panel.querySelectorAll('[data-pool]').forEach((el) => {
     el.addEventListener('click', () => {
-      const pool = POOLS.find((p) => String(p.catalogNumber) === el.dataset.pool);
+      const pool = poolRows().find(
+        (p) => String(p.catalogNumber) === el.dataset.pool);
       if (pool) api.openSheet(poolSheet(pool));
     });
   });
 }
 
 /**
- * The Pool-detail sheet. Exported so The Week opens the same detail for the
- * same Pool. A week may layer state on top — a settled Pool carries its outcome
- * — but the definition, the rule and the catalog number are always the
- * catalog's own.
+ * The Pool-detail sheet. Exported so Wrap Up opens the same detail for the same
+ * Pool. A week may layer state on top — a settled Pool carries its outcome —
+ * but the definition, the rule and the catalog number are always the catalog's.
+ *
+ * THIS IS WHERE THE FULL EXPLANATION LIVES (§8.5). The compact card was trimmed
+ * to type, name, entry and pot; everything it dropped is here, in full, at a
+ * size that can be read.
  *
  * @param {object} pool
  * @returns {{title: string, sub: string, body: string}}

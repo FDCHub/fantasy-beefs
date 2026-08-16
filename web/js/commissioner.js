@@ -391,10 +391,15 @@ export function reconciliationSection() {
 
     '<div class="fs-integrity">' +
     `<div class="fs-integrity__head">INTEGRITY · ${r.integrity.verified ? 'VERIFIED' : 'NOT VERIFIED HERE'}</div>` +
+    // WP3C — THE MODULE PATH IS GONE FROM THE COPY (Rev 4.3 §2.1, §22). The
+    // seam register still names `ledger/ledger.py · trial_balance()` for a
+    // developer; it is a backend citation and this rendered it to a
+    // commissioner inside a <code> block. What a commissioner needs is WHY the
+    // surface does not claim to have checked the invariant, which is unchanged.
     `<div class="fs-integrity__body">${escapeHtml(r.integrity.invariant)} ` +
-    `It is computed by <code>${escapeHtml(r.integrity.seam.computation)}</code>, which has no ` +
-    'HTTP surface and is global rather than league-scoped — so this surface ' +
-    'states the invariant and does not claim to have checked it.</div>' +
+    'It is checked in the accounting layer, which has no surface here and is ' +
+    'global rather than league-scoped — so this page states the invariant and ' +
+    'does not claim to have checked it.</div>' +
     '</div>' +
     '</section>'
   );

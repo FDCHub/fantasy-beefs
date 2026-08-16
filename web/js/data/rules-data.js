@@ -31,13 +31,19 @@ import { formatCredits } from '../credits.js';
  * an aspiration would be worse than one that showed nothing. */
 
 /**
- * The league's Discrete-Stop Economy row.
+ * The league economy, as the DEMO fixture holds it.
  *
- * `payments/economy_config.py` certifies exactly five stops and this league is
- * on the default. The three exact invariants that module enforces at import
- * time are what make the parts add up, so they are shown rather than described:
- * min_reserve + reserve = buy-in, min_reserve = weekly_min × 14, and
- * reserve × 11 = buy-in × 4.
+ * WP3C — THESE ARE FIXTURE FIGURES, NOT PRODUCT CONSTANTS. Rev 4.3 §15 replaced
+ * the five-stop ladder with a configurable economy: a commissioner sets the
+ * Weekly Bet Minimum, the Championship Pot Contribution and the Skunk Fee, and
+ * the server derives the Season-Opening Allocation from them and the league's
+ * own regular-season week count. A bound session reads all of that through
+ * `settings-model.js`; these values are what an UNBOUND one draws, and the only
+ * league they describe is the illustrative one.
+ *
+ * The old note here recorded three invariants of the retired model, including
+ * `min_reserve = weekly_min × 14`. That is no longer true of anything — a
+ * league playing thirteen weeks derives thirteen — and it is gone with it.
  */
 export const ECONOMY_STOP = Object.freeze({
   weeklyMinCents: 1000,        // $10
@@ -55,11 +61,18 @@ export const POOL_ENTRY = Object.freeze({
   source: 'League Pool settings',
 });
 
-/** Weekly Skunk contribution and its season ceiling. */
+/**
+ * The Skunk Fee, as the DEMO fixture holds it.
+ *
+ * WP3C REMOVED `seasonMaximumCents` AND `weeks`. Rev 4.3 §19 and WP3C §24: the
+ * fee is configured per league, there is NO enforced season maximum, and the
+ * span is "every completed regular-season week" rather than a literal 1–14.
+ * The old `$140 max` was a conceptual ceiling nothing enforces, displayed as
+ * though it capped a GM's exposure; the old `1–14` was wrong for any league
+ * that does not play fourteen weeks.
+ */
 export const SKUNK = Object.freeze({
-  weeklyCents: 1000,           // $10
-  seasonMaximumCents: 14000,   // $140
-  weeks: '1–14, regular season only',
+  feeCents: 1000,              // $10 — the fixture's configured fee
   source: 'Skunk rules',
 });
 
@@ -84,16 +97,18 @@ export const POOLS_PER_WEEK = 4;
 export const SETTINGS = Object.freeze([
   Object.freeze({
     id: 'economy-stop',
-    label: 'Economy Stop',
-    value: `${formatCredits(ECONOMY_STOP.weeklyMinCents)} / week · ${formatCredits(ECONOMY_STOP.buyinCents)} season`,
+    label: 'Season-Opening Allocation',
+    value: formatCredits(ECONOMY_STOP.buyinCents),
     exactCents: ECONOMY_STOP.buyinCents,
     detail:
-      'One of five certified stops. This league is on the default: ' +
-      `${formatCredits(ECONOMY_STOP.weeklyMinCents)} released each week for fourteen weeks ` +
-      `(${formatCredits(ECONOMY_STOP.minReserveCents)}), plus a ` +
-      `${formatCredits(ECONOMY_STOP.reserveCents)} championship reserve, advanced as ` +
-      `${formatCredits(ECONOMY_STOP.buyinCents)} at season open. There is no freeform amount and ` +
-      'no interpolation between stops.',
+      `Each GM is advanced ${formatCredits(ECONOMY_STOP.buyinCents)} at season ` +
+      `open: ${formatCredits(ECONOMY_STOP.minReserveCents)} as the Weekly ` +
+      `Minimum reserve — the ${formatCredits(ECONOMY_STOP.weeklyMinCents)} ` +
+      'Weekly Bet Minimum across the league’s regular-season weeks — plus ' +
+      `${formatCredits(ECONOMY_STOP.reserveCents)} as the Championship Pot ` +
+      'Contribution. The commissioner sets both before the season and they lock ' +
+      'at activation. The Skunk Fee is contingent and is not part of this ' +
+      'allocation.',
     source: ECONOMY_STOP.source,
   }),
   Object.freeze({
@@ -111,13 +126,14 @@ export const SETTINGS = Object.freeze([
   Object.freeze({
     id: 'skunk-fee',
     label: 'Skunk Fee',
-    value: `${formatCredits(SKUNK.weeklyCents)} weekly · ${formatCredits(SKUNK.seasonMaximumCents)} max`,
-    exactCents: SKUNK.weeklyCents,
+    value: formatCredits(SKUNK.feeCents),
+    exactCents: SKUNK.feeCents,
     detail:
-      `${formatCredits(SKUNK.weeklyCents)} a week, weeks ${SKUNK.weeks}, never in the ` +
-      `playoffs, accumulating to at most ${formatCredits(SKUNK.seasonMaximumCents)} across a ` +
-      'season. An assessment is a ledger obligation against the GM; the pot ' +
-      'distributes at season close.',
+      `${formatCredits(SKUNK.feeCents)} per completed regular-season week, ` +
+      'charged to the team that lost its Yahoo matchup by the largest margin. ' +
+      'Tied largest losers split one fee. There is no postseason Skunk and no ' +
+      'enforced season maximum. An assessment is a ledger obligation against ' +
+      'the GM; the whole pot distributes at regular-season close.',
     source: SKUNK.source,
   }),
   Object.freeze({
@@ -125,9 +141,11 @@ export const SETTINGS = Object.freeze([
     label: 'Championship split',
     value: CHAMPIONSHIP_SPLIT.split.join(' / '),
     detail:
-      'How the championship pot divides by place. Amounts are integer cents: ' +
-      'each ordinary place takes the floor of its percentage, and first place ' +
-      'takes the remainder so the pot distributes exactly.',
+      'How the championship pot divides: 60 to the champion, 30 to the ' +
+      'runner-up, 10 to the official third place. Yahoo is authoritative for ' +
+      'all three. Amounts are integer cents: each ordinary place takes the ' +
+      'floor of its percentage, and first place takes the remainder so the pot ' +
+      'distributes exactly.',
     source: CHAMPIONSHIP_SPLIT.source,
   }),
 ]);
@@ -145,13 +163,15 @@ export const SETTINGS = Object.freeze([
  * command as well as the wiring.
  */
 export const SETTINGS_SEAM = Object.freeze({
-  // S8-P4, per the accepted B2 narrowing. ONE of the four rows became
-  // mutable — Standard Pool Bet, the one the POR says a commissioner sets,
-  // and the only one whose governed setter already carried bounds and a
-  // season freeze. The other three remain read-only for MVP: changing an
-  // Economy Stop, a Skunk Fee or a Championship split mid-season re-prices
-  // obligations GMs have already funded, so the absence of a command for them
-  // is the ruling, not a gap.
+  // S8-P4, per the accepted B2 narrowing, as WP3B and WP3C revised it.
+  //
+  // STANDARD POOL BET IS MUTABLE HERE, in-season, and always was. The other
+  // three are read-only ON THIS SURFACE because changing them mid-season would
+  // re-price obligations GMs have already funded — but WP3B built the
+  // commissioner economy setup, so the Weekly Bet Minimum, the Championship Pot
+  // Contribution and the Skunk Fee ARE configurable BEFORE activation, through
+  // the gear menu. "Read-only" here means "locked for the active season", not
+  // "no command exists".
   status: 'ONE GOVERNED COMMAND · THREE ROWS REMAIN READ-ONLY',
   endpoint: 'PUT /league/{league_id}/settings/pool-entry',
   readEndpoint: 'GET /league/{league_id}/settings',
@@ -179,9 +199,12 @@ export const RULE_GROUPS = Object.freeze([
       Object.freeze({
         heading: 'You are advanced virtual stakes, not given them',
         body:
-          `Every GM is advanced ${formatCredits(ECONOMY_STOP.buyinCents)} at season open: ` +
-          `${formatCredits(ECONOMY_STOP.minReserveCents)} as the regular-season minimum reserve and ` +
-          `${formatCredits(ECONOMY_STOP.reserveCents)} as the championship reserve. That advance is an ` +
+          'At season open every GM is advanced their Season-Opening Allocation: ' +
+          'the league’s Weekly Bet Minimum across its regular-season weeks, held ' +
+          'as the Weekly Minimum reserve, plus its Championship Pot ' +
+          'Contribution, held as the championship reserve. The commissioner ' +
+          'configures both before activation and the server derives the total — ' +
+          'see League Settings for your league’s own figures. That advance is an ' +
           'obligation for the whole season. It is subtracted in Current Settle, ' +
           'so a GM who has wagered nothing sits at a deficit rather than at zero.',
         source: 'Season-Opening Allocation rules',
@@ -189,7 +212,7 @@ export const RULE_GROUPS = Object.freeze([
       Object.freeze({
         heading: 'The championship reserve is committed from the moment it lands',
         body:
-          `The ${formatCredits(ECONOMY_STOP.reserveCents)} championship reserve is never spendable and ` +
+          'The championship reserve is never spendable and ' +
           'never releasable. It is economically committed to the championship pot ' +
           'from activation, which is why it is not counted as one of your ' +
           'settlement-relevant assets — counting it would overstate every GM all season.',
@@ -232,13 +255,14 @@ export const RULE_GROUPS = Object.freeze([
     blurb: 'The weekly minimum, how it is spent, and the Skunk.',
     rules: Object.freeze([
       Object.freeze({
-        heading: `${formatCredits(ECONOMY_STOP.weeklyMinCents)} is released to you each week`,
+        heading: 'Your Weekly Bet Minimum is released to you each week',
         body:
-          `Each week the league releases ${formatCredits(ECONOMY_STOP.weeklyMinCents)} from your ` +
-          'minimum reserve into that week’s minimum — once per team per week, ' +
-          'for fourteen regular-season weeks. A release can never exceed what ' +
-          'remains in the reserve, so a fifteenth release posts nothing rather ' +
-          'than driving the account negative.',
+          'Each week the league releases your configured Weekly Bet Minimum ' +
+          'from your minimum reserve into that week’s minimum — once per team ' +
+          'per week, for each of the league’s regular-season weeks. A release ' +
+          'can never exceed what remains in the reserve, so a release beyond the ' +
+          'season’s last week posts nothing rather than driving the account ' +
+          'negative. There is no Weekly Minimum in the postseason.',
         source: 'Weekly Minimum rules',
       }),
       Object.freeze({
@@ -259,12 +283,35 @@ export const RULE_GROUPS = Object.freeze([
         source: 'Weekly Minimum rules',
       }),
       Object.freeze({
-        heading: `The Skunk is ${formatCredits(SKUNK.weeklyCents)} a week, capped at ${formatCredits(SKUNK.seasonMaximumCents)}`,
+        heading: 'The Skunk is charged to the week’s widest loss',
         body:
-          `Weeks ${SKUNK.weeks}, never in the playoffs. An assessment posts as a ` +
-          'ledger obligation against the GM rather than seizing Credits, and the ' +
-          'accumulated pot distributes at season close. Nothing collects a Skunk ' +
-          'receivable automatically — no controlling authority provides for it.',
+          'Every completed regular-season week, the team that lost its Yahoo ' +
+          'matchup by the largest margin owes one Skunk Fee at the amount the ' +
+          'commissioner configured. Tied largest losers split one fee between ' +
+          'them — the league is charged one fee per week, never one per loser. ' +
+          'There is no Skunk in the postseason, and no enforced season maximum.',
+        source: 'Skunk rules',
+      }),
+      Object.freeze({
+        heading: 'An assessment is an obligation, not a seizure',
+        body:
+          'A Skunk posts as a ledger obligation against the GM rather than ' +
+          'taking Credits out of their Wallet, so it can be assessed whatever ' +
+          'their balance is and it lowers Current Settle without touching what ' +
+          'they can spend. Nothing collects a Skunk receivable automatically. ' +
+          'The Skunk Fee is contingent and is not part of the Season-Opening ' +
+          'Allocation.',
+        source: 'Skunk rules',
+      }),
+      Object.freeze({
+        heading: 'The whole Skunk Pot goes to the Points For leader',
+        body:
+          'Every Skunk Fee assessed during the regular season accumulates into ' +
+          'one Skunk Pot. At regular-season close the entire Pot is awarded to ' +
+          'the team with the highest cumulative Yahoo regular-season Points For ' +
+          '— not the best record, not the champion, not a seed. Postseason ' +
+          'points are excluded. A Points For tie is split by the governed ' +
+          'deterministic rule.',
         source: 'Skunk rules',
       }),
     ]),
@@ -303,11 +350,33 @@ export const RULE_GROUPS = Object.freeze([
       Object.freeze({
         heading: `The championship pot pays ${CHAMPIONSHIP_SPLIT.split.join(' / ')} by place`,
         body:
-          'Every GM’s championship reserve sweeps into the league pot at season ' +
-          'close, joined by the Skunk distribution. Payouts are integer cents: ' +
-          'each ordinary place takes the floor of its share and first place takes ' +
-          'the remainder, so the pot distributes exactly with nothing stranded.',
+          'Every GM’s Championship Pot Contribution sweeps into the league pot ' +
+          'at season close. It pays the champion, the runner-up and the official ' +
+          'third place. Payouts are integer cents: each ordinary place takes the ' +
+          'floor of its share and first place takes the remainder, so the pot ' +
+          'distributes exactly with nothing stranded.',
         source: 'Championship rules',
+      }),
+      Object.freeze({
+        heading: 'Yahoo decides the podium, and nothing else does',
+        body:
+          'Champion, runner-up and official third place are Yahoo’s postseason ' +
+          'result. There is no commissioner override, no standings-based ' +
+          'fallback and no FantasyStakes tiebreaker. If the official third place ' +
+          'cannot be classified, the payout does not proceed on a guess — it ' +
+          'waits.',
+        source: 'Championship rules',
+      }),
+      Object.freeze({
+        heading: 'Who can play in the postseason',
+        body:
+          'Versus is limited to teams still alive on the championship track, ' +
+          'plus the official third-place participants during championship week. ' +
+          'A team playing a consolation or placement game is not a Versus ' +
+          'subject, however many matchups it has left. Pools are different: ' +
+          'every league member keeps entering them after their own team is ' +
+          'eliminated, subject to the ordinary Pool rules.',
+        source: 'Pool rules',
       }),
     ]),
   }),

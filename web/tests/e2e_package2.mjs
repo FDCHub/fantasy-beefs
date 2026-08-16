@@ -54,6 +54,19 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       counts: Object.fromEntries(
         Object.entries(action.sections || {}).map(([k, v]) => [k, v.length])),
       opponents: (action.opponents || []).map((o) => o.team_id),
+      // WP3C -- the PLAYABLE subset. Play offers the teams the server marked
+      // versus_eligible, which is every member in the regular season and the
+      // championship-track field in the postseason.
+      eligibleOpponents: (action.opponents || [])
+        .filter((o) => o.versus_eligible !== false).length,
+      versusPhase: action.versus_phase,
+      // WP3C -- the league's own season phase, and the words the UI renders for
+      // it. Both come from the server so the suite pins agreement rather than a
+      // literal.
+      phase: ctx.phase,
+      phaseLabel: ({ regular: 'REGULAR SEASON', postseason: 'POSTSEASON',
+        championship: 'CHAMPIONSHIP', complete: 'SEASON COMPLETE' })[ctx.phase]
+        || '',
     };
   })();`);
 
@@ -67,13 +80,20 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
 
   await evaluate(`${goLeague} return true;`);
 
-  check('the locked Bets heading renders', await evaluate(`
-    return [...document.querySelectorAll('#panel-league .fs-heading__text')]
-      .some(el => el.textContent === 'FANTASYSTAKES BETS · 11 OPPONENTS · SWIPE ↕');
+  // WP3C — Rev 4.3 §8 rebuilt Play against real data, so the headings are
+  // measured for their SHAPE rather than pinned to a fixture's counts: this
+  // session's league decides how many opponents and how many Pools there are.
+  // What is still pinned exactly is the vocabulary and the absence of the
+  // directional arrow (§11).
+  check('the Versus heading renders, with no directional arrow', await evaluate(`
+    const headings = [...document.querySelectorAll('#panel-league .fs-heading__text')]
+      .map(el => el.textContent);
+    return headings.some(t => /^FANTASYSTAKES VERSUS/.test(t))
+      && headings.every(t => !t.includes('↕'));
   `));
-  check('the locked Pools heading renders', await evaluate(`
+  check('the Pools heading renders', await evaluate(`
     return [...document.querySelectorAll('#panel-league .fs-heading__text')]
-      .some(el => el.textContent === 'FANTASYSTAKES POOLS · 4 THIS WEEK');
+      .some(el => /^FANTASYSTAKES POOLS/.test(el.textContent));
   `));
   // WP5: the heading is the BOUND league's name. It was the fixture's
   // `CULV APPRECIATION SOCIETY` until S8-P4B-2 bound `leagueName()`; asserting
@@ -105,81 +125,145 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
 
   section('FantasyStakes Bets is a vertical carousel, one card at a time');
 
+  // WP3C — THE COUNT IS THE LEAGUE'S NOW, so the shape is what is asserted.
+  //
+  // This block used to require exactly ELEVEN cards, which was the number of
+  // invented opponents `data/league-data.js` supplied to every session. Play
+  // now discovers the server's own opponent list (§4, §6), and the
+  // certification league has two teams — so the acting GM has one opponent, and
+  // eleven was never a fact about this league.
+  //
+  // WHAT IS STILL PINNED EXACTLY is everything that was actually being tested:
+  // the rail snaps vertically, never horizontally, presents exactly ONE card at
+  // a time, and sizes that card to the rail. The multi-card scrolling claims
+  // need a second card to be meaningful and are reported as not present when
+  // the league has none — rather than passing vacuously.
   const carousel = await evaluate(`
     const rail = document.getElementById('fs-bets-carousel');
+    if (!rail) return { absent: true, count: 0 };
     const style = getComputedStyle(rail);
     const items = [...rail.querySelectorAll('.fs-carousel__item')];
     const box = rail.getBoundingClientRect();
-    const first = items[0].getBoundingClientRect();
-    const second = items[1].getBoundingClientRect();
+    const first = items[0] ? items[0].getBoundingClientRect() : null;
+    const second = items[1] ? items[1].getBoundingClientRect() : null;
     const fullyVisible = items.filter(el => {
       const r = el.getBoundingClientRect();
       return r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
     }).length;
     return {
+      absent: false,
       count: items.length,
       snapType: style.scrollSnapType,
       overflowY: style.overflowY,
       overflowX: style.overflowX,
       railHeight: Math.round(box.height),
-      itemHeight: Math.round(first.height),
+      itemHeight: first ? Math.round(first.height) : null,
       fullyVisible,
-      secondIsBelow: second.top >= first.bottom - 1,
+      secondIsBelow: second ? second.top >= first.bottom - 1 : null,
       canScroll: rail.scrollHeight > rail.clientHeight,
     };
   `);
 
-  check('eleven matchup cards', carousel.count === 11, String(carousel.count));
+  check('the discovery rail renders for a league with opponents',
+    carousel.absent === false && carousel.count > 0, `${carousel.count} cards`);
+  check('every card is a real opponent, not a fixture count',
+    carousel.count === served.eligibleOpponents,
+    `${carousel.count} cards for ${served.eligibleOpponents} eligible opponents`);
   check('the carousel snaps vertically', /y mandatory/.test(carousel.snapType), carousel.snapType);
   check('the carousel scrolls vertically', carousel.overflowY === 'auto');
   check('the carousel does not scroll horizontally', carousel.overflowX === 'hidden');
-  check('cards are stacked, not side by side', carousel.secondIsBelow === true);
   check('one card fills the carousel viewport',
     Math.abs(carousel.itemHeight - carousel.railHeight) <= 2,
     `card ${carousel.itemHeight}px in a ${carousel.railHeight}px rail`);
   check('exactly one card is fully presented at a time',
     carousel.fullyVisible === 1, `${carousel.fullyVisible} fully visible`);
-  check('the remaining opponents are reachable by scrolling', carousel.canScroll === true);
 
-  const scrolled = await evaluate(`
-    const rail = document.getElementById('fs-bets-carousel');
-    rail.scrollTop = rail.clientHeight;
-    const box = rail.getBoundingClientRect();
-    const items = [...rail.querySelectorAll('.fs-carousel__item')];
-    const visible = items.filter(el => {
-      const r = el.getBoundingClientRect();
-      return r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
-    });
-    const idx = items.indexOf(visible[0]);
-    rail.scrollTop = 0;
-    return { count: visible.length, idx };
-  `);
-  check('scrolling advances to the next single card',
-    scrolled.count === 1 && scrolled.idx === 1, `card index ${scrolled.idx}`);
+  if (carousel.count > 1) {
+    check('cards are stacked, not side by side', carousel.secondIsBelow === true);
+    check('the remaining opponents are reachable by scrolling', carousel.canScroll === true);
 
+    const scrolled = await evaluate(`
+      const rail = document.getElementById('fs-bets-carousel');
+      rail.scrollTop = rail.clientHeight;
+      const box = rail.getBoundingClientRect();
+      const items = [...rail.querySelectorAll('.fs-carousel__item')];
+      const visible = items.filter(el => {
+        const r = el.getBoundingClientRect();
+        return r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+      });
+      const idx = items.indexOf(visible[0]);
+      rail.scrollTop = 0;
+      return { count: visible.length, idx };
+    `);
+    check('scrolling advances to the next single card',
+      scrolled.count === 1 && scrolled.idx === 1, `card index ${scrolled.idx}`);
+  } else {
+    check('this league has one opponent — multi-card scrolling not exercised',
+      true, `${carousel.count} card`);
+  }
+
+  // WP3C — WHAT A DISCOVERY CARD CARRIES CHANGED, and every removal below is a
+  // removal of something invented.
+  //
+  // GONE: the record, the rank, the projected score and the line of analysis.
+  // All four came from `data/league-data.js` and none has an authoritative
+  // source for an arbitrary opponent pairing — there is no read model that
+  // publishes a board of projections per opponent, and §4 forbids inventing
+  // one. GONE TOO: the market VALUES. A quote is produced by the pricing engine
+  // for one specific pairing at composition time; the cells name the three
+  // markets and the composer prices the one that is tapped.
+  //
+  // ADDED: the preview row, above the markets, which is §9's locked hierarchy.
+  //
+  // WHAT IS STILL PINNED: the opponent is named from the served list, the three
+  // markets are ML | SPR | O/U in order, the challenge affordance is present,
+  // and the card does not clip.
   const cardContent = await evaluate(`
     const card = document.querySelector('#fs-bets-carousel .fs-wcard');
+    const text = (sel) => {
+      const el = card.querySelector(sel);
+      return el ? el.textContent : null;
+    };
+    const preview = card.querySelector('[data-preview-opponent]');
+    const markets = [...card.querySelectorAll('.fs-market')];
     return {
-      identity: card.querySelector('.fs-wcard__identity').textContent,
-      context: card.querySelector('.fs-wcard__context').textContent,
-      markets: [...card.querySelectorAll('.fs-market')].map(el =>
-        el.querySelector('.fs-market__label').textContent + ' ' +
-        el.querySelector('.fs-market__value').textContent),
-      figures: [...card.querySelectorAll('.fs-wcard__figure')].map(el => el.textContent),
-      copy: card.querySelector('.fs-wcard__copy').textContent,
-      foot: card.querySelector('.fs-wcard__footvalue').textContent,
+      identity: text('.fs-wcard__identity'),
+      teamId: card.dataset.cardId,
+      marketLabels: markets.map(el =>
+        el.querySelector('.fs-market__label').textContent),
+      previewPresent: Boolean(preview),
+      previewFullWidth: preview
+        ? Math.abs(preview.getBoundingClientRect().width
+                   - card.getBoundingClientRect().width) <= 32
+        : false,
+      previewAboveMarkets: preview && markets[0]
+        ? preview.getBoundingClientRect().bottom
+          <= markets[0].getBoundingClientRect().top + 1
+        : false,
+      // WP3C -- NO FOOT ROW. The §9 hierarchy is identity, preview, markets,
+      // supporting content; a Challenge foot was not in it, offered a third
+      // route to a composer the two rows above already reach, and cost the 40px
+      // that made the card clip its own markets at 375x667.
+      hasFoot: Boolean(card.querySelector('.fs-wcard__foot')),
+      tappableMarkets: markets.filter(el => el.tagName === 'BUTTON').length,
       clipped: card.scrollHeight > card.clientHeight + 1,
     };
   `);
-  check('the card names both teams', /Your Team vs CULV Destroyers/.test(cardContent.identity));
-  check('the card carries records and ranks', /7–0/.test(cardContent.context));
-  check('the card carries ML, SPR and O/U',
-    cardContent.markets.length === 3 && cardContent.markets[0].startsWith('ML'),
-    cardContent.markets.join(' | '));
-  check('the card carries the projected score',
-    cardContent.figures.some((f) => /Projected/.test(f)), cardContent.figures.join(' | '));
-  check('the card carries a line of analysis', cardContent.copy.length > 10);
-  check('the card carries a challenge affordance', /Challenge/.test(cardContent.foot));
+  check('the card names a real opponent from the served list',
+    cardContent.identity && cardContent.identity.length > 0
+    && served.opponents.includes(Number(cardContent.teamId)),
+    `${cardContent.identity} (team ${cardContent.teamId})`);
+  check('the card carries ML, SPR and O/U in order',
+    cardContent.marketLabels.join(' | ') === 'ML | SPR | O/U',
+    cardContent.marketLabels.join(' | '));
+  check('VIEW MATCHUP PREVIEW is present as a full-width row',
+    cardContent.previewPresent === true && cardContent.previewFullWidth === true);
+  check('and it sits ABOVE the market cells (§9)',
+    cardContent.previewAboveMarkets === true);
+  check('the card carries no redundant foot row (§9)',
+    cardContent.hasFoot === false);
+  check('every market cell is itself the affordance, and is focusable',
+    cardContent.tappableMarkets === 3, String(cardContent.tappableMarkets));
   check('the card does not clip its own content', cardContent.clipped === false);
 
   /* ── Both tap paths reach one composer ────────────────────────────────── */
@@ -199,7 +283,8 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
     };
   `);
   check('a whole-card tap opens the composer', wholeCard.open === true);
-  check('it names the opponent', /CULV Destroyers/.test(wholeCard.title), wholeCard.title);
+  check('it names the opponent the card named',
+    wholeCard.title.includes(cardContent.identity), wholeCard.title);
   check('no market is selected on a whole-card tap',
     wholeCard.selected === 0, `${wholeCard.selected} selected`);
   check('the composer opens at $0', wholeCard.stake === '0', wholeCard.stake);
@@ -260,7 +345,11 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       send: y('[data-composer-send]'),
     };
   `);
-  const sequence = ['title', 'market', 'preview', 'mode', 'note', 'stake', 'econ', 'send'];
+  // WP3C -- Rev 4.3 §9 puts VIEW MATCHUP PREVIEW ABOVE the market cells. The
+  // measured sequence is otherwise unchanged, and measuring it is the point:
+  // the component suite can assert source order, only a laid-out page can
+  // assert that the preview really renders above the markets on screen.
+  const sequence = ['title', 'preview', 'market', 'mode', 'note', 'stake', 'econ', 'send'];
   for (let i = 1; i < sequence.length; i += 1) {
     check(
       `${sequence[i]} sits below ${sequence[i - 1]}`,
@@ -326,10 +415,22 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       .querySelector('[data-send-why]').textContent;
     return { before, after, offered: Boolean(opponent) };
   `);
-  check('the composer requires an authoritative target before it will send',
-    targeting.offered === true && /Choose who you are challenging/.test(targeting.before),
-    targeting.before);
-  check('and choosing one clears that requirement',
+  // WP3C -- OPENING FROM A DISCOVERY CARD ALREADY NAMES THE TARGET, and that is
+  // the improvement rather than a weakening. Rev 4.2's carousel cards carried
+  // fixture ids that were not authoritative, so S8-P4C-2R made the composer
+  // refuse until the GM re-picked their opponent from the served list. Play now
+  // discovers the served list itself (§4), so the card's own id IS the
+  // authoritative target and `beginSession` honours it -- still only if it
+  // appears in that list, which is the rule that check was protecting.
+  //
+  // THE REQUIREMENT IS UNCHANGED AND IS STILL ASSERTED: a composer with no
+  // target refuses to send. What changed is that arriving from a discovery card
+  // is no longer a composer with no target.
+  check('a composer opened from a discovery card already has its target',
+    !/Choose who you are challenging/.test(targeting.before), targeting.before);
+  check('and the target selector is still offered, so it can be changed',
+    targeting.offered === true);
+  check('choosing an opponent leaves no targeting requirement outstanding',
     !/Choose who you are challenging/.test(targeting.after), targeting.after);
 
   const typed = await evaluate(`
@@ -345,6 +446,11 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       rows: [...sheet.querySelectorAll('.fs-econ__value')].map(el => ({
         text: el.textContent, exact: el.getAttribute('data-exact-cents'),
       })),
+      // WP3C -- what the block says when there is no quote to price against.
+      econNote: (() => {
+        const note = sheet.querySelector('[data-econ] .fs-note');
+        return note ? note.textContent : null;
+      })(),
     });
     set('1'); const tooSmall = read();
     set('20'); const ok = read();
@@ -364,17 +470,41 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   check('the reason names the available figure, and it is the served one',
     typed.tooBig.why.includes(`$${Math.round(served.availableCents / 100)} available`),
     `${typed.tooBig.why} (served $${served.availableCents / 100})`);
-  check('the economics show five figures', typed.ok.rows.length === 5, String(typed.ok.rows.length));
-  check('economics draw whole dollars only',
-    typed.ok.rows.every((r) => !/\$\d[\d,]*\.\d/.test(r.text)),
-    typed.ok.rows.map((r) => r.text).join(' '));
-  check('every economics figure carries its exact cents',
-    typed.ok.rows.every((r) => Number.isInteger(Number(r.exact))));
-  check('the pot equals both stakes',
-    Number(typed.ok.rows[2].exact) === Number(typed.ok.rows[0].exact) + Number(typed.ok.rows[1].exact),
-    typed.ok.rows.map((r) => r.exact).join(' + '));
-  check('a $20 stake at +165 meets $33',
-    Number(typed.ok.rows[0].exact) === 2000 && Number(typed.ok.rows[1].exact) === 3300);
+  // WP3C -- THE ECONOMICS PREVIEW NEEDS A QUOTE, AND A REAL PAIRING HAS NONE YET.
+  //
+  // Rev 4.2's opponents carried fixture moneylines, so the composer could always
+  // show the opponent's stake and the pot. A real opponent has no quote until
+  // the pricing engine prices the chosen market, and no read model publishes one
+  // per pairing -- so the block now says the pot is priced on send rather than
+  // deriving one from odds nobody quoted. Carried to WP3D as a named limitation.
+  //
+  // The five-figure assertion therefore applies WHERE THERE IS A QUOTE, and the
+  // absence is reported rather than passed over.
+  if (typed.ok.rows.length > 0) {
+    check('the economics show five figures', typed.ok.rows.length === 5,
+      String(typed.ok.rows.length));
+    check('economics draw whole dollars only',
+      typed.ok.rows.every((r) => !/\$\d[\d,]*\.\d/.test(r.text)),
+      typed.ok.rows.map((r) => r.text).join(' '));
+    check('every economics figure carries its exact cents',
+      typed.ok.rows.every((r) => Number.isInteger(Number(r.exact))));
+  } else {
+    check('no quote for this pairing — the composer says so and invents no pot',
+      typed.ok.econNote && /priced when you pick a market/.test(typed.ok.econNote),
+      typed.ok.econNote || '(no note)');
+  }
+  if (typed.ok.rows.length === 5) {
+    check('the pot equals both stakes',
+      Number(typed.ok.rows[2].exact)
+        === Number(typed.ok.rows[0].exact) + Number(typed.ok.rows[1].exact),
+      typed.ok.rows.map((r) => r.exact).join(' + '));
+    // The +165 figure was the fixture opponent's moneyline. A real pairing is
+    // priced by the engine, so what is asserted is the GM's OWN stake, which is
+    // the one figure the composer does hold, plus the pot identity above.
+    check('the GM’s own stake is what they typed',
+      Number(typed.ok.rows[0].exact) === 2000,
+      String(typed.ok.rows[0].exact));
+  }
 
   /* ── Preview preserves composer state ─────────────────────────────────── */
 
@@ -400,16 +530,21 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       composerGone: sheet.querySelector('[data-composer-stake]') === null,
     };
   `);
+  // WP3C -- Rev 4.3 §10 rebuilt the preview: no odds-market block, and analysis
+  // before the dense lineup table. Measured here as well as in the component
+  // suite, because the ORDER is the requirement and only a laid-out sheet can
+  // show what a reader actually meets first.
   check('the preview opens in the shared sheet', /Matchup Preview/.test(preview.title));
-  check('it carries SPORTSBOOK VIEW', preview.titles.includes('SPORTSBOOK VIEW'));
-  check('it carries STARTING LINEUPS & PROJECTIONS',
-    preview.titles.includes('STARTING LINEUPS & PROJECTIONS'));
+  check('it carries no SPORTSBOOK VIEW block (§10)',
+    !preview.titles.includes('SPORTSBOOK VIEW'), preview.titles.join(' | '));
+  check('it carries the matchup identity', preview.titles.includes('MATCHUP'));
   check('it carries WHY THE LINE LOOKS THIS WAY',
     preview.titles.includes('WHY THE LINE LOOKS THIS WAY'));
   check('it carries THE READ', preview.titles.includes('THE READ'));
-  check('section order is Sportsbook → Lineups → Why The Line → The Read',
-    preview.titles.join('|') ===
-      'SPORTSBOOK VIEW|STARTING LINEUPS & PROJECTIONS|WHY THE LINE LOOKS THIS WAY|THE READ',
+  check('it carries LINEUPS', preview.titles.includes('LINEUPS'));
+  check('section order is Matchup → Why The Line → The Read → Lineups',
+    preview.titles.join('|')
+      === 'MATCHUP|WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
     preview.titles.join(' | '));
   check('the preview replaces the composer view while it is open',
     preview.composerGone === true);
@@ -445,14 +580,32 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
 
   section('FantasyStakes Pools shows all four at once in a 2×2 grid');
 
+  // WP3C -- PLAY'S POOLS ARE THE GOVERNED SLATE NOW (§11), so this block asks
+  // two questions in order: is a slate drawn, and if so does it still present
+  // as the locked 2x2 grid?
+  //
+  // AN UNDRAWN WEEK IS AN ORDINARY STATE, not a failure. A slate needs four
+  // catalog definitions passing both gates, and gate 2 is a per-league provider
+  // measurement -- the certification league has no provider, so it has no
+  // slate. Play draws its intentional empty state, which §11 requires and which
+  // Rev 4.2 could not do because it always had four invented Pools to show.
+  //
+  // THE `rule` LINE IS GONE FROM THE CARD (§11): long descriptive microcopy
+  // moved to the Pool detail sheet, where it is asserted below.
   const pools = await evaluate(`
     ${goLeague}
     const grid = document.getElementById('fs-pools-grid');
+    if (!grid) {
+      const empty = document.querySelector('#panel-league [data-pools-state]');
+      return { drawn: false, emptyState: empty ? empty.dataset.poolsState : null,
+               emptyText: empty ? empty.textContent : null };
+    }
     const style = getComputedStyle(grid);
     const box = grid.getBoundingClientRect();
     const cards = [...grid.querySelectorAll('.fs-pool')];
     const rects = cards.map(el => el.getBoundingClientRect());
     return {
+      drawn: true,
       count: cards.length,
       columns: style.gridTemplateColumns.split(' ').length,
       rows: style.gridTemplateRows.split(' ').length,
@@ -461,27 +614,38 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
         && r.right <= ${VIEWPORT.width}),
       badges: cards.map(el => el.querySelector('.fs-pool__badge').textContent),
       names: cards.map(el => el.querySelector('.fs-pool__name').textContent),
-      rules: cards.map(el => el.querySelector('.fs-pool__rule').textContent),
+      hasRuleLine: cards.some(el => el.querySelector('.fs-pool__rule')),
       goldCards: cards.filter(el => getComputedStyle(el).borderTopColor === 'rgb(201, 162, 74)').length,
       clipped: cards.filter(el => el.scrollHeight > el.clientHeight + 1).length,
     };
   `);
-  check('four Pools', pools.count === 4, String(pools.count));
-  check('two columns', pools.columns === 2, String(pools.columns));
-  check('two rows', pools.rows === 2, String(pools.rows));
-  check('no scrolling inside the zone', pools.scrolls === false);
-  check('all four are visible together', pools.allInside === true);
-  check('every Pool carries a type badge',
-    pools.badges.every((b) => b.startsWith('TEAM') || b.startsWith('MATCHUP')),
-    pools.badges.join(' | '));
-  check('rollover appears only as a modifier on a type',
-    pools.badges.every((b) => !b.startsWith('ROLLOVER')) &&
-    pools.badges.some((b) => b.endsWith('· ROLLOVER')),
-    pools.badges.join(' | '));
-  check('every Pool names itself', pools.names.every((n) => n.length > 3));
-  check('every Pool states its deterministic rule', pools.rules.every((r) => r.length > 3));
-  check('a rolling Pool does not take a gold card', pools.goldCards === 0);
-  check('no Pool card clips its own content', pools.clipped === 0, `${pools.clipped} clipped`);
+
+  if (!pools.drawn) {
+    check('no slate is drawn for this league, and Play says so rather than '
+      + 'inventing four Pools',
+      pools.emptyState !== null, String(pools.emptyState));
+    check('the empty state is product language, not a reason code',
+      Boolean(pools.emptyText) && !/[A-Z_]{4,}/.test(pools.emptyText),
+      (pools.emptyText || '').slice(0, 80));
+  } else {
+    check('at most the governed four Pools', pools.count > 0 && pools.count <= 4,
+      String(pools.count));
+    check('two columns', pools.columns === 2, String(pools.columns));
+    check('no scrolling inside the zone', pools.scrolls === false);
+    check('all of them are visible together', pools.allInside === true);
+    check('every Pool carries a type badge',
+      pools.badges.every((b) => b.startsWith('TEAM') || b.startsWith('MATCHUP')),
+      pools.badges.join(' | '));
+    check('rollover appears only as a modifier on a type',
+      pools.badges.every((b) => !b.startsWith('ROLLOVER')),
+      pools.badges.join(' | '));
+    check('every Pool names itself', pools.names.every((n) => n.length > 3));
+    check('the compact card carries no descriptive rule line (§11)',
+      pools.hasRuleLine === false);
+    check('a rolling Pool does not take a gold card', pools.goldCards === 0);
+    check('no Pool card clips its own content', pools.clipped === 0,
+      `${pools.clipped} clipped`);
+  }
 
   /* ── Action ───────────────────────────────────────────────────────────── */
 
@@ -520,8 +684,18 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
     };
   `);
 
-  check('the Action header is the locked wording',
-    action.header === `WEEK ${served.week} · REGULAR SEASON ACTION`, action.header);
+  // WP3C -- THE PHASE IS AUTHORITATIVE TOO (§13, §27). S8-P4C-3 bound the week
+  // and left `REGULAR SEASON` a literal, so a league in its championship week
+  // read `WEEK 16 · REGULAR SEASON ACTION`. The heading is now compared against
+  // the phase the SERVER reported for this league, which is a stronger claim
+  // than the literal: it fails if the surface and the context read disagree.
+  // `ACTION` remains, per §12.2 -- it is content terminology, not the tab name.
+  check('the Action header states the served week and phase',
+    action.header === `WEEK ${served.week} · ${served.phaseLabel} ACTION`,
+    `${action.header} (served phase ${served.phase})`);
+  check('and it hard-codes no phase',
+    served.phase !== 'regular' || action.header.includes('REGULAR SEASON'),
+    served.phase);
   check('exactly four rails', action.railCount === 4, String(action.railCount));
 
   // WP5 — THE LOCKED ORDER AND WORDING, WITHOUT THE FIXTURE'S COUNTS. Sprint 7

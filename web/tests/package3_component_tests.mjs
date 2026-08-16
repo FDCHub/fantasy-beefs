@@ -158,11 +158,14 @@ check('an unquoted moneyline draws as unresolved',
 section('A Yahoo matchup opens the shared Matchup Preview');
 
 const yahooPreview = previewSheet(slate[1]);
-for (const heading of ['SPORTSBOOK VIEW', 'STARTING LINEUPS &amp; PROJECTIONS',
-  'WHY THE LINE LOOKS THIS WAY', 'THE READ']) {
-  check(`the preview carries ${heading.replace('&amp;', '&')}`,
-    yahooPreview.body.includes(heading));
+// WP3C — the Rev 4.3 §10 preview: no market block, analysis before lineups.
+// See the equivalent note in package2_component_tests.mjs.
+for (const heading of ['MATCHUP', 'WHY THE LINE LOOKS THIS WAY', 'THE READ',
+  'LINEUPS']) {
+  check(`the preview carries ${heading}`, yahooPreview.body.includes(heading));
 }
+check('the Yahoo preview carries no odds-market block either (§10)',
+  !yahooPreview.body.includes('SPORTSBOOK VIEW'));
 check('the preview states the matchup is an official Yahoo fixture',
   yahooPreview.body.includes('OFFICIAL YAHOO FANTASY MATCHUP'));
 check('the preview says it is not a FantasyStakes wager',
@@ -184,8 +187,12 @@ const currentBets = weekBets(CURRENT_WEEK);
 check('the current week shows exactly four', currentBets.length === 4, String(currentBets.length));
 check('the heading is the locked Rev 4.2 wording',
   week.includes(BETS_HEADING), BETS_HEADING);
+// WP3C — Rev 4.3 §11 removed the redundant directional arrow. The claim is
+// otherwise unchanged: the heading states the VIEWPORT treatment (how many are
+// shown) rather than a record count, and the word SWIPE carries the affordance.
 check('the locked heading states the viewport treatment, not a record count',
-  BETS_HEADING === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE ↕', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', BETS_HEADING);
+check('and it carries no directional arrow', !BETS_HEADING.includes('↕'));
 check('the current week shows live, not settled, wagers',
   currentBets.every((c) => !c.settled));
 check('the bets carry the Package 2 wager grammar',
@@ -240,8 +247,17 @@ check('this week’s board price is not reused on a settled matchup',
   pastSlate.every((m) => m.ml === null));
 
 const pastPreview = previewSheet(pastSlate[0]);
-check('a settled preview reports the result rather than a line',
-  /Result/.test(pastPreview.body) && /Closing line/.test(pastPreview.body));
+// WP3C — the RESULT survived §10's removal of the market block; the
+// `Closing line` row did not, and deliberately. A closing line is a market
+// figure, this build retains none, and the row existed only to say so — inside
+// the very block §10 removed for being a market restatement. The result moved
+// into the identity block, which is where §10 puts "matchup identity / records".
+check('a settled preview reports the result',
+  /Result/.test(pastPreview.body)
+  && /Final ·/.test(pastPreview.body));
+check('and it reports no market figure for a finished matchup',
+  !/Closing line/.test(pastPreview.body)
+  && !/SPORTSBOOK VIEW/.test(pastPreview.body));
 check('it states that the closing line is not retained',
   /The line this matchup closed at is not retained/.test(pastPreview.body));
 // Scaling the slot shape to a FINAL score would manufacture a box score.

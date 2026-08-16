@@ -31,6 +31,7 @@ import os
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 
 from sqlalchemy.orm import Session
 
@@ -39,8 +40,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import json
 
 from db.schema import (
-    Bet, BeefChallenge, BeefStarter, Matchup, Player, Projection, Roster,
-    Transaction, Wallet, Team,
+    Bet, BeefChallenge, BeefStarter, League, Matchup, Player, Projection,
+    Roster, Transaction, Wallet, Team,
 )
 from odds.odds_engine_headless import (
     PlayerProj,
@@ -68,6 +69,71 @@ N_START           = 9
 from config import CURRENT_SEASON as SEASON
 from config import LOCK_SEASON
 SOURCE            = "fantasypros"
+
+# ── WP3C · the projection context a league's odds are priced from ─────────────
+#
+# THE DEFECT THIS CLOSES. Every projection read below used to be
+# `season=SEASON, source=SOURCE` — the GLOBAL `config.CURRENT_SEASON`, pinned to
+# 2025 by a comment that calls itself temporary, and the string literal
+# `fantasypros`. A league playing any other season resolved zero projections and
+# was priced off a board of zeroes, silently: `_fetch_starters_for_odds` records
+# a missing projection as `0.0`, so nothing raised and nothing looked wrong.
+# The Demo runtime seeds season 2100, which meant every Demo wager priced from an
+# all-zero board the moment the composer became real.
+#
+# THE CONTRACT ALREADY EXISTED; NOTHING HERE INVENTS ONE. `leagues.season` and
+# `leagues.projection_source` are both NOT NULL columns, the latter defaulting to
+# `fantasypros` — that IS the governed per-league projection contract, and this
+# module simply never read it. So this is call-site plumbing, not a new product
+# policy: an unbound or legacy caller resolves to exactly the globals it used
+# before, and a league resolves to its own.
+#
+# THE ODDS MATHEMATICS IS UNTOUCHED. `_compute_odds_from_inputs` and the model
+# registry are not modified by this change. What changes is WHICH projection rows
+# the inputs are gathered from — and gathering them from the wrong season was
+# never a modelling decision.
+
+
+class ProjectionContext(NamedTuple):
+    """The (season, source) one league's projections are read under."""
+    season: int
+    source: str
+
+
+#: The pre-WP3C behaviour, and the answer for any caller with no resolvable
+#: league. Named rather than spelled inline so the fallback is greppable.
+GLOBAL_PROJECTION_CONTEXT = ProjectionContext(season=SEASON, source=SOURCE)
+
+
+def projection_context_for_team(db: Session, team_id: int | None
+                                ) -> ProjectionContext:
+    """The projection season and source governing this team's league.
+
+    FALLS BACK TO THE GLOBALS, DELIBERATELY. A team with no row, or a team whose
+    league row is missing, is the pre-WP3C world — a legacy or unbound caller —
+    and it gets exactly the behaviour it had before. Raising here would turn a
+    quiet mispricing into a hard failure on paths that never had a league to
+    read, which is a different defect rather than a fix for this one.
+
+    NOTHING IS INVENTED WHEN A PROJECTION IS ABSENT. Reading the right season
+    does not create rows in it; a league whose projections have not been seeded
+    still resolves nothing, and `_fetch_starters_for_odds` still records that as
+    it always did. This makes the read ASK THE RIGHT QUESTION — it does not
+    promise an answer.
+    """
+    if team_id is None:
+        return GLOBAL_PROJECTION_CONTEXT
+    row = (db.query(League.season, League.projection_source)
+           .join(Team, Team.league_id == League.id)
+           .filter(Team.id == team_id)
+           .first())
+    if row is None:
+        return GLOBAL_PROJECTION_CONTEXT
+    season, source = row
+    return ProjectionContext(
+        season=season if season is not None else SEASON,
+        source=source or SOURCE,
+    )
 from wallet.wallet_manager import MIN_BET
 from betting.pool_engine import _nfl_lock_time
 from betting.exceptions import ScheduleNotReadyError
@@ -169,12 +235,17 @@ def _fetch_starters_for_odds(
 ) -> OddsInputs:
     """Query Roster + Projection and return a bundle for simulation and staleness checking.
     Does not run any Monte Carlo — that is _compute_odds_from_inputs()'s job.
+
+    WP3C — THE PROJECTION SEASON AND SOURCE ARE THE LEAGUE'S, resolved once here
+    from the challenger's team. Both sides of a Versus wager are league members
+    by the time this runs, so one resolution governs both reads below.
     """
+    ctx = projection_context_for_team(db, challenger_team_id)
     points_snapshot: dict[str, float] = {}
 
     if bet_type == "prop":
         proj = db.query(Projection).filter_by(
-            player_id=player_id, week=week, season=SEASON, source=SOURCE
+            player_id=player_id, week=week, season=ctx.season, source=ctx.source
         ).first()
         projected = proj.projected_points if proj else 0.0
         if player_id:
@@ -205,7 +276,7 @@ def _fetch_starters_for_odds(
         )
         for s in slots:
             p = db.query(Projection).filter_by(
-                player_id=s.player_id, week=week, season=SEASON, source=SOURCE
+                player_id=s.player_id, week=week, season=ctx.season, source=ctx.source
             ).first()
             pts = p.projected_points if p else 0.0
             starters_list.append(PlayerProj(
@@ -253,6 +324,7 @@ def _fetch_starters_for_odds_from_snapshot(
     projection is allowed to move — staleness_warning already exists to
     flag exactly that kind of shift.
     """
+    ctx = projection_context_for_team(db, challenger_team_id)
     if bet_type == "prop":
         # Prop bets never touch Roster or BeefStarter — nothing to freeze.
         return _fetch_starters_for_odds(
@@ -278,7 +350,7 @@ def _fetch_starters_for_odds_from_snapshot(
         )
         for s in slots:
             p = db.query(Projection).filter_by(
-                player_id=s.player_id, week=week, season=SEASON, source=SOURCE
+                player_id=s.player_id, week=week, season=ctx.season, source=ctx.source
             ).first()
             pts = p.projected_points if p else 0.0
             starters_list.append(PlayerProj(
@@ -473,11 +545,12 @@ def _snapshot_projections(
     db:                 Session,
 ) -> str:
     """Return JSON string mapping player_id → projected_points for all relevant players."""
+    ctx = projection_context_for_team(db, challenger_team_id)
     snapshot: dict[str, float] = {}
 
     if bet_type == "prop" and player_id:
         proj = db.query(Projection).filter_by(
-            player_id=player_id, week=week, season=SEASON, source=SOURCE
+            player_id=player_id, week=week, season=ctx.season, source=ctx.source
         ).first()
         snapshot[str(player_id)] = proj.projected_points if proj else 0.0
 
@@ -492,7 +565,7 @@ def _snapshot_projections(
             )
             for slot in slots:
                 proj = db.query(Projection).filter_by(
-                    player_id=slot.player_id, week=week, season=SEASON, source=SOURCE
+                    player_id=slot.player_id, week=week, season=ctx.season, source=ctx.source
                 ).first()
                 snapshot[str(slot.player_id)] = proj.projected_points if proj else 0.0
 

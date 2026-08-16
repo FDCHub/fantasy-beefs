@@ -133,6 +133,19 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
 
   section('The four settings rows show governed values and offer no mutation');
 
+  // WP3C -- the settings row FIGURES are this league's own, so the suite reads
+  // the same body the rows were built from and compares. That is a stronger
+  // claim than a literal: it fails if the surface and the server disagree,
+  // rather than only if the fixture changes.
+  const served = await evaluate(`return (async () => {
+    const me = await (await fetch('/auth/me', { credentials: 'same-origin' })).json();
+    const league = me.capabilities.acting_league_id;
+    return {
+      settings: await (await fetch('/league/' + league + '/settings',
+        { credentials: 'same-origin' })).json(),
+    };
+  })();`);
+
   const settings = await evaluate(`
     const panel = document.getElementById('panel-rules');
     const rows = [...panel.querySelectorAll('#fs-settings .fs-setrow')];
@@ -145,15 +158,25 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     };
   `);
   check('exactly four settings', settings.count === 4, String(settings.count));
+  // WP3C — Rev 4.3 §22: `Economy Stop` becomes Season-Opening Allocation, and
+  // §24 removes the Skunk cap from the row. The FIGURES are this bound league's
+  // own, served by `/league/{id}/settings`, so they are compared against the
+  // served body rather than a literal — a stronger claim than the constant was.
   check('the labels are the locked labels',
-    settings.labels.join(' / ') === 'Economy Stop / Standard Pool Bet / Skunk Fee / Championship split',
+    settings.labels.join(' / ')
+      === 'Season-Opening Allocation / Standard Pool Bet / Skunk Fee / Championship split',
     settings.labels.join(' / '));
-  check('Economy Stop shows the governed stop',
-    settings.values[0] === '$10 / week · $220 season', settings.values[0]);
-  check('Standard Pool Bet shows the governed entry',
-    settings.values[1] === '$1', settings.values[1]);
-  check('Skunk Fee shows the governed figures',
-    settings.values[2] === '$10 weekly · $140 max', settings.values[2]);
+  check('Season-Opening Allocation shows the served allocation',
+    settings.values[0] === `$${Math.round(served.settings.economy_stop.buyin_cents / 100)}`,
+    settings.values[0]);
+  check('Standard Pool Bet shows the served entry',
+    settings.values[1] === `$${Math.round(served.settings.pool_entry.cents / 100)}`,
+    settings.values[1]);
+  check('Skunk Fee shows the served fee and no cap',
+    settings.values[2] === `$${Math.round(served.settings.skunk.weekly_cents / 100)}`,
+    settings.values[2]);
+  check('and no settings row shows a Skunk maximum',
+    !settings.values.some((v) => /max/i.test(v)), settings.values.join(' | '));
   check('Championship split shows the governed split',
     settings.values[3] === '60 / 30 / 10', settings.values[3]);
   check('the tab renders no editable control at all', settings.inputs === 0,

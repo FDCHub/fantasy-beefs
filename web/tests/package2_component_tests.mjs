@@ -436,12 +436,24 @@ check('while ACTION REQUIRED still counts the fixture in demo',
 section('League and Action panels');
 
 const league = buildLeaguePanel();
-check('League heading is the locked wording',
-  league.includes('FANTASYSTAKES BETS · 11 OPPONENTS · SWIPE ↕'));
+// WP3C RE-POINTED THESE AT REV 4.3, and the change is a rewrite rather than a
+// rename. The rail used to render eleven INVENTED opponents from
+// `data/league-data.js` in production; §4 called that a Launch Ready blocker
+// and Play now discovers the server's own opponent list. Unbound — which is
+// what a component suite is — there is nobody to discover, so the rail draws
+// its intentional empty state and the eleven-card count is gone with the
+// eleven invented cards. The heading also loses its `↕` (§12).
+check('the Versus rail heading carries no directional arrow',
+  !league.includes('↕'), 'SWIPE ↕ removed');
+check('unbound discovery draws an intentional state, never invented opponents',
+  league.includes('data-versus-state')
+  && (league.match(/fs-carousel__item/g) || []).length === 0);
+// WP3C — the count moved into the heading's HELPER slot. At the §5.1 section
+// step the whole string wrapped to two lines at 375px, and on Play that height
+// came straight out of the card zone beneath it. The vocabulary is unchanged;
+// what changed is which of `sectionHeading`'s two slots each half sits in.
 check('Pools heading is the locked wording',
-  league.includes('FANTASYSTAKES POOLS · 4 THIS WEEK'));
-check('League presents eleven matchup cards',
-  (league.match(/fs-carousel__item/g) || []).length === 11);
+  league.includes('FANTASYSTAKES POOLS') && league.includes('4 THIS WEEK'));
 check('League presents four Pools', (league.match(/data-pool="/g) || []).length === 4);
 check('League carries the disclaimer once', countDisclaimers(league) === 1);
 check('League keeps the four strip figures',
@@ -467,9 +479,13 @@ const body = spec.body;
 
 check('the sheet names the challenge and opponent', /CULV Destroyers/.test(spec.title));
 
+// WP3C — REV 4.3 §9 INVERTS THE FIRST TWO. The preview answers "why does this
+// matchup look this way?" and the markets answer "what do I want to play?", so
+// the POR puts the explanation above the choice. The assertion is unchanged in
+// kind: it still pins the whole sequence, against the governing order.
 const order = [
-  ['market selector', body.indexOf('data-composer-market')],
   ['VIEW MATCHUP PREVIEW', body.indexOf('VIEW MATCHUP PREVIEW')],
+  ['market selector', body.indexOf('data-composer-market')],
   ['LOCKED | DYNAMIC', body.indexOf('data-composer-mode')],
   ['mode explanation', body.indexOf('fs-modenote')],
   ['YOUR STAKE', body.indexOf('YOUR STAKE')],
@@ -513,16 +529,35 @@ check('the Dynamic explanation reaches the rendered composer',
 section('The Matchup Preview holds the four required sections');
 
 const preview = previewSheet(matchup('destroyers'));
-for (const heading of ['SPORTSBOOK VIEW', 'STARTING LINEUPS &amp; PROJECTIONS',
-  'WHY THE LINE LOOKS THIS WAY', 'THE READ']) {
-  check(`the preview carries ${heading.replace('&amp;', '&')}`, preview.body.includes(heading));
+// WP3C — REV 4.3 §10 REBUILT THIS SURFACE, and two of the old assertions are
+// now assertions of the opposite thing.
+//
+// SPORTSBOOK VIEW IS GONE. It restated the moneyline, the spread and the total
+// inside the surface meant to EXPLAIN them, which made the preview read as a
+// second place to bet. §10 removes the market block outright, so the check that
+// it is present becomes a check that it is absent.
+//
+// THE ORDER IS INVERTED. Analysis now comes before the dense lineup table —
+// §10's "analysis must appear before dense lineup content" — where Rev 4.2 put
+// Sportsbook View and the lineups first and the analysis last.
+for (const heading of ['MATCHUP', 'WHY THE LINE LOOKS THIS WAY', 'THE READ',
+  'LINEUPS']) {
+  check(`the preview carries ${heading}`, preview.body.includes(heading));
 }
-check('Sportsbook View comes first',
-  preview.body.indexOf('SPORTSBOOK VIEW') < preview.body.indexOf('STARTING LINEUPS'));
+check('the preview carries NO odds-market block (§10)',
+  !preview.body.includes('SPORTSBOOK VIEW')
+  && !/data-market/.test(preview.body));
+check('matchup identity comes first',
+  preview.body.indexOf('MATCHUP') < preview.body.indexOf('WHY THE LINE'));
 check('Why The Line precedes The Read',
   preview.body.indexOf('WHY THE LINE') < preview.body.indexOf('THE READ'));
-check('Sportsbook View is open and not collapsible',
+check('and BOTH analysis sections precede the lineups',
+  preview.body.indexOf('THE READ') < preview.body.indexOf('LINEUPS'));
+check('the identity block is open and not collapsible',
   /fs-prev__head is-static/.test(preview.body));
+check('the analysis sections are open by default; the lineups are not',
+  /is-open[^]*WHY THE LINE/.test(preview.body)
+  && preview.body.includes('aria-expanded="false"'));
 check('the preview says nothing is lost on close',
   /nothing you have entered is lost/i.test(preview.body));
 
