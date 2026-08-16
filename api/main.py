@@ -685,7 +685,13 @@ def auth_yahoo_callback(
         if not code:
             return _sign_in_failure("exchange_failed")
 
+        # THE VERIFIER COMES FROM THE SEALED TRANSACTION, never from the
+        # request. It is the one secret in this flow that the browser carried
+        # nothing of: Yahoo saw only its hash, and the callback presents the
+        # original. A code injected into this callback from another sign-in
+        # cannot be redeemed, because whoever injected it never held this.
         tokens = exchange_code(code, config=config,
+                               code_verifier=transaction.code_verifier,
                                exchange=_YAHOO_TOKEN_EXCHANGE)
         identity = validate_id_token(tokens["id_token"], config=config,
                                      nonce=transaction.nonce,

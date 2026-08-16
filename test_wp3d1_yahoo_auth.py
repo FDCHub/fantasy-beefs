@@ -35,6 +35,8 @@ DATABASE. A temp SQLite file per run.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import os
 import re
 import shutil
@@ -72,7 +74,8 @@ from auth.environment import auth_capabilities, production_readiness  # noqa: E4
 from auth.jwt_auth import hash_password                              # noqa: E402
 from auth.yahoo_identity import PROVIDER_YAHOO, resolve_user         # noqa: E402
 from auth.yahoo_oidc import (                                        # noqa: E402
-    SCOPES, OidcError, open_transaction,
+    CHALLENGE_METHOD, SCOPES, OidcError, Transaction, code_challenge_for,
+    new_transaction, open_transaction, seal_transaction,
 )
 from db.schema import (                                              # noqa: E402
     Base, League, LeagueCommissioner, SessionLocal, Team, User, Wallet, engine,
@@ -120,6 +123,12 @@ YAHOO = {"subject": "YSUB-0001", "email": "gm@yahoo.example",
 
 EXCHANGES: list[dict] = []
 
+#: The `code_challenge` the last authorization request carried. A real
+#: authorization server remembers this against the code it issues; the mock
+#: remembers the most recent one, which is enough for a suite that drives one
+#: sign-in at a time.
+AUTHORIZED_CHALLENGE: dict = {"value": None}
+
 
 def _mint_id_token(nonce: str) -> str:
     claims = {
@@ -137,18 +146,29 @@ def _mint_id_token(nonce: str) -> str:
                            headers={"kid": "certification-kid"})
 
 
-def _fake_exchange(*, config, code):
-    """The token endpoint, deterministically.
+def _fake_exchange(*, config, code, code_verifier):
+    """The token endpoint, deterministically — and it ENFORCES PKCE.
 
     RECORDS WHAT IT WAS ASKED, so the suite can assert the exchange happened
-    server-side with client authentication and the right redirect — the things
-    a browser must never be in a position to do.
+    server-side with client authentication, the right redirect and the original
+    verifier — the things a browser must never be in a position to do.
+
+    AND IT CHECKS THE VERIFIER THE WAY YAHOO WOULD. `AUTHORIZED_CHALLENGE` is
+    whatever the authorization request most recently sent; a redemption whose
+    verifier does not hash to it is refused with `invalid_grant`, exactly as a
+    real authorization server refuses one. Without this the suite could install
+    PKCE and never find out whether it was enforced, which is the failure mode
+    a bolted-on extension is most prone to.
     """
     EXCHANGES.append({"code": code, "client_id": config.client_id,
                       "client_secret": config.client_secret,
-                      "redirect_uri": config.redirect_uri})
+                      "redirect_uri": config.redirect_uri,
+                      "code_verifier": code_verifier})
     if YAHOO["exchange_error"]:
         raise OidcError(YAHOO["exchange_error"], "fixture")
+    expected = AUTHORIZED_CHALLENGE.get("value")
+    if expected is not None and code_challenge_for(code_verifier) != expected:
+        raise OidcError("exchange_failed", "invalid_grant: PKCE mismatch")
     payload = {"access_token": "AT-must-never-reach-the-browser",
                "refresh_token": "RT-must-never-reach-the-browser",
                "token_type": "bearer", "expires_in": 3600}
@@ -208,9 +228,18 @@ def _client() -> TestClient:
 
 
 def _begin(client: TestClient) -> tuple[str, str]:
-    """Run the real `start` route and return (state, nonce)."""
+    """Run the real `start` route and return (state, nonce).
+
+    THE CHALLENGE IS TAKEN FROM THE URL, not from the transaction. Reading it
+    off the redirect is what proves the challenge Yahoo would see is the one
+    derived from the verifier this server kept — rather than trusting that the
+    two agree because the same function produced both.
+    """
     response = client.get("/auth/yahoo/start", follow_redirects=False)
     assert response.status_code == 307, response.status_code
+    query = urllib.parse.parse_qs(
+        urllib.parse.urlparse(response.headers["location"]).query)
+    AUTHORIZED_CHALLENGE["value"] = query.get("code_challenge", [None])[0]
     sealed = client.cookies.get("fs_yahoo_txn")
     transaction = open_transaction(sealed, secret=os.environ["JWT_SECRET_KEY"])
     YAHOO["nonce"] = transaction.nonce
@@ -370,6 +399,47 @@ with _client() as client:
     _assert("THE CLIENT SECRET IS NOWHERE IN THE REDIRECT",
             CLIENT_SECRET not in location)
 
+    # ── PKCE, on the way out ────────────────────────────────────────────────
+    _assert("the request carries a PKCE challenge",
+            bool(query.get("code_challenge", [""])[0]))
+    _assert("and names S256 as the method — never `plain`",
+            query.get("code_challenge_method") == [CHALLENGE_METHOD]
+            and CHALLENGE_METHOD == "S256",
+            str(query.get("code_challenge_method")))
+
+    sealed = client.cookies.get("fs_yahoo_txn")
+    txn = open_transaction(sealed, secret=os.environ["JWT_SECRET_KEY"])
+    _assert("the verifier is high entropy — 43 base64url characters",
+            len(txn.code_verifier) >= 43
+            and re.fullmatch(r"[A-Za-z0-9_-]+", txn.code_verifier) is not None,
+            f"{len(txn.code_verifier)} chars")
+    _assert("the challenge is SHA-256 of the verifier, base64url, unpadded",
+            query["code_challenge"][0]
+            == base64.urlsafe_b64encode(
+                hashlib.sha256(txn.code_verifier.encode("ascii")).digest()
+            ).decode().rstrip("="),
+            query["code_challenge"][0])
+    _assert("and it matches the module's own derivation",
+            query["code_challenge"][0] == code_challenge_for(txn.code_verifier))
+    _assert("THE VERIFIER ITSELF IS NOWHERE IN THE REDIRECT",
+            txn.code_verifier not in location)
+    _assert("the challenge is not the verifier — S256 is one-way",
+            query["code_challenge"][0] != txn.code_verifier)
+    _assert("no padding survives into the URL",
+            "=" not in query["code_challenge"][0]
+            and "%3D" not in location.split("code_challenge=")[1][:60])
+
+    # THE VERIFIER IS INDEPENDENT OF THE OTHER TWO SECRETS.
+    _assert("state, nonce and verifier are three different values",
+            len({txn.state, txn.nonce, txn.code_verifier}) == 3)
+    _fresh = [new_transaction() for _ in range(8)]
+    _assert("every transaction mints a distinct verifier",
+            len({t.code_verifier for t in _fresh}) == 8)
+    _assert("and a Transaction refuses to print its secrets",
+            "hidden" in repr(_fresh[0])
+            and _fresh[0].code_verifier not in repr(_fresh[0]),
+            repr(_fresh[0]))
+
     cookie = client.cookies.get("fs_yahoo_txn")
     _assert("the transaction rides in a cookie", bool(cookie))
     _assert("and the raw state is NOT in it — it is signed, not pasted",
@@ -419,6 +489,10 @@ with _client() as client:
             EXCHANGES[0]["client_secret"] == CLIENT_SECRET
             and EXCHANGES[0]["redirect_uri"]
             == os.environ["FS_YAHOO_REDIRECT_URI"])
+    _assert("and carrying the ORIGINAL PKCE verifier",
+            code_challenge_for(EXCHANGES[0]["code_verifier"])
+            == AUTHORIZED_CHALLENGE["value"],
+            "verifier hashes to the challenge Yahoo was shown")
 
     _assert("a FantasyStakes session cookie was issued",
             bool(client.cookies.get("fs_session")))
@@ -893,9 +967,25 @@ _assert("the identity DTO refuses to repr anything but the subject",
         "YahooIdentity(subject=" in OIDC)
 _assert("the callback never puts a raw reason in the URL",
         "_SIGN_IN_REASONS" in MAIN and "safe = reason_code if reason_code in" in MAIN)
-_assert("PKCE is deliberately absent, with the reason recorded",
-        "code_challenge" not in OIDC.replace("PKCE IS DELIBERATELY NOT SENT", "")
-        and "PKCE IS DELIBERATELY NOT SENT" in OIDC)
+# AUTH1-FIX REVERSED THIS. AUTH1 asserted that PKCE was deliberately absent, on
+# a reading of Yahoo's generic OAuth 2.0 page. Yahoo's Sign In With Yahoo
+# documentation — the OIDC surface this product uses — documents
+# `code_challenge`, `code_challenge_method` and `code_verifier`, so the correct
+# assertion is the opposite one and the flow now sends all three.
+_assert("PKCE is sent, and the reasoning is recorded in the module",
+        "code_challenge" in OIDC and "PKCE IS SENT" in OIDC)
+_assert("S256 only — `plain` is never offered",
+        'CHALLENGE_METHOD = "S256"' in OIDC
+        and '"plain"' not in OIDC and "'plain'" not in OIDC)
+_assert("the verifier is minted from `secrets`, not from a weaker source",
+        "code_verifier=secrets.token_urlsafe" in OIDC)
+_assert("the challenge is SHA-256, base64url, unpadded",
+        "hashlib.sha256(verifier.encode" in OIDC
+        and "urlsafe_b64encode" in OIDC and 'rstrip("=")' in OIDC)
+_assert("and the verifier is never printed, logged or repr'd",
+        "secrets=<hidden>" in OIDC
+        and not re.search(r"(print|logger\.[a-z]+)\(.*(verifier|code_verifier)",
+                          OIDC, re.I))
 _assert("the redirect URI comes from configuration, never from the request",
         "FS_YAHOO_REDIRECT_URI" in OIDC and "request.url" not in
         MAIN.split("def auth_yahoo_start")[1].split("def auth_yahoo_callback")[0])
@@ -927,6 +1017,250 @@ _assert("it creates the uniqueness the concurrency case needs",
         "CREATE UNIQUE INDEX" in MIGRATION)
 _assert("and it is idempotent",
         "already applied" in MIGRATION)
+
+
+
+
+# ── 14 · PKCE, enforced end to end ───────────────────────────────────────────
+
+_section("14 · PKCE is installed AND enforced, not merely present")
+
+_reset_yahoo()
+YAHOO["subject"] = "YSUB-PKCE"
+
+# THE HAPPY PATH FIRST, so the failures below are known to be failures of PKCE
+# rather than of anything else in the flow.
+with _client() as client:
+    state, _ = _begin(client)
+    before = len(EXCHANGES)
+    ok = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                    follow_redirects=False)
+    _assert("a sign-in carrying the right verifier completes",
+            ok.headers["location"] == "/app/index.html",
+            ok.headers["location"])
+    _assert("and the exchange presented it", len(EXCHANGES) == before + 1
+            and bool(EXCHANGES[-1]["code_verifier"]))
+
+# A WRONG VERIFIER IS REFUSED BY THE AUTHORIZATION SERVER.
+#
+# The transaction cookie is re-sealed with a verifier this sign-in never
+# registered — which is exactly the shape of an authorization code injected
+# into this callback from somebody else's flow. The mock refuses it the way
+# Yahoo refuses `invalid_grant`, and the route reports the governed refusal.
+_reset_yahoo()
+with _client() as client:
+    state, _ = _begin(client)
+    hostile = new_transaction()
+    forged = Transaction(state=state, nonce=YAHOO["nonce"],
+                         code_verifier=hostile.code_verifier,
+                         issued_at=int(time.time()))
+    client.cookies.set("fs_yahoo_txn",
+                       seal_transaction(forged,
+                                        secret=os.environ["JWT_SECRET_KEY"]))
+    before = len(EXCHANGES)
+    r = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                   follow_redirects=False)
+    _assert("a verifier that does not match the challenge is REFUSED",
+            _reason(r.headers["location"]) == "exchange_failed",
+            r.headers["location"])
+    _assert("the attempt reached the token endpoint and was rejected there",
+            len(EXCHANGES) == before + 1,
+            "the authorization server enforced it, as Yahoo would")
+    _assert("and no session was issued", not client.cookies.get("fs_session"))
+
+# A MISSING VERIFIER IS REFUSED BEFORE THE NETWORK.
+_reset_yahoo()
+with _client() as client:
+    state, _ = _begin(client)
+    empty = Transaction(state=state, nonce=YAHOO["nonce"], code_verifier="",
+                        issued_at=int(time.time()))
+    client.cookies.set("fs_yahoo_txn",
+                       seal_transaction(empty,
+                                        secret=os.environ["JWT_SECRET_KEY"]))
+    before = len(EXCHANGES)
+    r = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                   follow_redirects=False)
+    _assert("a transaction with NO verifier cannot be exchanged",
+            _reason(r.headers["location"]) == "sign_in_expired",
+            r.headers["location"])
+    _assert("and it never reached the token endpoint",
+            len(EXCHANGES) == before,
+            "refused locally, before any network call")
+
+# A SHORT VERIFIER IS REFUSED — RFC 7636 sets the floor at 43 characters.
+_reset_yahoo()
+with _client() as client:
+    state, _ = _begin(client)
+    short = Transaction(state=state, nonce=YAHOO["nonce"],
+                        code_verifier="tooshort", issued_at=int(time.time()))
+    client.cookies.set("fs_yahoo_txn",
+                       seal_transaction(short,
+                                        secret=os.environ["JWT_SECRET_KEY"]))
+    r = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                   follow_redirects=False)
+    _assert("an under-length verifier is refused rather than sent",
+            _reason(r.headers["location"]) == "sign_in_expired",
+            r.headers["location"])
+
+# PKCE DID NOT REPLACE ANYTHING. State and nonce still refuse on their own.
+_reset_yahoo()
+with _client() as client:
+    _begin(client)
+    r = client.get("/auth/yahoo/callback?code=C&state=not-the-minted-one",
+                   follow_redirects=False)
+    _assert("state is STILL validated with PKCE in place",
+            _reason(r.headers["location"]) == "state_invalid",
+            r.headers["location"])
+
+_reset_yahoo()
+with _client() as client:
+    state, _ = _begin(client)
+    YAHOO["claims"] = {"nonce": "a-nonce-from-another-sign-in"}
+    r = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                   follow_redirects=False)
+    _assert("nonce is STILL validated with PKCE in place",
+            _reason(r.headers["location"]) == "replay_detected",
+            r.headers["location"])
+
+# THE VERIFIER IS SINGLE-USE, because the transaction it rides in is.
+_reset_yahoo()
+YAHOO["subject"] = "YSUB-PKCE-ONCE"
+with _client() as client:
+    state, _ = _begin(client)
+    first = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                       follow_redirects=False)
+    _assert("the first redemption succeeds",
+            first.headers["location"] == "/app/index.html")
+    before = len(EXCHANGES)
+    second = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                        follow_redirects=False)
+    _assert("the verifier cannot be spent twice",
+            _reason(second.headers["location"]) == "sign_in_expired",
+            second.headers["location"])
+    _assert("and the second attempt made no exchange",
+            len(EXCHANGES) == before)
+
+# THE CLIENT SECRET IS STILL PRESENTED. PKCE is additive, not a replacement.
+_assert("client authentication still accompanies every exchange",
+        all(e["client_secret"] == CLIENT_SECRET for e in EXCHANGES),
+        f"{len(EXCHANGES)} exchanges")
+
+# NOTHING ABOUT PKCE REACHES THE BROWSER.
+_reset_yahoo()
+YAHOO["subject"] = "YSUB-PKCE-LEAK"
+with _client() as client:
+    start = client.get("/auth/yahoo/start", follow_redirects=False)
+    sealed = client.cookies.get("fs_yahoo_txn")
+    txn = open_transaction(sealed, secret=os.environ["JWT_SECRET_KEY"])
+    state, _ = _begin(client)
+    done = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                      follow_redirects=False)
+    me = client.get("/auth/me")
+    surface = "".join([start.headers.get("location", ""), start.text,
+                       str(dict(start.headers)), done.headers.get("location", ""),
+                       done.text, str(dict(done.headers)), me.text])
+    _assert("the verifier never appears in any response the browser receives",
+            txn.code_verifier not in surface)
+    _assert("nor in any cookie value the page can read",
+            txn.code_verifier not in str(dict(client.cookies))
+            or "fs_yahoo_txn" not in str(dict(client.cookies)),
+            "sealed inside the HttpOnly transaction cookie only")
+    raw = start.headers.get("set-cookie", "")
+    _assert("and the cookie carrying it is HttpOnly",
+            "httponly" in raw.lower(), raw[:100])
+    _assert("no verifier reaches the redirect URL either",
+            "code_verifier" not in start.headers.get("location", ""))
+
+
+# ── 15 · Scopes and claims, reconciled against Yahoo's documentation ─────────
+
+_section("15 · Every scope buys a claim this product consumes")
+
+_assert("`openid` is requested — it is what makes this a sign-in",
+        "openid" in SCOPES)
+_assert("`email` is requested, because the migration claim path reads it",
+        "email" in SCOPES)
+_assert("`fspt-r` is requested, so one grant also authorizes Fantasy reads",
+        "fspt-r" in SCOPES)
+_assert("and NOTHING else is requested",
+        set(SCOPES) == {"openid", "email", "fspt-r"}, " ".join(SCOPES))
+
+_assert("no WRITE scope of any kind",
+        not any(sc.endswith("-w") for sc in SCOPES)
+        and not any("w" == sc.split("-")[-1] for sc in SCOPES),
+        " ".join(SCOPES))
+for unused in ("sdps-r", "sdpp-w", "mail-r", "profile"):
+    _assert(f"the unused permission {unused!r} is not requested",
+            unused not in SCOPES)
+_assert("and the reason profile scopes are omitted is recorded in the module",
+        "sdps-r" in OIDC and "WHAT IS DELIBERATELY NOT REQUESTED" in OIDC)
+
+# `sub` IS MANDATORY, AND NOTHING SUBSTITUTES FOR IT.
+_reset_yahoo()
+for missing, expected in ((("sub", ""), "identity_unavailable"),
+                          (("sub", "   "), "identity_unavailable")):
+    _reset_yahoo()
+    with _client() as client:
+        state, _ = _begin(client)
+        YAHOO["claims"] = {missing[0]: missing[1]}
+        r = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                       follow_redirects=False)
+        _assert(f"an ID token whose sub is {missing[1]!r} is refused",
+                _reason(r.headers["location"]) == expected,
+                r.headers["location"])
+
+# THE OPTIONAL CLAIMS ARE OPTIONAL, AND THEIR ABSENCE IS NOT AMBIGUITY.
+#
+# Yahoo returns `name` only with a profile scope this product does not request,
+# so its absence is the EXPECTED case rather than an edge one. A sign-in must
+# complete on `sub` alone.
+_reset_yahoo()
+YAHOO["subject"] = "YSUB-BARE-CLAIMS"
+YAHOO["claims"] = {"name": None, "email": None}
+with _client() as client:
+    state, _ = _begin(client)
+    r = client.get(f"/auth/yahoo/callback?code=C&state={state}",
+                   follow_redirects=False)
+    _assert("an ID token with NO name and NO email still signs the GM in",
+            r.headers["location"] == "/app/index.html",
+            r.headers["location"])
+    _assert("on the subject alone", client.get("/auth/me").status_code == 200)
+with SessionLocal() as db:
+    bare = (db.query(User)
+            .filter(User.provider_subject == "YSUB-BARE-CLAIMS").one())
+    _assert("and it is one unambiguous account",
+            bare.auth_provider == PROVIDER_YAHOO)
+    _assert("with an undeliverable placeholder rather than a guessed address",
+            bare.email.endswith("@yahoo.invalid"), bare.email)
+    _assert("that is a digest, not the subject printed in a displayed field",
+            "YSUB-BARE-CLAIMS" not in bare.email, bare.email)
+
+# A SECOND SIGN-IN, STILL WITH NO CLAIMS, IS THE SAME ACCOUNT.
+_reset_yahoo()
+YAHOO["subject"] = "YSUB-BARE-CLAIMS"
+YAHOO["claims"] = {"name": None, "email": None}
+with _client() as client:
+    state, _ = _begin(client)
+    client.get(f"/auth/yahoo/callback?code=C&state={state}",
+               follow_redirects=False)
+with SessionLocal() as db:
+    _assert("a claimless GM does not accumulate accounts",
+            db.query(User)
+            .filter(User.provider_subject == "YSUB-BARE-CLAIMS").count() == 1)
+
+# THE EMAIL CLAIM IS USED FOR MIGRATION AND FOR NOTHING ELSE.
+_assert("nothing resolves identity from a display name",
+        "display_name" not in _read("auth", "yahoo_identity.py")
+        .split("def resolve_user")[1].split("def _placeholder_email")[0]
+        .replace("display_name: str | None = None", ""),
+        "display_name is accepted and never read")
+_assert("and the resolver keys on the subject, never on the email",
+        "User.provider_subject == subject" in IDENTITY
+        and "User.email == normalised" in IDENTITY
+        and IDENTITY.index("User.provider_subject == subject")
+        < IDENTITY.index("User.email == normalised"),
+        "subject is looked up first, and wins")
+
 
 
 # ── 13 · The frontend tiers ──────────────────────────────────────────────────
