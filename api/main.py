@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+import secrets
 import sys
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -90,6 +91,7 @@ from auth.allocation_gate import (
 from auth.session import (
     CSRF_HEADER,
     clear_browser_session,
+    cookie_secure,
     csrf_failure_reason,
     issue_browser_session,
     new_csrf_token,
@@ -339,8 +341,37 @@ def _league_of(model, entity_id, db: Session, label: str) -> int:
     return row.league_id
 
 
+def _refuse_password_login_in_production() -> None:
+    """The cutover, enforced on every password route.
+
+    WP3D.1 — PRODUCTION HAS ONE LOGIN AND IT IS YAHOO. These three routes are
+    the development and automated-test path; in production they REFUSE rather
+    than merely being hidden, because a route that is only hidden is a route,
+    and the whole point of retiring the password is that there is no second way
+    in for anyone who knows the URL.
+
+    IT REFUSES WHETHER OR NOT YAHOO IS CONFIGURED. A production process missing
+    its Yahoo configuration is a broken deployment; letting it fall back to the
+    login it just retired would turn a visible incident into a silent downgrade
+    of the entire authentication model. It fails closed, and `/health` reports
+    exactly what is missing so an operator can fix it.
+
+    404, NOT 403. A 403 confirms the route exists and invites a second attempt;
+    in production this endpoint is simply not part of the application.
+    """
+    from auth.environment import auth_capabilities
+
+    if not auth_capabilities().password:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "password_login_retired",
+            "message": ("FantasyStakes uses Sign in with Yahoo. There is no "
+                        "password to enter."),
+        })
+
+
 @app.post("/auth/register", response_model=UserOut, status_code=201)
 def auth_register(req: RegisterRequest, db: Session = Depends(get_db)):
+    _refuse_password_login_in_production()
     try:
         user = register_user(req.email, req.password, db)
     except ValueError as e:
@@ -353,7 +384,12 @@ def auth_login(
     form: OAuth2PasswordRequestForm = Depends(),
     db:   Session = Depends(get_db),
 ):
-    """OAuth2 password flow. Pass email as `username`."""
+    """OAuth2 password flow. Pass email as `username`.
+
+    DEVELOPMENT AND AUTOMATED TESTS ONLY since WP3D.1 — see
+    `_refuse_password_login_in_production`.
+    """
+    _refuse_password_login_in_production()
     user  = authenticate_user(form.username, form.password, db)
     token = create_access_token(user)
     return LoginOut(
@@ -476,6 +512,214 @@ def _identity_out(u: User, db: Session) -> IdentityOut:
     )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# WP3D.1 — SIGN IN WITH YAHOO
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# THE PRODUCTION LOGIN. Yahoo authenticates the Yahoo account by whatever method
+# that account uses — a password, a verification prompt, Account Key — and tells
+# us only that it succeeded and who it was. FantasyStakes never sees a Yahoo
+# credential, never asks for one, and has no field that could hold one.
+#
+# THE BROWSER IS NOT PART OF THE EXCHANGE. It follows a redirect out and a
+# redirect back; the authorization code is redeemed here, server-side, with the
+# client secret, and no token of any kind is ever handed to script. What the
+# browser gets is the same FantasyStakes session cookie it has always had.
+#
+# TWO ROUTES AND ONE READ:
+#   GET  /auth/yahoo/start     mint state+nonce, redirect to Yahoo
+#   GET  /auth/yahoo/callback  validate, exchange, resolve identity, sign in
+#   GET  /auth/methods         what this deployment accepts as a login
+#
+# BOTH ARE GETs BECAUSE BOTH ARE NAVIGATIONS. The callback is where Yahoo sends
+# the browser, so it cannot be anything else; `start` is a top-level navigation
+# for the same reason, and carries no body to protect. `state` is what defends
+# the callback, and it is a stronger defence than CSRF-on-POST would be, because
+# it also proves the response belongs to a sign-in THIS browser began.
+
+#: Where the transaction (state + nonce) rides between the two routes.
+_YAHOO_TXN_COOKIE = "fs_yahoo_txn"
+
+#: Where a completed or failed sign-in lands the browser.
+_APP_HOME = "/app/index.html"
+
+#: Reason codes the sign-in surface knows how to speak. The frontend maps each
+#: to product language; NONE of them is an HTTP status, an exception string, an
+#: endpoint or a token, and no other value is ever placed in the URL.
+_SIGN_IN_REASONS = frozenset({
+    "cancelled", "state_invalid", "sign_in_expired", "exchange_failed",
+    "identity_token_invalid", "identity_unavailable", "replay_detected",
+    "provider_unreachable", "sign_in_unavailable", "sign_in_failed",
+})
+
+
+class AuthMethodsOut(BaseModel):
+    """Which logins this deployment offers.
+
+    NOT A SECRET AND NOT A DIAGNOSTIC. A GM discovers the same thing by looking
+    at the page; serving it lets the page draw the right surface instead of
+    guessing. The client id, the redirect and the secret are absent by
+    construction — this carries three booleans and a sentence.
+    """
+
+    environment:        str
+    yahoo:              bool
+    password:           bool
+    unavailable_reason: Optional[str] = None
+
+
+@app.get("/auth/methods", response_model=AuthMethodsOut)
+def auth_methods():
+    """What this process accepts as a login."""
+    from auth.environment import auth_capabilities
+
+    caps = auth_capabilities()
+    return AuthMethodsOut(environment=caps.environment, yahoo=caps.yahoo,
+                          password=caps.password,
+                          unavailable_reason=caps.unavailable_reason)
+
+
+def _sign_in_failure(reason_code: str) -> RedirectResponse:
+    """Send the browser home with a reason the page can speak.
+
+    THE CODE IS FROM A FIXED SET, checked here rather than trusted from the
+    caller, so nothing an exception carries can reach a URL. The transaction
+    cookie is cleared on the way out: a failed attempt must not leave a live
+    state behind for a second callback to reuse.
+    """
+    safe = reason_code if reason_code in _SIGN_IN_REASONS else "sign_in_failed"
+    response = RedirectResponse(url=f"{_APP_HOME}?auth={safe}", status_code=303)
+    response.delete_cookie(_YAHOO_TXN_COOKIE, path="/auth")
+    return response
+
+
+@app.get("/auth/yahoo/start")
+def auth_yahoo_start():
+    """Begin a Yahoo sign-in.
+
+    The state and the nonce are minted HERE — server-side, from `secrets` — and
+    sealed into a short-lived HttpOnly cookie signed with the application's own
+    key. A browser cannot read them, so the replay the nonce prevents cannot be
+    mounted from script; a caller cannot choose them, so a forged callback
+    carries a value this server never issued.
+    """
+    from auth.jwt_auth import SECRET_KEY
+    from auth.yahoo_oidc import (
+        OidcError, authorization_url, load_config, new_transaction,
+        seal_transaction,
+    )
+
+    try:
+        config = load_config()
+    except OidcError as exc:
+        return _sign_in_failure(exc.reason_code)
+
+    transaction = new_transaction()
+    response = RedirectResponse(
+        url=authorization_url(config, transaction), status_code=307)
+    response.set_cookie(
+        _YAHOO_TXN_COOKIE,
+        seal_transaction(transaction, secret=SECRET_KEY),
+        max_age=600,
+        httponly=True,            # the nonce must be unreadable from script
+        secure=cookie_secure(),
+        # LAX, NOT STRICT, AND THAT IS THE WHOLE POINT OF THE CHOICE. The
+        # callback is a top-level GET navigation arriving from Yahoo's origin;
+        # `Strict` would withhold this cookie on exactly that navigation and
+        # every sign-in would fail its own state check. `Lax` sends it on a
+        # top-level GET and withholds it from cross-site POSTs and subresource
+        # requests, which is the shape this needs and no more. The SESSION
+        # cookie policy is untouched — it was already Lax, for its own reasons.
+        samesite="lax",
+        # SCOPED TO /auth. It has no business being sent with every API call.
+        path="/auth",
+    )
+    return response
+
+
+@app.get("/auth/yahoo/callback")
+def auth_yahoo_callback(
+    request: Request,
+    code:    Optional[str] = None,
+    state:   Optional[str] = None,
+    error:   Optional[str] = None,
+    db:      Session = Depends(get_db),
+):
+    """Where Yahoo returns the browser once it has authenticated the account.
+
+    EVERY GUARD IS APPLIED BEFORE ANY IDENTITY IS RESOLVED, and each one is a
+    different real attack — see `auth/yahoo_oidc.py` for what each defends.
+    Nothing here trusts a query parameter for anything except as material to
+    check against something the server already knew.
+
+    ON SUCCESS the browser is redirected home with a fresh FantasyStakes session
+    cookie and NOTHING in the URL. No code, no token, no subject: an
+    authorization code in a browser history is a credential in a browser
+    history, and this route is the last place one exists.
+    """
+    from auth.jwt_auth import SECRET_KEY, create_access_token
+    from auth.yahoo_identity import resolve_user
+    from auth.yahoo_oidc import (
+        OidcError, exchange_code, load_config, open_transaction,
+        validate_id_token,
+    )
+
+    # THE USER SAID NO. A cancellation is not a failure of the product and is
+    # not reported as one; the page simply offers the button again.
+    if error:
+        return _sign_in_failure("cancelled")
+
+    sealed = request.cookies.get(_YAHOO_TXN_COOKIE)
+    if not sealed:
+        return _sign_in_failure("sign_in_expired")
+
+    try:
+        config = load_config()
+        transaction = open_transaction(sealed, secret=SECRET_KEY)
+
+        # STATE FIRST, BEFORE THE CODE IS EVEN LOOKED AT. A forged callback
+        # must cost nothing: no exchange, no network call, no identity lookup.
+        if not state or not secrets.compare_digest(str(state),
+                                                   transaction.state):
+            return _sign_in_failure("state_invalid")
+        if not code:
+            return _sign_in_failure("exchange_failed")
+
+        tokens = exchange_code(code, config=config,
+                               exchange=_YAHOO_TOKEN_EXCHANGE)
+        identity = validate_id_token(tokens["id_token"], config=config,
+                                     nonce=transaction.nonce,
+                                     key_resolver=_YAHOO_KEY_RESOLVER)
+    except OidcError as exc:
+        return _sign_in_failure(exc.reason_code)
+
+    resolved = resolve_user(db, subject=identity.subject, email=identity.email,
+                            display_name=identity.display_name)
+
+    # A FRESH SESSION, MINTED AFTER AUTHENTICATION AND NOT BEFORE. Whatever the
+    # browser held a moment ago is replaced rather than reused, so a session
+    # fixed on this browser before the sign-in cannot survive it.
+    csrf = new_csrf_token()
+    token = create_access_token(resolved.user, csrf=csrf)
+    response = RedirectResponse(url=_APP_HOME, status_code=303)
+    issue_browser_session(response, token, csrf)
+    # SINGLE USE. The transaction is spent; a second callback replaying the
+    # same code finds no state to check it against.
+    response.delete_cookie(_YAHOO_TXN_COOKIE, path="/auth")
+    return response
+
+
+#: THE TWO NETWORK SEAMS, injectable and injected NOWHERE in production.
+#:
+#: `None` means "use the live implementation". The certification suite replaces
+#: them with a deterministic Yahoo, which is what lets it drive THIS route —
+#: the real state check, the real token validation, the real identity
+#: resolution, the real session issue — without a live provider and without a
+#: second code path that could drift from the one that ships.
+_YAHOO_TOKEN_EXCHANGE = None
+_YAHOO_KEY_RESOLVER = None
+
+
 @app.post("/auth/session", response_model=IdentityOut)
 def auth_session_create(
     req:      SessionLoginRequest,
@@ -488,7 +732,15 @@ def auth_session_create(
     client has to hold it; a browser must not, and the surest way to keep a
     token out of script-readable storage is to never hand it to script. The
     response body is identity only.
+
+    DEVELOPMENT AND AUTOMATED TESTS ONLY since WP3D.1. Production
+    authentication is `GET /auth/yahoo/start`; this route refuses there.
+    It is kept — under that gate — because twenty automated suites and the
+    browser harness sign in through it, and making certification depend on
+    an interactive Yahoo round trip would make the product harder to
+    verify without making it any safer.
     """
+    _refuse_password_login_in_production()
     user = authenticate_user(req.email, req.password, db)
 
     csrf  = new_csrf_token()
@@ -674,13 +926,28 @@ def _compute_standings(db: Session) -> list[dict]:
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
+    from auth.environment import auth_capabilities, production_readiness
+
     league = db.query(League).first()
     teams  = db.query(Team).count()
+    # WP3D.1 — AN OPERATOR CAN SEE WHETHER THIS DEPLOYMENT CAN SIGN ANYONE IN.
+    #
+    # `auth_missing` names the configuration a PRODUCTION process still needs,
+    # by variable name and nothing more: no value, no secret, no partial
+    # secret. An empty list on a production process is the statement that
+    # Sign in with Yahoo is fully configured. On a development process it is
+    # empty because none of it is required there.
+    missing = production_readiness()
+    caps = auth_capabilities()
     return {
-        "status":  "ok",
+        "status":  "ok" if not missing else "degraded",
         "league":  league.name if league else None,
         "season":  league.season if league else None,
         "teams":   teams,
+        "environment":   caps.environment,
+        "auth_yahoo":    caps.yahoo,
+        "auth_password": caps.password,
+        "auth_missing":  missing,
         "db_path": os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "db", "fantasy.db")
         ),

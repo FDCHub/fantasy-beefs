@@ -394,6 +394,7 @@ class AppServer:
                  seed_skunk_week: bool = False,
                  seed_priceable_versus: bool = False,
                  provider_binding: str = "yahoo",
+                 server_env: dict | None = None,
                  provider_week: int | None = 5) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
@@ -427,6 +428,13 @@ class AppServer:
         # Parameterised rather than given a `demo=True` boolean because there
         # are three states and a boolean can only carry two.
         self._provider_binding = provider_binding
+        # WP3D.1: extra environment for the SERVER PROCESS only — never for the
+        # seed, which must build the same fixture whatever the runtime is
+        # configured to accept as a login. `FS_ENV=production` is the case this
+        # exists for: the browser tier has to meet a real production process,
+        # and a production process is a property of the runtime rather than of
+        # the data.
+        self._server_env = dict(server_env or {})
         # S8-P4C-3: the week the fixture league STATES. Defaults to 5 — the week
         # every earlier suite was certified on — so their fixtures are
         # unchanged. `None` seeds a provider-bound league that has never been
@@ -462,6 +470,7 @@ class AppServer:
         env["FS_COOKIE_INSECURE"] = "1"
         env.pop("FS_ALLOWED_ORIGINS", None)
         env["JWT_SECRET_KEY"] = "certification-suite-secret"
+        env.update(self._server_env)
 
         self._process = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "api.main:app",

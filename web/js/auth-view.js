@@ -1,43 +1,154 @@
 /* ============================================================================
  * FantasyStakes — sign-in gate and acting-identity presentation
- * Sprint 8 Package 1
+ * Sprint 8 Package 1 · authentication cut over to Yahoo in WP3D.1
  *
- * TWO SMALL SURFACES, ONE RULE: neither decides anything. The gate collects a
- * password and hands it to the session module; the identity block draws what
- * `/auth/me` said. Nothing here derives authority, and nothing here holds a
- * credential — the password is read out of the form field, passed to `login()`
- * and never written anywhere, not even to a local variable that outlives the
- * call.
+ * TWO SMALL SURFACES, ONE RULE: neither decides anything. The gate starts a
+ * Yahoo sign-in and draws what came back; the identity block draws what
+ * `/auth/me` said. Nothing here derives authority.
  *
- * WHY THE APPLICATION IS GATED AT ALL, GIVEN THE TABS STILL DRAW ILLUSTRATIVE
- * DATA. Because the alternative is worse. Sprint 8 binds these surfaces to a
- * specific GM's real position; a shell that renders before anyone is named
- * would have to decide what to show in the meantime, and every honest answer
- * to that is a second, unauthenticated rendering path — exactly the bypass the
- * certification suite now forbids. Gating first means the binding packages
- * have one path to bind.
+ * WHAT WP3D.1 REMOVED, AND WHY IT MATTERS THAT IT IS REMOVED RATHER THAN
+ * HIDDEN. This file used to hold an email field, a password field and a
+ * submit that posted both. Production authentication is now Yahoo's, so there
+ * is no password to collect — and a credential form that merely stopped being
+ * shown would still be a credential form one CSS rule away from returning.
+ * The production surface has no password input at all, and the suite asserts
+ * that by counting inputs rather than by reading a class name.
  *
- * THE ERROR MESSAGE IS DELIBERATELY VAGUE. The server does not say whether an
- * email exists, and neither does this: "check your details" for both a wrong
- * password and an unknown address, so the form cannot be used to enumerate
- * which GMs have accounts.
+ * FANTASYSTAKES NEVER SEES A YAHOO PASSWORD. The GM leaves for Yahoo, Yahoo
+ * authenticates the Yahoo account by whatever method that account uses, and
+ * the GM comes back with a FantasyStakes session. This page has no field that
+ * could hold a Yahoo credential and never asks for one — which is also why it
+ * must not imitate Yahoo's own sign-in page: a page that looks like Yahoo's is
+ * exactly what a page collecting Yahoo passwords would look like.
+ *
+ * THE DEVELOPMENT SIGN-IN IS SERVER-DECLARED, NEVER CLIENT-CHOSEN. The gate
+ * asks `/auth/methods` what this deployment accepts. A production process says
+ * `password: false` and the form is not built; there is no query parameter, no
+ * key sequence and no local flag that can conjure it, because the decision was
+ * never the browser's to make — and the routes refuse it server-side anyway.
  * ========================================================================== */
 
 import { escapeHtml } from './components.js';
-import { ApiError, currentIdentity, login, logout } from './session.js';
+import {
+  ApiError, apiFetch, currentIdentity, login, logout,
+} from './session.js';
+
+/* ── Where a finished or failed Yahoo sign-in lands ─────────────────────── */
+
+/**
+ * Product language for every reason code the callback can hand back.
+ *
+ * ONE SENTENCE PER SITUATION, and none of them is a status code, an OAuth
+ * error string, an endpoint or a token. The callback only ever puts a code
+ * from its own fixed set into the URL; anything else falls to the last line,
+ * so an unrecognised value cannot become copy.
+ */
+const SIGN_IN_MESSAGES = Object.freeze({
+  cancelled: 'Sign-in was cancelled. You can try again whenever you like.',
+  state_invalid: 'That sign-in could not be verified. Start again from here.',
+  sign_in_expired: 'That sign-in took too long. Start again from here.',
+  exchange_failed: 'Yahoo could not complete the sign-in. Try again.',
+  identity_token_invalid: 'Yahoo could not complete the sign-in. Try again.',
+  identity_unavailable: 'Yahoo did not return enough to identify your account.',
+  replay_detected: 'That sign-in could not be verified. Start again from here.',
+  provider_unreachable: 'Yahoo could not be reached just now. Try again in a moment.',
+  sign_in_unavailable: 'Sign-in is temporarily unavailable. Please try again shortly.',
+});
+
+/**
+ * The reason the last sign-in attempt failed, read from the URL and REMOVED.
+ *
+ * The query is stripped with `replaceState` as soon as it is read: a reason
+ * code left in the address bar survives a refresh and re-announces a failure
+ * the GM has already seen and already retried past.
+ *
+ * @returns {string|null}
+ */
+function takeSignInReason() {
+  if (typeof window === 'undefined' || !window.location) return null;
+  const params = new URLSearchParams(window.location.search);
+  const reason = params.get('auth');
+  if (!reason) return null;
+  params.delete('auth');
+  const query = params.toString();
+  const url = window.location.pathname + (query ? `?${query}` : '')
+    + window.location.hash;
+  if (window.history && window.history.replaceState) {
+    window.history.replaceState({}, '', url);
+  }
+  return reason;
+}
+
+/** What this deployment accepts as a login. Server-declared. */
+let METHODS = { yahoo: true, password: false, unavailable_reason: null };
+
+/**
+ * Ask the server which logins it offers.
+ *
+ * A FAILED READ ASSUMES YAHOO AND NOTHING ELSE. If the server cannot be
+ * reached, the safe presentation is the production one: offering a password
+ * form on a guess would be offering a login this deployment may not have.
+ *
+ * @returns {Promise<object>}
+ */
+export async function loadAuthMethods() {
+  try {
+    const body = await apiFetch('/auth/methods');
+    METHODS = {
+      yahoo: body.yahoo !== false,
+      password: body.password === true,
+      unavailable_reason: body.unavailable_reason || null,
+    };
+  } catch {
+    METHODS = { yahoo: true, password: false, unavailable_reason: null };
+  }
+  return METHODS;
+}
+
+/** The methods last read, for the gate and the suites. @returns {object} */
+export function authMethods() {
+  return METHODS;
+}
 
 /* ── The gate ───────────────────────────────────────────────────────────── */
 
 /**
  * Markup for the sign-in gate.
  *
- * `autocomplete` is set so a password manager fills this correctly, and
- * `type="password"` so the value is never rendered. The form is a real form
- * with a submit button, so Enter works and assistive tech announces it as one.
+ * THE YAHOO ACTION IS A LINK, NOT A SCRIPTED BUTTON. `/auth/yahoo/start` is a
+ * top-level navigation that ends at Yahoo, and an anchor is what a browser
+ * already knows how to do with that: it is keyboard-operable, it is announced
+ * as a link, it works before any script has run, and it needs no handler that
+ * could fail. It reads as the primary action because it carries the primary
+ * button's own class, not because of anything about Yahoo.
+ *
+ * NO LOGO IS REQUIRED TO UNDERSTAND IT. The label is words. Rev 4.3 §23 does
+ * not permit a Yahoo mark here, and WP3D.1 §33 requires the action to be
+ * comprehensible without an image — the two agree.
  *
  * @returns {string}
  */
 export function buildGate() {
+  const reason = takeSignInReason();
+  const message = reason
+    ? (SIGN_IN_MESSAGES[reason] || 'That sign-in could not be completed. Try again.')
+    : '';
+
+  const yahooBlock = METHODS.yahoo
+    ? (
+      '<a class="fs-btn fs-btn--gold fs-gate__yahoo" id="fs-gate-yahoo" '
+        + 'href="/auth/yahoo/start" role="button">Sign in with Yahoo</a>'
+      + '<p class="fs-gate__explain">Connect securely with your Yahoo account '
+        + 'to access your FantasyStakes leagues. FantasyStakes never sees your '
+        + 'Yahoo password.</p>'
+    )
+    : (
+      '<p class="fs-gate__error" role="alert">'
+      + escapeHtml(METHODS.unavailable_reason
+        || 'Sign-in is temporarily unavailable. Please try again shortly.')
+      + '</p>'
+    );
+
   return (
     '<div class="fs-gate__inner">' +
       '<div class="fs-gate__lockup">' +
@@ -47,22 +158,13 @@ export function buildGate() {
         '<div class="fs-gate__tagline">SIGN IN TO YOUR LEAGUE</div>' +
       '</div>' +
 
-      '<form class="fs-gate__form" id="fs-gate-form" novalidate>' +
-        '<label class="fs-gate__label" for="fs-gate-email">Email</label>' +
-        '<input class="fs-gate__input" id="fs-gate-email" name="email" type="email" ' +
-          'autocomplete="username" autocapitalize="none" autocorrect="off" ' +
-          'spellcheck="false" required>' +
+      // aria-live so a failed or cancelled return is announced, not merely drawn.
+      '<p class="fs-gate__error" id="fs-gate-error" role="alert" aria-live="polite">'
+      + escapeHtml(message) + '</p>' +
 
-        '<label class="fs-gate__label" for="fs-gate-password">Password</label>' +
-        '<input class="fs-gate__input" id="fs-gate-password" name="password" ' +
-          'type="password" autocomplete="current-password" required>' +
+      yahooBlock +
 
-        // aria-live so a failure is announced, not merely drawn.
-        '<p class="fs-gate__error" id="fs-gate-error" role="alert" aria-live="polite"></p>' +
-
-        '<button class="fs-btn fs-btn--gold fs-gate__submit" id="fs-gate-submit" ' +
-          'type="submit">Sign in</button>' +
-      '</form>' +
+      devSignIn() +
 
       '<p class="fs-gate__note">Virtual Credits · $ is display only · no cash value</p>' +
     '</div>'
@@ -70,21 +172,57 @@ export function buildGate() {
 }
 
 /**
- * Bind the gate's form.
+ * The development sign-in, drawn ONLY where the server says it exists.
  *
- * NO SUCCESS CALLBACK, DELIBERATELY. A successful `login()` changes identity,
- * and the shell re-renders from the identity subscription in `session.js`.
- * Handing this function a second way to trigger that would give the
- * application two paths into the same transition — one for a voluntary sign-in
- * and one for everything else — and only one of them would get exercised.
+ * IT IS LABELLED FOR WHAT IT IS. A developer running the app locally should be
+ * in no doubt that this is not how a GM signs in, and a screenshot of it should
+ * be unmistakable if it ever appears somewhere it should not.
+ *
+ * @returns {string}
+ */
+function devSignIn() {
+  if (!METHODS.password) return '';
+  return (
+    '<details class="fs-gate__dev" id="fs-gate-dev">'
+    + '<summary class="fs-gate__devsummary">Development sign-in</summary>'
+    + '<p class="fs-gate__devnote">Not available in production. Production '
+    + 'authentication is Sign in with Yahoo.</p>'
+    + '<form class="fs-gate__form" id="fs-gate-form" novalidate>'
+      + '<label class="fs-gate__label" for="fs-gate-email">Email</label>'
+      + '<input class="fs-gate__input" id="fs-gate-email" name="email" type="email" '
+        + 'autocomplete="username" autocapitalize="none" autocorrect="off" '
+        + 'spellcheck="false" required>'
+      + '<label class="fs-gate__label" for="fs-gate-password">Password</label>'
+      + '<input class="fs-gate__input" id="fs-gate-password" name="password" '
+        + 'type="password" autocomplete="current-password" required>'
+      + '<p class="fs-gate__error" id="fs-gate-deverror" role="alert" '
+        + 'aria-live="polite"></p>'
+      + '<button class="fs-btn fs-gate__submit" id="fs-gate-submit" '
+        + 'type="submit">Sign in</button>'
+    + '</form>'
+    + '</details>'
+  );
+}
+
+/**
+ * Bind the gate.
+ *
+ * The Yahoo action needs no binding — it is a link. What is bound is the
+ * development form, and only when it was drawn.
+ *
+ * NO SUCCESS CALLBACK, DELIBERATELY. A successful sign-in changes identity, and
+ * the shell re-renders from the identity subscription in `session.js`. Handing
+ * this function a second way to trigger that would give the application two
+ * paths into the same transition, and only one of them would get exercised.
  *
  * @param {HTMLElement} root the gate container
  */
 export function bindGate(root) {
   const form = root.querySelector('#fs-gate-form');
-  const errorEl = root.querySelector('#fs-gate-error');
+  if (!form) return;
+  const errorEl = root.querySelector('#fs-gate-deverror');
   const submit = root.querySelector('#fs-gate-submit');
-  if (!form || !errorEl || !submit) return;
+  if (!errorEl || !submit) return;
 
   let inFlight = false;
 
@@ -113,7 +251,10 @@ export function bindGate(root) {
       passwordField.value = '';
     } catch (error) {
       passwordField.value = '';
-      if (error instanceof ApiError && error.status === 401) {
+      if (error instanceof ApiError && error.status === 404) {
+        // The server retired this route underneath a stale page.
+        errorEl.textContent = 'This deployment uses Sign in with Yahoo.';
+      } else if (error instanceof ApiError && error.status === 401) {
         errorEl.textContent = 'Those details were not recognised. Check them and try again.';
       } else if (error instanceof ApiError && error.status === 403) {
         errorEl.textContent = 'That request was refused. Reload the page and try again.';
@@ -140,8 +281,7 @@ export function bindGate(root) {
  * checks who they are.
  *
  * The commissioner badge follows `is_commissioner` from the server. It is a
- * LABEL — it grants nothing, and S8-P2 will narrow what the role means
- * server-side without this file changing.
+ * LABEL — it grants nothing.
  *
  * @returns {string}
  */
@@ -167,9 +307,10 @@ export function buildIdentityBlock() {
 /**
  * Bind the sign-out control.
  *
- * Like the gate, no callback: `logout()` drops identity — in a `finally`, so a
- * failed call still signs the GM out locally — and the shell's subscription
- * takes it from there.
+ * WHAT SIGNING OUT MEANS, EXACTLY. It ends the FantasyStakes session and clears
+ * this browser's identity. It does NOT sign the GM out of Yahoo, and the copy
+ * does not claim it does: Yahoo owns that session, FantasyStakes cannot end it,
+ * and telling a GM otherwise on a shared device would be dangerous.
  *
  * @param {HTMLElement} root element containing the identity block
  */

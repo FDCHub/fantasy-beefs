@@ -106,7 +106,9 @@ import {
   acceptChallenge, counterChallenge, declineChallenge,
   explainRefusal as explainActionRefusal, issueChallenge, readActionState,
 } from './action-command.js';
-import { bindGate, bindIdentityBlock, buildGate, buildIdentityBlock } from './auth-view.js';
+import {
+  bindGate, bindIdentityBlock, buildGate, buildIdentityBlock, loadAuthMethods,
+} from './auth-view.js';
 import {
   apiFetch, currentIdentity, isAuthenticated, onIdentityChange, refreshIdentity,
 } from './session.js';
@@ -1368,6 +1370,12 @@ export async function mount() {
       mountGate();
     }
   });
+
+  // WP3D.1 — WHAT THIS DEPLOYMENT ACCEPTS AS A LOGIN, read once before the
+  // gate can be drawn. A production process offers Sign in with Yahoo and
+  // nothing else; a development one additionally declares its local sign-in.
+  // The page never decides this for itself — see `auth-view.js`.
+  await loadAuthMethods();
 
   try {
     await refreshIdentity();

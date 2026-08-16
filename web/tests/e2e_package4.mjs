@@ -498,7 +498,13 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     const commish = document.getElementById('fs-commissioner');
     const title = panel.querySelector('.fs-tabhead__title');
     return {
-      text: el.textContent,
+      // WP3D — THE LEGAL LINE, NOT THE WHOLE FOOTER BLOCK. The footer now holds
+      // two source statements: the copyright line and, on a Yahoo-backed
+      // league, the contractual Yahoo attribution. They are siblings inside one
+      // footer because they are the same kind of thing, and reading the block's
+      // whole textContent concatenates them. The claim here has always been
+      // about the copyright line's exact wording, so it reads that line.
+      text: (el.querySelector('.fs-legal__line') || el).textContent,
       count: panel.querySelectorAll('#fs-legal').length,
       belowCommissioner: el.getBoundingClientRect().top >= commish.getBoundingClientRect().bottom - 1,
       fontSize: parseFloat(getComputedStyle(el).fontSize),

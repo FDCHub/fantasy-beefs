@@ -169,3 +169,60 @@
 }
 
 .fs-ident__out[disabled] { opacity: .6; }
+/* ── WP3D.1 · Sign in with Yahoo ───────────────────────────────────────────
+ *
+ * THE PRIMARY ACTION IS A LINK THAT LOOKS LIKE THE PRIMARY BUTTON. It carries
+ * `.fs-btn--gold` for the same reason every other primary action does, and the
+ * rules below only make an anchor sit like a button: an anchor is inline by
+ * default and would otherwise shrink to its text.
+ *
+ * NO YAHOO MARK, NO YAHOO PALETTE. Rev 4.3 §23 permits a text attribution and
+ * no branding, and WP3D.1 §33 requires the action to be understandable without
+ * an image. It is the FantasyStakes primary button with the word Yahoo in it. */
+
+.fs-gate__yahoo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  /* The shared button minimum, so it is a real touch target. */
+  min-height: 44px;
+  text-decoration: none;
+  text-align: center;
+}
+
+.fs-gate__explain {
+  margin: var(--fs-space-3) 0 0;
+  font-size: var(--fs-size-micro);
+  line-height: 1.5;
+  color: var(--g2);
+  text-align: center;
+}
+
+/* THE DEVELOPMENT SIGN-IN, and it should look like what it is: a collapsed
+ * utility below the real action, not a second front door. It is not rendered
+ * at all unless the server declared it, so these rules never apply in
+ * production — they exist so a developer's local page is tidy. */
+
+.fs-gate__dev {
+  margin-top: var(--fs-space-6);
+  padding-top: var(--fs-space-4);
+  border-top: var(--fs-border-hair);
+}
+
+.fs-gate__devsummary {
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--g2);
+  cursor: pointer;
+  /* A real summary is keyboard-operable already; this only sizes it. */
+  min-height: 24px;
+}
+
+.fs-gate__devnote {
+  margin: var(--fs-space-2) 0 var(--fs-space-3);
+  font-size: var(--fs-size-micro);
+  line-height: 1.5;
+  color: var(--g2);
+}

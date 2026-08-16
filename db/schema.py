@@ -842,15 +842,54 @@ class FeedEvent(Base):
 
 
 class User(Base):
-    """One account per GM, linked to their team by email. Commissioner has elevated access."""
+    """One account per GM, linked to their team by email. Commissioner has elevated access.
+
+    WP3D.1 — THE EXTERNAL IDENTITY ANCHOR.
+
+    Production authentication is Sign in with Yahoo, so the thing that says
+    "this is the same person as last time" is no longer an email and a password
+    hash. It is `(auth_provider, provider_subject)`: Yahoo's own stable subject
+    for the account, which does not change when the user changes their address,
+    their display name or their team name.
+
+    WHY NOT KEY ON `email`. Because a Yahoo user may change theirs, and Yahoo
+    may one day reassign a released address to somebody else. Keying identity
+    on it would give the same person a second FantasyStakes account — with a
+    second Ledger — the day they change it, and would hand the first person's
+    league to a stranger the day an address were reused. `email` stays as a
+    contact and display value and stops being an identity.
+
+    WHY NOT REUSE `Team.provider_team_key`. That is a LEAGUE-scoped Yahoo
+    handle for a team inside one league. A person is not a team; a person may
+    hold teams in several leagues and may hold none. Overloading it would fuse
+    two different lifetimes into one column.
+
+    ADDITIVE AND REVERSIBLE. Both columns are nullable, so existing rows are
+    valid unchanged and a rollback to pre-WP3D.1 code reads a table it still
+    understands. `hashed_password` becomes NULLABLE for the same reason in
+    reverse: a Yahoo-created account has no password and must not be given a
+    fabricated one, and `authenticate_user` refuses a row whose hash is absent
+    rather than treating absence as a match.
+    """
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("role IN ('gm','commissioner')", name="ck_user_role"),
+        # ONE FANTASYSTAKES ACCOUNT PER YAHOO ACCOUNT, enforced by the database
+        # and not by a query-then-insert that two concurrent callbacks could
+        # both pass. NULLs do not collide, so pre-Yahoo rows are unaffected.
+        UniqueConstraint("auth_provider", "provider_subject",
+                         name="uq_user_provider_subject"),
     )
 
     id                = Column(Integer,  primary_key=True, autoincrement=True)
     email             = Column(String,   nullable=False, unique=True)
-    hashed_password   = Column(String,   nullable=False)
+    #: NULL for an account that authenticates through a provider. WP3D.1 made
+    #: this nullable; nothing writes NULL outside the Yahoo path.
+    hashed_password   = Column(String,   nullable=True)
+    #: `yahoo`, or NULL for a pre-cutover local account.
+    auth_provider     = Column(String,   nullable=True)
+    #: The provider's own stable subject. Never an email, never a display name.
+    provider_subject  = Column(String,   nullable=True)
     team_id           = Column(Integer,  ForeignKey("teams.id"), nullable=True, unique=True)
     role              = Column(String,   nullable=False, default="gm")
     is_active         = Column(Integer,  nullable=False, default=1)

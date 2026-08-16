@@ -528,8 +528,39 @@ for f in ("api/main.py", "api/pool_routes.py", "api/war_room_routes.py",
                      r'|set_[a-z_]+|activate_|approve_|collect_)\b', block[:4000]):
             mutating_gets.append(f"{f}: GET {m.group(1)}")
 
-_assert("no GET route in the API changes state", mutating_gets == [],
-        str(mutating_gets))
+# WP3D.1 — TWO GETs ARE EXEMPT, BY NAME, AND FOR A REASON THE PROTOCOL IMPOSES.
+#
+# An OAuth 2.0 / OIDC sign-in is two top-level browser navigations, and the
+# provider decides the method of the second one: Yahoo redirects the browser
+# back with a GET, so `/auth/yahoo/callback` cannot be a POST no matter what
+# this codebase would prefer. `/auth/yahoo/start` is its pair.
+#
+# WHAT THEY ACTUALLY DO, AND WHY IT IS NOT WHAT THIS CONTROL GUARDS AGAINST.
+# `start` sets a short-lived transaction cookie — the `set_[a-z_]+` pattern
+# catches `set_cookie`, which every session-issuing route calls and which is not
+# protocol state. `callback` does create a user row on a first sign-in, and that
+# is real; it is also the entire purpose of an authentication callback, and it
+# is defended by something STRONGER than the CSRF token this control exists to
+# require: a server-minted `state`, which a forged cross-site request cannot
+# produce, checked before any database work happens. See
+# `api/main.py::auth_yahoo_callback`.
+#
+# THE EXEMPTION IS EXACTLY TWO ROUTES. A third mutating GET — including any
+# other route under /auth — still fails this assertion, which is the property
+# that matters.
+_OAUTH_CALLBACK_GETS = {
+    "api/main.py: GET /auth/yahoo/start",
+    "api/main.py: GET /auth/yahoo/callback",
+}
+_unexpected = [g for g in mutating_gets if g not in _OAUTH_CALLBACK_GETS]
+
+_assert("no GET route in the API changes state, outside the OAuth callback pair",
+        _unexpected == [], str(_unexpected))
+
+_MAIN_SRC = pathlib.Path("api/main.py").read_text(encoding="utf-8")
+_assert("and the OAuth pair is defended by a server-minted state instead",
+        "state_invalid" in _MAIN_SRC and "compare_digest" in _MAIN_SRC,
+        "state is checked before any database work")
 
 # Every remaining global guard must be one P2 deliberately kept.
 #

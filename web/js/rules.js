@@ -274,7 +274,7 @@ function legalFooter() {
   // and they belong in the same footer.
   return (
     '<div class="fs-legal" id="fs-legal">'
-    + `<div>${escapeHtml(LEGAL_LINE)}</div>`
+    + `<div class="fs-legal__line">${escapeHtml(LEGAL_LINE)}</div>`
     + attributionFooter()
     + '</div>'
   );

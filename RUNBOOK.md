@@ -43,6 +43,42 @@ Optional:
 | `TEST_DATABASE_URL` | disposable PostgreSQL for the PG suites. Never the live database. |
 | `YAHOO_PRIVATE_JSON` + `YAHOO_CONSUMER_SECRET` | live provider access. Absent → the gateway refuses and the UI shows its provider-unavailable state. |
 
+### 2.1 Authentication (WP3D.1)
+
+Production authentication is **Sign in with Yahoo**. There is no production
+username/password login, no forgot-password flow and no password reset.
+
+| Variable | Purpose | Failure if unset |
+|---|---|---|
+| `FS_ENV` | `production` \| `development`. Defaults to `development`. | **A deployment that does not set `production` will still accept the development password login. Set it.** |
+| `FS_YAHOO_CLIENT_ID` | Yahoo OIDC client id | production sign-in refuses; `/health` reports `degraded` |
+| `FS_YAHOO_CLIENT_SECRET` | Yahoo OIDC client secret — server-side only, never in the frontend | as above |
+| `FS_YAHOO_REDIRECT_URI` | the exact callback this deployment registered with Yahoo, e.g. `https://your-host/auth/yahoo/callback`. Must be `https`, or `localhost` for development. | as above |
+
+**Fail closed, not fail back.** A process with `FS_ENV=production` refuses the
+password routes whether or not the Yahoo configuration is present — a missing
+client id produces a broken sign-in, never a silent downgrade to passwords.
+`GET /health` reports `status: degraded` and lists the missing variable NAMES
+(never values) in `auth_missing`, so a deployment can be inspected before it is
+trusted. `GET /auth/methods` reports which logins the running process offers.
+
+The development password login (`POST /auth/session`) is what the automated
+suites and a local Rev 4.3 review use. It is unavailable whenever
+`FS_ENV=production`, and the browser gate does not render a password field
+unless the server declares the method.
+
+Run the identity migration once per database before the first production deploy
+of this change:
+
+```bash
+python migrations/add_yahoo_identity.py
+```
+
+It is additive, idempotent and non-destructive: it adds `users.auth_provider`
+and `users.provider_subject`, adds the unique index that makes one Yahoo account
+one FantasyStakes account, and drops nothing. Existing password hashes are left
+in place so a rollback to pre-WP3D.1 code still works.
+
 Secrets live in `secrets/` or the environment. `.gitignore` covers `secrets/`,
 `.env` and `.env.*`; nothing secret is tracked.
 

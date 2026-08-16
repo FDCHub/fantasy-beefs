@@ -318,11 +318,26 @@ import subprocess as _sp                                           # noqa: E402
 _diff = _sp.run(["git", "diff", "--name-only", "HEAD"],
                 cwd=ROOT, capture_output=True, text=True).stdout.split()
 
-for untouched in ("db/schema.py", "providers/yahoo", "providers/persist.py",
+# WP3D.1 LEGITIMATELY TOUCHES THE USER SCHEMA, AND THIS CONTROL IS ABOUT WP3D.
+#
+# The claim was, and remains, that the PROVIDER surface gained no persistence
+# from the attribution work: no Yahoo payload retention, no refresh model, no
+# read-model field. `db/schema.py` left the list because the authentication
+# cutover added `users.auth_provider` and `users.provider_subject` — identity
+# columns, not provider data — and that is certified separately by
+# `test_wp3d1_yahoo_auth.py` §12. Everything the attribution work must not have
+# touched is still checked here.
+for untouched in ("providers/yahoo", "providers/persist.py",
                   "providers/incident.py", "reports/league_read_model.py"):
     _assert(f"{untouched} is unmodified by this package",
             not any(f.startswith(untouched) for f in _diff),
             ", ".join(f for f in _diff if f.startswith(untouched)))
+
+_SCHEMA = _read("db", "schema.py")
+_assert("no Yahoo payload retention was added to the schema",
+        not any(t in _SCHEMA for t in
+                ("yahoo_payload", "provider_payload", "fantasy_cache",
+                 "refresh_in_progress")))
 
 _assert("no refresh-progress model was added, per the owner ruling",
         "refresh_in_progress" not in _read("db", "schema.py")

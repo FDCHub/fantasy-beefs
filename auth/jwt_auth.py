@@ -278,7 +278,14 @@ def register_user(email: str, password: str, db: Session) -> User:
 
 def authenticate_user(email: str, password: str, db: Session) -> User:
     user = db.query(User).filter(User.email == email, User.is_active == 1).first()
-    if not user or not verify_password(password, user.hashed_password):
+    # WP3D.1 — AN ACCOUNT WITH NO PASSWORD HAS NO PASSWORD LOGIN.
+    #
+    # A Yahoo-created account carries `hashed_password = NULL`, and passing that
+    # to `verify_password` would raise inside passlib rather than refuse
+    # cleanly. Absence of a hash is not a match and is not an error the caller
+    # should have to distinguish: it is the same 401 as a wrong password, so the
+    # form cannot be used to discover which accounts authenticate through Yahoo.
+    if not user or not user.hashed_password             or not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
