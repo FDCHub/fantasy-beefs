@@ -126,4 +126,10 @@
    * these are safe to add unconditionally. */
   --fs-safe-top:    env(safe-area-inset-top, 0px);
   --fs-safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* WP3E - THE SIDES MATTER IN LANDSCAPE. A notched phone rotated puts its
+   * cutout on a side edge, and nothing was reserving it: the tab bar and the
+   * panel both ran underneath. Both resolve to 0px wherever there is no inset,
+   * so desktop and un-notched portrait pay nothing for them. */
+  --fs-safe-left:   env(safe-area-inset-left, 0px);
+  --fs-safe-right:  env(safe-area-inset-right, 0px);
 }

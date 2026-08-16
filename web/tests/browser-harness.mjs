@@ -52,6 +52,13 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
+  // WP3E — the static server must speak the PWA assets too, or a manifest and
+  // an icon fetched from it arrive as octet-stream and the browser declines
+  // them for reasons no assertion would explain.
+  '.webmanifest': 'application/manifest+json',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
 };
 
 /**

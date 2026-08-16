@@ -20,6 +20,12 @@
 <meta name="apple-mobile-web-app-title" content="FantasyStakes">
 <meta name="theme-color" content="#0c0a07">
 <title>FantasyStakes</title>
+<!-- WP3E — PWA metadata. The manifest makes the app installable and names it
+     FantasyStakes everywhere a launcher will show it; the apple-touch-icon is
+     separate because iOS does not read the manifest for it. -->
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./assets/icons/icon-192.png">
 <link rel="stylesheet" href="./styles/tokens.css">
 <link rel="stylesheet" href="./styles/shell.css">
 <link rel="stylesheet" href="./styles/components.css">
@@ -66,5 +72,22 @@
 </div>
 
 <script type="module" src="./js/shell.js"></script>
+<!-- WP3E — the service worker exists for INSTALLABILITY and nothing else; it
+     caches the static shell network-first and never touches the API. Its own
+     header states the rules it keeps. Registration is deliberately late, after
+     load, so it never competes with the first paint or the identity read. -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js', { scope: './' })
+        .catch(() => {
+          /* A worker that will not register costs the app nothing: it is an
+             installability affordance, not a dependency. The application runs
+             identically without it, so the failure is swallowed rather than
+             shown to a GM who can do nothing about it. */
+        });
+    });
+  }
+</script>
 </body>
 </html>

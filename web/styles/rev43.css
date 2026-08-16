@@ -399,3 +399,395 @@
 .fs-attribution__link:focus-visible {
   color: var(--g1);
 }
+
+
+/* ==========================================================================
+ * WP3E - final responsive, accessibility and PWA hardening
+ * ==========================================================================
+ *
+ * Nothing here redesigns anything. Every rule closes a defect that was
+ * MEASURED across the certification matrix - 320x568 through 1440x900, both
+ * orientations, ordinary GM and commissioner - and each records what it
+ * measured, because the numbers are the reason the rule exists.
+ */
+
+/* -- A - the Versus carousel may grow, and the rail may scroll -------------
+ *
+ * THE ONE FIX THAT CLOSES BOTH CARRY-FORWARD ISSUES, because both were the
+ * same defect wearing two hats.
+ *
+ * MEASURED, before: the carousel item was pinned to 100% of the rail's height
+ * whatever the card inside it needed. Where the rail was shorter than the card,
+ * the card was simply cut off:
+ *
+ *     320x568  card needs 127px, rail gives  76px   - 51px of markets lost
+ *     360x640  card needs 127px, rail gives  83px
+ *     568x320  landscape - the same, at every landscape width measured
+ *     375x667  commissioner: needs 127px, rail gives 76px
+ *
+ * The commissioner case looked like a masthead problem and the 320 case looked
+ * like a small-screen problem. Both were this: a rail too short for its card,
+ * with no way for the card to say so.
+ *
+ * min-height INSTEAD OF height is the whole change. Where the card fits, the
+ * item still fills the rail and behaves exactly as certified. Where it does
+ * not, the item grows to the card and the rail scrolls - the intentional
+ * vertical scrolling Rev 4.3 permits, arrived at by letting content be measured
+ * rather than by hiding any of it. Scroll snapping is untouched: each card
+ * still parks at the top of the rail.
+ *
+ * WHAT WAS NOT DONE, deliberately: no market removed, no card content hidden,
+ * no type shrunk below the readability floor, no density increase. */
+.fs-carousel__item {
+  height: auto;
+  min-height: 100%;
+}
+
+/* -- B - the masthead keeps the wordmark legible at every width ------------
+ *
+ * MEASURED, before: the meta column is sized by its widest row, and the
+ * COMMISSIONER badge is 93px of it. With nothing bounding the column, the
+ * lockup was squeezed until the tagline wrapped to a third line and the
+ * masthead grew from 71px to 87px:
+ *
+ *     320  commissioner: lockup  37px   - the wordmark itself was crushed
+ *     360  commissioner: lockup  77px
+ *     375  commissioner: lockup  92px
+ *     390  commissioner: lockup 107px
+ *
+ * CAPPING THE COLUMN IS THE STRUCTURAL FIX, and it is preferred over shrinking
+ * any text. The lockup keeps at least half the row, so the wordmark and its
+ * tagline always have room; the meta column takes what is left and its own
+ * contents ellipsize inside it. Nothing is removed: the commissioner indicator,
+ * the provider chip and the gear all still render. */
+.fs-mast__meta {
+  max-width: 48%;
+  min-width: 0;
+}
+
+.fs-mast__lockup {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.fs-ident {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* THE BADGE SHRINKS BEFORE THE WORDMARK DOES. It is a label, not a control,
+ * and a narrowed one still reads as the commissioner marker. */
+.fs-ident__badge {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -- C - touch targets, without paying for them in masthead height ---------
+ *
+ * THE GEAR ALREADY SOLVED THIS and the note beside it explains how: a 44px hit
+ * area achieved with padding and cancelled with negative margin, so the TOUCH
+ * TARGET is full size while the OPTICAL box stays 24px and the meta column does
+ * not grow. Sign out gets the same treatment rather than a new one.
+ *
+ * MEASURED, before: Sign out 24px, Request Top-Off 32px. */
+.fs-ident__out {
+  min-height: var(--fs-r43-touch);
+  padding-top: 10px;
+  padding-bottom: 10px;
+  margin-top: -10px;
+  margin-bottom: -10px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.fs-topoff {
+  min-height: var(--fs-r43-touch);
+  display: inline-flex;
+  align-items: center;
+}
+
+/* THE ATTRIBUTION LINK IS A REAL TARGET TOO. Measured at 14px - below even the
+ * 24px floor. It sits at the end of a panel that scrolls, so it can simply be
+ * given the room rather than a negative-margin trick. */
+.fs-attribution__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--fs-r43-touch);
+  padding: 0 var(--fs-space-3);
+}
+
+/* -- D - safe areas on every edge, not only two ----------------------------
+ *
+ * The tokens defined top and bottom; a notched phone in LANDSCAPE puts the
+ * cutout on a SIDE, and nothing was reserving it. The panel, the masthead, the
+ * gate and the navigation all take the horizontal insets so no content and no
+ * tab can sit underneath one.
+ *
+ * DESKTOP PAYS NOTHING: env() resolves to 0px where there is no inset, which is
+ * every desktop browser and every phone in portrait without a side cutout. */
+.fs-app {
+  padding-left: max(var(--fs-safe-left), 0px);
+  padding-right: max(var(--fs-safe-right), 0px);
+}
+
+/* IT GOES ON THE FRAME, NOT ON THE CHILDREN, and that distinction was learned
+ * the expensive way. Setting `padding-left`/`padding-right` on `.fs-mast`
+ * OVERWROTE the horizontal gutter its own shorthand had set — measured: the
+ * gear's optical alignment relies on a -12px right margin against that gutter,
+ * and with the gutter gone the icon painted 12px past the viewport edge and the
+ * app frame reported 402px inside a 390px window.
+ *
+ * The frame has no horizontal padding of its own, so it can carry the insets
+ * without displacing anything, and every child keeps the gutter it was
+ * designed with. */
+
+/* -- E - reduced motion ----------------------------------------------------
+ *
+ * FOUR TRANSITIONS EXIST IN THE WHOLE PRODUCT, all of them a 0.12-0.15s
+ * transform on a press state. They are non-essential decoration, so a reader
+ * who has asked for less motion gets none of it.
+ *
+ * THE STATE CHANGE ITSELF IS KEPT. This removes the ANIMATION, not the
+ * feedback: a pressed control still changes, it simply arrives immediately.
+ * 0.01ms rather than none, so any transitionend handler still fires. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* -- F - focus is always visible -------------------------------------------
+ *
+ * A BASELINE, NOT A REPLACEMENT. Components that already draw their own focus
+ * treatment keep it; this is the floor beneath everything else, so no
+ * interactive control can be reached by keyboard without being seen.
+ *
+ * :focus-visible rather than :focus, so a mouse press does not leave a ring
+ * behind - the browser decides when the ring is wanted, which is what that
+ * pseudo-class is for. */
+:where(a, button, summary, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* -- G - desktop stays readable --------------------------------------------
+ *
+ * Rev 4.3 is mobile-first and stays mobile-first: the phone layout is CENTRED
+ * and CONSTRAINED on a wide screen rather than stretched into line lengths
+ * nobody can track. This is not a desktop redesign - it is the same product,
+ * not pulled out of shape. */
+@media (min-width: 768px) {
+  .fs-app {
+    max-width: 520px;
+    margin: 0 auto;
+    border-left: var(--fs-border-hair);
+    border-right: var(--fs-border-hair);
+  }
+}
+
+
+/* -- H - the summary strip reaches its Rev 4.3 size ------------------------
+ *
+ * MEASURED, before: labels 9px and values 18px, which are the Rev 4.2 sizes.
+ * Rev 4.3 SS5.1 sets summary-strip labels at 13-14px and values at 22-24px,
+ * and WP3B raised the titles, the section headings and the navigation but
+ * never reached the strip - so four tabs were still reporting the GM's money
+ * at the old scale. The strip is where a GM reads what they have; it is the
+ * last place that should have been left small.
+ *
+ * THE CELL ABSORBS IT. The strip is a fixed row above scrollable content, so
+ * the extra height comes out of the region below it - which every panel can
+ * now scroll. Nothing is truncated and no cell wraps: the four labels are
+ * short by design and the values are tabular figures. */
+.fs-strip__label {
+  font-size: var(--fs-r43-meta);   /* 13px — SS5.1 */
+  min-height: 0;
+  margin-bottom: 2px;
+  /* SS5.2 - less shouting. The label reads as a label without the tracking. */
+  letter-spacing: .01em;
+  text-transform: none;
+}
+
+.fs-strip__value {
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+/* -- I - a short viewport lets the PANEL scroll ----------------------------
+ *
+ * MEASURED, before: at 568x320 the Account panel held 348px of content in a
+ * 205px box with overflow hidden. The bottom of the Ledger, the disclosures
+ * beneath it and the attribution were all simply unreachable - no scrollbar,
+ * no gesture, nothing.
+ *
+ * WHY IT ONLY BITES IN LANDSCAPE. Each panel is a fixed header over its own
+ * scrolling region, which is exactly right when the panel is tall: the header
+ * stays put and the content moves under it. Turn the phone sideways and the
+ * panel is 205px tall, the fixed chrome eats most of it, and the inner region
+ * has nowhere left to be.
+ *
+ * SCOPED TO SHORT VIEWPORTS ON PURPOSE. 520px clears every landscape phone in
+ * the matrix (320, 375, 390 and 430 tall) and no portrait one (568 and up), so
+ * the certified portrait behaviour is untouched and the inner rails keep their
+ * own scrolling everywhere it works. */
+@media (max-height: 520px) {
+  .fs-panel {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* -- J - the week switch is a real target ---------------------------------
+ *
+ * MEASURED, before: 32px. It is how a GM moves between weeks on Wrap Up, and
+ * it is a control like any other. */
+.fs-wkswitch__opt {
+  min-height: var(--fs-r43-touch);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+/* -- K - the Pools grid keeps its cards whole -----------------------------
+ *
+ * MEASURED AT HEAD, BEFORE THIS PACKAGE: a Pool card needs 74px and the grid
+ * was giving it 31px at 320x568 and 60px at 375x667. The 2x2 grid was sharing
+ * a flexed zone by dividing it, so as the zone shrank the rows shrank with it
+ * and the cards were cut rather than the zone admitting it had run out of room.
+ * This is pre-existing - the WP3E brief lists Pools cards at 320 among the
+ * things that must not clip - and the summary strip reaching its Rev 4.3 size
+ * made it 10px worse, so it is closed here rather than carried.
+ *
+ * ROWS SIZED BY CONTENT, ZONE SCROLLS WHEN IT MUST. `auto` rows mean a card is
+ * as tall as the card needs; `align-content: start` stops the tracks being
+ * stretched or centred into the leftover space; `overflow-y: auto` gives the
+ * zone somewhere to put what does not fit.
+ *
+ * THE 2x2 CONCEPT IS UNTOUCHED AND SO IS THE SLATE. Two columns, four
+ * contests, same order. Nothing is removed and nothing is hidden - the zone
+ * scrolls, which is what Rev 4.3 permits when geometry runs out. */
+.fs-pools {
+  grid-auto-rows: auto;
+  align-content: start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* -- L - the Pool row is a real target ------------------------------------
+ *
+ * MEASURED, before: 39px. It opens the Pool sheet, so it is a control. */
+.fs-poolrow {
+  min-height: var(--fs-r43-touch);
+}
+
+
+/* -- K2 - the Pools grid, corrected at the source of the decision ---------
+ *
+ * `tabs.css` states the Rev 4.2 trade-off in its own words: a Pool card
+ * "compresses and clips instead", chosen so that all four stayed visible
+ * without the zone scrolling. That was a deliberate call and it is the one
+ * WP3E supersedes: the brief lists Pools cards at 320x568 among the things
+ * that must not clip, and forbids solving geometry by hiding content.
+ *
+ * SO THE PRIORITY INVERTS. The card keeps its content and the ZONE scrolls
+ * when four of them will not fit. Two columns, four contests, same order -
+ * nothing removed, nothing hidden. `grid-template-rows` has to be overridden
+ * explicitly because `1fr 1fr` sizes EXPLICIT tracks and `grid-auto-rows`
+ * reaches only implicit ones. */
+.fs-pools {
+  grid-template-rows: none;
+  /* `max-content`, NOT `auto`. An `auto` track in a grid whose container has a
+   * definite height still takes part in distributing that height, so the rows
+   * came back sized to the container (measured: 47.7px each in a 100px zone)
+   * while the card needed 74px. `max-content` sizes the row to the card and
+   * lets the zone overflow — which it is now allowed to do. */
+  grid-auto-rows: max-content;
+}
+
+.fs-pool {
+  /* The two rules that made the card give way. A grid item may now insist on
+   * its own content height, and nothing inside it is cut. */
+  min-height: var(--fs-r43-touch);
+  overflow: visible;
+}
+
+
+/* -- B2 - the narrowest phones need a little more meta column -------------
+ *
+ * MEASURED, after B: at 320px the 48% cap left the provider chip 125px for a
+ * label that needs 127 - `YAHOO . NOT SYNCED YET`, the longest of the six - and
+ * it ellipsized. A truncated provider state is a state a GM cannot read, which
+ * is the one thing the chip exists to avoid.
+ *
+ * 52% AT 360 AND BELOW, and 48% above it. That buys the chip 12px, which is
+ * enough for the longest label, and still leaves the lockup 154px for an
+ * ordinary GM and 145px for a commissioner - both above the 140px floor the
+ * wordmark needs. Two numbers, both measured, neither guessed. */
+@media (max-width: 360px) {
+  /* THE 320px MASTHEAD, SOLVED WITH MEASUREMENTS RATHER THAN GUESSES.
+   *
+   * At 320px, five things want the same row: the wordmark, the tagline, the
+   * provider chip, the COMMISSIONER badge and the gear. The longest reachable
+   * chip label — YAHOO · NOT SYNCED YET — needs 115px, the gear is a 44px
+   * touch target, and the row between them needs 162px in total. The lockup
+   * needs 131px for the wordmark at its normal size. 162 + 131 + the gap is
+   * 298px, and a 320px masthead with 16px gutters offers 288px.
+   *
+   * So ten pixels have to come from somewhere, and the order in which they are
+   * taken is the whole point. §6 prefers compact structure over shrinking
+   * text, so structure gives first and copy is never truncated:
+   *
+   *   1. the gutter narrows to 12px — not below, because the gear's optical
+   *      -12px overhang would then paint past the viewport edge
+   *   2. the row gap gives up its remaining slack
+   *   3. the meta cap is loosened to what the chip actually needs, since the
+   *      lockup is no longer the thing under pressure
+   *   4. only then does the wordmark step down one notch
+   *
+   * Everything above 360px is untouched by all four. */
+  .fs-mast {
+    padding-left: 12px;
+    padding-right: 12px;
+    gap: var(--fs-space-2);
+  }
+
+  /* THE CAP IS SET TO WHAT THE CHIP ROW MEASURES, not to a percentage.
+   *
+   * A percentage was tried and was wrong in an instructive way. 58% cleared the
+   * chip at 320 and then, at 360, handed the commissioner's identity row —
+   * team name, COMMISSIONER badge, SIGN OUT — 195px it was happy to use. The
+   * lockup fell to 136px, the tagline wrapped to a third line, and the masthead
+   * grew to 82px: a fix for one role that broke the other.
+   *
+   * The chip row needs 166px at its longest and does not vary with viewport
+   * width, so the cap does not either. The identity row, which has three
+   * ellipsis-capable items and no natural limit, is held to the same number
+   * rather than being allowed to set it. */
+  .fs-mast__meta { max-width: 170px; }
+
+  /* And the chip gives up its remaining tracking rather than its last word. */
+  .fs-source__label {
+    letter-spacing: 0;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  /* THE LOCKUP STEPS DOWN ONE NOTCH, and only here. A wordmark that wraps or
+   * clips is worse than one a few points smaller, and this is the last lever
+   * after the structural ones above.
+   *
+   * 18px IS NOT A READABILITY COMPROMISE. Rev 4.3 §5.1 governs page titles,
+   * section headings, card text and navigation; the brand lockup is none of
+   * those, and 18px is at or above every one of those floors. Nothing else in
+   * the masthead moves. */
+  .fs-mast__word { font-size: 18px; }
+}

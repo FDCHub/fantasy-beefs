@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 import os
 import secrets
 import sys
@@ -264,6 +265,16 @@ app.mount("/tools", StaticFiles(directory="tools"), name="tools")
 # resolved from this file's location rather than the process working directory,
 # so the shell is served identically however the app is launched.
 _WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+
+# WP3E — the web app manifest needs its own media type.
+#
+# `StaticFiles` guesses from `mimetypes`, which does not know `.webmanifest` on
+# every platform and would serve it as `application/octet-stream`. Browsers are
+# forgiving about that, but an installability check is not, and registering the
+# type is one line against a silent failure that only shows up as "this app
+# cannot be installed" with no explanation attached.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
 app.mount("/app", StaticFiles(directory=_WEB_DIR, html=True), name="app")
 
 
