@@ -84,8 +84,11 @@ import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
 import { bindRules, buildRulesPanel } from './rules.js';
 import {
-  beginSession, composerSheet, endSession, setIssueHook,
+  beginSession, composerSheet, endSession, setIssueHook, setQuoteHook,
 } from './composer.js';
+import {
+  explainQuoteRefusal, requestQuote,
+} from './versus-quote-command.js';
 // WP3C dropped `ActionCommandError` from this import. It was thrown by
 // `promptCounterStake` to reject an unparseable prompt string; the stake is
 // now validated inside `counter-stake.js`, which reports the problem beside
@@ -772,6 +775,21 @@ async function bindAuthoritativeData() {
       refresh: refreshAction,
       explain: explainActionRefusal,
     });
+
+    // WP3C.1 — THE AUTHORITATIVE QUOTE. Installed beside the issue hook and on
+    // exactly the same condition: a session that cannot issue must not be able
+    // to price either, because both need the same resolved league, team and
+    // week. Without it the composer draws its unresolved state rather than
+    // computing figures of its own.
+    //
+    // THE SAME WEEK THE ISSUE HOOK USES. A quote priced for a different week
+    // from the one the wager would be created in is worse than no quote.
+    setQuoteHook({
+      leagueId,
+      week: authoritativeWeek(),
+      request: (spec) => requestQuote(leagueId, spec),
+      explain: explainQuoteRefusal,
+    });
     setRespondHook({
       accept: acceptChallenge,
       decline: declineChallenge,
@@ -786,6 +804,7 @@ async function bindAuthoritativeData() {
   } else {
     setIssueHook(null);
     setRespondHook(null);
+    setQuoteHook(null);
   }
 
   // Presentation capability, from the server's own answer. It decides what is
@@ -1137,6 +1156,10 @@ function clearAuthoritativeData() {
   // would leave a signed-out page holding a live wagering command.
   setIssueHook(null);
   setRespondHook(null);
+  // WP3C.1 — the quote goes with the session too. A signed-out page holding a
+  // live pricing hook is the same defect as one holding a live wagering
+  // command: both reach the network as somebody who is no longer there.
+  setQuoteHook(null);
   unbindCommissioner();
   unbindSettings();
   unbindSlate();

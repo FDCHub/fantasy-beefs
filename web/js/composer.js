@@ -65,6 +65,142 @@ let session = null;
  */
 let ISSUE_HOOK = null;
 
+/* ── WP3C.1 · the authoritative quote ────────────────────────────────────────
+ *
+ * THE COMPOSER NO LONGER PRICES ANYTHING. Rev 4.2 derived the opponent's stake
+ * from the displayed American moneyline; WP3C removed that as a second economic
+ * engine and left the figures unresolved; WP3C.1 asks the server, which prices
+ * through the same function the write path freezes.
+ *
+ * THE HOOK IS INSTALLED BY THE SHELL, and is null in demo — the same rule the
+ * issue hook follows, and for the same reason: an isolated render must not be
+ * able to reach the network.
+ *
+ * @type {null|{leagueId: number, week: number|null, request: Function,
+ *              explain: Function}}
+ */
+let QUOTE_HOOK = null;
+
+/** @param {null|object} hook */
+export function setQuoteHook(hook) {
+  QUOTE_HOOK = hook;
+}
+
+/**
+ * The quote this composer is showing, and what it was a quote FOR.
+ *
+ * STALENESS IS SOLVED BY A KEY, NOT BY A TIMER. Every request records the exact
+ * inputs it was sent with; when a response lands, its key is compared against
+ * what the composer currently holds and a mismatch is DISCARDED. Two requests
+ * in flight — a GM typing `2`, then `25` — cannot resolve out of order into a
+ * quote for the wrong stake, however the network reorders them.
+ *
+ * A SEQUENCE NUMBER ALONE WOULD NOT DO IT. It would catch out-of-order arrival
+ * but not the case where the GM types `25`, changes to `30`, changes back to
+ * `25`: the first response is then for the current inputs and is perfectly
+ * usable. The key makes that a hit rather than a discard.
+ *
+ * @type {{key: string|null, status: string, quote: object|null,
+ *         message: string}}
+ */
+let QUOTE = { key: null, status: 'idle', quote: null, message: '' };
+
+/** Quote lifecycle states, in the order a GM meets them. */
+export const QUOTE_IDLE = 'idle';           // not enough chosen yet
+export const QUOTE_LOADING = 'loading';     // asked, waiting
+export const QUOTE_READY = 'ready';         // priced
+export const QUOTE_REFUSED = 'refused';     // the server said why
+
+/**
+ * The identity of a quote request — every input the price depends on.
+ *
+ * IF IT CHANGES THE PRICE, IT IS IN THE KEY. Opponent, market, mode, stake,
+ * line and side each move the quote, so each is part of what makes one quote
+ * different from another. The week is included too: it is authoritative and
+ * cannot change mid-composer today, but a key that omitted it would silently
+ * become wrong the day that stops being true.
+ *
+ * @param {object} state
+ * @returns {string|null} null when there is not yet enough to quote
+ */
+export function quoteKey(state) {
+  if (!QUOTE_HOOK) return null;
+  const teamId = state.opponent.teamId;
+  if (teamId === null || teamId === undefined) return null;
+  if (!state.marketId) return null;
+  if (!Number.isSafeInteger(state.stakeCents) || state.stakeCents <= 0) return null;
+  if (QUOTE_HOOK.week === null || QUOTE_HOOK.week === undefined) return null;
+
+  const market = MARKETS.find((m) => m.id === state.marketId);
+  return [teamId, QUOTE_HOOK.week, market ? market.persisted : state.marketId,
+          state.mode, state.stakeCents].join('|');
+}
+
+/** The quote state, for the renderer and the suites. @returns {object} */
+export function quoteState() {
+  return QUOTE;
+}
+
+/** Drop any held quote. Called whenever a quote-sensitive input changes. */
+export function invalidateQuote() {
+  QUOTE = { key: null, status: QUOTE_IDLE, quote: null, message: '' };
+}
+
+/**
+ * Ask for a quote if the current inputs need one, and render when it lands.
+ *
+ * ALREADY-HELD QUOTES ARE NOT RE-REQUESTED. If the key has not changed there is
+ * nothing to ask; re-asking would flicker a priced surface back to loading for
+ * an answer it already has.
+ *
+ * @param {Function} onSettled called after the state changes, to redraw
+ */
+export async function ensureQuote(onSettled) {
+  const key = quoteKey(session ? session.state : null);
+
+  if (key === null) {
+    // NOT ENOUGH CHOSEN YET. Anything held is for different inputs and must go
+    // — leaving it visible would show a priced pot beside an emptied field.
+    if (QUOTE.status !== QUOTE_IDLE) {
+      invalidateQuote();
+      if (onSettled) onSettled();
+    }
+    return;
+  }
+  if (key === QUOTE.key && QUOTE.status !== QUOTE_REFUSED) return;
+
+  QUOTE = { key, status: QUOTE_LOADING, quote: null, message: '' };
+  if (onSettled) onSettled();
+
+  const state = session.state;
+  const market = MARKETS.find((m) => m.id === state.marketId);
+  try {
+    const body = await QUOTE_HOOK.request({
+      opponentTeamId: state.opponent.teamId,
+      week: QUOTE_HOOK.week,
+      market: market ? market.persisted : state.marketId,
+      stakeCents: state.stakeCents,
+      mode: state.mode,
+      line: state.line ?? null,
+      side: state.side ?? null,
+    });
+    // THE STALENESS GATE. If the composer has moved on, this answer is for
+    // inputs nobody is looking at and is dropped rather than drawn.
+    if (QUOTE.key !== key) return;
+    QUOTE = { key, status: QUOTE_READY, quote: body, message: '' };
+  } catch (refusal) {
+    if (QUOTE.key !== key) return;
+    QUOTE = {
+      key,
+      status: QUOTE_REFUSED,
+      quote: null,
+      message: QUOTE_HOOK.explain(refusal),
+    };
+  }
+  if (onSettled) onSettled();
+}
+
+
 /**
  * @param {null|{leagueId: number, actingTeamId: number, issue: Function,
  *               refresh: Function}} hook
@@ -85,6 +221,11 @@ export function currentSession() {
 /** Discard the session — called when the sheet stack empties. */
 export function endSession() {
   session = null;
+  // WP3C.1 — THE QUOTE GOES WITH THE SESSION. A held quote is a price for one
+  // GM's pairing at one stake; leaving it behind would let the next composer
+  // open showing the previous one's pot for a frame, before its own request
+  // landed. Any in-flight response is discarded by the key check regardless.
+  invalidateQuote();
 }
 
 /**
@@ -93,6 +234,9 @@ export function endSession() {
  * @param {{matchupId: string, marketId?: string|null, availableCents: number}} spec
  */
 export function beginSession(spec) {
+  // A NEW COMPOSER STARTS WITH NO PRICE, for the same reason `endSession`
+  // clears one. `ensureQuote` on mount asks for this pairing's own.
+  invalidateQuote();
   const m = entryMatchup(spec);
 
   // THE AUTHORITATIVE TARGET LIST, or none. `opponents` are `ActionState` rows
@@ -381,14 +525,17 @@ function economicsBlock(m, state) {
  * re-rendering the field the GM is typing into.
  */
 function economicsRows(m, state) {
-  // WP3C — NO QUOTE, NO ECONOMICS. Rev 4.2's carousel always carried a fixture
+  // WP3C.1 — THE SERVED QUOTE WINS, ALWAYS. When a quote hook is installed this
+  // surface renders the server's figures and computes none of its own. The
+  // demo path below still uses the fixture arithmetic, because a demo composer
+  // has no session to quote through and its numbers are illustrative anyway.
+  if (QUOTE_HOOK) return servedEconomicsRows(state);
+
+  // NO QUOTE, NO ECONOMICS. Rev 4.2's carousel always carried a fixture
   // moneyline, so `m.ml` was always a number. A real opponent has no quote until
   // the pricing engine produces one for the chosen market, and
   // `deriveOpponentStakeCents` refuses a null outright — correctly, because the
   // opponent's stake is a function of the odds and there are none.
-  //
-  // The honest surface is to say so. Inventing even-money would put a pot and a
-  // payout in front of the GM that nothing had priced.
   if (typeof m.ml !== 'number') {
     return (
       '<div class="fs-note">Your opponent’s stake and the pot are priced when '
@@ -421,6 +568,71 @@ function economicsRows(m, state) {
   );
 }
 
+/**
+ * The economics, drawn from the SERVED quote and nothing else.
+ *
+ * FOUR STATES, AND EACH SAYS SOMETHING DIFFERENT. A GM who has not chosen
+ * enough yet, one waiting on a price, one looking at a price, and one whose
+ * wager cannot be priced are four different situations, and collapsing any two
+ * of them would mean showing a stale figure or an unexplained blank.
+ *
+ * EVERY FIGURE IS THE SERVER'S. `data-exact-cents` carries the integer the
+ * route returned, and `formatCredits` only decides how it is drawn. There is no
+ * arithmetic in this function — the pot is not `stake + opponent`, it is
+ * `quote.pot_cents`, because the two could differ under a pricing rule this
+ * surface does not know about and the server's answer is the one that governs.
+ *
+ * @param {object} state
+ * @returns {string}
+ */
+function servedEconomicsRows(state) {
+  const q = quoteState();
+
+  if (q.status === QUOTE_LOADING) {
+    return '<div class="fs-note" data-quote-state="loading" aria-busy="true">'
+      + 'Pricing this wager…</div>';
+  }
+  if (q.status === QUOTE_REFUSED) {
+    return `<div class="fs-note is-warn" data-quote-state="refused">${
+      escapeHtml(q.message)}</div>`;
+  }
+  if (q.status !== QUOTE_READY || !q.quote) {
+    return '<div class="fs-note" data-quote-state="idle">Pick a market and '
+      + 'enter a stake, and FantasyStakes will price the wager.</div>';
+  }
+
+  const quote = q.quote;
+  const rows = [
+    { label: 'Your stake', cents: quote.your_stake_cents },
+    { label: quote.is_ceiling ? 'Opponent stake (max)' : 'Opponent stake',
+      cents: quote.opponent_stake_cents },
+    { label: 'Pot', cents: quote.pot_cents, anchor: true },
+    { label: 'You win', cents: quote.win_cents, tone: 'is-positive' },
+    { label: 'You lose', cents: quote.lose_cents, tone: 'is-negative' },
+  ];
+
+  // THE MODE NOTE IS THE EXISTING LOCKED COPY, and the Dynamic one is now fed
+  // the SERVED ceiling rather than a derived one. Neither ruling is reopened:
+  // the sentences are `wager-model.js`'s own, unchanged.
+  const note = state.mode === MODE_DYNAMIC
+    ? dynamicCeilingNote({ opponentStakeCents: quote.opponent_stake_cents })
+    : lockedFreezeNote();
+
+  return (
+    '<div data-quote-state="ready">'
+    + rows.map((row) => (
+      `<div class="fs-econ__row${row.anchor ? ' is-anchor' : ''}">`
+      + `<span class="fs-econ__label">${escapeHtml(row.label)}</span>`
+      + `<span class="fs-econ__value fs-money ${row.tone || ''}" `
+      + `data-exact-cents="${row.cents}">`
+      + `${escapeHtml(formatCredits(row.cents))}</span>`
+      + '</div>'
+    )).join('')
+    + `<div class="fs-econ__note">${escapeHtml(note)}</div>`
+    + '</div>'
+  );
+}
+
 function sendControl(state) {
   const verdict = validateComposer(state);
   // A LIVE SEND NEEDS A REAL TARGET. Checked here rather than inside
@@ -444,9 +656,15 @@ function sendControl(state) {
 /* ── Binding ────────────────────────────────────────────────────────────── */
 
 function bindComposer(host, api) {
+  // WP3C.1 — EVERY QUOTE-SENSITIVE CHANGE DROPS THE OLD QUOTE FIRST, before
+  // the surface is redrawn. Invalidating after the redraw would paint the
+  // previous price beside the new selection for a frame, and a GM who changed
+  // market and glanced at the pot would read a figure for the market they had
+  // just left.
   host.querySelectorAll('[data-composer-market]').forEach((el) => {
     el.addEventListener('click', () => {
       session.state = selectMarket(session.state, el.dataset.composerMarket);
+      invalidateQuote();
       api.rerender();
     });
   });
@@ -454,6 +672,7 @@ function bindComposer(host, api) {
   host.querySelectorAll('[data-composer-opponent]').forEach((el) => {
     el.addEventListener('click', () => {
       selectOpponent(Number(el.dataset.composerOpponent));
+      invalidateQuote();
       api.rerender();
     });
   });
@@ -461,6 +680,7 @@ function bindComposer(host, api) {
   host.querySelectorAll('[data-composer-mode]').forEach((el) => {
     el.addEventListener('click', () => {
       session.state = selectMode(session.state, el.dataset.composerMode);
+      invalidateQuote();
       api.rerender();
     });
   });
@@ -471,6 +691,14 @@ function bindComposer(host, api) {
     preview.addEventListener('click', () => api.push(() => previewSheet(session.matchup)));
   }
 
+  // WP3C.1 — QUOTE ON MOUNT TOO. Opening from a market cell on a Play card
+  // arrives with the opponent AND the market already chosen, so the only thing
+  // missing is a stake; and re-entering this level from the Preview arrives
+  // with all three. `ensureQuote` is a no-op when there is not enough to ask
+  // and when the held quote already matches, so calling it unconditionally is
+  // both correct and cheap.
+  ensureQuote(() => refreshDerived(host));
+
   const input = host.querySelector('[data-composer-stake]');
   if (input) {
     input.addEventListener('input', () => {
@@ -480,7 +708,17 @@ function bindComposer(host, api) {
         return;
       }
       session.state = setStakeCents(session.state, parsed.cents);
+      // THE OLD PRICE GOES THE MOMENT THE STAKE DOES. `refreshDerived` redraws
+      // immediately, so without this the pot for the previous stake would sit
+      // under the new one until the next quote landed.
+      invalidateQuote();
       refreshDerived(host);
+      // DEBOUNCED, BECAUSE THIS FIRES PER KEYSTROKE. Typing `25` is two events
+      // and would be two Monte Carlo simulations on the server; the second
+      // supersedes the first anyway. The staleness key makes the debounce an
+      // efficiency measure rather than a correctness one — an early response
+      // that arrives late is discarded either way.
+      scheduleQuote(host);
     });
   }
 
@@ -526,6 +764,34 @@ function bindComposer(host, api) {
  * In place, deliberately: re-rendering the whole sheet on each keystroke would
  * tear out the input the GM is typing into and drop the caret.
  */
+/**
+ * The pending debounce timer, if any.
+ *
+ * ONE TIMER FOR THE WHOLE COMPOSER, cleared on every keystroke, so a burst of
+ * typing produces exactly one request rather than one per character.
+ */
+let QUOTE_TIMER = null;
+
+/** How long to wait after the last keystroke before pricing. */
+const QUOTE_DEBOUNCE_MS = 250;
+
+/**
+ * Ask for a quote shortly after the GM stops typing.
+ *
+ * @param {HTMLElement} host
+ */
+function scheduleQuote(host) {
+  if (QUOTE_TIMER !== null) clearTimeout(QUOTE_TIMER);
+  QUOTE_TIMER = setTimeout(() => {
+    QUOTE_TIMER = null;
+    // The host may have been torn down while the timer ran — a GM who closed
+    // the sheet mid-type. Redrawing into a detached node is harmless but
+    // pointless, and asking the server for a price nobody will see is worse.
+    if (!host.isConnected) return;
+    ensureQuote(() => refreshDerived(host));
+  }, QUOTE_DEBOUNCE_MS);
+}
+
 function refreshDerived(host) {
   const { matchup: m, state } = session;
 

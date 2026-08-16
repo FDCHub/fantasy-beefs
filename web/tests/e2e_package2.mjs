@@ -476,7 +476,15 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   // show the opponent's stake and the pot. A real opponent has no quote until
   // the pricing engine prices the chosen market, and no read model publishes one
   // per pairing -- so the block now says the pot is priced on send rather than
-  // deriving one from odds nobody quoted. Carried to WP3D as a named limitation.
+  // deriving one from odds nobody quoted.
+  //
+  // WP3C.1 GAVE THE COMPOSER A ROUTE TO ASK, and with it new sentences: an
+  // unpriced composer now says what is missing, a waiting one says it is
+  // pricing, and one the server refused says why. The CLAIM here is unchanged
+  // and is the one that always mattered -- no figure is shown that nothing
+  // quoted -- so the wording below follows the shipped copy rather than the
+  // WP3C sentence it replaced. This fixture's league carries no board the
+  // pricing model reads, which is exactly why it lands in this branch.
   //
   // The five-figure assertion therefore applies WHERE THERE IS A QUOTE, and the
   // absence is reported rather than passed over.
@@ -490,7 +498,9 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       typed.ok.rows.every((r) => Number.isInteger(Number(r.exact))));
   } else {
     check('no quote for this pairing — the composer says so and invents no pot',
-      typed.ok.econNote && /priced when you pick a market/.test(typed.ok.econNote),
+      Boolean(typed.ok.econNote)
+      && /priced when you pick a market|FantasyStakes will price the wager|Pricing this wager|cannot be priced|not been projected|starting lineup/
+        .test(typed.ok.econNote),
       typed.ok.econNote || '(no note)');
   }
   if (typed.ok.rows.length === 5) {

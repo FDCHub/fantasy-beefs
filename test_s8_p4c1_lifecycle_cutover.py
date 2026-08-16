@@ -127,9 +127,17 @@ _assert("§10: api/main.py imports no legacy challenge mutator",
 
 # What it MAY still import is pricing. Stated positively so the boundary is a
 # recorded decision rather than an accident of what happened to be needed.
+#
+# WP3C.1 ADDED THE SECOND NAME, and it is the same kind of thing as the first.
+# `projection_context_for_team` answers "which season and which projection
+# source govern this team's league" — a pure read, no session write, no ledger
+# door, no eligibility ruling. The Versus quote route needs it to ask whether a
+# week has been projected AT ALL, and asking that question with the engine's own
+# context is the alternative to restating the engine's rule in the API layer,
+# where it could drift. The mutators above remain excluded, which is the claim.
 _assert("§10: pricing is still shared — _compute_odds is not a money path",
-        _api_beef_imports <= {"_compute_odds"},
-        "only the odds model crosses the boundary")
+        _api_beef_imports <= {"_compute_odds", "projection_context_for_team"},
+        "only the odds model and its context read cross the boundary")
 
 # ══ Seed a league, in process, on the authoritative fixture ═════════════════
 #

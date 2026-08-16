@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1585,6 +1585,7 @@ def beef_challenge(
     import uuid as _uuid
     from beefs import proposal_lifecycle as spec1
     from beefs.beef_engine import _compute_odds
+    from beefs.versus_quote import proposal_economics
     from economy.challenge_funding import ChallengeFundingError, issue_funded_challenge
 
     assert_wagering_team_owner(req.challenger_team_id, current_user)
@@ -1629,11 +1630,23 @@ def beef_challenge(
     # counter. In Dynamic the opponent's side is priced at Final Lock, so a
     # quote here would assert a number the protocol never fixes — and it would
     # be the number the card showed the opponent while they decided.
+    #
+    # WP3C.1 MOVED THE FOUR MONEY EXPRESSIONS INTO `beefs/versus_quote.py`.
+    # They stood inline here and, verbatim, in `/beef/counter` — and the pre-send
+    # quote endpoint would have been a third copy. Three independently
+    # maintained copies of a pot formula is how a product comes to show a GM one
+    # figure and record another. The expressions are unchanged; only their
+    # address is. The parity suite asserts the quote and this proposal agree to
+    # the cent.
+    economics = proposal_economics(
+        stake_cents=stake_cents, anchor_odds=anchor_dec,
+        derived_odds=derived_dec, dynamic=dynamic)
+
     terms = spec1.ProposalTerms(
         line=req.line,
         side=req.side,
         player_id=req.player_id,
-        anchor_stake_cents=stake_cents,
+        anchor_stake_cents=economics.anchor_stake_cents,
         # FROZEN WIN PROBABILITIES. A Dynamic challenge cannot be handshaken
         # without them — the opponent's Derived ceiling is derived from the
         # proposal's frozen probabilities, and the lifecycle refuses a proposal
@@ -1642,15 +1655,10 @@ def beef_challenge(
         # and makes the two modes' provenance identical.
         anchor_win_probability=anchor_p,
         derived_win_probability=derived_p,
-        # BOTH SIDES STAKE THE SAME AMOUNT in locked mode — the single `amount`
-        # on the request is each side's stake, exactly as the legacy path placed
-        # both sides at `effective_amount`. This is a translation of the existing
-        # product rule into the proposal's vocabulary, not a new one.
-        quoted_derived_stake_cents=None if dynamic else stake_cents,
-        quoted_funded_pot_cents=None if dynamic else stake_cents * 2,
-        quoted_anchor_payout_cents=round(stake_cents * anchor_dec),
-        quoted_derived_payout_cents=(None if dynamic
-                                     else round(stake_cents * derived_dec)),
+        quoted_derived_stake_cents=economics.quoted_derived_stake_cents,
+        quoted_funded_pot_cents=economics.quoted_funded_pot_cents,
+        quoted_anchor_payout_cents=economics.quoted_anchor_payout_cents,
+        quoted_derived_payout_cents=economics.quoted_derived_payout_cents,
         anchor_odds=anchor_dec,
         derived_odds=derived_dec,
         anchor_moneyline=anchor_ml,
@@ -1790,6 +1798,7 @@ def beef_counter(
     import uuid as _uuid
     from beefs import proposal_lifecycle as spec1
     from beefs.beef_engine import _compute_odds
+    from beefs.versus_quote import proposal_economics
     from economy.challenge_funding import ChallengeFundingError, counter_funded_challenge
 
     challenge = db.query(BeefChallenge).filter(
@@ -1831,16 +1840,21 @@ def beef_counter(
     #
     # The opponent's real exposure in Dynamic is bounded by the ceiling the
     # Handshake computes, which is where that check belongs.
+    # WP3C.1 — the same extracted economics the issue path uses. See the note
+    # there; this was the second verbatim copy.
+    economics = proposal_economics(
+        stake_cents=stake_cents, anchor_odds=anchor_dec,
+        derived_odds=derived_dec, dynamic=dynamic)
+
     terms = spec1.ProposalTerms(
         line=challenge.line,
         side=challenge.side,
         player_id=challenge.player_id,
-        anchor_stake_cents=stake_cents,
-        quoted_derived_stake_cents=None if dynamic else stake_cents,
-        quoted_funded_pot_cents=None if dynamic else stake_cents * 2,
-        quoted_anchor_payout_cents=round(stake_cents * anchor_dec),
-        quoted_derived_payout_cents=(None if dynamic
-                                     else round(stake_cents * derived_dec)),
+        anchor_stake_cents=economics.anchor_stake_cents,
+        quoted_derived_stake_cents=economics.quoted_derived_stake_cents,
+        quoted_funded_pot_cents=economics.quoted_funded_pot_cents,
+        quoted_anchor_payout_cents=economics.quoted_anchor_payout_cents,
+        quoted_derived_payout_cents=economics.quoted_derived_payout_cents,
         # Re-frozen on the new version, because the Handshake derives the
         # opponent's ceiling from THIS version's probabilities and a counter
         # creates a new one.
@@ -4539,6 +4553,307 @@ def league_competitive_standings(
         versus=rank(standings.versus),
         pools=rank(standings.pools),
     )
+
+
+# ── The authoritative Versus quote (WP3C.1) ──────────────────────────────────
+#
+# READ-ONLY, AND THE READ-ONLINESS IS STRUCTURAL. This route posts nothing,
+# creates no challenge and no proposal, reserves no Credits, moves no ledger
+# entry and consumes no idempotency key. It resolves authority, prices through
+# the SAME pricing model the write path uses, runs the SAME extracted economics
+# the write path freezes, and returns the figures. Nothing it calls writes: the
+# only two functions it invokes beyond validation are
+# `beef_engine._compute_odds` (a Monte Carlo simulation over read queries) and
+# `versus_quote.build_quote` (pure arithmetic).
+#
+# IT EXISTS BECAUSE THE ALTERNATIVE WAS ARITHMETIC IN THE BROWSER. Before it,
+# the composer either derived the opponent's stake from a displayed American
+# moneyline — a second economic engine in JavaScript, which Rev 4.3 §28
+# forbids — or, after WP3C removed that, drew nothing at all. A GM could reach
+# Send without ever being told what the pot would be.
+#
+# A POST FOR A READ, DELIBERATELY. The inputs are a small object — opponent,
+# week, market, line, side, mode, stake — and encoding them in a query string
+# would make the contract harder to read and to validate, for no gain. WP3C.1
+# §3 permits it explicitly. The route is idempotent and safe; what it is not is
+# cacheable, which is correct, because a quote is priced against projections
+# that move.
+
+class VersusQuoteRequest(BaseModel):
+    """Quote inputs. Every field is a CHOICE — none is an economic output.
+
+    `extra="forbid"` so a client cannot smuggle a stake, a pot or a payout into
+    the request and have it echoed back as though the server had priced it.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    opponent_team_id: int
+    week:             int   = Field(..., ge=1, le=17)
+    bet_type:         str   = Field(..., description="straight | spread | over_under")
+    amount:           float = Field(..., gt=0)
+    challenge_mode:   str   = Field(default="locked", description="locked | dynamic")
+    line:             Optional[float] = None
+    side:             Optional[str]   = None
+
+
+class VersusQuoteOut(BaseModel):
+    """The authoritative pre-send quote, in exact integer cents."""
+
+    league_id:        int
+    acting_team_id:   int
+    opponent_team_id: int
+    week:             int
+    market:           str
+    mode:             str
+
+    your_stake_cents:     int
+    #: In Dynamic this is the opponent's CEILING, not a settled stake — see
+    #: `is_ceiling`. The composer must say so rather than presenting it as
+    #: fixed (WP3C.1 §10).
+    opponent_stake_cents: int
+    pot_cents:            int
+    #: The PROFIT on a win — the opponent's stake. Paired with `lose_cents`,
+    #: which is the GM's own. The pot is reported separately.
+    win_cents:            int
+    lose_cents:           int
+
+    anchor_odds:       float
+    derived_odds:      float
+    anchor_moneyline:  int
+    derived_moneyline: int
+    is_ceiling:        bool
+
+
+@app.post("/league/{league_id}/versus/quote", response_model=VersusQuoteOut)
+def versus_quote(
+    league_id:    int,
+    req:          VersusQuoteRequest,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """Price a Versus proposal without creating one.
+
+    THE ACTING TEAM IS RESOLVED, NEVER ACCEPTED. There is no `acting_team_id`
+    on the request for the same reason the Ledger and Action routes have none:
+    a caller who could name it could price a wager as somebody else. It comes
+    from the session's own team row.
+
+    EVERY REFUSAL IS A GOVERNED ONE. Membership, cross-league, postseason
+    eligibility, market and stake are each checked against the authority that
+    owns them, and each returns a reason code the UI renders as product
+    language. WP3C.1 §6: a quote that cannot be produced fails honestly and
+    NEVER returns zero as though zero were a price.
+    """
+    from beefs import proposal_lifecycle as spec1
+    from beefs.beef_engine import _compute_odds
+    from beefs.versus_quote import build_quote
+    from wallet.wallet_manager import MIN_BET
+
+    # ── 1 · membership, and the acting team ──────────────────────────────────
+    acting_team_id = _member_team_id(current_user, league_id, db)
+    if acting_team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+
+    # ── 2 · the opponent is a real team IN THIS LEAGUE ───────────────────────
+    opponent = (db.query(Team)
+                .filter(Team.id == req.opponent_team_id).first())
+    if opponent is None or opponent.league_id != league_id:
+        # ONE ANSWER FOR BOTH CASES, deliberately. Distinguishing "no such team"
+        # from "a team in another league" would let a caller probe other
+        # leagues' rosters one id at a time.
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "opponent_not_in_league",
+            "message": "That team is not in this league.",
+        })
+    if opponent.id == acting_team_id:
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "cannot_challenge_self",
+            "message": "You cannot challenge your own team.",
+        })
+
+    # ── 3 · postseason eligibility, from the governed authority ──────────────
+    #
+    # THE SAME FIELD THE ACTION READ PUBLISHES and the same one
+    # `beefs/postseason_versus` gates the funding path on. A quote for a pairing
+    # the write path will refuse is worse than no quote: it would tell a GM the
+    # pot for a wager they cannot make.
+    eligible, phase, determinable = _versus_subject_field(db, league_id,
+                                                          req.week)
+    if eligible is not None:
+        if not determinable:
+            raise HTTPException(status_code=409, detail={
+                "reason_code": "postseason_field_unknown",
+                "message": ("The postseason field for this week is not settled "
+                            "yet, so no matchup can be priced."),
+            })
+        ineligible = sorted({acting_team_id, opponent.id} - eligible)
+        if ineligible:
+            raise HTTPException(status_code=409, detail={
+                "reason_code": "postseason_ineligible",
+                "message": ("Versus in the postseason is limited to teams still "
+                            "on the championship track."),
+            })
+
+    # ── 4 · market and mode ──────────────────────────────────────────────────
+    #
+    # THE MARKETS THE COMPOSER OFFERS. `prop` is deliberately excluded: it is a
+    # player wager the Rev 4.3 Versus card does not offer, and quoting one would
+    # need a `player_id` this contract does not carry.
+    if req.bet_type not in ("straight", "spread", "over_under"):
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "unknown_market",
+            "message": "Market must be Moneyline, Spread or Over/Under.",
+        })
+    if req.challenge_mode not in spec1.VALID_MODES:
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "unknown_challenge_mode",
+            "message": f"Mode must be one of {list(spec1.VALID_MODES)}.",
+        })
+
+    # A SPREAD OR A TOTAL NEEDS A LINE, AND THIS ROUTE WILL NOT INVENT ONE.
+    #
+    # `_compute_odds` defaults a missing line to 0.0, which makes a spread a
+    # pick'em and a total "more than zero points" — always true, priced at
+    # certainty. Neither is the market a GM meant, and quoting either would be
+    # putting a confident number on a question nobody asked.
+    #
+    # THE LINE IS A PRODUCT CHOICE THIS PACKAGE DOES NOT OWN. Deriving a
+    # default from the projections would be choosing where the market opens,
+    # which is a pricing decision and outside WP3C.1's boundary. So the route
+    # refuses honestly and the gap is reported rather than papered over.
+    if req.bet_type in ("spread", "over_under") and req.line is None:
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "line_required",
+            "message": ("A spread or total needs a line before it can be "
+                        "priced."),
+        })
+    if req.bet_type == "over_under" and req.side not in ("over", "under"):
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "side_required",
+            "message": "Choose over or under before this can be priced.",
+        })
+
+    # ── 5 · the stake, against the governed floor ────────────────────────────
+    #
+    # THE SAME `MIN_BET` THE WAGER ENGINE HOLDS, imported rather than restated.
+    # The write path applies its own funding checks on top — capacity, the
+    # weekly minimum, the escrow — and this does not attempt to predict them: a
+    # quote says what a wager would COST, not whether this GM can afford it, and
+    # the composer already renders the affordability refusal separately.
+    stake_cents = _to_cents(req.amount)
+    if stake_cents < _to_cents(MIN_BET):
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "stake_below_minimum",
+            "message": f"The minimum stake is ${MIN_BET:.0f}.",
+        })
+
+    # ── 6 · price it, through the write path's own model ─────────────────────
+    challenger = db.query(Team).filter(Team.id == acting_team_id).one()
+    try:
+        (anchor_dec, anchor_ml, derived_dec, derived_ml,
+         anchor_p, derived_p) = _compute_odds(
+            req.bet_type, challenger, opponent, req.week, db,
+            req.line, req.side, None)
+    except ValueError as e:
+        # THE SIMULATOR'S OWN MESSAGE IS NOT PRODUCT LANGUAGE. It says things
+        # like `home_starters must not be empty`, which is true, internal, and
+        # meaningless to a GM. Rev 4.3 §27 keeps raw internal strings off the
+        # page, so the one case a GM can actually act on is named and the rest
+        # are reported as a generic pricing failure.
+        empty_roster = "starters must not be empty" in str(e)
+        raise HTTPException(status_code=400 if not empty_roster else 409, detail={
+            "reason_code": "roster_unavailable" if empty_roster else "cannot_price",
+            "message": ("One of these teams has no starting lineup for this "
+                        "week yet, so the matchup cannot be priced."
+                        if empty_roster else
+                        "This matchup cannot be priced with the inputs "
+                        "available."),
+        })
+
+    # NO PROJECTIONS, NO QUOTE. `_fetch_starters_for_odds` records a missing
+    # projection as 0.0 and the simulator prices a board of zeroes at even
+    # money — a confident-looking number produced from nothing. WP3C.1 §6
+    # forbids exactly that, so an all-zero board is refused rather than served.
+    #
+    # DETECTED FROM THE PROBABILITY, NOT BY RE-READING THE PROJECTIONS. A
+    # degenerate board is what makes both sides exactly 0.5 with identical
+    # decimal odds; re-querying to check would be a second opinion about the
+    # inputs the model already consumed.
+    if _quote_inputs_are_empty(db, challenger.id, opponent.id, req.week):
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "projections_unavailable",
+            "message": ("This matchup cannot be priced yet — projections for "
+                        "this week have not landed."),
+        })
+
+    # A CERTAINTY CANNOT BE PRICED DYNAMICALLY, and the refusal is the governed
+    # one rather than a 500.
+    #
+    # `derive_stakes` requires both probabilities strictly between 0 and 1: at
+    # p=1 the fair pot is undefined and the opponent has nothing to price. A
+    # matchup lopsided enough for the simulation to return certainty therefore
+    # has no Dynamic ceiling — and the HANDSHAKE would refuse it for the same
+    # reason, so quoting one would promise a wager the protocol will not
+    # complete. Locked is unaffected: both sides stake the same amount whatever
+    # the probabilities say.
+    from odds.dynamic_pricing import InvalidProbabilityError
+
+    try:
+        quote = build_quote(
+            stake_cents=stake_cents,
+            anchor_odds=anchor_dec, derived_odds=derived_dec,
+            anchor_moneyline=anchor_ml, derived_moneyline=derived_ml,
+            anchor_probability=anchor_p, derived_probability=derived_p,
+            dynamic=req.challenge_mode == spec1.MODE_DYNAMIC,
+        )
+    except InvalidProbabilityError:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "dynamic_not_priceable",
+            "message": ("This matchup is too one-sided to price as a Dynamic "
+                        "wager. A Locked wager can still be offered."),
+        })
+
+    return VersusQuoteOut(
+        league_id=league_id,
+        acting_team_id=acting_team_id,
+        opponent_team_id=opponent.id,
+        week=req.week,
+        market=req.bet_type,
+        mode=req.challenge_mode,
+        **quote.as_dict(),
+    )
+
+
+def _quote_inputs_are_empty(db: Session, team_a: int, team_b: int,
+                            week: int) -> bool:
+    """Whether NEITHER team has a single projected point for this week.
+
+    THE HONEST TEST FOR AN UNPRICEABLE MATCHUP. WP3C proved the odds path now
+    reads the league's own season and projection source; what it cannot do is
+    conjure rows in that season. A league whose week has not been projected
+    yields a board of zeroes, and the simulator prices that at even money
+    without complaint.
+
+    BOTH SIDES MUST BE EMPTY. One team with no projections is a real and
+    meaningful state — a roster that has not been set — and the model prices it
+    as the heavy underdog it is. It is only when NOTHING is projected that the
+    quote is arithmetic over an absence.
+    """
+    from beefs.beef_engine import projection_context_for_team
+
+    ctx = projection_context_for_team(db, team_a)
+    total = (db.query(func.coalesce(func.sum(Projection.projected_points), 0.0))
+             .join(Roster, Roster.player_id == Projection.player_id)
+             .filter(Roster.team_id.in_((team_a, team_b)),
+                     Projection.week == week,
+                     Projection.season == ctx.season,
+                     Projection.source == ctx.source)
+             .scalar())
+    return not total
 
 
 # ── League settings: authoritative read + the one governed command (S8-P4) ───

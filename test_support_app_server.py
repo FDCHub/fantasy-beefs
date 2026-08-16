@@ -323,6 +323,58 @@ _SEED_FROZEN_POOL_ENTRY = """
 """
 
 
+#: WP3C.1 — a matchup the ODDS ENGINE can actually price.
+#:
+#: WHY `_SEED_ACTION`'S ROSTERS ARE NOT ENOUGH. That block writes projections
+#: with `source="fixture"`, and the pricing model reads the season and source
+#: the LEAGUE states — which for this fixture resolves to the global default.
+#: The rows are therefore in the table and invisible to the engine, so every
+#: quote against that fixture refuses for want of projections. Nothing was
+#: wrong with it: the suites that use it seed their terms directly and never
+#: ask the model to price anything. WP3C.1 is the first suite that does.
+#:
+#: SEEDED THROUGH THE ENGINE'S OWN CONTEXT READ, not through a copy of its
+#: rule. If the projection context ever stops being (league season, league
+#: source), this fixture follows it rather than quietly seeding the wrong
+#: season and reporting an unpriceable league as a product failure.
+#:
+#: ONE SIDE IS STRONGER, deliberately. Two identical boards price at exactly
+#: even money, and an even-money quote is the one quote that cannot tell a real
+#: price apart from a fabricated 50/50 — the precise substitution WP3C.1 exists
+#: to make impossible.
+_SEED_PRICEABLE_VERSUS = """
+    from db.schema import Player as _QP, Projection as _QPr, Roster as _QR
+    from db.schema import Team as _QT, User as _QU, Wallet as _QW
+    from beefs.beef_engine import projection_context_for_team as _qctx
+
+    _qweek = {slate_week}
+    _qctxv = _qctx(db, gm_team.id)
+
+    for _qt, _qnfl, _qbase in ((gm_team, "KC", 12.4), (comm_team, "PHI", 11.9)):
+        for _qi in range(9):
+            _qpl = _QP(name=_qt.team_name[:4] + "-Q" + str(_qi),
+                       position="WR", nfl_team=_qnfl)
+            db.add(_qpl); db.flush()
+            db.add(_QR(team_id=_qt.id, player_id=_qpl.id))
+            db.add(_QPr(player_id=_qpl.id, week=_qweek, season=_qctxv.season,
+                        projected_points=_qbase, source=_qctxv.source))
+        if not db.query(_QW).filter(_QW.team_id == _qt.id).first():
+            db.add(_QW(team_id=_qt.id, balance=0.0))
+    db.flush()
+
+    # A LEAGUE MEMBER WITH NO STARTING LINEUP. The refusal path is a product
+    # surface too, and a suite that could only reach it by breaking the server
+    # would be certifying its own stub rather than the page.
+    _qbare = _QT(team_name="No Lineup", owner="A. Latecomer",
+                 email="nolineup@certification.test", league_id=league.id)
+    db.add(_qbare); db.flush()
+    db.add(_QU(email="nolineup@certification.test", hashed_password=hashed,
+               team_id=_qbare.id, role="gm"))
+    db.add(_QW(team_id=_qbare.id, balance=0.0))
+    db.flush()
+"""
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -340,6 +392,7 @@ class AppServer:
                  freeze_pool_entry: bool = False,
                  action_shape: str | None = None,
                  seed_skunk_week: bool = False,
+                 seed_priceable_versus: bool = False,
                  provider_week: int | None = 5) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
@@ -355,6 +408,11 @@ class AppServer:
         # leaves the fixture exactly as every earlier suite was certified on —
         # the Rev 4.2 season already carries one open challenge and no more.
         self._action_shape = action_shape
+        # WP3C.1: off by default, so every existing suite runs against the
+        # byte-identical fixture it was certified on. On, the league's own
+        # projection context carries a real board and the Versus quote route
+        # can price a matchup instead of refusing one.
+        self._seed_priceable_versus = seed_priceable_versus
         # S8-P4C-3: the week the fixture league STATES. Defaults to 5 — the week
         # every earlier suite was certified on — so their fixtures are
         # unchanged. `None` seeds a provider-bound league that has never been
@@ -442,6 +500,8 @@ class AppServer:
         if self._action_shape:
             extra += _SEED_ACTION.format(shape=self._action_shape,
                                          slate_week=slate_week)
+        if self._seed_priceable_versus:
+            extra += _SEED_PRICEABLE_VERSUS.format(slate_week=slate_week)
         # LAST, so it finalizes whichever matchup the blocks above created.
         if self._seed_skunk_week:
             extra += _SEED_SKUNK_WEEK.format(slate_week=slate_week)
