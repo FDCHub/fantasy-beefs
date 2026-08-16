@@ -169,9 +169,20 @@ check('and the key names every input the price depends on',
 
 section('B · Changing any quote-sensitive input changes the key');
 
+// WP3C.2 — THE MARKET VARIANT MOVES TO O/U AND BACK TO ML.
+//
+// This loop used to switch to `spread` and leave it there. Since the owner
+// ruling assigned market lines, a spread with no served board has no line to be
+// priced against and `quoteKey` correctly returns null — which made the two
+// variants AFTER it compare null to null and pass for the wrong reason. Ending
+// on a market that needs no board keeps every step comparing two real keys.
+//
+// The claim is unchanged: each of these four inputs changes the price, so each
+// must change the identity of the quote.
 const VARIANTS = [
   ['opponent', () => { selectOpponent(8); }],
-  ['market', () => { SESSION_REF.state = selectMarket(SESSION_REF.state, 'spread'); }],
+  ['market', () => { SESSION_REF.state = selectMarket(SESSION_REF.state, 'ou'); }],
+  ['market again', () => { SESSION_REF.state = selectMarket(SESSION_REF.state, 'ml'); }],
   ['mode', () => { SESSION_REF.state = selectMode(SESSION_REF.state, MODE_DYNAMIC); }],
   ['stake', () => { SESSION_REF.state = setStakeCents(SESSION_REF.state, 4500); }],
 ];

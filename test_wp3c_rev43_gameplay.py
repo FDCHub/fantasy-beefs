@@ -157,10 +157,28 @@ _assert("and the demo Pool constant is reachable ONLY through that gate",
 # THE CARD ITSELF CARRIES NO INVENTED FIGURE. Rev 4.2's card printed a record, a
 # rank, two projections, a teaser and three quoted lines; none had a source for
 # an arbitrary pairing.
+#
+# WP3C.2 GAVE THREE OF THEM A SOURCE, and only three. The owner ruling on market
+# line methodology created an authoritative market board — a served moneyline,
+# spread and total per real pairing — so `formatOdds` and `formatSpread` are now
+# legitimate on this card: they draw figures the SERVER computed. What has no
+# source is unchanged and still banned below. The claim this loop protects was
+# never "no numbers" — it was "no numbers nobody produced" — and WP3C.2's own
+# suite proves the three that arrived came off the board and not out of the
+# browser.
 for banned in ("m.record", "m.rank", "yourProjection", "opponentProjection",
-               "teaser", "formatOdds", "formatSpread"):
+               "teaser"):
     _assert(f"the discovery card renders no {banned}",
             banned not in _strip_comments(LEAGUE_JS))
+
+_assert("the card's market figures come from the SERVED board, not a fixture",
+        "marketFor(" in _strip_comments(LEAGUE_JS)
+        and "acting_spread" in _strip_comments(LEAGUE_JS))
+_assert("and it derives no sign, no median and no rounding of its own",
+        not re.search(r"-\s*(row|board|served)\.\w*spread",
+                      _strip_comments(LEAGUE_JS))
+        and "median" not in _strip_comments(LEAGUE_JS).lower()
+        and "Math.round(" not in _strip_comments(LEAGUE_JS))
 
 # EVERY ILLUSTRATIVE FIGURE SITS ON THE DEMO BRANCH, and the check is
 # positional: each `ILLUSTRATIVE.` reference must appear AFTER a `:` on a line

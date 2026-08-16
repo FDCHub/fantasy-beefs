@@ -433,6 +433,25 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   check('choosing an opponent leaves no targeting requirement outstanding',
     !/Choose who you are challenging/.test(targeting.after), targeting.after);
 
+  // WP3C.2 -- THE STAKE WALK MOVES TO MONEYLINE FIRST.
+  //
+  // The composer above was opened from the SPREAD cell, which is the claim that
+  // section makes and which still holds. But since the owner ruling assigned
+  // market lines, a spread can only be sent when the server is offering one,
+  // and this fixture's league has no board the pricing model can read -- so
+  // Send is correctly disabled with "This matchup has no market on offer right
+  // now" and every stake message below is masked by it.
+  //
+  // The assertions that follow are about STAKE VALIDATION -- the $5 minimum,
+  // the Available ceiling -- so they are walked on the market that needs no
+  // line. Nothing is weakened: the spread's own refusal is certified in
+  // `test_wp3c2_versus_market_lines.py`, which runs against a league that has a
+  // real board and can therefore tell the two states apart.
+  await evaluate(`
+    document.querySelector('#fs-sheet [data-composer-market="ml"]').click();
+    return true;
+  `);
+
   const typed = await evaluate(`
     const sheet = document.getElementById('fs-sheet');
     const input = sheet.querySelector('[data-composer-stake]');
@@ -577,7 +596,12 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
     restored.open === true && restored.title === composerTitleBefore,
     `${composerTitleBefore} → ${restored.title}`);
   check('the stake survived the preview', restored.stake === '20', restored.stake);
-  check('the market selection survived the preview', restored.market === 'spread');
+  // THE MARKET THE COMPOSER WAS ACTUALLY ON. The stake walk above moved it to
+  // Moneyline for the reason recorded there; the claim here is that pushing the
+  // Matchup Preview on top and closing it again returns the SAME composer with
+  // its selection intact, whichever selection that was.
+  check('the market selection survived the preview', restored.market === 'ml',
+    String(restored.market));
   check('send is still enabled after returning', restored.sendDisabled === false);
 
   const closedAll = await evaluate(`

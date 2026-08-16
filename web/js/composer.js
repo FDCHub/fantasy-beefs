@@ -19,9 +19,10 @@
  * in the same order, that the engine applies.
  * ========================================================================== */
 
-import { escapeHtml } from './components.js';
+import { PENDING_FIGURE, escapeHtml } from './components.js';
 import { formatCredits } from './credits.js';
 import { matchup } from './data/league-data.js';
+import { formatSpread } from './narrative.js';
 import { previewSheet } from './preview.js';
 import { matchupMarketCells } from './wagercard.js';
 import {
@@ -35,8 +36,10 @@ import {
   lockedFreezeNote,
   marketById,
   parseStakeInput,
+  formatOdds,
   selectMarket,
   selectMode,
+  selectSide,
   setStakeCents,
   validateComposer,
 } from './wager-model.js';
@@ -87,6 +90,24 @@ export function setQuoteHook(hook) {
 }
 
 /**
+ * The served market board, reached the way the quote is — through a hook the
+ * shell installs and demo never has.
+ *
+ * WP3C.2. Kept a hook rather than a direct `market-model` import for the same
+ * reason `setQuoteHook` is one: an isolated component render must not be able
+ * to reach production state, and a composer with no hook must draw the demo
+ * surface rather than a half-bound one.
+ *
+ * @type {null|{marketFor: Function}}
+ */
+let MARKET_HOOK = null;
+
+/** @param {null|object} hook */
+export function setMarketHook(hook) {
+  MARKET_HOOK = hook;
+}
+
+/**
  * The quote this composer is showing, and what it was a quote FOR.
  *
  * STALENESS IS SOLVED BY A KEY, NOT BY A TIMER. Every request records the exact
@@ -131,9 +152,57 @@ export function quoteKey(state) {
   if (!Number.isSafeInteger(state.stakeCents) || state.stakeCents <= 0) return null;
   if (QUOTE_HOOK.week === null || QUOTE_HOOK.week === undefined) return null;
 
+  // WP3C.2 — A TOTAL IS NOT QUOTABLE UNTIL THE GM HAS PICKED A SIDE. Over and
+  // Under are two different wagers at two different prices; there is no
+  // "the O/U quote" to ask for before one of them is chosen, and asking anyway
+  // would make the server pick for the GM or refuse.
+  if (state.marketId === 'ou' && !state.side) return null;
+
+  // AND NOT UNTIL THE LINE IS KNOWN. A spread or a total is priced against the
+  // served market; with no board there is nothing to assert back, and a quote
+  // sent without one would be a quote for a line the composer never showed.
+  const line = marketLine(state);
+  if (state.marketId !== 'ml' && line === null) return null;
+
   const market = MARKETS.find((m) => m.id === state.marketId);
+  // THE LINE AND THE SIDE ARE PART OF THE IDENTITY. If the market moves under
+  // an open composer the key changes with it, so the old economics cannot stay
+  // drawn beside the new line — the same discipline WP3C.1 applied to stake.
   return [teamId, QUOTE_HOOK.week, market ? market.persisted : state.marketId,
-          state.mode, state.stakeCents].join('|');
+          state.mode, state.stakeCents,
+          line === null ? '' : line, state.side || ''].join('|');
+}
+
+/**
+ * The authoritative line for the market this composer has selected.
+ *
+ * READ, NEVER DERIVED. `MARKET_HOOK.lineFor` returns the served
+ * `VersusMarketOut` for the chosen opponent; this picks the field the selected
+ * market is priced against and returns it unchanged. A Moneyline has no line
+ * and returns null, which is not an absence to be filled in — it is the answer.
+ *
+ * @param {object} state
+ * @returns {number|null}
+ */
+export function marketLine(state) {
+  if (!state || state.marketId === 'ml' || !state.marketId) return null;
+  const row = servedMarket(state);
+  if (!row || !row.available) return null;
+  const value = state.marketId === 'spread' ? row.spread_line : row.total_line;
+  return typeof value === 'number' ? value : null;
+}
+
+/**
+ * The served market row for this composer's opponent, or null.
+ *
+ * @param {object} state
+ * @returns {object|null} a VersusMarketOut
+ */
+export function servedMarket(state) {
+  if (!MARKET_HOOK || !state) return null;
+  const teamId = state.opponent.teamId;
+  if (teamId === null || teamId === undefined) return null;
+  return MARKET_HOOK.marketFor(teamId);
 }
 
 /** The quote state, for the renderer and the suites. @returns {object} */
@@ -181,7 +250,12 @@ export async function ensureQuote(onSettled) {
       market: market ? market.persisted : state.marketId,
       stakeCents: state.stakeCents,
       mode: state.mode,
-      line: state.line ?? null,
+      // WP3C.2 — THE LINE IS SENT AS AN ASSERTION, NOT AS A CHOICE. It is the
+      // value the server served and this surface drew; sending it back is how
+      // the server detects that the market moved while the GM was deciding. The
+      // route re-derives the line either way and refuses a mismatch, so nothing
+      // this composer sends can become the price.
+      line: marketLine(state),
       side: state.side ?? null,
     });
     // THE STALENESS GATE. If the composer has moved on, this answer is for
@@ -444,7 +518,11 @@ function opponentSelector(state) {
 }
 
 function marketSelector(m, state) {
-  const cells = matchupMarketCells(m);
+  // WP3C.2 — THE SERVED BOARD WINS WHEREVER THERE IS ONE. `matchupMarketCells`
+  // reads the demo fixture's own figures, which is right for demo and wrong for
+  // a real pairing; a bound composer draws the lines the server offered.
+  const served = servedMarket(state);
+  const cells = served ? servedMarketCells(served) : matchupMarketCells(m);
   return (
     '<div class="fs-field">' +
     '<div class="fs-field__label">MARKET</div>' +
@@ -460,7 +538,106 @@ function marketSelector(m, state) {
         '</button>'
       );
     }).join('') +
-    '</div></div>'
+    '</div>' +
+    marketDetail(state, served) +
+    '</div>'
+  );
+}
+
+/**
+ * The three market cells, from the SERVED board.
+ *
+ * FORMATTING ONLY, and the same formatters the Play card uses so the two
+ * surfaces cannot disagree about how a line is drawn. `acting_spread` arrives
+ * already signed; nothing here flips it.
+ *
+ * @param {object} served a VersusMarketOut
+ * @returns {Array<{id: string, value: string}>}
+ */
+function servedMarketCells(served) {
+  const priced = Boolean(served.available);
+  return [
+    { id: 'ml',
+      value: priced && typeof served.acting_moneyline === 'number'
+        ? formatOdds(served.acting_moneyline) : PENDING_FIGURE },
+    { id: 'spread',
+      value: priced && typeof served.acting_spread === 'number'
+        ? formatSpread(served.acting_spread) : PENDING_FIGURE },
+    { id: 'ou',
+      value: priced && typeof served.total_line === 'number'
+        ? served.total_line.toFixed(1) : PENDING_FIGURE },
+  ];
+}
+
+/**
+ * What the chosen market actually commits the GM to, spelled out.
+ *
+ * A SPREAD NEEDS A SENTENCE, NOT JUST A NUMBER. `−4.5` beside a team name is
+ * unambiguous to someone who reads betting markets and opaque to everyone else,
+ * and this is a fantasy league app. So the row names both teams and says which
+ * one is giving the points.
+ *
+ * A TOTAL NEEDS A CHOICE. Over and Under are two different wagers; the composer
+ * offers both and defaults to neither, and `Send` stays disabled until one is
+ * picked. The total itself is not offered as a choice — it is the market.
+ *
+ * @param {object} state
+ * @param {object|null} served
+ * @returns {string}
+ */
+function marketDetail(state, served) {
+  if (!served || !state.marketId || state.marketId === 'ml') return '';
+
+  if (!served.available) {
+    return '<div class="fs-note is-warn" data-market-detail="unavailable">'
+      + escapeHtml(served.unavailable_reason
+        || 'This matchup has no market on offer right now.')
+      + '</div>';
+  }
+
+  const you = session.actingTeamName || 'Your team';
+  const them = state.opponent.authoritativeName || served.opponent_name || 'Opponent';
+
+  if (state.marketId === 'spread') {
+    const yours = served.acting_spread;
+    if (typeof yours !== 'number') return '';
+    // WHO IS GIVING THE POINTS reads off the served sign, which is the whole
+    // reason the server sends a signed number rather than a magnitude.
+    const giving = yours < 0 ? you : them;
+    const getting = yours < 0 ? them : you;
+    const sentence = yours === 0
+      ? `${you} and ${them} are level — no points either way.`
+      : `${giving} gives ${Math.abs(yours).toFixed(1)} points to ${getting}.`;
+    return (
+      '<div class="fs-marketdetail" data-market-detail="spread">'
+      + `<div class="fs-marketdetail__line" data-exact-line="${yours}">`
+      + `${escapeHtml(you)} ${escapeHtml(formatSpread(yours))}</div>`
+      + `<div class="fs-marketdetail__note">${escapeHtml(sentence)}</div>`
+      + '</div>'
+    );
+  }
+
+  const total = served.total_line;
+  if (typeof total !== 'number') return '';
+  return (
+    '<div class="fs-marketdetail" data-market-detail="ou">'
+    + `<div class="fs-marketdetail__line" data-exact-line="${total}">`
+    + `Combined total ${escapeHtml(total.toFixed(1))}</div>`
+    + '<div class="fs-seg fs-seg--side" role="group" aria-label="Over or under">'
+    + ['over', 'under'].map((side) => {
+      const selected = state.side === side;
+      return (
+        `<button type="button" class="fs-seg__opt${selected ? ' is-selected' : ''}" `
+        + `data-composer-side="${side}" aria-pressed="${selected}">`
+        + `<span class="fs-seg__label">${side === 'over' ? 'OVER' : 'UNDER'}</span>`
+        + '</button>'
+      );
+    }).join('')
+    + '</div>'
+    + (state.side ? ''
+      : '<div class="fs-marketdetail__note" data-side-required>Choose Over or '
+        + 'Under to price this wager.</div>')
+    + '</div>'
   );
 }
 
@@ -633,17 +810,48 @@ function servedEconomicsRows(state) {
   );
 }
 
+/**
+ * What still stops this composer from sending, beyond `validateComposer`.
+ *
+ * CHECKED HERE RATHER THAN IN THE SHARED VALIDATOR, which the demo composer
+ * also uses. Demo has no served target and no served market, so folding either
+ * rule into `validateComposer` would leave the demo composer permanently
+ * invalid — the same reason the target check has always lived out here.
+ *
+ * @param {object} state
+ * @returns {string} a product sentence, or '' when nothing is outstanding
+ */
+function outstandingChoice(state) {
+  if (Boolean(session.opponents.length)
+      && (state.opponent.teamId === null || state.opponent.teamId === undefined)) {
+    return 'Choose who you are challenging.';
+  }
+  // WP3C.2 — A TOTAL WITHOUT A SIDE IS NOT A WAGER. The server refuses it and
+  // the composer says so first, rather than letting a GM reach a Send that
+  // cannot succeed.
+  if (MARKET_HOOK && state.marketId === 'ou' && !state.side) {
+    return 'Choose Over or Under.';
+  }
+  // AND A SPREAD OR TOTAL WITH NO MARKET ON OFFER cannot be sent at all. The
+  // detail row above already explains why; this is what disables the button.
+  if (MARKET_HOOK && state.marketId && state.marketId !== 'ml') {
+    const served = servedMarket(state);
+    if (served && !served.available) {
+      return 'This matchup has no market on offer right now.';
+    }
+    if (served && marketLine(state) === null) {
+      return 'This market is not priced yet.';
+    }
+  }
+  return '';
+}
+
 function sendControl(state) {
   const verdict = validateComposer(state);
-  // A LIVE SEND NEEDS A REAL TARGET. Checked here rather than inside
-  // `validateComposer`, which is shared with the demo composer that has no
-  // target to choose and would otherwise be permanently invalid.
-  const needsTarget = Boolean(session.opponents.length)
-    && (state.opponent.teamId === null || state.opponent.teamId === undefined);
-  const ok = verdict.ok && !needsTarget;
-  const message = needsTarget
-    ? 'Choose who you are challenging.'
-    : (verdict.ok ? '' : (verdict.hint || verdict.reasons[0]));
+  const outstanding = outstandingChoice(state);
+  const ok = verdict.ok && !outstanding;
+  const message = outstanding
+    || (verdict.ok ? '' : (verdict.hint || verdict.reasons[0]));
   return (
     '<div class="fs-send" data-send-block>' +
     `<div class="fs-send__why" data-send-why>${escapeHtml(message)}</div>` +
@@ -680,6 +888,16 @@ function bindComposer(host, api) {
   host.querySelectorAll('[data-composer-mode]').forEach((el) => {
     el.addEventListener('click', () => {
       session.state = selectMode(session.state, el.dataset.composerMode);
+      invalidateQuote();
+      api.rerender();
+    });
+  });
+
+  // WP3C.2 — OVER / UNDER. A quote-sensitive input like any other, so it drops
+  // the held price before the redraw for the same reason the others do.
+  host.querySelectorAll('[data-composer-side]').forEach((el) => {
+    el.addEventListener('click', () => {
+      session.state = selectSide(session.state, el.dataset.composerSide);
       invalidateQuote();
       api.rerender();
     });
@@ -743,6 +961,23 @@ function bindComposer(host, api) {
           wagerType: marketById(state.marketId).persisted,
           amountCents: state.stakeCents,
           mode: state.mode,
+          // WP3C.2 — THE MARKET GOES WITH THE WAGER.
+          //
+          // Before this, Send posted a spread or a total with no line and no
+          // side at all. The write route derives the authoritative line either
+          // way, so the wager would still have been created against the right
+          // number — but a total would have been refused for want of a side,
+          // and nothing on the way out would have told the server WHICH market
+          // the GM had been looking at when they pressed the button.
+          //
+          // Sending them makes the assertion end-to-end: the route compares the
+          // line to the one it currently offers and refuses a mismatch, so a
+          // market that moved between the quote and the tap is caught at the
+          // write as well as at the quote. Neither value is an economic output
+          // — the line is the server's own, echoed back, and the side is the
+          // GM's own choice.
+          line: marketLine(state),
+          side: state.side ?? null,
         });
         // THE AUTHORITATIVE REFRESH IS THE SUCCESS PATH. Nothing here writes a
         // card or moves a figure — the tab re-reads and draws what is true.
@@ -799,17 +1034,15 @@ function refreshDerived(host) {
   if (econ) econ.innerHTML = economicsRows(m, state);
 
   const verdict = validateComposer(state);
-  const needsTarget = Boolean(session.opponents.length)
-    && (state.opponent.teamId === null || state.opponent.teamId === undefined);
+  const outstanding = outstandingChoice(state);
 
   const send = host.querySelector('[data-composer-send]');
-  if (send) send.disabled = !verdict.ok || needsTarget;
+  if (send) send.disabled = !verdict.ok || Boolean(outstanding);
 
   const why = host.querySelector('[data-send-why]');
   if (why) {
-    why.textContent = needsTarget
-      ? 'Choose who you are challenging.'
-      : (verdict.ok ? '' : (verdict.hint || verdict.reasons[0]));
+    why.textContent = outstanding
+      || (verdict.ok ? '' : (verdict.hint || verdict.reasons[0]));
   }
 
   const hint = host.querySelector('[data-stake-hint]');

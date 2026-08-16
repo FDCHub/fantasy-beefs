@@ -44,6 +44,8 @@ import { POOLS, poolBadge } from './data/league-data.js';
 import {
   LEAGUE_MODE_DEMO, currentWeek, leagueMode, leagueName,
 } from './league-model.js';
+import { marketFor } from './market-model.js';
+import { formatSpread } from './narrative.js';
 import { weekPhaseLabel } from './phase.js';
 import { SLATE_MODE_DEMO, slateMode, slateRows } from './pool-slate-model.js';
 import {
@@ -51,7 +53,7 @@ import {
   VERSUS_STATE_NO_DATA, VERSUS_STATE_READY, VERSUS_STATE_UNAVAILABLE,
   playableCount, playableOpponents, versusMode, versusState,
 } from './versus-model.js';
-import { MARKETS } from './wager-model.js';
+import { MARKETS, formatOdds } from './wager-model.js';
 import {
   boundAvailableCents, boundWeeklyMinLiveCents,
 } from './ledger-model.js';
@@ -205,12 +207,56 @@ const VERSUS_COPY = Object.freeze({
  * @param {{teamId: number, name: string, owner: string}} opponent
  * @returns {string}
  */
+/**
+ * What one market cell reads for this pairing.
+ *
+ * FORMATTING ONLY. Each branch picks a served field and hands it to an existing
+ * formatter. Nothing is derived: there is no sign flip here, no rounding, no
+ * fallback that would put a number on a cell the server left unpriced.
+ *
+ * `Play ›` is the honest label when there is no board at all — the demo
+ * composer and any session whose board read failed. It invites the tap that
+ * prices the market rather than asserting a price nobody quoted.
+ *
+ * @param {string} marketId ml | spread | ou
+ * @param {object|null} board a served VersusMarketOut
+ * @param {boolean} priced
+ * @returns {string}
+ */
+function marketCellValue(marketId, board, priced) {
+  if (!board) return 'Play ›';
+  if (!priced) return PENDING_FIGURE;
+  if (marketId === 'ml') {
+    return typeof board.acting_moneyline === 'number'
+      ? formatOdds(board.acting_moneyline) : PENDING_FIGURE;
+  }
+  if (marketId === 'spread') {
+    return typeof board.acting_spread === 'number'
+      ? formatSpread(board.acting_spread) : PENDING_FIGURE;
+  }
+  return typeof board.total_line === 'number'
+    ? board.total_line.toFixed(1) : PENDING_FIGURE;
+}
+
 function versusCard(opponent) {
   const id = escapeHtml(String(opponent.teamId));
+  // WP3C.2 — THE CELLS NOW CARRY THE SERVER'S OWN LINES.
+  //
+  // The comment above described a build with no market read model. There is one
+  // now, so the three cells show what FantasyStakes is actually offering:
+  // moneyline, the acting GM's sportsbook-signed spread, and the total.
+  //
+  // EVERY VALUE IS SERVED. `acting_spread` already carries its sign — the
+  // server negated the canonical threshold once, in `odds/market_lines`, and
+  // this reads the result. `formatSpread` and `formatOdds` decide only how a
+  // number is drawn. A pairing the model cannot price keeps the unresolved dash
+  // rather than showing a zero that would read as a pick'em.
+  const board = marketFor(opponent.teamId);
+  const priced = Boolean(board && board.available);
   const cells = MARKETS.map((market) => (
     `<button type="button" class="fs-market" data-market="${escapeHtml(market.id)}">`
     + `<span class="fs-market__label">${escapeHtml(market.short)}</span>`
-    + '<span class="fs-market__value">Play ›</span>'
+    + `<span class="fs-market__value">${escapeHtml(marketCellValue(market.id, board, priced))}</span>`
     + '</button>'
   )).join('');
 

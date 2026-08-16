@@ -58,6 +58,11 @@ import { readEconomyConfig } from './economy-command.js';
 import {
   bindVersus, markVersusUnavailable, unbindVersus,
 } from './versus-model.js';
+import {
+  bindMarketBoard, markMarketBoardUnavailable, marketFor, unbindMarketBoard,
+} from './market-model.js';
+import { requestMarketBoard } from './versus-market-command.js';
+
 import { previewSheet } from './preview.js';
 import { weekPhaseLabel } from './phase.js';
 
@@ -84,7 +89,8 @@ import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
 import { bindRules, buildRulesPanel } from './rules.js';
 import {
-  beginSession, composerSheet, endSession, setIssueHook, setQuoteHook,
+  beginSession, composerSheet, endSession, setIssueHook, setMarketHook,
+  setQuoteHook,
 } from './composer.js';
 import {
   explainQuoteRefusal, requestQuote,
@@ -720,6 +726,31 @@ async function bindAuthoritativeData() {
     markVersusUnavailable();
   }
 
+  // ── WP3C.2 · the offered market board ─────────────────────────────────
+  //
+  // A SEPARATE READ FROM ACTION, ON PURPOSE. Action answers who may be played;
+  // this answers at what price, and the two move on different clocks — a board
+  // costs a Monte Carlo run per pairing and has no business being recomputed
+  // every time a GM opens Status.
+  //
+  // IT NEEDS THE AUTHORITATIVE WEEK AND WILL NOT GUESS ONE. A league with no
+  // stated week has no market: the lines are simulated against that week's
+  // projections, and offering a week-5 spread to a league that has not said
+  // what week it is would be inventing the market's subject.
+  //
+  // A FAILED READ IS UNAVAILABLE, NEVER EMPTY. The cards then draw the
+  // unresolved state WP3C established rather than a board of dashes that would
+  // read as "no market exists".
+  if (data && data.action && typeof data.week === 'number') {
+    try {
+      bindMarketBoard(await requestMarketBoard(leagueId, data.week));
+    } catch {
+      markMarketBoardUnavailable();
+    }
+  } else {
+    markMarketBoardUnavailable();
+  }
+
   // WP3B — the competitive standings. Read by EVERY member, like the Skunk and
   // unlike the commissioner reads: a standings page the league cannot all see
   // is not a standings page. An empty league is a successful read carrying no
@@ -790,6 +821,13 @@ async function bindAuthoritativeData() {
       request: (spec) => requestQuote(leagueId, spec),
       explain: explainQuoteRefusal,
     });
+
+    // WP3C.2 — THE SERVED MARKET, for the composer to draw and to assert back.
+    // Installed on the same condition as the quote hook because the two are one
+    // contract: the board decides the line, the quote prices it, and a composer
+    // that could reach one without the other would show a price for a market it
+    // could not name.
+    setMarketHook({ marketFor });
     setRespondHook({
       accept: acceptChallenge,
       decline: declineChallenge,
@@ -805,6 +843,7 @@ async function bindAuthoritativeData() {
     setIssueHook(null);
     setRespondHook(null);
     setQuoteHook(null);
+    setMarketHook(null);
   }
 
   // Presentation capability, from the server's own answer. It decides what is
@@ -1160,6 +1199,9 @@ function clearAuthoritativeData() {
   // live pricing hook is the same defect as one holding a live wagering
   // command: both reach the network as somebody who is no longer there.
   setQuoteHook(null);
+  // WP3C.2 — and so does the market. A held board is last week's prices for
+  // last session's league.
+  setMarketHook(null);
   unbindCommissioner();
   unbindSettings();
   unbindSlate();
@@ -1171,6 +1213,7 @@ function clearAuthoritativeData() {
   // who is acting.
   unbindStandings();
   unbindVersus();
+  unbindMarketBoard();
   unbindEconomy();
   setEconomyHook(null);
   setStandingsContext(null);

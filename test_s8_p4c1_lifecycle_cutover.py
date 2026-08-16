@@ -135,9 +135,19 @@ _assert("§10: api/main.py imports no legacy challenge mutator",
 # week has been projected AT ALL, and asking that question with the engine's own
 # context is the alternative to restating the engine's rule in the API layer,
 # where it could drift. The mutators above remain excluded, which is the claim.
+#
+# WP3C.2 ADDED THE THIRD, and it belongs to the same family. Under the owner
+# ruling on market line methodology, `compute_market_board` runs ONE simulation
+# for a pairing and reads the offered moneyline, spread and total off it. It
+# fetches starters, simulates, and measures — it opens no ledger door, creates
+# no challenge, reserves nothing, and its no-mutation property is proven by
+# counting rows and balances around it in `test_wp3c2_versus_market_lines.py`.
+# The alternative was to build the board in `api/main.py`, which would have put
+# a second definition of the market next to the write route that consumes it.
 _assert("§10: pricing is still shared — _compute_odds is not a money path",
-        _api_beef_imports <= {"_compute_odds", "projection_context_for_team"},
-        "only the odds model and its context read cross the boundary")
+        _api_beef_imports <= {"_compute_odds", "projection_context_for_team",
+                              "compute_market_board"},
+        "only the odds model, its context read and the market board cross")
 
 # ══ Seed a league, in process, on the authoritative fixture ═════════════════
 #

@@ -263,10 +263,16 @@ await withPage({ port: 9457 }, async ({ evaluate, reload }) => {
   check('E · changing the market retires the price too',
     marketChanged.instant.cents.length === 0,
     `${marketChanged.instant.state}, ${marketChanged.instant.cents.length} figures`);
+  // WP3C.2 ADDED A FOURTH LEGITIMATE OUTCOME. A total now has an authoritative
+  // line but still needs the GM to pick Over or Under, so the honest state
+  // immediately after switching to O/U is IDLE — nothing has been chosen yet
+  // and nothing is asked of the server. The claim is unchanged and is the one
+  // that always mattered: whatever is drawn is a state the server or the
+  // composer can justify, and never the previous market's figures.
   check('and whatever the server then says is what is drawn',
     (marketChanged.after.state === 'ready'
      && marketChanged.after.cents.length === 5)
-    || (marketChanged.after.state === 'refused'
+    || (marketChanged.after.state !== 'ready'
         && marketChanged.after.cents.length === 0),
     `${marketChanged.after.state} — ${marketChanged.after.text.slice(0, 90)}`);
 

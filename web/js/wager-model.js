@@ -172,6 +172,14 @@ export function createComposerState(spec) {
     stakeCents: 0,
     touched: false,
     availableCents,
+    // WP3C.2 — THE ONE MARKET CHOICE THAT IS THE GM'S.
+    //
+    // Over or Under on a total, and nothing else. It starts NULL rather than
+    // 'over' deliberately: a default here would place one side of a real wager
+    // on a GM who never picked it, and the quote route refuses a total with no
+    // side for exactly that reason. The line itself is never in this state —
+    // it is the server's, and the composer reads it from the served board.
+    side: null,
   };
 }
 
@@ -193,10 +201,30 @@ function assertMode(mode) {
   if (!MODES.includes(mode)) throw new Error(`unknown wager mode "${mode}"`);
 }
 
+/** The two sides of a total. */
+export const SIDES = Object.freeze(['over', 'under']);
+
 /** @returns {ComposerState} */
 export function selectMarket(state, marketId) {
   assertMarket(marketId);
-  return { ...state, marketId };
+  // LEAVING A TOTAL CLEARS THE SIDE. A GM who picks O/U, chooses Under, then
+  // switches to Spread and back would otherwise return to a composer that
+  // still held Under — a choice they made about a market they had left.
+  return { ...state, marketId, side: marketId === 'ou' ? state.side : null };
+}
+
+/**
+ * Choose Over or Under on a total.
+ *
+ * @param {ComposerState} state
+ * @param {'over'|'under'|null} side
+ * @returns {ComposerState}
+ */
+export function selectSide(state, side) {
+  if (side !== null && !SIDES.includes(side)) {
+    throw new Error(`unknown side "${side}"`);
+  }
+  return { ...state, side };
 }
 
 /** @returns {ComposerState} */

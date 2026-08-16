@@ -387,10 +387,25 @@ def _handshake_ceiling(anchor_cents: int) -> int:
                          proposal.derived_win_probability).opponent_cents
 
 
+# WP3C.2 — THE LINE IS THE SERVER'S NOW, so these cases no longer choose one.
+#
+# When this suite was written no authority assigned a spread or a total, and the
+# route accepted whatever the caller sent — so a parity case had to invent a
+# line to have one at all. The owner ruling on market line methodology ended
+# that: `/versus/quote` and `/beef/challenge` both derive the line from the
+# market board and REFUSE a client value that is not the offered one, which is
+# why `-3.5` and `210.5` now come back as `market_moved`.
+#
+# `None` is the right replacement rather than "read the board and echo it". The
+# parity claim is that the QUOTE and the PERSISTED PROPOSAL agree, and sending
+# nothing makes both sides derive the line independently through the same
+# authority — a stronger test of that agreement than handing each the same
+# literal would be. WP3C.2's own suite certifies the board-to-quote-to-write
+# chain end to end.
 CASES = [
     ("moneyline", "straight", None, None, "locked"),
-    ("spread", "spread", -3.5, None, "locked"),
-    ("over/under", "over_under", 210.5, "over", "locked"),
+    ("spread", "spread", None, None, "locked"),
+    ("over/under", "over_under", None, "over", "locked"),
     ("moneyline · Dynamic", "straight", None, None, "dynamic"),
 ]
 
@@ -550,15 +565,29 @@ with _client() as client:
             and (r.json().get("detail") or {}).get("reason_code")
             == "unknown_challenge_mode")
 
+    # WP3C.2 SUPERSEDED `line_required` — AND KEPT THE CLAIM BENEATH IT.
+    #
+    # This assertion existed because nothing assigned a spread, so pricing one
+    # would have meant defaulting the line to 0.0 and quoting a pick'em nobody
+    # asked for. The owner ruling assigned the line, so the honest outcome is no
+    # longer a refusal — it is a real market. What must STILL be true is that
+    # the pick'em never appears: a spread quoted with no client line must come
+    # back priced against the board's own line, and that line must not be a
+    # silent zero.
     r = _quote(client, opponent_team_id=OPP, week=WEEK, bet_type="spread",
                amount=20.0)
-    _assert("a spread with no line is refused, not priced as a pick'em",
-            r.status_code == 400
-            and (r.json().get("detail") or {}).get("reason_code")
-            == "line_required", r.text[:160])
+    _assert("a spread with no client line is priced from the SERVED market",
+            r.status_code == 200, r.text[:160])
+    if r.status_code == 200:
+        _assert("and never as a pick'em — the line is the board's, not zero",
+                r.json()["line"] is not None and r.json()["line"] != 0.0,
+                str(r.json()["line"]))
+        _assert("with the sportsbook-signed value echoed for the composer",
+                r.json()["display_line"] == -r.json()["line"],
+                f"{r.json()['line']} → {r.json()['display_line']}")
 
     r = _quote(client, opponent_team_id=OPP, week=WEEK, bet_type="over_under",
-               amount=20.0, line=210.5)
+               amount=20.0)
     _assert("a total with no side is refused, not guessed",
             r.status_code == 400
             and (r.json().get("detail") or {}).get("reason_code")

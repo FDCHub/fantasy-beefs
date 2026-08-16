@@ -1603,6 +1603,33 @@ def beef_challenge(
     challenger = db.query(Team).filter(Team.id == req.challenger_team_id).one()
     challenged = db.query(Team).filter(Team.id == req.challenged_team_id).one()
 
+    # WP3C.2 — THE WRITE PATH TAKES THE LINE FROM THE MARKET, NOT FROM THE GM.
+    #
+    # This is the clause that makes "displayed == quoted == submitted ==
+    # persisted == settled" true rather than hoped for. The board is rebuilt
+    # here, from the same simulation the quote route used, and its line is what
+    # gets priced and persisted. `req.line` is compared to it and refused on a
+    # mismatch — so a client that fabricates a spread does not get one written,
+    # and a client whose market moved while the GM was deciding is told so
+    # instead of having a different wager sent under the figures they read.
+    #
+    # A `prop` still carries its own line, because a prop is a player threshold
+    # and no Versus market board describes one. The Rev 4.3 card does not offer
+    # props; the branch is left intact rather than quietly retired.
+    line_for_pricing = req.line
+    if req.bet_type in ("spread", "over_under"):
+        try:
+            board = _market_board_or_refuse(db, challenger, challenged, req.week)
+        except _MarketUnavailable as refusal:
+            raise refusal.as_http()
+        line_for_pricing = _authoritative_line(board, req.bet_type)
+        _reject_line_mismatch(req.line, line_for_pricing, req.bet_type)
+        if req.bet_type == "over_under" and req.side not in ("over", "under"):
+            raise HTTPException(status_code=400, detail={
+                "reason_code": "side_required",
+                "message": "Choose over or under before this can be sent.",
+            })
+
     # THE LOCKED QUOTE, from the pricing model that already governs locked mode.
     # `_compute_odds` is the Monte Carlo pricing the legacy route used, and it is
     # PRICING, not the legacy money path — what P4C-1 retires is the soft
@@ -1613,7 +1640,7 @@ def beef_challenge(
         (anchor_dec, anchor_ml, derived_dec, derived_ml,
          anchor_p, derived_p) = _compute_odds(
             req.bet_type, challenger, challenged, req.week, db,
-            req.line, req.side, req.player_id)
+            line_for_pricing, req.side, req.player_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1643,7 +1670,10 @@ def beef_challenge(
         derived_odds=derived_dec, dynamic=dynamic)
 
     terms = spec1.ProposalTerms(
-        line=req.line,
+        # WP3C.2 — THE AUTHORITATIVE LINE IS WHAT IS FROZEN, so the value the
+        # proposal records is the value the market offered and the value the
+        # quote priced. For a Moneyline and a prop this is `req.line` unchanged.
+        line=line_for_pricing,
         side=req.side,
         player_id=req.player_id,
         anchor_stake_cents=economics.anchor_stake_cents,
@@ -4555,6 +4585,246 @@ def league_competitive_standings(
     )
 
 
+# ── The authoritative Versus market board (WP3C.2) ───────────────────────────
+#
+# WHAT THIS ADDS. WP3C.1 could price a Moneyline because a Moneyline needs no
+# line. Spread and Over/Under were refused — `line_required` — because nothing
+# in the system decided what spread or what total FantasyStakes offers. The
+# owner ruling of 2026-08-16 decided it: both lines are the MEDIAN of the
+# relevant simulated distribution, rounded to the nearest half point, no hook.
+# `odds/market_lines` implements that and nothing else; `beef_engine.
+# compute_market_board` runs one simulation and reads all three markets off it.
+#
+# A GET, AND THAT IS THE POINT. A market board is a pure read of the pricing
+# model. Making it a GET is not a style preference — it is the strongest
+# available statement that nothing is created by looking at a market, and it
+# keeps the route outside the CSRF-protected write surface where it does not
+# belong. The quote stays a POST because it carries a stake; this does not.
+#
+# THE BOARD IS ANCHORED ON THE ACTING TEAM, always. The simulator's seed is
+# derived from team identity and week, so (A, B) and (B, A) are different draws
+# and produce slightly different medians. Every consumer of a Versus line — this
+# route, the quote route, the write route — anchors on the acting GM as
+# challenger, which is why all three see one line and not three.
+
+class VersusMarketOut(BaseModel):
+    """One pairing's offered markets, as a GM is entitled to see them.
+
+    `spread_line` is the CANONICAL pricing threshold and is exposed because the
+    client must be able to assert back exactly what it was shown — that is how
+    a stale market is detected. It is not something the client may choose:
+    `/versus/quote` and `/beef/challenge` both re-derive it server-side and
+    refuse an assertion that does not match.
+
+    `acting_spread` / `opponent_spread` are the sportsbook-signed numbers for
+    the card and the composer. Favourite negative, underdog positive. They are
+    served rather than derived in the browser so no sign convention lives in
+    JavaScript.
+    """
+
+    opponent_team_id:  int
+    opponent_name:     str
+    available:         bool
+    #: Present only when `available`; a product sentence when not.
+    unavailable_reason: Optional[str] = None
+    reason_code:        Optional[str] = None
+
+    acting_moneyline:   Optional[int]   = None
+    opponent_moneyline: Optional[int]   = None
+    spread_line:        Optional[float] = None
+    acting_spread:      Optional[float] = None
+    opponent_spread:    Optional[float] = None
+    total_line:         Optional[float] = None
+
+
+class VersusBoardOut(BaseModel):
+    """The week's offered Versus markets for the acting GM."""
+
+    league_id:      int
+    week:           int
+    acting_team_id: int
+    markets:        list[VersusMarketOut]
+
+
+#: One pairing's refusal, mapped from the engine to product language.
+#:
+#: SHARED BY EVERY CONSUMER of a market line, so a matchup that cannot be priced
+#: is refused with the same code and the same sentence whether a GM met it on
+#: the Play card, in the composer, or at Send. Three different explanations for
+#: one fact is how a product stops being trusted.
+class _MarketUnavailable(Exception):
+    def __init__(self, status: int, reason_code: str, message: str):
+        super().__init__(message)
+        self.status = status
+        self.reason_code = reason_code
+        self.message = message
+
+    def as_http(self) -> HTTPException:
+        return HTTPException(status_code=self.status, detail={
+            "reason_code": self.reason_code, "message": self.message})
+
+
+def _market_board_or_refuse(db: Session, acting_team: Team, opponent: Team,
+                            week: int):
+    """The authoritative board for one pairing, or a governed refusal.
+
+    THE ORDER OF THE TWO REFUSALS IS DELIBERATE and matches WP3C.1's. An empty
+    starting lineup stops the simulator, so it is met first and named first; a
+    board of zero projections simulates perfectly well and has to be caught
+    afterwards, by asking whether either side has a single projected point.
+    Reversing them would rename the refusal a GM sees when both are true.
+    """
+    from beefs.beef_engine import compute_market_board
+
+    try:
+        board = compute_market_board(acting_team, opponent, week, db)
+    except ValueError as e:
+        empty_roster = "starters must not be empty" in str(e)
+        raise _MarketUnavailable(
+            409 if empty_roster else 400,
+            "roster_unavailable" if empty_roster else "cannot_price",
+            ("One of these teams has no starting lineup for this week yet, so "
+             "the matchup cannot be priced." if empty_roster else
+             "This matchup cannot be priced with the inputs available."))
+
+    if _quote_inputs_are_empty(db, acting_team.id, opponent.id, week):
+        raise _MarketUnavailable(
+            409, "projections_unavailable",
+            "This matchup cannot be priced yet — projections for this week "
+            "have not landed.")
+    return board
+
+
+@app.get("/league/{league_id}/versus/board", response_model=VersusBoardOut)
+def versus_market_board(
+    league_id:        int,
+    week:             int,
+    opponent_team_id: Optional[int] = None,
+    db:               Session = Depends(get_db),
+    current_user:     User    = Depends(get_current_gm),
+):
+    """The offered Versus markets for this GM, this week.
+
+    ONE ROUND TRIP FOR THE WHOLE RAIL. Play draws a card per eligible opponent
+    and each needs three market cells, so a per-pairing route would have meant
+    one request per card. Each board is roughly four milliseconds of numpy, so
+    a league's worth is well inside a single response.
+
+    A PAIRING THAT CANNOT BE PRICED IS REPORTED, NOT OMITTED. Dropping it would
+    make an unpriceable opponent indistinguishable from one who is not in the
+    league; the row comes back with `available: false` and a sentence, and the
+    card draws the unresolved state WP3C already established.
+
+    NOTHING IS WRITTEN. The suite proves it by counting every wagering and
+    accounting row around a call.
+    """
+    acting_team_id = _member_team_id(current_user, league_id, db)
+    if acting_team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    acting_team = db.query(Team).filter(Team.id == acting_team_id).one()
+
+    # THE SAME ELIGIBILITY AUTHORITY THE ACTION READ AND THE QUOTE ROUTE USE.
+    # A market is an offer; offering one for a subject the write path would
+    # refuse is the same defect as quoting one.
+    eligible, phase, determinable = _versus_subject_field(db, league_id, week)
+    if eligible is not None and not determinable:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "postseason_field_unknown",
+            "message": ("The postseason field for this week is not settled "
+                        "yet, so no matchup can be priced."),
+        })
+
+    candidates = (db.query(Team)
+                  .filter(Team.league_id == league_id,
+                          Team.id != acting_team_id)
+                  .order_by(Team.id).all())
+    if opponent_team_id is not None:
+        candidates = [t for t in candidates if t.id == opponent_team_id]
+        if not candidates:
+            raise HTTPException(status_code=400, detail={
+                "reason_code": "opponent_not_in_league",
+                "message": "That team is not in this league.",
+            })
+
+    rows: list[VersusMarketOut] = []
+    for opponent in candidates:
+        if eligible is not None and (acting_team_id not in eligible
+                                     or opponent.id not in eligible):
+            rows.append(VersusMarketOut(
+                opponent_team_id=opponent.id,
+                opponent_name=opponent.team_name,
+                available=False,
+                reason_code="postseason_ineligible",
+                unavailable_reason=("Versus in the postseason is limited to "
+                                    "teams still on the championship track."),
+            ))
+            continue
+        try:
+            board = _market_board_or_refuse(db, acting_team, opponent, week)
+        except _MarketUnavailable as refusal:
+            rows.append(VersusMarketOut(
+                opponent_team_id=opponent.id,
+                opponent_name=opponent.team_name,
+                available=False,
+                reason_code=refusal.reason_code,
+                unavailable_reason=refusal.message,
+            ))
+            continue
+        rows.append(VersusMarketOut(
+            opponent_team_id=opponent.id,
+            opponent_name=opponent.team_name,
+            available=True,
+            acting_moneyline=board.anchor_moneyline,
+            opponent_moneyline=board.opponent_moneyline,
+            spread_line=board.spread_line,
+            acting_spread=board.anchor_spread_display,
+            opponent_spread=board.opponent_spread_display,
+            total_line=board.total_line,
+        ))
+
+    return VersusBoardOut(league_id=league_id, week=week,
+                          acting_team_id=acting_team_id, markets=rows)
+
+
+def _authoritative_line(board, bet_type: str) -> float:
+    """The canonical value this market is priced against.
+
+    ONE FUNCTION, so the quote route and the write route cannot disagree about
+    which of the board's two numbers a given market uses.
+    """
+    return board.spread_line if bet_type == "spread" else board.total_line
+
+
+def _reject_line_mismatch(asserted: Optional[float], authoritative: float,
+                          bet_type: str) -> None:
+    """Refuse a client line that is not the one currently offered.
+
+    THE CLIENT MAY ASSERT, NEVER CHOOSE. A composer that has drawn a spread
+    sends it back so the server can tell whether the market moved underneath the
+    GM while they were typing. That is the ONLY thing the field is for: it is
+    compared, never used. A mismatch is refused rather than priced, because
+    pricing it would be honouring a market FantasyStakes is not offering.
+
+    TOLERANCE IS EXACT-TO-THE-HALF, not a float epsilon dressed up as one. Every
+    authoritative line is a multiple of 0.5 and arrives as JSON, so the only
+    difference that can appear between a served value and its echo is
+    representation noise far below 1e-9.
+    """
+    if asserted is None:
+        return
+    if abs(float(asserted) - float(authoritative)) > 1e-9:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "market_moved",
+            "message": ("The line for this matchup has changed since it was "
+                        "shown. The current market is "
+                        f"{authoritative:g}."),
+        })
+
+
 # ── The authoritative Versus quote (WP3C.1) ──────────────────────────────────
 #
 # READ-ONLY, AND THE READ-ONLINESS IS STRUCTURAL. This route posts nothing,
@@ -4622,6 +4892,16 @@ class VersusQuoteOut(BaseModel):
     anchor_moneyline:  int
     derived_moneyline: int
     is_ceiling:        bool
+
+    #: WP3C.2 — THE MARKET IDENTITY THIS PRICE BELONGS TO. `line` is the
+    #: canonical value the wager was priced against (the spread threshold, or
+    #: the total); `display_line` is what the composer draws — sportsbook-signed
+    #: for a spread, the unsigned total for an over/under. Both are null for a
+    #: Moneyline, which has no line. The composer keys its staleness on them, so
+    #: economics can never be left on screen beside a line they were not for.
+    line:         Optional[float] = None
+    display_line: Optional[float] = None
+    side:         Optional[str]   = None
 
 
 @app.post("/league/{league_id}/versus/quote", response_model=VersusQuoteOut)
@@ -4714,23 +4994,13 @@ def versus_quote(
             "message": f"Mode must be one of {list(spec1.VALID_MODES)}.",
         })
 
-    # A SPREAD OR A TOTAL NEEDS A LINE, AND THIS ROUTE WILL NOT INVENT ONE.
+    # THE GM CHOOSES OVER OR UNDER. NOTHING ELSE ABOUT THE MARKET IS THEIRS.
     #
-    # `_compute_odds` defaults a missing line to 0.0, which makes a spread a
-    # pick'em and a total "more than zero points" — always true, priced at
-    # certainty. Neither is the market a GM meant, and quoting either would be
-    # putting a confident number on a question nobody asked.
-    #
-    # THE LINE IS A PRODUCT CHOICE THIS PACKAGE DOES NOT OWN. Deriving a
-    # default from the projections would be choosing where the market opens,
-    # which is a pricing decision and outside WP3C.1's boundary. So the route
-    # refuses honestly and the gap is reported rather than papered over.
-    if req.bet_type in ("spread", "over_under") and req.line is None:
-        raise HTTPException(status_code=400, detail={
-            "reason_code": "line_required",
-            "message": ("A spread or total needs a line before it can be "
-                        "priced."),
-        })
+    # This is the one genuine user input a total carries, and it must be
+    # deliberate: defaulting it would place one side of a wager on a GM's behalf.
+    # The spread needs no equivalent, because a Versus spread is anchored on the
+    # challenger by construction — the acting GM takes their own side of it, and
+    # the opponent takes the mirror. There is no third option to pick.
     if req.bet_type == "over_under" and req.side not in ("over", "under"):
         raise HTTPException(status_code=400, detail={
             "reason_code": "side_required",
@@ -4751,13 +5021,42 @@ def versus_quote(
             "message": f"The minimum stake is ${MIN_BET:.0f}.",
         })
 
-    # ── 6 · price it, through the write path's own model ─────────────────────
+    # ── 5b · the authoritative line, from the market board ───────────────────
+    #
+    # WP3C.2 — THE SERVER DECIDES THE LINE AND THE CLIENT MAY ONLY ASSERT IT.
+    # WP3C.1 refused spread and total here because nothing decided what
+    # FantasyStakes offers. The owner ruling decided it, so the board is built
+    # and its line is used; `req.line` is now checked against that line rather
+    # than priced, which is what stops a fabricated market being quoted.
     challenger = db.query(Team).filter(Team.id == acting_team_id).one()
+    market_line: Optional[float] = None
+    display_line: Optional[float] = None
+    if req.bet_type in ("spread", "over_under"):
+        try:
+            board = _market_board_or_refuse(db, challenger, opponent, req.week)
+        except _MarketUnavailable as refusal:
+            raise refusal.as_http()
+        market_line = _authoritative_line(board, req.bet_type)
+        _reject_line_mismatch(req.line, market_line, req.bet_type)
+        # WHAT THE COMPOSER DRAWS. For a spread that is the sportsbook-signed
+        # value for the acting GM; for a total it is the total itself, which
+        # carries no sign and means the same thing to both sides.
+        display_line = (board.anchor_spread_display if req.bet_type == "spread"
+                        else board.total_line)
+    elif req.line is not None:
+        # A MONEYLINE HAS NO LINE. Accepting one silently would let a caller
+        # believe a handicap had been applied to a wager that has none.
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "line_not_applicable",
+            "message": "A Moneyline wager carries no line.",
+        })
+
+    # ── 6 · price it, through the write path's own model ─────────────────────
     try:
         (anchor_dec, anchor_ml, derived_dec, derived_ml,
          anchor_p, derived_p) = _compute_odds(
             req.bet_type, challenger, opponent, req.week, db,
-            req.line, req.side, None)
+            market_line, req.side, None)
     except ValueError as e:
         # THE SIMULATOR'S OWN MESSAGE IS NOT PRODUCT LANGUAGE. It says things
         # like `home_starters must not be empty`, which is true, internal, and
@@ -4824,6 +5123,11 @@ def versus_quote(
         week=req.week,
         market=req.bet_type,
         mode=req.challenge_mode,
+        # WP3C.2 — THE MARKET THIS PRICE IS FOR, echoed back so the composer
+        # can prove the economics it draws belong to the line beside them.
+        line=market_line,
+        display_line=display_line,
+        side=req.side,
         **quote.as_dict(),
     )
 

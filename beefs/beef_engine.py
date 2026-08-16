@@ -379,6 +379,52 @@ def _fetch_starters_for_odds_from_snapshot(
     )
 
 
+def simulate_matchup_scores(inputs: OddsInputs, week: int):
+    """The pairing's simulated score arrays, as (challenger, challenged).
+
+    EXTRACTED BY WP3C.2, MOVED NOT CHANGED. Every line of this function was
+    already inside `_compute_odds_from_inputs`; it is lifted out because the
+    market board now needs THE SAME arrays the odds are computed from. The
+    alternative — a second call in the board builder — would have simulated the
+    matchup twice, and while the seed makes the two draws identical today, a
+    board and a price derived from separate invocations would be two facts that
+    merely happen to agree rather than one fact used twice.
+
+    ORIENTATION IS PART OF THE ANSWER, not a detail. The seed is derived from
+    team identity and week, so `(A, B)` and `(B, A)` are different draws of the
+    same matchup and yield slightly different medians. Callers must therefore
+    anchor consistently: for a Versus market the acting GM is the challenger at
+    board time, at quote time and at write time, so all three see one line.
+
+    :returns: `(ch_scores, cd_scores)`, each shape `(model_config.n_sims,)`
+    """
+    if inputs.shared_matchup_id is not None:
+        # Both teams are real scheduled opponents — orient starters to match the
+        # canonical home/away order and use the same seed run() would produce.
+        if inputs.challenger_is_home:
+            sim_home_starters, sim_away_starters = inputs.ch_starters, inputs.cd_starters
+            sim_home_id,       sim_away_id       = inputs.challenger_team_id, inputs.challenged_team_id
+        else:
+            sim_home_starters, sim_away_starters = inputs.cd_starters, inputs.ch_starters
+            sim_home_id,       sim_away_id       = inputs.challenged_team_id, inputs.challenger_team_id
+        raw_home, raw_away = simulate_scores(
+            sim_home_id, sim_away_id,
+            sim_home_starters, sim_away_starters,
+            week, matchup_id=inputs.shared_matchup_id,
+            model_config=LEGACY_MODEL_CONFIG,
+        )
+        # Map home/away back to challenger/challenged before computing p_ch
+        ch_scores = raw_home if inputs.challenger_is_home else raw_away
+        cd_scores = raw_away if inputs.challenger_is_home else raw_home
+        return ch_scores, cd_scores
+
+    return simulate_scores(
+        inputs.challenger_team_id, inputs.challenged_team_id,
+        inputs.ch_starters, inputs.cd_starters, week,
+        model_config=LEGACY_MODEL_CONFIG,
+    )
+
+
 def _compute_odds_from_inputs(
     bet_type: str,
     inputs:   OddsInputs,
@@ -406,30 +452,7 @@ def _compute_odds_from_inputs(
     thin adapter instead.
     """
     if bet_type in ("straight", "spread", "over_under"):
-        if inputs.shared_matchup_id is not None:
-            # Both teams are real scheduled opponents — orient starters to match the
-            # canonical home/away order and use the same seed run() would produce.
-            if inputs.challenger_is_home:
-                sim_home_starters, sim_away_starters = inputs.ch_starters, inputs.cd_starters
-                sim_home_id,       sim_away_id       = inputs.challenger_team_id, inputs.challenged_team_id
-            else:
-                sim_home_starters, sim_away_starters = inputs.cd_starters, inputs.ch_starters
-                sim_home_id,       sim_away_id       = inputs.challenged_team_id, inputs.challenger_team_id
-            raw_home, raw_away = simulate_scores(
-                sim_home_id, sim_away_id,
-                sim_home_starters, sim_away_starters,
-                week, matchup_id=inputs.shared_matchup_id,
-                model_config=LEGACY_MODEL_CONFIG,
-            )
-            # Map home/away back to challenger/challenged before computing p_ch
-            ch_scores = raw_home if inputs.challenger_is_home else raw_away
-            cd_scores = raw_away if inputs.challenger_is_home else raw_home
-        else:
-            ch_scores, cd_scores = simulate_scores(
-                inputs.challenger_team_id, inputs.challenged_team_id,
-                inputs.ch_starters, inputs.cd_starters, week,
-                model_config=LEGACY_MODEL_CONFIG,
-            )
+        ch_scores, cd_scores = simulate_matchup_scores(inputs, week)
         if bet_type == "straight":
             p_ch = float((ch_scores > cd_scores).mean())
         elif bet_type == "spread":
@@ -475,6 +498,100 @@ def _compute_odds(
     return _compute_odds_from_inputs(bet_type, inputs, week, line, side)
 
 
+# ── The offered market board — WP3C.2 ─────────────────────────────────────────
+#
+# ONE SIMULATION, THREE MARKETS. Everything a GM is offered for one pairing —
+# the moneyline both ways, the spread and its sign, the total — comes out of a
+# single call to `simulate_matchup_scores`. That is what makes the board
+# internally coherent rather than three facts that happen to agree: the spread
+# is the median of the very margin distribution the spread price is counted
+# from, and the total is the median of the very combined distribution the
+# over/under price is counted from.
+#
+# THE ANCHOR IS THE ACTING GM. Every field below is oriented on the CHALLENGER,
+# because that is the orientation the quote route and the write route both use.
+# See `simulate_matchup_scores` on why anchoring matters at all.
+
+@dataclass
+class VersusMarketBoard:
+    """The authoritative markets offered for one pairing, in one week.
+
+    TWO SPREAD FIELDS, AND THEY ARE NOT REDUNDANT. `spread_line` is the
+    canonical pricing threshold that will be persisted and settled;
+    `anchor_spread_display` / `opponent_spread_display` are the sportsbook-signed
+    numbers a GM reads. `odds/market_lines` documents the relationship in full —
+    the short version is that the display value is the negation of the threshold
+    and the negation happens exactly once, on the server, in
+    `market_lines.sportsbook_spread`.
+    """
+
+    week:                     int
+    anchor_team_id:           int
+    opponent_team_id:         int
+    # Moneyline — unchanged from WP3C.1, recomputed here from the same draw.
+    anchor_moneyline:         int
+    opponent_moneyline:       int
+    anchor_win_probability:   float
+    opponent_win_probability: float
+    # Spread.
+    spread_line:              float   # canonical threshold on (anchor - opponent)
+    anchor_spread_display:    float   # sportsbook-signed, for the anchor
+    opponent_spread_display:  float   # sportsbook-signed, for the opponent
+    # Over / under.
+    total_line:               float
+
+
+def compute_market_board(
+    anchor_team:   Team,
+    opponent_team: Team,
+    week:          int,
+    db:            Session,
+) -> VersusMarketBoard:
+    """Build the offered market board for one pairing.
+
+    A PURE READ. Fetches starters, simulates, measures, returns. It writes
+    nothing, reserves nothing and creates nothing; the suite proves that by
+    counting rows and balances around it rather than by reading this sentence.
+
+    Raises whatever `_fetch_starters_for_odds` and the simulator raise — an
+    empty lineup is a `ValueError` — so the caller can map an unpriceable
+    matchup to a product refusal instead of a stack trace.
+    """
+    from odds.market_lines import lines_from_scores, sportsbook_spread
+
+    inputs = _fetch_starters_for_odds(
+        "straight", anchor_team.id, opponent_team.id, None, week, db
+    )
+    anchor_scores, opponent_scores = simulate_matchup_scores(inputs, week)
+
+    # MONEYLINE FIRST, AND BY THE SAME COUNT `_compute_odds_from_inputs` USES.
+    # Restated here rather than re-entered through the odds wrapper because
+    # that wrapper would simulate a second time; the expression is the
+    # straight-market branch verbatim, and the suite asserts the board's
+    # moneyline equals the quote route's to the integer.
+    p_anchor = float((anchor_scores > opponent_scores).mean())
+    p_opponent = 1.0 - p_anchor
+
+    lines = lines_from_scores(anchor_scores, opponent_scores)
+
+    return VersusMarketBoard(
+        week=week,
+        anchor_team_id=anchor_team.id,
+        opponent_team_id=opponent_team.id,
+        anchor_moneyline=_prob_to_american(p_anchor),
+        opponent_moneyline=_prob_to_american(p_opponent),
+        anchor_win_probability=p_anchor,
+        opponent_win_probability=p_opponent,
+        spread_line=lines.spread_line,
+        anchor_spread_display=sportsbook_spread(lines.spread_line),
+        # The opponent's display is the anchor's, mirrored — which is the
+        # canonical threshold itself. Written through the same translation
+        # function anyway, so there is one negation in the system and not two.
+        opponent_spread_display=sportsbook_spread(-lines.spread_line),
+        total_line=lines.total_line,
+    )
+
+
 # ── Description builder ───────────────────────────────────────────────────────
 
 def _build_description(
@@ -492,7 +609,23 @@ def _build_description(
             f"who scores more in week {week}"
         )
     if bet_type == "spread":
-        sign = f"+{line}" if (line or 0) >= 0 else str(line)
+        # WP3C.2 — THE DESCRIPTION NOW READS IN SPORTSBOOK NOTATION, which is a
+        # CORRECTION rather than a change of meaning. `line` is the canonical
+        # threshold: a challenger who must win by more than 3.5 carries
+        # `line = +3.5`. The old expression printed that as "Challenger +3.5",
+        # which in every betting grammar on earth says the challenger is
+        # RECEIVING 3.5 points — the exact opposite of the wager being
+        # described. The owner ruling fixes favourite-negative as POR, so the
+        # sentence is negated to match what the wager actually is.
+        #
+        # THE MATH IS UNTOUCHED. `line` still means what it always meant to
+        # `_compute_odds_from_inputs` and to `settlement_engine._eval_spread`;
+        # only this string changed. The single negation lives in
+        # `odds/market_lines.sportsbook_spread` and is called here rather than
+        # rewritten, so display sign has exactly one definition.
+        from odds.market_lines import sportsbook_spread
+        shown = sportsbook_spread(line or 0.0)
+        sign = f"+{shown}" if shown >= 0 else str(shown)
         return (
             f"{challenger_name} {sign} vs {challenged_name} — "
             f"weekly score spread (week {week})"
