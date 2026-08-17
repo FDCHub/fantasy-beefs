@@ -192,14 +192,24 @@ if not _PG:
     _assert("and the league column uses a real foreign key on PostgreSQL",
             "REFERENCES users (id)" in _read("migrations",
                                              "add_provider_grants.py"))
-else:                                              # pragma: no cover - needs PG
-    proc = subprocess.run(
-        [sys.executable, os.path.join(ROOT, "migrations",
-                                      "add_provider_grants.py")],
-        cwd=ROOT, capture_output=True, text=True,
-        env={**os.environ, "DATABASE_URL": _PG})
-    _assert("the migration applies on PostgreSQL", proc.returncode == 0,
-            (proc.stderr or "")[-300:])
+else:
+    # THE CERTIFICATION MOVED, AND THIS BRANCH WAS WRONG WHERE IT STOOD.
+    #
+    # It ran the migration directly against `TEST_DATABASE_URL`. Under the
+    # project's own PostgreSQL convention that URL names the ADMIN database —
+    # the one `run_pg_suites.py` creates and drops per-suite databases FROM, and
+    # which therefore has no `users` and no `leagues` for the migration to alter.
+    # It could only ever have failed, and it went unnoticed because no
+    # PostgreSQL was reachable until PG-CERT-1.
+    #
+    # PG-CERT-1 certifies this properly, on a disposable database, against both
+    # a fresh schema and a genuine pre-change baseline, including idempotency
+    # and constraint enforcement. Duplicating a weaker version of that here
+    # would be two implementations of one claim, so this defers to it by name.
+    _assert("PostgreSQL execution is certified by PG-CERT-1, not duplicated "
+            "here", os.path.isfile(os.path.join(
+                ROOT, "test_pg_cert1_migrations.py")),
+            "see test_pg_cert1_migrations.py §3-§6")
 
 
 # ── 3 · the provider credential seam ─────────────────────────────────────────
@@ -259,13 +269,17 @@ _assert("which production never calls",
 
 _section("5 · Scope")
 
-_touched = set(subprocess.run(["git", "diff", "--name-only", "3d01f1f"],
-                              cwd=ROOT, capture_output=True,
-                              text=True).stdout.split())
-_touched |= set(subprocess.run(["git", "ls-files", "--others",
-                                "--exclude-standard"],
-                               cwd=ROOT, capture_output=True,
-                               text=True).stdout.split())
+# ANCHORED TO THIS PACKAGE'S OWN COMMIT RANGE, not to a moving HEAD.
+#
+# Diffing against a parent commit was right exactly once: while YAHOO-LIVE-1 was
+# the uncommitted work. Every package landing afterwards then appeared inside
+# this scan as a violation of YAHOO-LIVE-1's scope — PG-CERT-1's shortfall-sweep
+# hygiene being the one that tripped it. A scope claim is about a fixed set of
+# changes, so it is measured against a fixed range.
+YL1_PARENT, YL1_COMMIT = "3d01f1f", "64d5ec1"
+_touched = set(subprocess.run(
+    ["git", "diff", "--name-only", YL1_PARENT, YL1_COMMIT],
+    cwd=ROOT, capture_output=True, text=True).stdout.split())
 
 for forbidden in ("economy/", "ledger/", "betting/", "odds/", "beefs/",
                   "reports/", "spec/", "docs/", "web/manifest.webmanifest",

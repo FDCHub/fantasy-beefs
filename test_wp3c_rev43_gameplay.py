@@ -445,9 +445,15 @@ _assert("and the synchronization is narrow in size",
 _assert("and it now specifies the governing upper-left treatment",
         "positioned **upper-left**" in _read_root(_POR_PATH))
 
+# ANCHORED TO WP3C'S OWN COMMIT RANGE. §43 forbade WP3C from touching the
+# shortfall sweep, and it did not — but diffing against a moving HEAD turned
+# that into a claim about every later package too. PG-CERT-1 legitimately
+# parameterized the sweep against the configurable economy, which is its own
+# governed work and not a WP3C scope violation.
+WP3C_PARENT, WP3C_COMMIT = "0786f73", "ef3a74b"
 _assert("betting/shortfall_sweep.py is untouched (§43)",
-        subprocess.run(["git", "diff", "--quiet", "HEAD", "--",
-                        "betting/shortfall_sweep.py"],
+        subprocess.run(["git", "diff", "--quiet", WP3C_PARENT, WP3C_COMMIT,
+                        "--", "betting/shortfall_sweep.py"],
                        cwd=ROOT, capture_output=True).returncode == 0)
 
 

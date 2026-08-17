@@ -2,10 +2,39 @@
 betting/shortfall_sweep.py — B2, Section 6: weekly shortfall-to-championship sweep.
 
 Trigger (already decided, not reopened here): each GM must wager at least
-the league's weekly-min (from the Discrete-Stop Economy Table) across pool
-+ versus bets combined, each week. Whatever portion goes unmet sweeps to
-championship, in one atomic paired posting per team per week — covered by
-the team's own wallet where funded, receivable for the rest.
+the league's Weekly Bet Minimum across pool + versus bets combined, each
+REGULAR-SEASON week. Whatever portion goes unmet sweeps to championship, in
+one atomic paired posting per team per week — covered by the team's own
+wallet where funded, receivable for the rest.
+
+── PG-CERT-1 · WHERE THE WEEKLY MINIMUM COMES FROM ────────────────────────
+
+THE FROZEN COMMISSIONER CONFIGURATION, and the legacy stop only when there
+isn't one. This module used to read `get_league_economy_stop` directly, which
+resolves against the five-value Discrete-Stop table — and that was wrong in two
+distinct ways once ECONCFG made the economy configurable:
+
+  · a league configured with a Weekly Bet Minimum that is not one of the five
+    certified stops made `get_league_economy_stop` RAISE, so the sweep crashed
+    on exactly the leagues the configurable economy exists to serve; and
+
+  · a league whose stop column still held a legacy value while its real,
+    frozen configuration said something else was swept at the WRONG minimum —
+    silently, against real wallets, into the championship pot.
+
+`resolve_allocation_terms` is the one place that already knows the answer
+("a FROZEN configuration wins; otherwise the legacy fixed stop applies"), so
+this asks it rather than re-deciding. No new arithmetic is introduced here and
+none is duplicated: the formula lives in `payments/economy_config.py`.
+
+── AND NOT IN THE POSTSEASON ──────────────────────────────────────────────
+
+There is no Weekly Bet Minimum after the regular season, so there is nothing
+to fall short OF and nothing to sweep. This is a governed rule, not an
+optimisation: sweeping a postseason week would move real money out of wallets
+to satisfy an obligation the product says does not exist. The phase comes from
+`betting/pool_season_boundary.phase_for_week`, which is the same authority the
+Pool engine uses, rather than a second reading of `playoff_start_week`.
 
 Framing (B2-6.7): no account in this system holds custody of *external*
 real money — buy-ins and payouts confirm/settle outside the app, honor
@@ -27,8 +56,14 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from db.schema import Bet, Matchup, PoolConfig, PoolPot, ShortfallSweepRecord, Team, Wallet
-from payments.economy_config import get_league_economy_stop
+from db.schema import (
+    Bet, League, Matchup, PoolConfig, PoolPot, ShortfallSweepRecord, Team,
+    Wallet,
+)
+from betting.pool_season_boundary import PHASE_POSTSEASON, phase_for_week
+from payments.economy_config import (
+    get_league_economy_stop, resolve_allocation_terms,
+)
 from ledger.ledger import post as ledger_post, balance_of
 
 
@@ -49,6 +84,10 @@ class SweepResult:
     uncovered_cents:  int
     swept:            bool   # True if a ledger posting was made this call (shortfall_cents > 0)
     already_run:      bool   # True if this team/week was already swept before this call
+    #: True when the week is postseason, where no Weekly Bet Minimum exists.
+    #: Reported rather than silently returning a zero shortfall, so a caller —
+    #: or a wrap-up line — can say WHY nothing was swept.
+    postseason:       bool = False
 
 
 def _compute_wagered_cents(team_id: int, league_id: int, week: int, db: Session) -> int:
@@ -95,6 +134,28 @@ def _compute_wagered_cents(team_id: int, league_id: int, week: int, db: Session)
     return _to_cents(versus_dollars) + pool_cents
 
 
+def weekly_minimum_cents(league_id: int, db: Session) -> int:
+    """The league's Weekly Bet Minimum, from whichever authority governs it.
+
+    ONE QUESTION, ONE ANSWER, AND IT IS NOT DECIDED HERE. A frozen commissioner
+    configuration governs a configured league-season; an unconfigured one falls
+    back to its legacy stop. `resolve_allocation_terms` already owns that
+    precedence and this defers to it, so a change in the rule cannot leave the
+    sweep charging against a basis nothing else uses.
+    """
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is not None:
+        terms = resolve_allocation_terms(db, league_id=league_id,
+                                         season=league.season)
+        if terms.is_configured and terms.weekly_bet_minimum_cents is not None:
+            return terms.weekly_bet_minimum_cents
+    # LEGACY. `get_league_economy_stop` is still correct for a league that was
+    # never configured, and still raises loudly for a stored value matching no
+    # certified stop — which is the right behaviour for that path and is not
+    # weakened here.
+    return get_league_economy_stop(league_id, db).weekly_min_cents
+
+
 def sweep_shortfall_for_team(team_id: int, league_id: int, week: int, db: Session) -> SweepResult:
     """
     Computes, and if needed posts, one team's shortfall sweep for one week.
@@ -104,6 +165,17 @@ def sweep_shortfall_for_team(team_id: int, league_id: int, week: int, db: Sessio
     (already_run=True) without posting again, whether or not the original
     call found a shortfall.
     """
+    # THE POSTSEASON GUARD COMES FIRST, before the idempotency read and before
+    # any economy lookup. There is no Weekly Bet Minimum here, so there is no
+    # record to write, no posting to make and nothing to be idempotent about —
+    # a postseason call is a pure no-op however many times it is made.
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is not None and phase_for_week(league, week) == PHASE_POSTSEASON:
+        return SweepResult(
+            team_id=team_id, week=week, weekly_min_cents=0, wagered_cents=0,
+            shortfall_cents=0, covered_cents=0, uncovered_cents=0,
+            swept=False, already_run=False, postseason=True)
+
     existing = (
         db.query(ShortfallSweepRecord)
         .filter(
@@ -125,8 +197,7 @@ def sweep_shortfall_for_team(team_id: int, league_id: int, week: int, db: Sessio
             already_run=True,
         )
 
-    stop = get_league_economy_stop(league_id, db)
-    weekly_min_cents = stop.weekly_min_cents
+    weekly_min_cents = weekly_minimum_cents(league_id, db)
     wagered_cents    = _compute_wagered_cents(team_id, league_id, week, db)
     shortfall_cents  = max(0, weekly_min_cents - wagered_cents)
 
@@ -195,6 +266,12 @@ def sweep_explanation_text(result: SweepResult) -> str:
     """Plain-language, template-fallback-safe summary of one team's sweep
     result for a given week — used by the weekly wrap (Section 6, 'Also
     required')."""
+    if result.postseason:
+        # NOT "wagered $0.00 against a $0.00 minimum", which is arithmetically
+        # true and reads as a bug. The postseason has no Weekly Bet Minimum and
+        # the sentence should say so.
+        return (f"Week {result.week}: postseason — no Weekly Bet Minimum "
+                f"applies, so nothing was swept.")
     if not result.swept:
         return (
             f"Week {result.week}: wagered ${result.wagered_cents / 100:,.2f} against a "
