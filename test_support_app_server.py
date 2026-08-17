@@ -478,6 +478,24 @@ class AppServer:
         # in the attribute it disables.
         env["FS_COOKIE_INSECURE"] = "1"
         env.pop("FS_ALLOWED_ORIGINS", None)
+
+        # PROD-HARDEN-1 — A PRODUCTION-MODE SERVER NEEDS A TOKEN ENCRYPTION KEY.
+        #
+        # Several suites start this harness with `FS_ENV=production` to certify
+        # production-only behaviour — the sign-in gate, the retired password
+        # routes. The startup guard added by PROD-HARDEN-1 refuses to start a
+        # production process without a key, correctly: such a process accepts
+        # Yahoo sign-ins and silently drops the grant each one produces.
+        #
+        # So the harness supplies what a real production deployment supplies.
+        # Generated per server, never written anywhere, and secures nothing but
+        # this process's own throwaway database. A suite that wants to certify
+        # the ABSENCE of a key sets it explicitly through `server_env`, which is
+        # applied after this and therefore wins.
+        if "FS_TOKEN_ENCRYPTION_KEY" not in env:
+            from auth.token_crypto import generate_key
+
+            env["FS_TOKEN_ENCRYPTION_KEY"] = generate_key()
         env["JWT_SECRET_KEY"] = "certification-suite-secret"
         env.update(self._server_env)
 

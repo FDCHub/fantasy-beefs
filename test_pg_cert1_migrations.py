@@ -200,11 +200,18 @@ try:
     # `Base.metadata.create_all`, which produces the complete schema in one
     # step. The migrations exist to carry an EXISTING database forward, and the
     # three this workstream owns are certified individually below.
-    _assert("no migration manifest or runner exists today",
-            not any(pathlib.Path(p).exists() for p in
-                    ("migrations/run_all.py", "migrations/manifest.py",
-                     "db/migrations/run_all.py")),
-            "recorded as a finding — see §1 comment")
+    # THE FINDING THIS ASSERTION RECORDED IS NOW CLOSED.
+    #
+    # PG-CERT-1 found no manifest and deliberately did not invent one, because
+    # asserting an order for nineteen unverified scripts would have been worse
+    # than recording that none existed. PROD-HARDEN-1 closed it properly: an
+    # ordered ACTIVE registry, a HISTORICAL list of what must NOT run, and a
+    # runner that records what it applied. So this now pins the resolution
+    # rather than the gap.
+    _assert("an ordered migration manifest now exists",
+            pathlib.Path("migrations/manifest.py").exists()
+            and pathlib.Path("migrations/run.py").exists(),
+            "closed by PROD-HARDEN-1")
     _assert(f"{len(_with_upgrade)} of {len(_migrations)} expose a callable "
             f"upgrade()", True, "reported")
     _assert("the launch-critical three all do",
@@ -229,7 +236,12 @@ try:
     # serve, and fail on the first Credit posted. Existing deployments were
     # never exposed because a migration created it years ago; only a brand-new
     # one is, which is precisely what a launch is.
-    _startup = _read("api", "main.py").split("def _create_tables()")[1][:1600]
+    # THE WHOLE FUNCTION, not a fixed slice of it. PROD-HARDEN-1 added the
+    # production-skip branch ahead of the bootstrap, which pushed
+    # `create_ledger_table()` past a 1600-character window and made this read
+    # as a regression when nothing had regressed.
+    _startup = (_read("api", "main.py").split("def _create_tables()")[1]
+                .split(chr(10) + "@app.")[0])
     _assert("and the startup hook ALSO creates the Ledger's own table",
             "create_ledger_table()" in _startup,
             "ledger_entries is on a separate declarative base")

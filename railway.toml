@@ -2,7 +2,22 @@
 builder = "NIXPACKS"
 
 [deploy]
+# PROD-HARDEN-1 — THE MIGRATION RUNS ONCE, BEFORE THE RELEASE, NOT PER REPLICA.
+#
+# `preDeployCommand` is executed a single time by the platform before any new
+# instance starts, and a non-zero exit blocks the deploy. That is exactly what
+# §7 requires and what the application startup deliberately no longer does:
+# every web replica running DDL on boot is a race, and schema that changes as a
+# side effect of a process starting cannot be rolled back deliberately.
+#
+# A FRESH DATABASE NEEDS NOTHING FROM THIS. `migrations.run` finds nothing
+# pending — the bootstrap stamps the manifest — so this is a no-op on a new
+# deployment and the real upgrade path on an existing one.
+preDeployCommand = "python -m migrations.run"
 startCommand = "uvicorn api.main:app --host 0.0.0.0 --port $PORT"
+# LIVENESS, not readiness. `/health` answers "is this process alive"; `/ready`
+# answers "should it take traffic" and is the gate an operator checks after a
+# deploy (see docs/PRODUCTION_RUNBOOK.md §6). They are deliberately distinct.
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

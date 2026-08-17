@@ -38,9 +38,23 @@
  *   fetch      network first for same-origin static assets; cache only as a
  *              fallback; API and cross-origin requests are not intercepted
  *
- * Bump `VERSION` on any release whose static assets changed. The old cache is
- * deleted on activation, so there is no path by which a previous release's
- * assets survive into a new one.
+ * ── THE CACHE NAMESPACE IS THE RELEASE (PROD-HARDEN-1) ───────────────────
+ *
+ * WP3E shipped `VERSION` as a hand-edited constant and named the discipline it
+ * required: bump it on any release whose static assets changed. That is a
+ * release step that lives in a person's memory, and the failure mode when it is
+ * forgotten is the exact one this worker exists to avoid — a deployed frontend
+ * that users never receive, indistinguishable from a deploy that did not happen.
+ *
+ * So the namespace is no longer written here. The server serves this file with
+ * the running release substituted into `RELEASE` below, and the cache name is
+ * derived from it. A new release is a new namespace by construction; the
+ * previous one is deleted on activation, exactly as before.
+ *
+ * IF THE SUBSTITUTION IS ABSENT — a file read straight off disk, a test tier
+ * serving statics itself — the literal placeholder is used. That is a stable
+ * string, so such a deployment behaves precisely as the hand-managed version
+ * did, rather than breaking.
  *
  * WHAT THIS IS NOT. It is not an offline mode. With no network the shell may
  * paint from cache and every authoritative read will fail — which the
@@ -48,7 +62,10 @@
  * fabricate a Wallet, a market or a league, and it never will from here.
  * ========================================================================== */
 
-const VERSION = 'fs-shell-v1';
+/* Substituted per-response by `api/main.py`'s service-worker route. The default
+ * is what an un-substituted file carries. */
+const RELEASE = '__FS_RELEASE__';
+const VERSION = 'fs-shell-' + RELEASE;
 
 /* Requests that must NEVER touch a cache, matched before anything else.
  *

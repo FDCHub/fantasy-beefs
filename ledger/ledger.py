@@ -599,6 +599,24 @@ def post(
     rather than papered over; every money path in this codebase passes
     session=db already.
     """
+    # ── PROD-HARDEN-1 · THE EMERGENCY WRITE-DISABLE, AT THE ECONOMIC BOUNDARY
+    #
+    # GUARDED HERE AND NOT AT THE ROUTES, because here is the one place every
+    # authoritative economic write in the product passes through. A route-level
+    # guard protects the routes somebody remembered to decorate; this protects
+    # the Ledger, which is the thing actually being protected.
+    #
+    # IT REFUSES BEFORE ANY CHECK OR ANY READ. Safe mode means "do not take new
+    # economic writes", so the cheapest possible refusal is the correct one —
+    # nothing is read, nothing is locked, and no partial work exists to undo.
+    #
+    # READS ARE UNAFFECTED. `balance_of`, the diagnostics, the Ledger surfaces a
+    # GM and an operator both need while this is on — none of them come through
+    # `post`, which is exactly why the switch belongs here and nowhere wider.
+    from ops.safe_mode import assert_writes_allowed
+
+    assert_writes_allowed(f"ledger posting (door={door})")
+
     total = sum(amount for _, amount in entries)
     if total != 0:
         raise LedgerImbalanceError(

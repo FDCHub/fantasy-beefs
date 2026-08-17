@@ -275,12 +275,111 @@ _WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 # cannot be installed" with no explanation attached.
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
+# ── PROD-HARDEN-1 · the service worker carries the release it was served by ──
+#
+# DECLARED BEFORE THE STATIC MOUNT, and that ordering is the whole mechanism.
+# Starlette matches routes in registration order, so a mount added first would
+# serve `/app/service-worker.js` off disk and this would never run. It is placed
+# here, immediately above the mount, so the relationship is impossible to miss
+# when either is edited.
+#
+# WHY A ROUTE RATHER THAN A BUILD STEP. This product has no frontend build — the
+# ES modules are served as authored, which is what makes a frontend-only release
+# a file copy. Introducing a bundler purely to stamp one string would trade that
+# property away for something a four-line route already does.
+@app.get("/app/service-worker.js", include_in_schema=False)
+def service_worker():
+    """Serve the worker with this release's identifier substituted in.
+
+    NO-STORE, DELIBERATELY. The browser must re-fetch the worker script itself
+    on every navigation to notice a new release; a cached worker script would
+    keep serving the previous release's cache namespace and reintroduce exactly
+    the staleness this substitution removes.
+    """
+    import os as _os
+
+    from ops.release import release_identity
+
+    path = _os.path.join(_WEB_DIR, "service-worker.js")
+    with open(path, encoding="utf-8") as handle:
+        source = handle.read()
+
+    identity = release_identity()
+    # SANITISED TO A CACHE-NAME-SAFE TOKEN. The value is ours, not a caller's,
+    # but it lands inside a JavaScript string literal and an identifier is the
+    # only shape it may take.
+    token = "".join(ch for ch in identity.short if ch.isalnum()) or "unknown"
+    return Response(content=source.replace("__FS_RELEASE__", token),
+                    media_type="text/javascript; charset=utf-8",
+                    headers={"Cache-Control": "no-store, max-age=0"})
+
+
 app.mount("/app", StaticFiles(directory=_WEB_DIR, html=True), name="app")
 
 
 @app.on_event("startup")
+def _validate_production_configuration() -> None:
+    """Refuse to serve if this production process cannot serve safely.
+
+    PROD-HARDEN-1 — FAIL CLOSED, AND FAIL FIRST. A production container missing
+    `DATABASE_URL` would otherwise fall through to `db/schema.py`'s SQLite path
+    and write every wager of the season into a file inside an ephemeral
+    container; one missing `FS_TOKEN_ENCRYPTION_KEY` would accept Yahoo sign-ins
+    and silently drop the grant each one produced. Both are configuration, both
+    are invisible at runtime, and both are cheap to catch here.
+
+    NON-PRODUCTION IS UNAFFECTED. A developer with no Yahoo configuration and no
+    encryption key is doing something ordinary; `startup_guard` raises only for
+    a process that has declared itself production.
+    """
+    from ops.config import startup_guard
+
+    report = startup_guard()
+    from ops.release import release_identity
+
+    identity = release_identity()
+    # ONE STRUCTURED LINE AN OPERATOR CAN GREP, carrying no value of anything.
+    print(f"[startup] fantasystakes version={identity.version} "
+          f"release={identity.short} source={identity.source} "
+          f"env={report.environment} serviceable={report.serviceable} "
+          f"yahoo={report.can_sign_in_with_yahoo} "
+          f"token_storage={report.can_store_provider_tokens}"
+          + (f" degraded={','.join(report.missing_degraded)}"
+             if report.missing_degraded else ""))
+
+
+@app.on_event("startup")
 def _create_tables() -> None:
+    """Bootstrap the schema — for a database that has none.
+
+    ── PROD-HARDEN-1 · WHY THIS NO LONGER RUNS EVERYWHERE ────────────────────
+
+    `create_all` is how a FRESH deployment gets its schema, and PG-CERT-1
+    certified that path on PostgreSQL. What it must not be is the way an
+    EXISTING production database is upgraded, for two reasons §7 names:
+
+      · every web replica would race the same DDL on deploy; and
+      · schema would change as a side effect of a process starting, which makes
+        a release impossible to roll back deliberately.
+
+    So on a PRODUCTION process this is INERT unless the database is genuinely
+    empty. An existing production database is upgraded by one explicit command —
+    `python -m migrations.run` — run once, before the release, by the operator or
+    the deploy pipeline. Outside production the old behaviour is unchanged,
+    because a developer's SQLite file should still just work.
+    """
+    from sqlalchemy import inspect
+
+    from auth.environment import is_production
     from db.schema import Base, engine
+
+    existing = set(inspect(engine).get_table_names())
+    if is_production() and existing:
+        print(f"[startup] schema present ({len(existing)} tables) — "
+              f"bootstrap skipped; upgrades run via `python -m migrations.run`")
+        return
+
+    fresh = not existing
     Base.metadata.create_all(engine)
 
     # PG-CERT-1 — THE LEDGER TABLE IS ON A DIFFERENT BASE, AND WAS BEING MISSED.
@@ -304,6 +403,22 @@ def _create_tables() -> None:
     # It is additive and safe to call repeatedly.
     from ledger.ledger import create_ledger_table
     create_ledger_table()
+
+    # PROD-HARDEN-1 — STAMP THE MANIFEST ON A DATABASE THAT WAS JUST CREATED.
+    #
+    # `create_all` produced everything the ACTIVE migrations add, so they are
+    # applied in fact and must be applied in record — otherwise `/ready` reports
+    # them pending forever and the platform withholds traffic from a healthy
+    # process. Stamped only for a database that did not exist a moment ago; an
+    # existing one is upgraded by `python -m migrations.run`, which records its
+    # own work.
+    if fresh:
+        from migrations.run import stamp_all
+
+        stamped = stamp_all(engine)
+        if stamped:
+            print(f"[startup] fresh database — manifest stamped: "
+                  f"{', '.join(stamped)}")
 
 
 # ── Auth schemas & endpoints ──────────────────────────────────────────────────
@@ -995,6 +1110,97 @@ def _compute_standings(db: Session) -> list[dict]:
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@app.get("/version")
+def version():
+    """Which build is serving. Safe to expose; carries no configuration value.
+
+    A commit identifies a build, not a credential, and an operator cannot
+    correlate an incident with a release without it.
+    """
+    from ops.release import release_identity
+
+    return release_identity().as_dict()
+
+
+@app.get("/ready")
+def ready(response: Response, db: Session = Depends(get_db)):
+    """READINESS — may this process safely serve production traffic?
+
+    ── WHY THIS IS NOT `/health` ────────────────────────────────────────────
+
+    LIVENESS asks "is the process alive"; a platform restarts it when the answer
+    is no. READINESS asks "should traffic come here"; a platform withholds
+    traffic when the answer is no, and restarting would not help. Conflating
+    them means either a healthy-but-unconfigured process taking traffic, or a
+    restart loop for a condition no restart can fix.
+
+    ── WHAT MAKES IT NOT READY ──────────────────────────────────────────────
+
+      · the database is unreachable
+      · a critical configuration value is absent
+      · migrations are pending, so the schema is behind the code
+
+    ── AND WHAT DELIBERATELY DOES NOT ───────────────────────────────────────
+
+    YAHOO. A deployment whose provider is unauthorized, unreachable or simply
+    unconfigured still serves Demo, every read, every Ledger surface and the
+    whole commissioner diagnostic set. Marking it not-ready would take a working
+    product offline for a dependency the product already degrades around — and
+    with the Fantasy API externally blocked, it would mean never being ready at
+    all. It is reported, not gating.
+
+    SAFE MODE. A deployment with writes disabled is intentionally serving reads;
+    that is the entire point of the mode, so it reports rather than gates.
+    """
+    from sqlalchemy import text
+
+    from ops.config import evaluate_config
+    from ops.release import release_identity
+    from ops.safe_mode import safe_mode_state
+
+    checks: dict = {}
+    ready_ = True
+
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception:
+        # THE TYPE IS NOT REPORTED. A driver error's text can carry the
+        # connection URL, and this endpoint is reachable.
+        checks["database"] = "unavailable"
+        ready_ = False
+
+    report = evaluate_config()
+    checks["configuration"] = ("ok" if report.serviceable
+                               else "missing:" + ",".join(report.missing_critical))
+    if not report.serviceable:
+        ready_ = False
+
+    try:
+        from migrations.run import pending as pending_migrations
+
+        from db.schema import engine
+
+        outstanding = [m.identifier for m in pending_migrations(engine)]
+        checks["migrations"] = ("ok" if not outstanding
+                                else "pending:" + ",".join(outstanding))
+        if outstanding:
+            ready_ = False
+    except Exception:
+        checks["migrations"] = "unknown"
+
+    state = safe_mode_state()
+    checks["writes"] = "disabled" if state.enabled else "enabled"
+    checks["yahoo_sign_in"] = ("configured" if report.can_sign_in_with_yahoo
+                               else "not_configured")
+
+    if not ready_:
+        response.status_code = 503
+
+    return {"ready": ready_, "checks": checks,
+            **release_identity().as_dict()}
+
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)):

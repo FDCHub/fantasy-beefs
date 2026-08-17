@@ -302,6 +302,17 @@ with _client() as client:
                               "password": LOCAL_PASSWORD}).status_code == 200)
 
 os.environ["FS_ENV"] = "production"
+# PROD-HARDEN-1 — A PRODUCTION PROCESS NEEDS A TOKEN ENCRYPTION KEY.
+#
+# This block flips the process into production to prove the password routes
+# refuse there, and the startup guard added by PROD-HARDEN-1 now — correctly —
+# refuses to start a production process that would accept Yahoo sign-ins and
+# silently drop the grant each one produced. So the fixture supplies what a real
+# production deployment supplies. The key is generated per run, is never written
+# anywhere, and secures nothing but this test's own in-memory state.
+from auth.token_crypto import generate_key as _generate_key  # noqa: E402
+
+os.environ.setdefault("FS_TOKEN_ENCRYPTION_KEY", _generate_key())
 try:
     with _client() as client:
         for path, payload in (

@@ -150,6 +150,35 @@ def get_engine(url: str, *, connect_args: dict | None = None, **kwargs) -> Engin
     dialect = _resolve_dialect(normalized)
     filtered_connect_args = _apply_option_policy(dialect, dict(connect_args or {}))
 
+    # ── PROD-HARDEN-1 · POSTGRESQL POOL RESILIENCE ───────────────────────────
+    #
+    # A pooled connection outlives the network path it was opened over. A
+    # database restart, a platform failover or an idle-timeout on a proxy all
+    # leave a socket in the pool that looks fine and fails on first use — which
+    # in production is a request, or worse, a settlement job.
+    #
+    #   pool_pre_ping   one round-trip before a checked-out connection is used;
+    #                   a dead one is discarded and replaced transparently. This
+    #                   is the setting that turns "the database restarted" from
+    #                   an incident into a pause.
+    #
+    #   pool_recycle    connections older than this are retired. 300s sits well
+    #                   under the idle timeouts platform proxies typically
+    #                   impose, so a connection is replaced on our schedule
+    #                   rather than dropped on theirs.
+    #
+    # NOT A RETRY LOOP, DELIBERATELY. §39 warns against retrying around
+    # non-idempotent writes and it is right: pre-ping revalidates BEFORE the
+    # transaction begins, so a statement that has already run is never
+    # re-issued. A failed transaction still fails, and the job's own durable
+    # idempotency decides what happens next.
+    #
+    # DEFAULTS ONLY — an explicit caller value always wins, which is what keeps
+    # the af-1 control tests' constructed engines exactly as they ask for them.
+    if dialect == "postgresql":
+        kwargs.setdefault("pool_pre_ping", True)
+        kwargs.setdefault("pool_recycle", 300)
+
     engine = create_engine(normalized, connect_args=filtered_connect_args, **kwargs)
 
     if dialect == "sqlite":
