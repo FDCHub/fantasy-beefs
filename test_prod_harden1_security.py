@@ -89,7 +89,15 @@ _FAKE_MARKERS = ("FAKE", "MUST-NEVER", "example", "placeholder", "dummy",
                  # `devpass` and `local-dev-only-change-me`; a scan that called
                  # those launch blockers would be crying wolf at documentation
                  # doing exactly the right thing.
-                 "changeme", "change-me", "devpass", "local-dev", "dev-only")
+                 "changeme", "change-me", "devpass", "local-dev", "dev-only",
+                 # THIS SUITE'S OWN FIXTURES. The redaction checks below need
+                 # values SHAPED like secrets to prove the config report never
+                 # echoes one — and the moment this file became tracked, the
+                 # scanner started reporting its own evidence as a finding.
+                 # Naming them is honest; blinding the scan to this file would
+                 # not be.
+                 "SUPERSECRETPASSWORD", "JWTSECRETVALUE",
+                 "YAHOOCLIENTSECRETVALUE", "dj0yCLIENTIDVALUE")
 _PATTERNS = (
     (r"dj0y[A-Za-z0-9_-]{20,}", "a Yahoo client id"),
     (r"\bAKIA[0-9A-Z]{16}\b", "an AWS key id"),

@@ -189,7 +189,12 @@ _assert("and is explicitly marked superseded and unusable",
 
 # NOTHING ELSE IN THE SPECIFICATION MOVED. The permission was narrow and the
 # check is on the content, not only on the filename.
-_diff = subprocess.run(["git", "diff", "-U0", "bc2de7b", "--", "spec/", "docs/"],
+# ANCHORED TO WP3E-FIX2'S OWN COMMIT RANGE.
+# The path filter was right and the range was not: diffing against the WORKTREE
+# made this a claim about every later package's spec/ and docs/ work too, and
+# PROD-HARDEN-1's operations runbook — which legitimately mentions Yahoo and the
+# Ledger — landed inside it. A scope claim is about a fixed set of changes.
+_diff = subprocess.run(["git", "diff", "-U0", "bc2de7b", "6ea8103", "--", "spec/", "docs/"],
                        cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace").stdout
 _changed = [ln[1:] for ln in _diff.splitlines()

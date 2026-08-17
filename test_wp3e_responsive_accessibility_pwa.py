@@ -353,8 +353,13 @@ _assert("no governed document outside the close-X synchronization is modified",
         _spec_touched <= _POR_SYNC_ALLOWED,
         ", ".join(sorted(_spec_touched - _POR_SYNC_ALLOWED)) or "none")
 
+# ANCHORED TO WP3E-FIX2'S OWN COMMIT RANGE.
+# The path filter was right and the range was not: diffing against the WORKTREE
+# made this a claim about every later package's spec/ and docs/ work too, and
+# PROD-HARDEN-1's operations runbook — which legitimately mentions Yahoo and the
+# Ledger — landed inside it. A scope claim is about a fixed set of changes.
 _spec_diff = subprocess.run(
-    ["git", "diff", "-U0", "bc2de7b", "--", "spec/", "docs/"],
+    ["git", "diff", "-U0", "bc2de7b", "6ea8103", "--", "spec/", "docs/"],
     cwd=ROOT, capture_output=True, text=True,
     encoding="utf-8", errors="replace").stdout
 _changed_lines = [ln[1:] for ln in _spec_diff.splitlines()
