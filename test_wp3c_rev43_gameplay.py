@@ -404,12 +404,46 @@ _assert("no rendered heading carries a directional arrow",
 
 _section("11 · The governing artifacts are unmodified")
 
+# THE PROTOTYPE AND THE PUBLISHED PAGE STAY FROZEN. Nothing has been ruled
+# about either, so the original guard applies to them unchanged.
 for path in ("spec/FantasyStakes_UIUX_Prototype_Rev4_2_FINAL_POR.html",
-             "spec/FantasyStakes_UIUX_Rev4_3_FINAL_POR.md",
              "docs/index.html"):
     proc = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", path],
                           cwd=ROOT, capture_output=True)
     _assert(f"{path} is unmodified", proc.returncode == 0)
+
+# THE REV 4.3 POR IS NARROWLY OPEN, AND ONLY ON ONE SUBJECT.
+#
+# WP3C §42 froze it outright, which was right while no ruling touched it. The
+# owner has since ruled the universal close control upper-left and instructed
+# that the written specification be brought into line, so a blanket freeze would
+# now hold the document permanently out of step with the product it governs.
+#
+# The guard is therefore narrowed rather than dropped: the file may differ from
+# the last committed release, and every line that differs must be about the
+# close control. A synchronization that quietly edited economics, navigation or
+# provider behaviour would pass a filename check and fail this one.
+_POR_PATH = "spec/FantasyStakes_UIUX_Rev4_3_FINAL_POR.md"
+_por_diff = subprocess.run(
+    ["git", "diff", "-U0", "bc2de7b", "--", _POR_PATH],
+    cwd=ROOT, capture_output=True, text=True,
+    encoding="utf-8", errors="replace").stdout
+_por_changed = [ln[1:].strip() for ln in _por_diff.splitlines()
+                if ln[:1] in "+-" and not ln.startswith(("+++", "---"))]
+_OFF_SUBJECT = (r"wager", r"credits?", r"settle\w*", r"escrow", r"Ledger",
+                r"postseason", r"Yahoo", r"navigation", r"tab bar", r"odds",
+                r"buy-?in", r"payout", r"provider", r"market line")
+_stray = [ln for ln in _por_changed
+          if any(re.search(rf"\b{term}\b", ln.replace("FantasyStakes", ""), re.I)
+                 for term in _OFF_SUBJECT)]
+_assert(f"{_POR_PATH} touched nothing governed by another package",
+        not _stray, " | ".join(_stray)[:200])
+# AND THE EDIT IS SMALL. A close-control synchronization is three passages; a
+# diff of eighty lines would be a rewrite wearing its name.
+_assert("and the synchronization is narrow in size",
+        len(_por_changed) <= 40, f"{len(_por_changed)} changed line(s)")
+_assert("and it now specifies the governing upper-left treatment",
+        "positioned **upper-left**" in _read_root(_POR_PATH))
 
 _assert("betting/shortfall_sweep.py is untouched (§43)",
         subprocess.run(["git", "diff", "--quiet", "HEAD", "--",

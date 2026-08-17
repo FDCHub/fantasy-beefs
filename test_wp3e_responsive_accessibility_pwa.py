@@ -70,21 +70,43 @@ def _read(*parts: str) -> str:
 
 # ── 1 · The governing conflict, resolved and recorded ────────────────────────
 
-_section("1 · The close control is UPPER-LEFT, per the owner ruling")
+_section("1 · The close control is UPPER-LEFT, and the POR now says so")
 
-# WP3E CERTIFIED THIS UPPER-RIGHT AND SAID SO. Rev 4.3 §25 required it, in terms
-# that anticipated the request to move it, and WP3E followed the POR because the
-# POR was the highest authority then in evidence. That has changed: the
-# FantasyStakes owner ruling delivered with WP3E-FIX sets a universal upper-left
-# treatment and explicitly supersedes §25. The ruling outranks the POR, so the
-# control moved and this section records the reversal rather than hiding it.
+# THE CONTRADICTION IS RESOLVED, so the assertion that kept it visible is gone.
 #
-# THE POR TEXT ITSELF IS UNCHANGED, deliberately. It is a governed artifact and
-# revising it is the owner's act, not a test package's. Both facts are asserted
-# below so the contradiction stays visible until the POR is reissued.
+# WP3E certified upper-right because Rev 4.3 §25 required it. WP3E-FIX moved the
+# control on an owner ruling that superseded §25, and asserted BOTH the ruling
+# and the stale POR text so nobody could mistake the disagreement for a
+# rendering bug. The owner has now confirmed the ruling as the governing POR and
+# instructed that the written specification be brought into line, so §25 itself
+# is the claim under test rather than the gap around it.
 POR = _read("spec", "FantasyStakes_UIUX_Rev4_3_FINAL_POR.md")
-_assert("Rev 4.3 §25 still carries the superseded upper-right language",
-        "positioned **upper-right**" in POR)
+_assert("the authoritative Rev 4.3 POR §25 specifies upper-left",
+        "positioned **upper-left**" in POR)
+_assert("and no longer instructs an implementer to use upper-right",
+        "positioned **upper-right**" not in POR)
+_assert("it carries the ruling's other terms — attached, matching Versus, 44px",
+        "visually attached to the active card, sheet or modal" in POR
+        and "matching the Versus composer treatment" in POR
+        and "minimum 44 px touch target" in POR)
+# §26 LISTED UPPER-LEFT AS A RETIRED CONCEPT, which would have contradicted §25
+# from two pages away — the exact failure mode this synchronization exists to
+# remove.
+_assert("§26 no longer retires upper-left placement",
+        'the League-tab countdown or the "Fantasy Sportsbook" heading suffix' in POR
+        and "Upper-left close placement is **not** a retired concept" in POR)
+
+# THE HISTORICAL DELTA IS MARKED, NOT REWRITTEN. Editing a record of what Rev
+# 4.2 decided so it agrees with a later ruling would misrepresent the history
+# rather than correct it. The statement stands and is labelled unusable.
+DELTA = _read("spec", "SPEC_Mobile_UI_UX_Rev4_2_Global_Delta.md")
+_assert("the Rev 4.2 delta still records what Rev 4.2 decided",
+        "The close **X** is always in the **upper-right**" in DELTA)
+_assert("but it is marked SUPERSEDED and points at the governing section",
+        "SUPERSEDED — HISTORICAL RECORD ONLY" in DELTA
+        and "Do not implement from this paragraph" in DELTA
+        and "§25 of `FantasyStakes_UIUX_Rev4_3_FINAL_POR.md`" in DELTA)
+
 _assert("the shipped control is described as upper-left",
         "upper-left" in _read("web", "index.html")
         and "upper-right" not in _read("web", "index.html"))
@@ -305,9 +327,42 @@ for forbidden in ("db/schema.py", "economy/", "ledger/", "betting/", "odds/",
 
 _assert("no migration was introduced",
         not any(f.startswith("migrations/") for f in _touched))
-_assert("the governing POR files are unmodified",
-        not any(f.startswith("spec/") or f.startswith("docs/")
-                for f in _touched))
+# WP3E-FIX2 NARROWLY OPENS THIS. The owner instructed that the close-X POR be
+# synchronized with shipped behaviour, so two spec files may move — and only
+# those two, and only on that subject. Everything else under spec/ and docs/
+# stays shut, and the diff is checked for what it says as well as which file it
+# is in: a close-X synchronization that quietly edited economics or navigation
+# would pass a filename check and fail this one.
+_POR_SYNC_ALLOWED = {
+    "spec/FantasyStakes_UIUX_Rev4_3_FINAL_POR.md",
+    "spec/SPEC_Mobile_UI_UX_Rev4_2_Global_Delta.md",
+}
+_spec_touched = {f for f in _touched
+                 if f.startswith("spec/") or f.startswith("docs/")}
+_assert("no governed document outside the close-X synchronization is modified",
+        _spec_touched <= _POR_SYNC_ALLOWED,
+        ", ".join(sorted(_spec_touched - _POR_SYNC_ALLOWED)) or "none")
+
+_spec_diff = subprocess.run(
+    ["git", "diff", "-U0", "bc2de7b", "--", "spec/", "docs/"],
+    cwd=ROOT, capture_output=True, text=True,
+    encoding="utf-8", errors="replace").stdout
+_changed_lines = [ln[1:] for ln in _spec_diff.splitlines()
+                  if ln[:1] in "+-" and not ln.startswith(("+++", "---"))]
+# THE PRODUCT'S OWN NAME IS NOT A SUBJECT TERM. A first cut scanned for "stake",
+# which matches every occurrence of FantasyStakes and flagged the citation that
+# tells the reader where the governing rule lives. The name is removed before
+# the scan and the terms are matched on word boundaries.
+_OFF_SUBJECT = (r"wager", r"credits?", r"settle\w*", r"escrow", r"Ledger",
+                r"postseason", r"Yahoo", r"navigation", r"tab bar", r"odds",
+                r"buy-?in", r"payout")
+_off = []
+for _ln in _changed_lines:
+    _clean = _ln.replace("FantasyStakes", "").replace("Fantasy Stakes", "")
+    if any(re.search(rf"\b{term}\b", _clean, re.I) for term in _OFF_SUBJECT):
+        _off.append(_ln.strip())
+_assert("and every changed spec line is about the close control",
+        not _off, " | ".join(_off)[:200])
 
 # THE NAVIGATION IS UNCHANGED — the one thing §2 of the brief locks hardest.
 # THE ORDER IS READ FROM THE SHIPPED MODULE, not from where the strings happen

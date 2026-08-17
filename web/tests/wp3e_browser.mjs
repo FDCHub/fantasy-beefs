@@ -558,17 +558,19 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
     check(`${surface.name}: Escape still dismisses it`, r.stillOpen === false);
     // FOCUS RETURN IS ONLY TESTABLE WHERE THE OPENER CAN HOLD FOCUS.
     //
-    // Some surfaces are entered from a tappable card — `.fs-wcard.is-tappable`
-    // is a div, not a button — which cannot take focus at all, so there is no
-    // focus for the sheet to give back and the shell correctly restores what it
-    // saved: nothing. That is a real keyboard gap and it is PRE-EXISTING; it
-    // belongs to the card, not to the close control this package moved, and
-    // fixing it means changing card markup well outside a focused close-X
-    // correction. So it is NAMED here rather than quietly passed, and it is
-    // carried forward.
+    // WP3E-FIX found and carried forward one opener that could not: the Versus
+    // matchup card was a bare div, so there was no focus for the composer to
+    // give back and the shell correctly restored what it had saved, which was
+    // nothing. WP3E-FIX2 CLOSED THAT — the card is now a keyboard control and
+    // takes the real assertion below like every other surface.
+    //
+    // The reporting branch is kept, and deliberately. It is what turned a
+    // silent green into a named gap in the first place, and if a future surface
+    // is ever wired to a non-focusable opener this is what will say so out loud
+    // instead of passing.
     if (r.openerHadFocus !== true) {
-      check(`${surface.name}: opener is a tappable div and cannot hold focus `
-        + `— focus return NOT CERTIFIED here (pre-existing, carried forward)`,
+      check(`${surface.name}: opener cannot hold focus `
+        + `— focus return NOT CERTIFIED here, and that is a defect to close`,
         true, 'reported, not passed over');
     } else {
       check(`${surface.name}: focus returns to the control that opened it`,

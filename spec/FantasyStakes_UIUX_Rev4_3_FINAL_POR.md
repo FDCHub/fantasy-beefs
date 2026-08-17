@@ -714,14 +714,21 @@ This UI specification package does not alter persistence architecture.
 
 ## 25. Universal close behavior
 
-The effective final Rev 4.2 treatment is preserved:
+The governing treatment is:
 
 - a universal close control;
-- positioned **upper-right**;
-- visually associated with the active sheet or card;
-- common across Versus, Pools, Account detail, Rules, commissioner surfaces and every other pop-out surface.
+- positioned **upper-left**;
+- visually attached to the active card, sheet or modal;
+- matching the Versus composer treatment;
+- a minimum 44 px touch target;
+- common across Versus, Pools, Account detail, Rules, commissioner surfaces and every other pop-out surface, without exception.
 
-The close control is not moved to upper-left. Any earlier upper-left treatment is superseded.
+> **Superseded.** An earlier revision of this section required the close control
+> upper-right and stated that it was not to be moved to upper-left. That
+> language is superseded by owner ruling. The upper-left treatment above is the
+> governing one; the Rev 4.2 prototype POR already specified it
+> (`left:14px; right:auto; top:10px`, with the sheet padded to clear it), and it
+> is what the application ships.
 
 ---
 
@@ -842,7 +849,7 @@ Superseded by Rev 4.3:
 
 Preserved from Rev 4.2:
 
-- universal close control, upper-right (final v17 treatment);
+- universal close control (see §25 — the governing position is **upper-left**);
 - league identity as the Play heading, with no "Fantasy Sportsbook" suffix;
 - compact vertical Versus discovery rail and the 2 × 2 Pool grid, subject to Rev 4.3 readability refinements;
 - Wrap Up with no four-cell summary strip;
@@ -851,7 +858,7 @@ Preserved from Rev 4.2:
 - LOCKED / DYNAMIC Versus mode presentation;
 - commissioner Top-Off, GM ledger cards and League Reconciliation surfaces.
 
-Rev 4.3 does not reintroduce retired UI concepts, including the segmented standings selector, the League-tab countdown, upper-left close placement or the "Fantasy Sportsbook" heading suffix.
+Rev 4.3 does not reintroduce retired UI concepts, including the segmented standings selector, the League-tab countdown or the "Fantasy Sportsbook" heading suffix. Upper-left close placement is **not** a retired concept: per §25 it is the governing universal treatment.
 
 Commissioner economy setup shows the League allocation total as a secondary informational figure beneath the primary per-player Season-Opening Allocation, per §16.3.
 

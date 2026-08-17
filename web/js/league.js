@@ -45,6 +45,7 @@ import {
   LEAGUE_MODE_DEMO, currentWeek, leagueMode, leagueName,
 } from './league-model.js';
 import { attributionFooter } from './attribution.js';
+import { onActivate } from './interaction.js';
 import { marketFor } from './market-model.js';
 import { formatSpread } from './narrative.js';
 import { weekPhaseLabel } from './phase.js';
@@ -283,8 +284,31 @@ function versusCard(opponent) {
     + '</button>'
   )).join('');
 
+  // WP3E-FIX2 — THE CARD IS A CONTROL, SO IT SAYS SO.
+  //
+  // The whole surface opens the Versus composer with no market pre-selected,
+  // and until now it was a bare div: a pointer-only affordance that no keyboard
+  // user could reach at all. Tab skipped it, and because it could not hold
+  // focus there was nothing for the composer to return focus to on close.
+  //
+  // WHY role=button AND NOT A NATIVE <button>. The card already contains four
+  // real buttons — the preview row and the three market cells — and a button
+  // may not contain a button. Converting the wrapper would produce invalid
+  // nested interactive content, so this takes the narrow fallback: the role
+  // states what it is and `interaction.js` supplies the Enter and Space
+  // behaviour a native button would have given for free.
+  //
+  // THE NAME IS EXPLICIT, and that is a deliberate exception to preferring
+  // visible text. A role=button computes its name from its contents, which here
+  // would read as the opponent, the owner, VIEW MATCHUP PREVIEW and then three
+  // market cells of odds — a sentence of figures announced before the user has
+  // asked for any of it. The label says who and what, and every figure remains
+  // reachable by moving into the card's own controls.
+  const label = `Challenge ${escapeHtml(opponent.name)}`;
+
   return (
-    `<div class="fs-wcard fs-wcard--matchup is-tappable" `
+    `<div class="fs-wcard fs-wcard--matchup is-tappable" role="button" tabindex="0" `
+    + `aria-label="${label}" `
     + `data-card-action="challenge" data-card-id="${id}">`
     + '<div class="fs-wcard__head">'
     + `<span class="fs-wcard__identity">${escapeHtml(opponent.name)}</span>`
@@ -445,7 +469,16 @@ export function bindLeague(panel, api) {
       });
     });
 
-    card.addEventListener('click', () => api.openComposer({
+    // ONE ACTIVATION CONTRACT, and one handler behind it. `onActivate` binds
+    // the pointer path and the keyboard path to the SAME function, so Enter,
+    // Space and a tap cannot diverge and none of them can fire twice.
+    //
+    // A KEY PRESSED INSIDE A NESTED BUTTON BELONGS TO THAT BUTTON. `onActivate`
+    // ignores keydown whose target is not the card itself, and the nested
+    // handlers above stop their click from bubbling — so activating a market
+    // cell opens the composer on that market once, not once for the cell and
+    // again for the card.
+    onActivate(card, () => api.openComposer({
       matchupId: cardId, marketId: null }));
   });
 

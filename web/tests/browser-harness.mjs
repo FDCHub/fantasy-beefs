@@ -329,7 +329,51 @@ export async function withPage(options, body) {
       await new Promise((r) => setTimeout(r, settleMs));
     };
 
-    await body({ evaluate, setViewport, reload });
+    /**
+     * Press a key AS THE USER, through the browser's own input pipeline.
+     *
+     * WHY THIS EXISTS (WP3E-FIX2). A synthetic `new KeyboardEvent('keydown')`
+     * dispatched from page script is enough to exercise an application's own
+     * handler, and it is NOT enough for anything the browser decides for
+     * itself. `:focus-visible` is the case that forced this: Chrome matches it
+     * from the last input MODALITY, which a scripted event never sets — so a
+     * focus ring can be correctly specified, correctly applied for a real
+     * keyboard user, and still measure as absent under a scripted test. The
+     * suite would then be reporting on its own dispatch method rather than on
+     * the product.
+     *
+     * `Input.dispatchKeyEvent` enters where a real key does. `rawKeyDown` plus
+     * `keyUp` is the pair Chrome expects for a non-text key; a printable key
+     * also needs the `char` event in between or nothing is typed.
+     *
+     * @param {string} key      the DOM key value, e.g. 'Tab', 'Enter', ' '
+     * @param {{code?: string, keyCode?: number, text?: string}} [spec]
+     */
+    const pressKey = async (key, spec = {}) => {
+      const KNOWN = {
+        Tab: { code: 'Tab', keyCode: 9 },
+        Enter: { code: 'Enter', keyCode: 13, text: '\r' },
+        ' ': { code: 'Space', keyCode: 32, text: ' ' },
+        Escape: { code: 'Escape', keyCode: 27 },
+      };
+      const k = { ...(KNOWN[key] || {}), ...spec };
+      const base = {
+        key,
+        code: k.code,
+        windowsVirtualKeyCode: k.keyCode,
+        nativeVirtualKeyCode: k.keyCode,
+      };
+      await cdp.send('Input.dispatchKeyEvent', { ...base, type: 'rawKeyDown' });
+      if (k.text) {
+        await cdp.send('Input.dispatchKeyEvent', {
+          ...base, type: 'char', text: k.text, unmodifiedText: k.text,
+        });
+      }
+      await cdp.send('Input.dispatchKeyEvent', { ...base, type: 'keyUp' });
+      await new Promise((r) => setTimeout(r, 60));
+    };
+
+    await body({ evaluate, setViewport, reload, pressKey });
   } finally {
     if (cdp) cdp.close();
     browser.kill();

@@ -107,6 +107,14 @@ at most one anchor or gold cell per strip.
 - The close **X** is always in the **upper-right** of the active sheet or card.
 - This supersedes any older upper-left treatment.
 
+> **SUPERSEDED — HISTORICAL RECORD ONLY.** The two statements immediately above
+> record what Rev 4.2 decided and are left as written for that reason.
+> They are no longer in force. By owner ruling the universal close control is
+> **upper-left**, visually attached to the active card, sheet or modal, matching
+> the Versus composer, at a minimum 44 px touch target.
+> The governing statement is §25 of `FantasyStakes_UIUX_Rev4_3_FINAL_POR.md`.
+> Do not implement from this paragraph.
+
 ---
 
 ## 6. Navigation

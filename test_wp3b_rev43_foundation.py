@@ -355,11 +355,40 @@ _assert("the menu routes to the existing destination rather than rebuilding it",
 _section("9 · The governing artifacts are untouched — WP3B §27")
 
 for path in ("spec/FantasyStakes_UIUX_Prototype_Rev4_2_FINAL_POR.html",
-             "spec/FantasyStakes_UIUX_Rev4_3_FINAL_POR.md",
              "docs/index.html"):
     proc = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", path],
                           cwd=ROOT, capture_output=True)
     _assert(f"{path} is unmodified", proc.returncode == 0)
+
+# THE REV 4.3 POR IS OPEN ON ONE SUBJECT ONLY — the universal close control.
+#
+# WP3B §27 froze it, correctly, while nothing had been ruled about it. The owner
+# has since ruled the close control upper-left and instructed that the written
+# specification be brought into line, so an unconditional freeze would now
+# guarantee the document contradicts the product. What this package cares about
+# is that the FOUNDATION it certifies did not move, so that is what is checked:
+# the sections WP3B owns, by name.
+_POR = _read_root("spec", "FantasyStakes_UIUX_Rev4_3_FINAL_POR.md")
+for _clause in ("Standings", "Play", "Action", "Wrap Up", "Account"):
+    _assert(f"the POR still names the {_clause} destination", _clause in _POR)
+
+_por_diff = subprocess.run(
+    ["git", "diff", "-U0", "bc2de7b", "--",
+     "spec/FantasyStakes_UIUX_Rev4_3_FINAL_POR.md"],
+    cwd=ROOT, capture_output=True, text=True,
+    encoding="utf-8", errors="replace").stdout
+_changed = [ln[1:].strip() for ln in _por_diff.splitlines()
+            if ln[:1] in "+-" and not ln.startswith(("+++", "---"))]
+# THE DESTINATION NAMES THEMSELVES ARE NOT THE TEST. §25 legitimately lists the
+# surfaces the close control appears on — "Versus, Pools, Account detail, Rules,
+# commissioner surfaces" — and a first cut flagged that sentence for containing
+# the word Account. The five destinations are asserted present above; what must
+# not move is the navigation MODEL, so that is what is named here.
+_NAV_MODEL = (r"\b(navigation|tab bar|bottom nav|destination order|"
+              r"primary destinations|secondary destination)\b")
+_nav_edits = [ln for ln in _changed if re.search(_NAV_MODEL, ln, re.I)]
+_assert("and nothing in the navigation model was edited",
+        not _nav_edits, " | ".join(_nav_edits)[:160])
 
 
 # ── Node tiers ───────────────────────────────────────────────────────────────
