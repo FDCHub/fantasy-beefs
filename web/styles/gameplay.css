@@ -46,6 +46,50 @@
   letter-spacing: 0;
 }
 
+/* ── The Challenge control — WP3E-FIX3 ────────────────────────────────────── */
+
+/* A NATIVE BUTTON THAT LOOKS LIKE THE CARD'S HEADING, because that is what it
+ * has always looked like. The card's challenge action needed a real control
+ * rather than an ARIA role on the wrapper, and the narrowest treatment that
+ * preserves the Rev 4.3 card is to promote the text that already names the
+ * matchup instead of adding a second call to action competing with the preview
+ * row beneath it.
+ *
+ * SO THIS RESET IS EXACTLY THE BROWSER DEFAULTS AND NOTHING ELSE: the UA font,
+ * the UA background, border, radius, padding and centred text. Size, weight and
+ * colour are left alone, because `.fs-wcard__identity` and `.fs-wcard__context`
+ * already set them and they apply to a button exactly as they did to a span.
+ *
+ * THE 44px COMES FROM `min-height`, not from padding. Measured, the identity
+ * and owner lines together are 42px, so this adds two — and a card whose server
+ * sent no owner gets the same 44px head rather than a short one. Padding would
+ * have had to overhang a sibling to reach the same number. */
+.fs-wcard__challenge {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  width: 100%;
+  min-height: var(--fs-r43-touch);
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* The two lines were a div and a div; inside the button they are spans, and
+ * they go back to being blocks so the card reads exactly as it did. */
+.fs-wcard__challenge > .fs-wcard__identity,
+.fs-wcard__challenge > .fs-wcard__context {
+  display: block;
+}
+
 /* ── The preview row — Rev 4.3 §9 ─────────────────────────────────────────── */
 
 /* FULL WIDTH, ABOVE THE MARKETS, AND UNMISTAKABLY AN ACTION. The POR asks for a

@@ -1,5 +1,6 @@
 /* ============================================================================
- * FantasyStakes — WP3E-FIX2 · interactive-card keyboard access · browser suite
+ * FantasyStakes — Versus card keyboard semantics · browser suite
+ * WP3E-FIX2 (keyboard access) · WP3E-FIX3 (native semantics)
  *
  * Run through:  python test_wp3e_fix2_keyboard_cards.py
  *
@@ -12,10 +13,20 @@
  * stylesheet or in a class name — it is only visible when something presses a
  * key and watches what happens.
  *
- * So every claim here is driven: real key events on a real rendering, with the
- * activation COUNTED so that "Enter works" cannot quietly mean "Enter works
- * twice", and with the pointer path re-run afterwards so the keyboard fix
- * cannot have been bought by breaking the tap.
+ * WP3E-FIX2 closed that with `role="button"` on the wrapper. It worked and it
+ * was the wrong shape: an ARIA button containing four real buttons, whose
+ * children the ARIA specification calls presentational and which assistive
+ * technology is therefore not obliged to expose. WP3E-FIX3 replaced it with the
+ * structure this file now certifies —
+ *
+ *     A CARD IS A CONTAINER OF ACTIONS, AND EVERY ACTION IS ITS OWN NATIVE
+ *     BUTTON. Challenge, preview, moneyline, spread, total: five controls, five
+ *     tab stops, no role anywhere, and no button inside a button.
+ *
+ * Every claim is driven: real key events through the browser's own input
+ * pipeline, with activations COUNTED so that "Enter works" cannot quietly mean
+ * "Enter works twice", and with each control exercised separately so that one
+ * cannot be shown to work by another one firing.
  *
  * `FS_FIX2_MODE` selects the session: `gm` or `commissioner`.
  * ========================================================================== */
@@ -36,268 +47,384 @@ const AWAIT_APP = `
   }
 `;
 
-/* Counting activations needs a seam the page itself can see. The composer is
- * opened through the shell API, so the count is taken from what the SHEET does
- * — one open per press, no more. */
-const OPEN_VERSUS = `
+const GO_LEAGUE = `
+  document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
+  await new Promise((r) => setTimeout(r, 280));
+`;
+
+const CARD = `
   const card = document.querySelector('#panel-league [data-card-action="challenge"]');
+  const challenge = card ? card.querySelector('[data-card-challenge]') : null;
+`;
+
+/* Close whatever is open, so one surface's leftovers cannot pass as another's
+ * result. */
+const RESET = `
+  {
+    const overlay = document.getElementById('fs-overlay');
+    if (overlay.classList.contains('is-open')) {
+      document.querySelector('#fs-sheet [data-fs-close]').click();
+      await new Promise((r) => setTimeout(r, 220));
+    }
+  }
+`;
+
+/* One activation, counted. Every render of the sheet host is observed, so a
+ * handler bound twice — or a nested control whose click also reaches the card —
+ * shows up as two openings rather than passing as one. */
+const ARM = `
+  window.__fsRenders = 0;
+  window.__fsObs = new MutationObserver(() => { window.__fsRenders += 1; });
+  window.__fsObs.observe(document.getElementById('fs-sheet'), { childList: true });
 `;
 
 await withPage({ port: 9496 }, async ({ evaluate, setViewport, pressKey }) => {
 
   console.log(`\n(mode: ${MODE})`);
 
-  /* ── §3 · reconciliation, asserted rather than asserted-about ─────────── */
+  /* ── §6 · the structure, and what must not be in it ───────────────────── */
 
-  section('§3 · Interactive-card reconciliation, measured in the rendering');
+  section('§6 · Native semantics — no ARIA button wrapping native buttons');
 
-  const recon = await evaluate(`return (async () => {
+  const structure = await evaluate(`return (async () => {
     ${AWAIT_APP}
-    const NATIVE = ['button', 'a', 'input', 'select', 'textarea', 'summary'];
-    const rows = [];
-    for (const id of ['standings', 'league', 'action', 'week', 'ledger']) {
-      document.querySelector('.fs-tabbar__item[data-destination="' + id + '"]').click();
-      await new Promise((r) => setTimeout(r, 260));
-      const panel = document.getElementById('panel-' + id);
-      // A CONTROL IS SOMETHING WHOSE WHOLE SURFACE IS AN ACTION. Containers
-      // that merely HOLD a control are not, and must not become tab stops.
-      for (const el of panel.querySelectorAll('.is-tappable, [data-card-action]')) {
-        const tag = el.tagName.toLowerCase();
-        rows.push({
-          panel: id, tag,
-          role: el.getAttribute('role') || '',
-          tabindex: el.getAttribute('tabindex'),
-          focusable: NATIVE.includes(tag) || el.getAttribute('tabindex') !== null,
-          name: (el.getAttribute('aria-label') || '').slice(0, 60),
-        });
+    ${GO_LEAGUE}
+    ${CARD}
+    if (!card) return { present: false };
+
+    // THE AUDIT THAT NAMES THIS PACKAGE. Walk every native control on the
+    // panel and look upward for an ancestor claiming button semantics. One hit
+    // is the defect WP3E-FIX3 exists to remove.
+    const panel = document.getElementById('panel-league');
+    const offenders = [];
+    for (const control of panel.querySelectorAll('button, [role="button"]')) {
+      let node = control.parentElement;
+      while (node && node !== panel) {
+        const isButtonish = node.tagName === 'BUTTON'
+          || node.getAttribute('role') === 'button';
+        if (isButtonish) {
+          offenders.push((node.className || node.tagName).toString().split(' ')[0]
+            + ' > ' + (control.className || control.tagName).toString().split(' ')[0]);
+          break;
+        }
+        node = node.parentElement;
       }
     }
-    return rows;
-  })();`);
 
-  check('interactive cards were found to certify', recon.length > 0,
-    `${recon.length} card(s)`);
-  const unreachable = recon.filter((r) => !r.focusable);
-  check('every whole-card control is keyboard reachable',
-    unreachable.length === 0,
-    unreachable.map((r) => `${r.panel}:<${r.tag}>`).join(', ') || 'none');
-  for (const row of recon) {
-    check(`${row.panel}: the card exposes button semantics`,
-      row.tag === 'button' || row.role === 'button',
-      `<${row.tag}> role=${row.role || '-'} tabindex=${row.tabindex}`);
-  }
+    const tags = (sel) => [...card.querySelectorAll(sel)]
+      .map((el) => el.tagName.toLowerCase());
 
-  /* ── §5/§6 · the Versus card, driven by keyboard alone ────────────────── */
-
-  section('§5/§6 · The Versus card is a real keyboard control');
-
-  const semantics = await evaluate(`return (async () => {
-    ${AWAIT_APP}
-    document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
-    await new Promise((r) => setTimeout(r, 260));
-    ${OPEN_VERSUS}
-    if (!card) return { present: false };
-    card.focus();
-    const style = getComputedStyle(card);
     return {
       present: true,
-      tag: card.tagName.toLowerCase(),
-      role: card.getAttribute('role'),
-      tabindex: card.getAttribute('tabindex'),
-      focused: document.activeElement === card,
-      name: card.getAttribute('aria-label'),
-      // THE NAME MUST DISTINGUISH THIS CARD FROM THE ONE BESIDE IT, so the
-      // opponent's own identity has to be inside it.
-      namesOpponent: (card.getAttribute('aria-label') || '')
-        .includes((card.querySelector('.fs-wcard__identity') || {}).textContent || '\\u0000'),
-      // AND IT MUST NOT BE A RECITAL OF ODDS.
-      nameLength: (card.getAttribute('aria-label') || '').length,
-      nestedControls: card.querySelectorAll('button').length,
-      cursor: style.cursor,
+      wrapperTag: card.tagName.toLowerCase(),
+      wrapperRole: card.getAttribute('role'),
+      wrapperTabindex: card.getAttribute('tabindex'),
+      wrapperAria: card.getAttribute('aria-label'),
+      offenders,
+      challengeTag: challenge ? challenge.tagName.toLowerCase() : null,
+      challengeType: challenge ? challenge.getAttribute('type') : null,
+      challengeName: challenge ? challenge.getAttribute('aria-label') : null,
+      previewTags: tags('[data-preview-opponent]'),
+      marketTags: tags('[data-market]'),
+      marketCount: card.querySelectorAll('[data-market]').length,
+      // STATIC TEXT MUST NOT BECOME A TAB STOP.
+      strayTabbable: [...card.querySelectorAll('[tabindex]')]
+        .filter((el) => el.tagName !== 'BUTTON')
+        .map((el) => (el.className || el.tagName).toString().split(' ')[0]),
     };
   })();`);
 
-  check('the Versus card is present', semantics.present === true);
-  check('it declares button semantics',
-    semantics.role === 'button', String(semantics.role));
-  check('it is in the tab order', semantics.tabindex === '0',
-    String(semantics.tabindex));
-  check('it actually takes focus', semantics.focused === true);
-  check('it has an accessible name', Boolean(semantics.name), semantics.name);
-  check('the name identifies the opponent, not the odds',
-    semantics.namesOpponent === true && semantics.nameLength < 60,
-    `${semantics.name} (${semantics.nameLength} chars)`);
-  // THE REASON IT IS role=button AND NOT A NATIVE <button>: it contains real
-  // buttons, and a button may not contain a button. That is asserted so the
-  // decision cannot be "simplified" later into invalid markup.
-  check('it contains real nested controls, which is why it is not a <button>',
-    semantics.tag === 'div' && semantics.nestedControls >= 4,
-    `<${semantics.tag}> holding ${semantics.nestedControls} buttons`);
-  check('it still presents as tappable', semantics.cursor === 'pointer',
-    semantics.cursor);
+  check('the Versus card is present', structure.present === true);
+  check('the card wrapper is a plain container, not a button',
+    structure.wrapperTag === 'div' && structure.wrapperRole === null,
+    `<${structure.wrapperTag}> role=${structure.wrapperRole}`);
+  check('the wrapper is not in the tab order',
+    structure.wrapperTabindex === null, String(structure.wrapperTabindex));
+  check('and it carries no button label of its own',
+    structure.wrapperAria === null, String(structure.wrapperAria));
+  check('NO button-like ancestor contains a native control anywhere on Play',
+    structure.offenders.length === 0,
+    structure.offenders.join(', ') || 'none');
+  check('Challenge is a native button',
+    structure.challengeTag === 'button' && structure.challengeType === 'button',
+    `<${structure.challengeTag} type=${structure.challengeType}>`);
+  check('Preview is a native button',
+    structure.previewTags.join() === 'button', structure.previewTags.join());
+  check('all three market controls are native buttons',
+    structure.marketCount === 3
+    && structure.marketTags.every((t) => t === 'button'),
+    `${structure.marketCount}: ${structure.marketTags.join(', ')}`);
+  check('no static card text was made tabbable',
+    structure.strayTabbable.length === 0,
+    structure.strayTabbable.join(', ') || 'none');
 
-  /* ── §5 · Enter, Space, and exactly one activation each ───────────────── */
+  /* ── §6 · the accessible name ─────────────────────────────────────────── */
 
-  section('§5 · Enter and Space each activate exactly once');
+  section('§6 · Accessible naming');
+
+  const naming = await evaluate(`return (async () => {
+    ${AWAIT_APP}
+    ${GO_LEAGUE}
+    ${CARD}
+    const identity = card.querySelector('.fs-wcard__identity');
+    const name = challenge.getAttribute('aria-label') || '';
+    return {
+      name,
+      opponent: identity ? identity.textContent : '',
+      namesOpponent: identity ? name.includes(identity.textContent) : false,
+      // A NAME, NOT A RECITAL. The card's odds must not end up in it.
+      length: name.length,
+      previewName: card.querySelector('[data-preview-opponent]').textContent.trim(),
+      marketNames: [...card.querySelectorAll('[data-market]')]
+        .map((el) => (el.querySelector('.fs-market__label') || {}).textContent || ''),
+    };
+  })();`);
+
+  check('Challenge names the action and the opponent',
+    /^Challenge /.test(naming.name) && naming.namesOpponent === true,
+    naming.name);
+  check('and it is a label, not a sentence of figures',
+    naming.length > 0 && naming.length < 60, `${naming.length} chars`);
+  check('Preview keeps its own visible name',
+    /MATCHUP PREVIEW/i.test(naming.previewName), naming.previewName);
+  check('the market controls keep their own names',
+    naming.marketNames.length === 3
+    && naming.marketNames.every((n) => n.trim().length > 0),
+    naming.marketNames.join(' · '));
+
+  /* ── §5 · tab order ───────────────────────────────────────────────────── */
+
+  section('§5 · Tab order reaches all five actions, in a logical order');
+
+  const order = await evaluate(`return (async () => {
+    ${AWAIT_APP}
+    ${GO_LEAGUE}
+    ${CARD}
+    const focusables = [...card.querySelectorAll(
+      'a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])')];
+    const label = (el) => {
+      if (el.hasAttribute('data-card-challenge')) return 'challenge';
+      if (el.hasAttribute('data-preview-opponent')) return 'preview';
+      if (el.hasAttribute('data-market')) return el.getAttribute('data-market');
+      return el.tagName.toLowerCase();
+    };
+    return {
+      sequence: focusables.map(label),
+      allReachable: focusables.every((el) => el.offsetParent !== null),
+    };
+  })();`);
+
+  check('the card offers exactly five tab stops', order.sequence.length === 5,
+    order.sequence.join(' → '));
+  check('Challenge comes first, then Preview, then the three markets',
+    order.sequence[0] === 'challenge' && order.sequence[1] === 'preview'
+    && order.sequence.length === 5,
+    order.sequence.join(' → '));
+  check('and every one of them is actually visible', order.allReachable === true);
+
+  /* ── §5 · Enter and Space, pressed for real ───────────────────────────── */
+
+  section('§5 · Enter and Space each open the composer exactly once');
 
   for (const key of ['Enter', ' ']) {
+    const label = key === ' ' ? 'Space' : key;
+
     const armed = await evaluate(`return (async () => {
       ${AWAIT_APP}
-      const overlay = document.getElementById('fs-overlay');
-      if (overlay.classList.contains('is-open')) {
-        document.querySelector('#fs-sheet [data-fs-close]').click();
-        await new Promise((r) => setTimeout(r, 200));
-      }
-      document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
-      await new Promise((r) => setTimeout(r, 260));
-      ${OPEN_VERSUS}
-      card.focus();
-
-      // ONE PRESS, COUNTED. Every render of the sheet host is observed, so a
-      // handler bound twice — or a keydown that also produces a synthetic
-      // click — shows up as two openings rather than passing as one.
-      window.__fsRenders = 0;
-      window.__fsObserver = new MutationObserver(() => { window.__fsRenders += 1; });
-      window.__fsObserver.observe(document.getElementById('fs-sheet'),
-        { childList: true });
-      return { armed: document.activeElement === card };
+      ${RESET}
+      ${GO_LEAGUE}
+      ${CARD}
+      challenge.focus();
+      ${ARM}
+      return { focused: document.activeElement === challenge };
     })();`);
-    check(`${key === ' ' ? 'Space' : key}: the card is focused before the press`,
-      armed.armed === true);
+    check(`${label}: the Challenge button holds focus before the press`,
+      armed.focused === true);
 
-    // THE KEY IS PRESSED BY THE BROWSER, not by page script — see `pressKey`
-    // in the harness for why that distinction is not pedantry.
+    // THE KEY IS PRESSED BY THE BROWSER, not by page script. A native button's
+    // Enter and Space handling belongs to the browser, so a scripted
+    // `KeyboardEvent` would prove nothing about it at all.
     await pressKey(key);
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 380));
 
-    const pressed = await evaluate(`return (async () => {
-      window.__fsObserver.disconnect();
-      const renders = window.__fsRenders;
-      const overlay = document.getElementById('fs-overlay');
+    const opened = await evaluate(`return (async () => {
+      window.__fsObs.disconnect();
       const host = document.getElementById('fs-sheet');
       const x = host.querySelector('[data-fs-close]');
       return {
-        opened: overlay.classList.contains('is-open'),
-        renders,
+        open: document.getElementById('fs-overlay').classList.contains('is-open'),
+        renders: window.__fsRenders,
         title: (host.querySelector('.fs-sheet__title') || {}).textContent || '',
         focusInSheet: host.contains(document.activeElement),
         focusOnClose: document.activeElement === x,
       };
     })();`);
 
-    const label = key === ' ' ? 'Space' : key;
-    check(`${label} opens the Versus composer`, pressed.opened === true,
-      pressed.title);
-    check(`${label} activates exactly once`, pressed.renders === 1,
-      `${pressed.renders} sheet render(s)`);
+    check(`${label} opens the Versus composer`, opened.open === true,
+      opened.title);
+    check(`${label} activates exactly once`, opened.renders === 1,
+      `${opened.renders} sheet render(s)`);
     check(`${label}: focus moves into the sheet, onto its close control`,
-      pressed.focusInSheet === true && pressed.focusOnClose === true);
+      opened.focusInSheet === true && opened.focusOnClose === true);
 
-    /* ── §5 · Escape, close-X, and focus return ─────────────────────────── */
-
+    /* Escape, and where focus lands. */
     await pressKey('Escape');
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 260));
 
     const dismissed = await evaluate(`return (async () => {
-      ${OPEN_VERSUS}
+      ${CARD}
       return {
         closed: !document.getElementById('fs-overlay').classList.contains('is-open'),
-        backOnCard: document.activeElement === card,
+        backOnChallenge: document.activeElement === challenge,
         onBody: document.activeElement === document.body,
         active: document.activeElement
-          ? document.activeElement.tagName.toLowerCase()
-            + '.' + (document.activeElement.className || '') : null,
+          ? document.activeElement.tagName.toLowerCase() + '.'
+            + (document.activeElement.className || '') : null,
       };
     })();`);
 
     check(`${label} → Escape closes the composer`, dismissed.closed === true);
-    check(`${label} → focus returns to the same Versus card`,
-      dismissed.backOnCard === true, String(dismissed.active));
+    check(`${label} → focus returns to the same Challenge button`,
+      dismissed.backOnChallenge === true, String(dismissed.active));
     check(`${label} → focus is not dumped on the body`,
       dismissed.onBody === false);
   }
 
-  section('§5 · The close control closes it too, with the same focus return');
+  section('§5 · The upper-left close control dismisses it too');
 
-  const viaXReady = await evaluate(`return (async () => {
+  const ready = await evaluate(`return (async () => {
     ${AWAIT_APP}
-    document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
-    await new Promise((r) => setTimeout(r, 260));
-    ${OPEN_VERSUS}
-    card.focus();
-    return { ready: document.activeElement === card };
+    ${RESET}
+    ${GO_LEAGUE}
+    ${CARD}
+    challenge.focus();
+    return { focused: document.activeElement === challenge };
   })();`);
-  check('the card is focused before the press', viaXReady.ready === true);
+  check('the Challenge button holds focus before the press',
+    ready.focused === true);
 
   await pressKey('Enter');
-  await new Promise((r) => setTimeout(r, 320));
+  await new Promise((r) => setTimeout(r, 380));
 
   const viaX = await evaluate(`return (async () => {
-    ${OPEN_VERSUS}
+    ${CARD}
     const opened = document.getElementById('fs-overlay').classList.contains('is-open');
-    document.querySelector('#fs-sheet [data-fs-close]').click();
-    await new Promise((r) => setTimeout(r, 250));
+    const x = document.querySelector('#fs-sheet [data-fs-close]');
+    const upperLeft = (() => {
+      const s = document.getElementById('fs-sheet').getBoundingClientRect();
+      const b = x.getBoundingClientRect();
+      return (b.left - s.left) < (s.right - b.right);
+    })();
+    x.click();
+    await new Promise((r) => setTimeout(r, 260));
     return {
-      opened,
+      opened, upperLeft,
       closed: !document.getElementById('fs-overlay').classList.contains('is-open'),
-      backOnCard: document.activeElement === card,
+      backOnChallenge: document.activeElement === challenge,
     };
   })();`);
   check('the close control dismisses a keyboard-opened composer',
     viaX.opened === true && viaX.closed === true);
-  check('and focus still returns to the card', viaX.backOnCard === true);
+  check('it is still the upper-left control', viaX.upperLeft === true);
+  check('and focus still returns to the Challenge button',
+    viaX.backOnChallenge === true);
 
-  /* ── §5 · the pointer path is untouched ───────────────────────────────── */
+  /* ── §4 · each action does its own job, and only its own ──────────────── */
 
-  section('§10 · Pointer and touch behaviour is unchanged');
+  section('§4 · Every control performs its own action, exactly once');
 
-  const tapped = await evaluate(`return (async () => {
+  // WHAT THIS IS GUARDING. Each of these controls sits inside a card that also
+  // has a click handler. If any of them let its click bubble, one press would
+  // produce two openings — and the second, being the card's, would discard the
+  // market or the preview the GM actually chose.
+  const ACTIONS = [
+    { name: 'Challenge', selector: '[data-card-challenge]', surface: 'composer',
+      market: null },
+    { name: 'Preview', selector: '[data-preview-opponent]', surface: 'preview' },
+    { name: 'Moneyline', selector: '[data-market="ml"]', surface: 'composer',
+      market: 'ml' },
+    { name: 'Spread', selector: '[data-market="spread"]', surface: 'composer',
+      market: 'spread' },
+    { name: 'Over/Under', selector: '[data-market="ou"]', surface: 'composer',
+      market: 'ou' },
+  ];
+
+  for (const action of ACTIONS) {
+    const r = await evaluate(`return (async () => {
+      ${AWAIT_APP}
+      ${RESET}
+      ${GO_LEAGUE}
+      ${CARD}
+      const control = card.querySelector(${JSON.stringify(action.selector)});
+      if (!control) return { present: false };
+      control.focus();
+      const focusable = document.activeElement === control;
+      ${ARM}
+      control.click();
+      await new Promise((r) => setTimeout(r, 380));
+      window.__fsObs.disconnect();
+      const host = document.getElementById('fs-sheet');
+      const selected = host.querySelector('[data-composer-market].is-on, '
+        + '[data-composer-market][aria-pressed="true"]');
+      return {
+        present: true, focusable,
+        open: document.getElementById('fs-overlay').classList.contains('is-open'),
+        renders: window.__fsRenders,
+        title: (host.querySelector('.fs-sheet__title') || {}).textContent || '',
+        // THE SURFACE NAMES ITSELF. The composer is the thing with market
+        // controls in it; the preview is the thing with preview sections.
+        isComposer: host.querySelectorAll('[data-composer-market]').length > 0,
+        isPreview: host.querySelectorAll('[data-preview-section]').length > 0,
+        selectedMarket: selected ? selected.getAttribute('data-composer-market') : null,
+      };
+    })();`);
+
+    if (!r.present) {
+      check(`${action.name} — not present in this fixture, so not certified`,
+        true, 'reported, not passed over');
+      continue;
+    }
+    check(`${action.name} is keyboard reachable`, r.focusable === true);
+    const wanted = action.surface === 'composer' ? r.isComposer : r.isPreview;
+    const other = action.surface === 'composer' ? r.isPreview : r.isComposer;
+    check(`${action.name} opens the ${action.surface}, and not the other one`,
+      r.open === true && wanted === true && other === false,
+      `${r.title} — composer:${r.isComposer} preview:${r.isPreview}`);
+    if (action.market) {
+      // A MARKET CELL CARRIES ITS CHOICE THROUGH. If its click had also reached
+      // the card, the card's own opening would have replaced this with the
+      // no-market composer and the GM's choice would be silently gone.
+      check(`${action.name} arrives with its own market selected`,
+        r.selectedMarket === action.market,
+        `selected: ${r.selectedMarket}`);
+    }
+    check(`${action.name} activates exactly once — no bubble to the card`,
+      r.renders === 1, `${r.renders} sheet render(s)`);
+  }
+
+  /* ── §4 · the pointer convenience survives ────────────────────────────── */
+
+  section('§4 · Tapping empty card space still opens the composer');
+
+  const tap = await evaluate(`return (async () => {
     ${AWAIT_APP}
-    document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
-    await new Promise((r) => setTimeout(r, 260));
-    ${OPEN_VERSUS}
-    let renders = 0;
-    const observer = new MutationObserver(() => { renders += 1; });
-    observer.observe(document.getElementById('fs-sheet'), { childList: true });
+    ${RESET}
+    ${GO_LEAGUE}
+    ${CARD}
+    ${ARM}
+    // THE CARD ITSELF, not one of its controls. Dispatched on the wrapper so
+    // this measures the card's own handler rather than a child's.
     card.click();
-    await new Promise((r) => setTimeout(r, 320));
-    observer.disconnect();
-    const opened = document.getElementById('fs-overlay').classList.contains('is-open');
-    document.querySelector('#fs-sheet [data-fs-close]').click();
-    await new Promise((r) => setTimeout(r, 200));
-    return { opened, renders };
+    await new Promise((r) => setTimeout(r, 380));
+    window.__fsObs.disconnect();
+    return {
+      open: document.getElementById('fs-overlay').classList.contains('is-open'),
+      renders: window.__fsRenders,
+    };
   })();`);
-  check('a tap still opens the composer', tapped.opened === true);
-  check('and it still opens it exactly once', tapped.renders === 1,
-    `${tapped.renders} sheet render(s)`);
-
-  // THE NESTED CONTROLS MUST NOT DOUBLE-FIRE. A market cell opens the composer
-  // on that market; the card behind it opens it on no market. If the cell's
-  // click reached the card as well, one press would produce two openings and
-  // the second would silently discard the market the GM chose.
-  const nested = await evaluate(`return (async () => {
-    ${AWAIT_APP}
-    document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
-    await new Promise((r) => setTimeout(r, 260));
-    const cell = document.querySelector('#panel-league [data-market]');
-    cell.focus();
-    const cellFocusable = document.activeElement === cell;
-    let renders = 0;
-    const observer = new MutationObserver(() => { renders += 1; });
-    observer.observe(document.getElementById('fs-sheet'), { childList: true });
-    cell.click();
-    await new Promise((r) => setTimeout(r, 320));
-    observer.disconnect();
-    const opened = document.getElementById('fs-overlay').classList.contains('is-open');
-    document.querySelector('#fs-sheet [data-fs-close]').click();
-    await new Promise((r) => setTimeout(r, 200));
-    return { cellFocusable, opened, renders };
-  })();`);
-  check('a market cell inside the card is separately reachable',
-    nested.cellFocusable === true);
-  check('and activating it opens the composer once, not twice',
-    nested.opened === true && nested.renders === 1,
-    `${nested.renders} sheet render(s)`);
+  check('a tap on the card still opens the composer', tap.open === true);
+  check('and it opens exactly once', tap.renders === 1,
+    `${tap.renders} sheet render(s)`);
 
   /* ── §5 · no keyboard trap ────────────────────────────────────────────── */
 
@@ -305,51 +432,55 @@ await withPage({ port: 9496 }, async ({ evaluate, setViewport, pressKey }) => {
 
   const trap = await evaluate(`return (async () => {
     ${AWAIT_APP}
-    document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
-    await new Promise((r) => setTimeout(r, 260));
-    ${OPEN_VERSUS}
-    card.focus();
-    // THE CARD MUST BE ESCAPABLE BY TAB ORDER ALONE. Its own nested controls
-    // come after it, and the document keeps going past them; a control that
-    // swallowed Tab would show up as a tabbable set of one.
+    ${RESET}
+    ${GO_LEAGUE}
+    ${CARD}
     const all = [...document.querySelectorAll(
       'a[href],button,input,select,textarea,summary,[tabindex]:not([tabindex="-1"])')]
-      .filter((el) => el.offsetParent !== null || el === document.activeElement);
-    const index = all.indexOf(card);
+      .filter((el) => el.offsetParent !== null);
+    const index = all.indexOf(challenge);
     return { index, total: all.length, hasNext: index >= 0 && index < all.length - 1 };
   })();`);
-  check('the card is one stop among many in the document tab order',
-    trap.index >= 0 && trap.total > 3, `${trap.index + 1} of ${trap.total}`);
-  check('and the tab order continues past it — no trap',
-    trap.hasNext === true);
+  check('Challenge is one stop among many in the document tab order',
+    trap.index >= 0 && trap.total > 5, `${trap.index + 1} of ${trap.total}`);
+  check('and the tab order continues past it — no trap', trap.hasNext === true);
 
-  /* ── §7/§8 · visible focus, and no geometry regression ────────────────── */
+  /* ── §7 · visible focus, and no geometry regression ───────────────────── */
 
-  section('§7/§8 · Visible focus, and semantics changed no geometry');
+  section('§7 · Visible focus, and native semantics changed no geometry');
 
   for (const [w, h] of [[320, 568], [360, 640], [375, 667], [390, 844],
     [430, 932], [844, 390]]) {
     await setViewport(w, h);
     const geo = await evaluate(`return (async () => {
       ${AWAIT_APP}
-      document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
-      await new Promise((r) => setTimeout(r, 300));
-      ${OPEN_VERSUS}
-      if (!card) return { present: false };
-      const s = getComputedStyle(card);
-      const r = card.getBoundingClientRect();
+      ${GO_LEAGUE}
+      ${CARD}
+      if (!card || !challenge) return { present: false };
+      const s = getComputedStyle(challenge);
+      const b = challenge.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      const preview = card.querySelector('[data-preview-opponent]')
+        .getBoundingClientRect();
       const rail = card.parentElement.getBoundingClientRect();
+      const ident = getComputedStyle(card.querySelector('.fs-wcard__identity'));
       return {
         present: true,
-        // A SEMANTIC CHANGE MUST NOT BRING BROWSER CHROME WITH IT. These are
-        // exactly the defaults a native button would have imposed.
+        // A NATIVE BUTTON MUST NOT BRING ITS BROWSER CHROME WITH IT.
         appearance: s.appearance,
+        border: s.borderTopWidth,
+        radius: s.borderTopLeftRadius,
+        background: s.backgroundColor,
         textAlign: s.textAlign,
         font: s.fontFamily.split(',')[0].replace(/["']/g, ''),
-        w: Math.round(r.width), h: Math.round(r.height),
-        onScreen: r.left >= -1 && r.right <= window.innerWidth + 1,
+        identitySize: Math.round(parseFloat(ident.fontSize)),
+        h: Math.round(b.height), w: Math.round(b.width),
+        cardW: Math.round(c.width), cardH: Math.round(c.height),
+        // IT MUST NOT OVERHANG THE CONTROL BENEATH IT.
+        clearsPreview: b.bottom <= preview.top + 1,
+        insideCard: b.left >= c.left - 1 && b.right <= c.right + 1,
+        railFit: c.width <= rail.width + 1,
         clipped: card.scrollHeight > card.clientHeight + 1,
-        railFit: r.width <= rail.width + 1,
         docOver: document.documentElement.scrollWidth - window.innerWidth,
       };
     })();`);
@@ -359,48 +490,48 @@ await withPage({ port: 9496 }, async ({ evaluate, setViewport, pressKey }) => {
         true, 'reported, not passed over');
       continue;
     }
-    check(`${w}x${h}: no default button appearance`,
-      geo.appearance === 'none' || geo.appearance === 'auto', geo.appearance);
+    check(`${w}x${h}: Challenge is a real 44px target`, geo.h >= 44,
+      `${geo.w}x${geo.h}`);
+    check(`${w}x${h}: it clears the preview row — no overhang`,
+      geo.clearsPreview === true);
+    check(`${w}x${h}: it stays inside the card`, geo.insideCard === true);
+    check(`${w}x${h}: no default button border, radius or background`,
+      geo.border === '0px' && geo.radius === '0px'
+      && /rgba\(0, 0, 0, 0\)|transparent/.test(geo.background),
+      `${geo.border} / ${geo.radius} / ${geo.background}`);
     check(`${w}x${h}: text is not centred by a UA default`,
-      geo.textAlign !== 'center', geo.textAlign);
-    check(`${w}x${h}: the card keeps the product font`,
+      geo.textAlign === 'left', geo.textAlign);
+    check(`${w}x${h}: it keeps the product font`,
       geo.font !== 'system-ui' && geo.font.length > 0, geo.font);
-    check(`${w}x${h}: it fits its rail and the viewport`,
-      geo.railFit === true && geo.onScreen === true, `${geo.w}px`);
-    check(`${w}x${h}: it clips none of its own content`, geo.clipped === false);
+    check(`${w}x${h}: card primary text is unchanged at 16–17px`,
+      geo.identitySize >= 16 && geo.identitySize <= 17,
+      `${geo.identitySize}px`);
+    check(`${w}x${h}: the card fits its rail and clips nothing`,
+      geo.railFit === true && geo.clipped === false, `${geo.cardW}px`);
     check(`${w}x${h}: and causes no horizontal overflow`, geo.docOver <= 0,
       `${geo.docOver}px`);
   }
 
   await setViewport(390, 844);
 
-  await evaluate(`return (async () => {
-    ${AWAIT_APP}
-    document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
-    await new Promise((r) => setTimeout(r, 300));
-    return true;
-  })();`);
-
   // ESTABLISH KEYBOARD MODALITY WITH A REAL KEY. `:focus-visible` is decided by
   // the browser from the last input modality, and a scripted `.focus()` sets
   // none — so without this the ring measures as absent for a rule that is
-  // perfectly correct. One real Tab is enough to tell Chrome a keyboard is
-  // driving; the card is then focused directly so the assertion does not depend
-  // on how many stops precede it.
+  // perfectly correct.
+  await evaluate(`return (async () => { ${AWAIT_APP} ${GO_LEAGUE} return true; })();`);
   await pressKey('Tab');
 
   const ring = await evaluate(`return (async () => {
-    ${OPEN_VERSUS}
-    card.focus();
-    const matches = card.matches(':focus-visible');
-    const s = getComputedStyle(card);
+    ${CARD}
+    challenge.focus();
+    const matches = challenge.matches(':focus-visible');
+    const s = getComputedStyle(challenge);
     return {
-      matches,
-      width: s.outlineWidth, style: s.outlineStyle, color: s.outlineColor,
-      offset: s.outlineOffset,
+      matches, width: s.outlineWidth, style: s.outlineStyle,
+      color: s.outlineColor, offset: s.outlineOffset,
     };
   })();`);
-  check('the focused card matches the shared :focus-visible rule',
+  check('the focused Challenge button matches the shared :focus-visible rule',
     ring.matches === true);
   check('and it draws the WP3E gold focus ring',
     parseFloat(ring.width) >= 2 && ring.style === 'solid'
@@ -408,4 +539,4 @@ await withPage({ port: 9496 }, async ({ evaluate, setViewport, pressKey }) => {
     `${ring.width} ${ring.style} ${ring.color}, offset ${ring.offset}`);
 });
 
-finish('WP3E-FIX2 KEYBOARD CARD ACCESS — BROWSER');
+finish('VERSUS CARD NATIVE KEYBOARD SEMANTICS — BROWSER');

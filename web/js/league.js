@@ -45,7 +45,6 @@ import {
   LEAGUE_MODE_DEMO, currentWeek, leagueMode, leagueName,
 } from './league-model.js';
 import { attributionFooter } from './attribution.js';
-import { onActivate } from './interaction.js';
 import { marketFor } from './market-model.js';
 import { formatSpread } from './narrative.js';
 import { weekPhaseLabel } from './phase.js';
@@ -284,38 +283,49 @@ function versusCard(opponent) {
     + '</button>'
   )).join('');
 
-  // WP3E-FIX2 — THE CARD IS A CONTROL, SO IT SAYS SO.
+  // WP3E-FIX3 — THE CARD IS A CONTAINER OF ACTIONS, AND EACH ACTION IS NATIVE.
   //
-  // The whole surface opens the Versus composer with no market pre-selected,
-  // and until now it was a bare div: a pointer-only affordance that no keyboard
-  // user could reach at all. Tab skipped it, and because it could not hold
-  // focus there was nothing for the composer to return focus to on close.
+  // This card holds five distinct actions: challenge, preview, and three
+  // markets. WP3E-FIX2 made the whole wrapper `role="button" tabindex="0"` to
+  // give the challenge a keyboard path, which worked and was the wrong shape —
+  // an ARIA button containing four real buttons is content assistive
+  // technology is not obliged to expose consistently, because a button's
+  // children are specified as presentational.
   //
-  // WHY role=button AND NOT A NATIVE <button>. The card already contains four
-  // real buttons — the preview row and the three market cells — and a button
-  // may not contain a button. Converting the wrapper would produce invalid
-  // nested interactive content, so this takes the narrow fallback: the role
-  // states what it is and `interaction.js` supplies the Enter and Space
-  // behaviour a native button would have given for free.
+  // So the wrapper carries NO role and NO tabindex, and the challenge gets a
+  // control of its own: a real `<button>` that Tab reaches, Enter and Space
+  // activate for free, and nothing has to re-implement.
+  //
+  // WHY THE BUTTON WRAPS THE NAME AND THE OWNER. It needs a 44px target, and
+  // where that comes from was decided by measurement rather than by preference.
+  // The identity line alone is 20px; padding it out to 44 would have pushed an
+  // invisible hit area down across the preview row beneath it, or up into the
+  // card above. Identity plus owner already measures 42px — two short — so the
+  // button takes both and a `min-height` closes the gap. Both are spans, so
+  // this stays phrasing content and the button stays valid HTML.
+  //
+  // A card with no owner keeps the same 44px head, which means the head is one
+  // consistent height whether or not the server supplied an owner. That is a
+  // side effect and a welcome one.
   //
   // THE NAME IS EXPLICIT, and that is a deliberate exception to preferring
-  // visible text. A role=button computes its name from its contents, which here
-  // would read as the opponent, the owner, VIEW MATCHUP PREVIEW and then three
-  // market cells of odds — a sentence of figures announced before the user has
-  // asked for any of it. The label says who and what, and every figure remains
-  // reachable by moving into the card's own controls.
+  // visible text. The button's own contents are the opponent and the owner —
+  // who, but not what. `Challenge {opponent}` says both, in the length of a
+  // label rather than a sentence.
   const label = `Challenge ${escapeHtml(opponent.name)}`;
 
   return (
-    `<div class="fs-wcard fs-wcard--matchup is-tappable" role="button" tabindex="0" `
-    + `aria-label="${label}" `
+    `<div class="fs-wcard fs-wcard--matchup is-tappable" `
     + `data-card-action="challenge" data-card-id="${id}">`
     + '<div class="fs-wcard__head">'
+    + '<button type="button" class="fs-wcard__challenge" '
+    + `data-card-challenge="${id}" aria-label="${label}">`
     + `<span class="fs-wcard__identity">${escapeHtml(opponent.name)}</span>`
-    + '</div>'
     + (opponent.owner
-      ? `<div class="fs-wcard__context">${escapeHtml(opponent.owner)}</div>`
+      ? `<span class="fs-wcard__context">${escapeHtml(opponent.owner)}</span>`
       : '')
+    + '</button>'
+    + '</div>'
     // §9 — a clear FULL-WIDTH action row, directly above the markets.
     + '<button type="button" class="fs-previewrow" '
     + `data-preview-opponent="${id}">VIEW MATCHUP PREVIEW</button>`
@@ -469,16 +479,27 @@ export function bindLeague(panel, api) {
       });
     });
 
-    // ONE ACTIVATION CONTRACT, and one handler behind it. `onActivate` binds
-    // the pointer path and the keyboard path to the SAME function, so Enter,
-    // Space and a tap cannot diverge and none of them can fire twice.
+    // THE CHALLENGE ACTION HAS ITS OWN NATIVE CONTROL, and it is the only path
+    // a keyboard user needs. `<button>` gives Enter and Space for nothing, so
+    // there is no key handling here to get wrong.
     //
-    // A KEY PRESSED INSIDE A NESTED BUTTON BELONGS TO THAT BUTTON. `onActivate`
-    // ignores keydown whose target is not the card itself, and the nested
-    // handlers above stop their click from bubbling — so activating a market
-    // cell opens the composer on that market once, not once for the cell and
-    // again for the card.
-    onActivate(card, () => api.openComposer({
+    // IT STOPS ITS OWN CLICK, like every other control in this card. Without
+    // that the click would reach the card behind it and open the composer a
+    // second time.
+    const challenge = card.querySelector('[data-card-challenge]');
+    if (challenge) {
+      challenge.addEventListener('click', (event) => {
+        event.stopPropagation();
+        api.openComposer({ matchupId: cardId, marketId: null });
+      });
+    }
+
+    // AND THE CARD KEEPS ITS POINTER CONVENIENCE. Tapping the empty space of a
+    // card still opens the composer, which is how this surface has always
+    // behaved on a phone. It is a POINTER affordance only — every one of the
+    // card's five actions has its own control, so no keyboard user depends on
+    // this handler and the card is not a tab stop.
+    card.addEventListener('click', () => api.openComposer({
       matchupId: cardId, marketId: null }));
   });
 

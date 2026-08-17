@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-test_wp3e_fix2_keyboard_cards.py — WP3E-FIX2 · the keyboard-access gate.
+test_wp3e_fix2_keyboard_cards.py — the Versus card keyboard gate.
+WP3E-FIX2 opened it; WP3E-FIX3 made the semantics native.
 
 WHAT THIS CLOSES.
 
@@ -10,8 +11,20 @@ WHAT THIS CLOSES.
   it, Enter did nothing, and the composer it opened had no opener to give focus
   back to. A pointer-only path to the product's central gameplay action.
 
-  That defect is closed here, and the closing is DRIVEN rather than described —
-  real key events on a real rendering, with activations counted so that "Enter
+  WP3E-FIX2 closed that by making the wrapper `role="button" tabindex="0"`. The
+  keyboard worked; the SHAPE was wrong. An ARIA button whose children include
+  four real buttons is content the ARIA specification calls presentational, and
+  assistive technology is not obliged to expose it consistently — so a fix for
+  the keyboard had created a hazard for the screen reader.
+
+  WP3E-FIX3 replaced it with the model this file now certifies:
+
+      THE CARD IS A CONTAINER OF ACTIONS, AND EVERY ACTION IS ITS OWN NATIVE
+      BUTTON — challenge, preview, moneyline, spread, total. Five controls,
+      five tab stops, no role anywhere, and no button inside a button.
+
+  The certification is DRIVEN rather than described: real key events through
+  the browser's own input pipeline, with activations counted so that "Enter
   works" cannot silently mean "Enter works twice".
 
 WHAT THIS DELIBERATELY DID NOT DO. It did not make static cards tabbable to
@@ -64,37 +77,85 @@ def _read(*parts: str) -> str:
 
 # ── 1 · The reconciliation, in source ────────────────────────────────────────
 
-_section("1 · Interactive-card semantics, reconciled in source")
+_section("1 · Versus card semantics, reconciled in source")
 
 LEAGUE = _read("web", "js", "league.js")
 WAGERCARD = _read("web", "js", "wagercard.js")
 INTERACTION = _read("web", "js", "interaction.js")
 
-_assert("the Versus card declares button semantics",
-        'role="button" tabindex="0"' in LEAGUE)
-_assert("and it carries an accessible name",
+# THE WRAPPER IS A CONTAINER AGAIN. Both halves are asserted — the role is
+# gone AND nothing put a tabindex back — because either one alone would let the
+# superseded structure return by a different route.
+# CODE ONLY. The comment above this markup explains, at length, the ARIA
+# structure that was REMOVED — including the literal `role="button" tabindex=0`
+# it names. Scanning the file for those words would fail on the documentation
+# that exists to stop them coming back.
+def _code_only(text: str) -> str:
+    text = re.sub(r"/\*[\s\S]*?\*/", " ", text)
+    return re.sub(r"^\s*//.*$", " ", text, flags=re.M)
+
+
+_VERSUS = _code_only(
+    LEAGUE.split("function versusCard(")[1].split("\nfunction ")[0])
+_assert("the Versus card wrapper declares no button role",
+        'role="button"' not in _VERSUS)
+_assert("and it is not forced into the tab order",
+        "tabindex" not in _VERSUS)
+
+# CHALLENGE IS A NATIVE BUTTON, and the name says the action as well as the
+# opponent — the button's own contents give only the latter.
+_assert("the challenge action has a native button of its own",
+        '<button type="button" class="fs-wcard__challenge" ' in LEAGUE)
+_assert("it is addressable for binding and for tests",
+        "data-card-challenge=" in LEAGUE)
+_assert("and it carries an accessible name naming the opponent",
         'aria-label="${label}"' in LEAGUE and "Challenge ${escapeHtml" in LEAGUE)
 
-# ONE ACTIVATION CONTRACT. The pointer path and the keyboard path must be the
-# same function; two handlers is how a card comes to fire twice, or to behave
-# differently under a tap than under a key.
-_assert("activation goes through the shared onActivate contract",
-        "onActivate(card, () => api.openComposer(" in LEAGUE)
-_assert("and the old pointer-only binding is gone",
-        "card.addEventListener('click'" not in LEAGUE)
-_assert("onActivate is imported rather than re-implemented",
-        "import { onActivate } from './interaction.js';" in LEAGUE)
+# THE BUTTON'S CONTENT IS PHRASING CONTENT. A `<button>` may not contain flow
+# content, so the two lines it wraps are spans — which is also what lets it
+# reach a 44px target without overhanging the control beneath it.
+_assert("the button wraps the identity and the owner as spans",
+        '<span class="fs-wcard__identity">' in _VERSUS
+        and '<span class="fs-wcard__context">' in _VERSUS)
+_assert("neither line is a div inside the button any more",
+        '<div class="fs-wcard__context">' not in _VERSUS)
+_assert("and the wrapper is still a plain div",
+        '<div class="fs-wcard fs-wcard--matchup is-tappable" ' in _VERSUS)
 
-# THE HELPER'S OWN GUARANTEES, pinned here because the card now depends on them.
-_assert("the helper binds click and keydown to one handler",
+# NO NESTED-CONTROL DOUBLE FIRE. Every control inside the card stops its own
+# click, or the card's own pointer handler would open the composer a second
+# time and discard whatever the GM actually chose.
+_assert("the challenge control stops its click from reaching the card",
+        "challenge.addEventListener('click', (event) => {" in LEAGUE
+        and LEAGUE.count("event.stopPropagation();") >= 3)
+
+# THE CARD KEEPS ITS POINTER CONVENIENCE, and only that.
+_assert("tapping the card still opens the composer",
+        "card.addEventListener('click', () => api.openComposer(" in LEAGUE)
+_assert("and no keyboard activation is bolted onto the container",
+        "onActivate(card" not in LEAGUE)
+_assert("the ARIA-fallback helper is no longer needed here",
+        "import { onActivate } from './interaction.js';" not in LEAGUE)
+
+# THE HELPER ITSELF IS UNTOUCHED AND STILL CORRECT, because Action and Week
+# cards — whole-card controls with no nested buttons — legitimately still use
+# it. This package narrowed where the pattern is used, not whether it exists.
+_assert("the shared activation helper still binds click and keydown",
         "el.addEventListener('click', handler)" in INTERACTION
         and "el.addEventListener('keydown'" in INTERACTION)
-_assert("it honours Enter and Space",
+_assert("it still honours Enter and Space",
         "'Enter'" in INTERACTION and "' '" in INTERACTION)
-_assert("it prevents Space from scrolling the page, as a button would",
+_assert("and still prevents Space from scrolling the page",
         "event.preventDefault()" in INTERACTION)
-_assert("and a key pressed inside a nested control is left to that control",
-        "if (event.target !== el) return;" in INTERACTION)
+
+# THE NARROW CSS RESET, asserted so a later edit cannot quietly let browser
+# chrome back into the card.
+GAMEPLAY_CSS = _read("web", "styles", "gameplay.css")
+_assert("the challenge control has a scoped reset",
+        ".fs-wcard__challenge {" in GAMEPLAY_CSS)
+for _prop in ("background: none", "border: 0", "font: inherit",
+              "text-align: left", "min-height: var(--fs-r43-touch)"):
+    _assert(f"  · it resets {_prop}", _prop in GAMEPLAY_CSS)
 
 # NO STATIC CARD WAS MADE FOCUSABLE. `card()` is the plain container primitive;
 # if it started emitting tabindex, every static surface would become a tab stop.
@@ -199,7 +260,7 @@ _section("4 · Driven with real key events, in a real browser")
 for mode, email in (("gm", GM_EMAIL), ("commissioner", COMMISSIONER_EMAIL)):
     with AppServer(seed_priceable_versus=True, seed_pool_slate=True) as server:
         _run_node("wp3e_fix2_keyboard.mjs",
-                  f"WP3E-FIX2 keyboard suite — {mode}",
+                  f"Versus keyboard suite — {mode}",
                   {"FS_TEST_ORIGIN": server.origin,
                    "FS_TEST_AUTH_EMAIL": email,
                    "FS_TEST_AUTH_PASSWORD": PASSWORD,
@@ -223,8 +284,8 @@ for item in (
 
 print("\n" + "=" * 66)
 if _failures:
-    print(f"WP3E-FIX2 KEYBOARD CARD ACCESS — {len(_failures)} FAILED")
+    print(f"VERSUS CARD KEYBOARD SEMANTICS — {len(_failures)} FAILED")
     for f in _failures:
         print(f"  · {f}")
     sys.exit(1)
-print("WP3E-FIX2 KEYBOARD CARD ACCESS — all assertions PASSED")
+print("VERSUS CARD KEYBOARD SEMANTICS — all assertions PASSED")

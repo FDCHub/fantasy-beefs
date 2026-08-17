@@ -133,6 +133,9 @@ await withPage({ port: 9463 }, async ({ evaluate, reload, setViewport }) => {
       labels: [...c.querySelectorAll('.fs-market__label')].map((e) => e.textContent),
       values: [...c.querySelectorAll('.fs-market__value')].map((e) => e.textContent),
       order: [...c.children].map((e) => e.className.split(' ')[0]),
+      headOrder: [...c.querySelector('.fs-wcard__head')
+        .querySelectorAll('.fs-wcard__identity, .fs-wcard__context')]
+        .map((e) => e.className.split(' ')[0]),
       clipped: c.scrollHeight > c.clientHeight + 1,
     }));
   })();`);
@@ -145,8 +148,12 @@ await withPage({ port: 9463 }, async ({ evaluate, reload, setViewport }) => {
     pricedCard.labels.join(' | '));
   check('the card hierarchy is still identity → preview → markets',
     pricedCard.order.join(' → ')
-      === 'fs-wcard__head → fs-wcard__context → fs-previewrow → fs-markets',
+      === 'fs-wcard__head → fs-previewrow → fs-markets',
     pricedCard.order.join(' → '));
+  check('and the head still reads opponent, then owner',
+    pricedCard.headOrder.join(' → ')
+      === 'fs-wcard__identity → fs-wcard__context',
+    pricedCard.headOrder.join(' → '));
   check('ML shows the SERVED moneyline for the acting team',
     pricedCard.values[0] === String(priced.acting_moneyline),
     `${pricedCard.values[0]} vs served ${priced.acting_moneyline}`);
