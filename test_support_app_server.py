@@ -399,6 +399,7 @@ class AppServer:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
         self.origin: str = ""
+        self.database_url: str = ""
         # Both default to False so the fixture every existing suite runs
         # against is byte-identical to the one they were certified on.
         self._seed_pool_slate = seed_pool_slate
@@ -455,6 +456,14 @@ class AppServer:
         self._tmp_dir = tempfile.mkdtemp(prefix="fs-appserver-")
         db_path = os.path.join(self._tmp_dir, "certification.db")
         db_url = f"sqlite:///{db_path.replace(os.sep, '/')}"
+        # PUBLISHED SO A SUITE CAN PLANT STATE THE SEED DOES NOT COVER.
+        #
+        # YAHOO-LIVE-1 needs a deployment that genuinely HOLDS a Yahoo grant
+        # before it can assert that no surface leaks one — asserting "no token
+        # in the response" against a server with no token asserts nothing. The
+        # attribute is read-only by convention and every existing suite ignores
+        # it; the seeding path below is unchanged.
+        self.database_url = db_url
 
         self._seed(db_url)
 

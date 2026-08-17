@@ -312,12 +312,22 @@ _assert("a focus-visible baseline exists so no control is reachable unseen",
 
 _section("6 · Scope discipline")
 
-_diff = subprocess.run(["git", "diff", "--name-only", "HEAD"],
-                       cwd=ROOT, capture_output=True, text=True).stdout.split()
-_untracked = subprocess.run(["git", "ls-files", "--others",
-                             "--exclude-standard"],
-                            cwd=ROOT, capture_output=True, text=True).stdout.split()
-_touched = set(_diff) | set(_untracked)
+# ── THE SCOPE GUARD IS ANCHORED TO THIS PACKAGE'S OWN COMMIT RANGE ──────────
+#
+# It used to diff against a moving HEAD, which was right exactly once: while
+# this package was the uncommitted work. The moment a LATER package landed, the
+# guard started reporting that later package's files as violations of this one's
+# scope — auth/, providers/ and a migration, none of which this package wrote.
+#
+# A scope claim is a claim about a fixed set of changes, so it is measured
+# against a fixed range. These two SHAs are this package's parent and its
+# commit; the answer is now the same today as it was on the day it was made, and
+# no future package can turn it red.
+WP3E_PARENT, WP3E_COMMIT = "5504933", "ef1ef6e"
+_diff = subprocess.run(
+    ["git", "diff", "--name-only", WP3E_PARENT, WP3E_COMMIT],
+    cwd=ROOT, capture_output=True, text=True).stdout.split()
+_touched = set(_diff)
 
 for forbidden in ("db/schema.py", "economy/", "ledger/", "betting/", "odds/",
                   "beefs/", "reports/", "providers/", "auth/"):

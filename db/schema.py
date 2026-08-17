@@ -199,6 +199,22 @@ class League(Base):
     # treats as unresolvable and fails closed on — it is never a wildcard.
     provider            = Column(String, nullable=True)
     provider_league_key = Column(String, nullable=True)
+    # ── YAHOO-LIVE-1 · whose grant speaks for this league ─────────────────────
+    #
+    # WHICH USER'S YAHOO AUTHORIZATION BACKGROUND SYNCHRONISATION RUNS ON.
+    #
+    # Before this column there was no answer to that question, because there was
+    # no question: every Yahoo read used one operator credential belonging to the
+    # repository rather than to any league. That is not a production model — it
+    # makes one person's personal Yahoo account the authority for every league in
+    # the product, and it cannot represent a commissioner who leaves.
+    #
+    # NULLABLE, AND NULL IS A REAL STATE. A league with no credential owner has
+    # nobody who has authorized Yahoo reads for it. That fails closed at the
+    # transport, which is correct: the alternative is falling back to the
+    # operator credential, which is the thing being removed.
+    provider_credential_user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=True)
 
     teams    = relationship("Team",         back_populates="league")
     matchups = relationship("Matchup",      back_populates="league")
@@ -899,6 +915,119 @@ class User(Base):
     last_login_at     = Column(DateTime, nullable=True)
 
     team = relationship("Team", back_populates="user")
+
+
+class ProviderGrant(Base):
+    """One user's OAuth grant for one provider — YAHOO-LIVE-1.
+
+    WHAT THIS IS, AND WHAT IT IS EMPHATICALLY NOT.
+
+    IT IS OAUTH CREDENTIALS. An access token, the refresh token that renews it,
+    when it expires, and what it was granted permission to do. These are the
+    keys to the API.
+
+    IT IS NOT YAHOO FANTASY INFORMATION. No roster, no player, no stat, no
+    matchup, no standing, no league setting is stored here or anywhere else this
+    package touches. The Yahoo agreement's restriction is on Fantasy
+    Information; a credential that lets a request be made is a different thing
+    from the data the request returns, and this table holds only the former.
+    That distinction is the whole reason this table exists separately rather
+    than as columns on `users`.
+
+    ── WHY A TABLE RATHER THAN COLUMNS ON `users` ────────────────────────────
+
+    A grant has its own lifetime. It is issued, refreshed, rotated, revoked and
+    reissued while the user account it belongs to never changes. It can also be
+    absent entirely — a signed-in user who has not authorized Fantasy access, or
+    whose grant was revoked from Yahoo account settings — and a row that is
+    simply not there says that far more clearly than six nullable columns on an
+    account row would.
+
+    ONE GRANT PER (user, provider), by database constraint. Two rows for the
+    same pair would mean two refresh tokens for one Yahoo account, and Yahoo
+    revokes the old refresh token when it issues a new one — so the second row
+    would hold a credential that silently stopped working, and whichever row a
+    query happened to return first would decide whether a sync worked that day.
+
+    ── THE BEARER MATERIAL IS ENCRYPTED, AND BOUND TO THIS ROW ───────────────
+
+    `access_token_sealed` and `refresh_token_sealed` are AES-256-GCM envelopes
+    from `auth/token_crypto.py`, not readable values. Each is bound by its
+    associated data to THIS grant's id and THAT field, so a ciphertext lifted
+    from another user's row does not open here — which is what makes "user A's
+    grant can never authorize user B's read" a property of the data rather than
+    a property of the query that happens to fetch it.
+
+    `token_version` is a counter, incremented on every write. It exists because
+    two background jobs can decide to refresh the same grant at the same moment,
+    and Yahoo will invalidate the first refresh token the instant the second
+    exchange succeeds. The counter lets a write say "only if nothing else has
+    written since I read", so the loser retries against the winner's token
+    instead of persisting a credential Yahoo has already revoked.
+
+    ── STATUS IS A PRODUCT FACT, NOT A LOG LINE ─────────────────────────────
+
+    `active`              usable, or refreshable
+    `reconnect_required`  Yahoo refused the refresh — `invalid_grant`, a
+                          revocation from Yahoo account settings, an expired
+                          refresh token. The user must authorize again; no
+                          amount of retrying will fix it.
+    `disconnected`        the user disconnected it here. Deliberate, not a
+                          failure, and reversible by signing in again.
+
+    A GRANT IS NEVER DELETED ON FAILURE. `last_error_code` and
+    `last_error_at` survive so an operator can diagnose why a league stopped
+    syncing; erasing the row would erase the evidence along with the credential.
+    """
+
+    __tablename__ = "provider_grants"
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_provider_grant_user"),
+        CheckConstraint(
+            "status IN ('active','reconnect_required','disconnected')",
+            name="ck_provider_grant_status"),
+    )
+
+    id                   = Column(Integer, primary_key=True, autoincrement=True)
+    user_id              = Column(Integer, ForeignKey("users.id"),
+                                  nullable=False, index=True)
+    #: `yahoo`. Named rather than assumed, so a second provider does not need a
+    #: second table.
+    provider             = Column(String, nullable=False)
+    #: The provider's own subject for this grant. Stored so a grant can be
+    #: proved to belong to the same external account the user signed in as — a
+    #: mismatch means the row is stale and must not be used.
+    provider_subject     = Column(String, nullable=False)
+
+    #: AES-256-GCM envelopes. Never readable, never logged, never serialised.
+    access_token_sealed  = Column(Text, nullable=True)
+    refresh_token_sealed = Column(Text, nullable=True)
+
+    #: When the ACCESS token stops working. Yahoo documents a 1-hour lifetime.
+    #: The refresh token has no documented expiry, so none is invented here.
+    expires_at           = Column(DateTime, nullable=True)
+    #: What Yahoo actually granted, which is not necessarily what was asked for.
+    granted_scope        = Column(String, nullable=True)
+
+    status               = Column(String, nullable=False, default="active")
+    token_version        = Column(Integer, nullable=False, default=1)
+
+    created_at           = Column(DateTime,
+                                  default=lambda: datetime.now(timezone.utc))
+    updated_at           = Column(DateTime,
+                                  default=lambda: datetime.now(timezone.utc))
+    last_refresh_at      = Column(DateTime, nullable=True)
+    #: A REASON CODE, NOT A PROVIDER MESSAGE. Yahoo error bodies can echo
+    #: request parameters, and a request parameter here would be a credential.
+    last_error_code      = Column(String, nullable=True)
+    last_error_at        = Column(DateTime, nullable=True)
+
+    def __repr__(self) -> str:            # pragma: no cover - defensive
+        # NEVER REPR THE ENVELOPES. This object reaches tracebacks and logs, and
+        # the default SQLAlchemy repr is harmless only because this one exists.
+        return (f"<ProviderGrant id={self.id} user_id={self.user_id} "
+                f"provider={self.provider!r} status={self.status!r} "
+                f"v{self.token_version} tokens=<sealed>>")
 
 
 # ── Stripe / Payments ─────────────────────────────────────────────────────────

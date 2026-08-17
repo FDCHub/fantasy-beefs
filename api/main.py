@@ -713,6 +713,39 @@ def auth_yahoo_callback(
     resolved = resolve_user(db, subject=identity.subject, email=identity.email,
                             display_name=identity.display_name)
 
+    # ── YAHOO-LIVE-1 · KEEP THE GRANT, NOT JUST THE IDENTITY ─────────────────
+    #
+    # AUTH1 READ `id_token` AND DROPPED THE REST OF THIS RESPONSE. That was
+    # correct for what AUTH1 was: an identity cutover. But the same consent that
+    # proves who this is ALSO carries `fspt-r` — Yahoo Fantasy read — and
+    # discarding the access and refresh tokens meant the product asked every
+    # user for Fantasy permission on every sign-in and then threw it away,
+    # leaving provider reads running on a repository-level operator credential
+    # that belongs to nobody in the league.
+    #
+    # SO THE GRANT IS RECORDED HERE, sealed, against the user who authorized it.
+    # `auth/provider_grant.py` owns everything about how; this route owns only
+    # the decision that a completed sign-in is the moment it happens.
+    #
+    # A FAILURE HERE DOES NOT FAIL THE SIGN-IN. Identity and Fantasy
+    # authorization are related but distinct: a deployment with no encryption
+    # key configured, or a token response without the Fantasy grant, must still
+    # let the user in — they simply arrive with no provider connection, which is
+    # a state the product already draws. Signing somebody out of their own
+    # Ledger because their league's data source is unavailable would be the
+    # wrong trade in every case.
+    try:
+        from auth.provider_grant import record_grant
+
+        record_grant(db, user_id=resolved.user.id,
+                     provider_subject=identity.subject, tokens=tokens)
+    except Exception:
+        # DELIBERATELY SILENT, AND DELIBERATELY BROAD. The reason is not
+        # reported to the browser because the browser is not who can fix any of
+        # it, and nothing about the exception is logged here because the object
+        # being handled at this point is a token response.
+        db.rollback()
+
     # A FRESH SESSION, MINTED AFTER AUTHENTICATION AND NOT BEFORE. Whatever the
     # browser held a moment ago is replaced rather than reused, so a session
     # fixed on this browser before the sign-in cannot survive it.
