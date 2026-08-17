@@ -6,19 +6,21 @@ WHAT THIS CERTIFIES. The migration that creates the grant table, and the seam
 that decides which Yahoo authorization a league's reads run on — including the
 part that matters most, which is what happens when there isn't one.
 
-WHY THE OPERATOR CREDENTIAL IS NOT REMOVED HERE, AND WHY THAT IS DELIBERATE.
+WHERE THE OPERATOR CREDENTIAL ENDED UP.
 
-`providers/yahoo/transport.py` still loads a repository-level token, and this
-package does not delete it. Deleting it today would take the only working Yahoo
-transport out of a product whose live Fantasy access is externally blocked —
-trading a measured blocker for a self-inflicted one, with nothing gained,
-because the per-user path cannot be exercised end-to-end against Yahoo until
-Yahoo authorizes the application at all.
+This suite once recorded an interim position: the per-user seam existed and the
+production composition still constructed the operator transport. YAHOO-LIVE-1-FIX
+closed that — production now resolves the league's own credential owner, and a
+bare transport refuses to be constructed at all.
 
-What IS established here is that the per-user path exists, is wired, fails
-closed, and is the one the production composition will use. The retirement of
-`load_credentials` is a one-line change behind an authorized API, and it is
-named as outstanding rather than pretended complete.
+`load_credentials` itself survives, deliberately, behind the explicitly-named
+`YahooLiveTransport.for_operator_tooling()`. WP2B's live evidence gate and the
+offline certification both exercise it, and the measured finding that the
+operator credential REFRESHES while the Fantasy API refuses is the most useful
+fact this project holds about the external blocker. Deleting the code that
+produced it to satisfy a source scan would have thrown that away.
+
+The cutover's own certification is `test_yahoo_live1_fix_cutover.py`.
 
 DATABASE. A private SQLite file per migration scenario, so the migration is run
 against a database that starts WITHOUT the new table — which an in-memory
@@ -231,20 +233,26 @@ _assert("and there is no parameter that names another user's grant",
 _section("4 · The operator credential path is named, not silently left")
 
 _TRANSPORT = _read("providers", "yahoo", "transport.py")
-_assert("the legacy operator loader still exists",
+_assert("the legacy operator loader still exists for tooling",
         "def load_credentials" in _TRANSPORT)
-_assert("and it is still the only thing the live transport uses today",
-        "load_credentials(environ=self._environ" in _TRANSPORT)
 
-# THE PRODUCTION COMPOSITION STILL CONSTRUCTS THE OPERATOR TRANSPORT. That is
-# the honest state of the product: the per-user seam is built and proved, and
-# the swap is gated on Yahoo authorizing the application, because swapping now
-# would remove the only Yahoo transport that can be exercised at all.
+# YAHOO-LIVE-1-FIX COMPLETED THE SWAP THIS SUITE ONCE RECORDED AS OUTSTANDING.
+#
+# The assertions here used to state the honest interim position: the per-user
+# seam was built and the production composition still constructed the operator
+# transport. The owner ruled that interim position incomplete, and it is — so
+# the cutover happened and these now pin the finished state instead. The
+# detailed certification lives in test_yahoo_live1_fix_cutover.py; what is kept
+# here is the fact that the old shape cannot come back.
 _MAIN = _read("api", "main.py")
-_assert("the settlement transport factory is still the operator one",
-        "return YahooLiveTransport()" in _MAIN)
-_assert("which is why this package reports the swap as outstanding rather "
-        "than complete", True, "reported")
+_assert("the settlement factory no longer builds a credential-less transport",
+        "return YahooLiveTransport()" not in _MAIN)
+_assert("it resolves the league's own credential owner instead",
+        "token_provider=token_provider_for_league" in _MAIN)
+_assert("and the operator loader is reachable only by an explicit name",
+        "def for_operator_tooling" in _TRANSPORT)
+_assert("which production never calls",
+        "for_operator_tooling" not in _MAIN)
 
 
 # ── 5 · nothing else moved ───────────────────────────────────────────────────

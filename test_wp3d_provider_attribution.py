@@ -315,7 +315,16 @@ _section("4 · No new provider persistence, no new provider calls")
 
 import subprocess as _sp                                           # noqa: E402
 
-_diff = _sp.run(["git", "diff", "--name-only", "HEAD"],
+# ANCHORED TO WP3D'S OWN COMMIT RANGE, not to a moving HEAD.
+#
+# Diffing against HEAD was right exactly once: while WP3D was the uncommitted
+# work. Every package that landed afterwards started appearing in this scan as a
+# violation of WP3D's scope — YAHOO-LIVE-1-FIX's per-user credential work under
+# providers/yahoo being the one that finally tripped it. A scope claim is a
+# claim about a fixed set of changes, so it is measured against a fixed range,
+# and the answer is now the same as it was on the day it was made.
+WP3D_PARENT, WP3D_COMMIT = "485bc79", "2cdea8e"
+_diff = _sp.run(["git", "diff", "--name-only", WP3D_PARENT, WP3D_COMMIT],
                 cwd=ROOT, capture_output=True, text=True).stdout.split()
 
 # WP3D.1 LEGITIMATELY TOUCHES THE USER SCHEMA, AND THIS CONTROL IS ABOUT WP3D.

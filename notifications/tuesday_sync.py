@@ -315,26 +315,36 @@ def _provider_league_key(league_id: int, db: Session) -> str:
     return league.provider_league_key
 
 
-def _build_yahoo_query(yahoo_league_id: str):
+def _build_yahoo_query(yahoo_league_id: str, *, db, league_id: int):
     """
-    Build an authenticated yfpy YahooFantasySportsQuery.
+    Build an authenticated yfpy YahooFantasySportsQuery for ONE league.
 
-    CREDENTIALS COME FROM THE GATEWAY'S SINGLE LOADER (§3). This function used
-    to read YAHOO_PRIVATE_JSON / secrets/*.json itself, which made it the third
-    independent credential path in the repository. It now delegates to
-    `providers.yahoo.transport.load_credentials`, so there is exactly one place
-    a Yahoo token is read and exactly one place it can leak from.
+    CREDENTIALS COME FROM THAT LEAGUE'S OWN CREDENTIAL OWNER (YAHOO-LIVE-1-FIX).
 
-    The yfpy gotchas are preserved verbatim:
-      - game_id=461 passed into the constructor (not just game_code);
-      - consumer_secret merged into the token dict before the constructor call
-        (load_credentials does this).
+    Sprint 6 consolidated three credential paths into one loader, which was the
+    right fix for the problem it had: a token read in three places is a token
+    that can leak from three places. What it could not fix is that the one
+    remaining path read a REPOSITORY-LEVEL credential — so this worker
+    synchronised every league in the product on one person's Yahoo account,
+    with no relationship to what any commissioner had authorized.
+
+    Now the league resolves its own credential owner and the grant store
+    supplies a current bearer, refreshing it if the hour is up. A league with no
+    owner, a disconnected grant or one Yahoo has rejected raises here rather
+    than silently succeeding on somebody else's authorization.
+
+    The yfpy gotcha is preserved verbatim: game_id=461 goes into the
+    constructor, not just game_code.
     """
     from yfpy.query import YahooFantasySportsQuery
 
-    from providers.yahoo.transport import DEFAULT_GAME_ID, load_credentials
+    from providers.yahoo.transport import DEFAULT_GAME_ID
+    from providers.yahoo.user_credentials import bearer_for_league
 
-    token = load_credentials()
+    # NO REFRESH TOKEN IS HANDED TO yfpy, deliberately — see
+    # `YahooLiveTransport._token` for why renewal belongs to the store alone.
+    token = {"access_token": bearer_for_league(db, league_id=league_id),
+             "token_type": "bearer"}
 
     return YahooFantasySportsQuery(
         league_id=yahoo_league_id,
@@ -431,8 +441,17 @@ def _step_refresh_scores(
     if transport is None:
         try:
             from providers.yahoo.transport import YahooLiveTransport
+            from providers.yahoo.user_credentials import (
+                token_provider_for_league,
+            )
 
-            transport = YahooLiveTransport()
+            # THE LEAGUE'S OWN AUTHORIZATION, resolved per read. A missing,
+            # disconnected or rejected grant raises here and the caller's
+            # `_not_fresh` turns it into an honest "this week is not fresh"
+            # rather than a silent success on the operator credential.
+            transport = YahooLiveTransport(
+                token_provider=token_provider_for_league(db,
+                                                         league_id=league_id))
         except Exception as exc:  # noqa: BLE001
             return _not_fresh(
                 f"week {week}: Yahoo transport unavailable — "
@@ -626,7 +645,8 @@ def _step_sync_players(
 
     # ── Build the authenticated Yahoo query (existing credential path) ───────
     try:
-        query = _build_yahoo_query(yahoo_league_id)
+        query = _build_yahoo_query(yahoo_league_id, db=db,
+                                   league_id=league_id)
     except Exception as exc:
         return _fail(
             f"week {week}: Yahoo query build failed — {type(exc).__name__}: {exc}",
@@ -800,7 +820,8 @@ def _step_capture_roster_slots(
             return _fail(f"week {week}: no teams found for league {league_id}")
 
         try:
-            query = _build_yahoo_query(yahoo_league_id)
+            query = _build_yahoo_query(yahoo_league_id, db=db,
+                                       league_id=league_id)
         except Exception as exc:
             return _fail(
                 f"week {week}: Yahoo query build failed — {type(exc).__name__}: {exc}",

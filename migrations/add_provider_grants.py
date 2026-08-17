@@ -5,7 +5,8 @@ WHAT IT DOES, AND NOTHING ELSE:
 
     CREATE TABLE provider_grants        one OAuth grant per (user, provider)
     UNIQUE (user_id, provider)
-    leagues.provider_credential_user_id INTEGER NULL   whose grant syncs it
+    leagues.provider_credential_user_id     INTEGER NULL   whose grant syncs it
+    leagues.provider_credential_assigned_at TIMESTAMP NULL when that was set
 
 ADDITIVE, NON-DESTRUCTIVE AND REVERSIBLE AT THE APPLICATION LAYER.
 
@@ -144,6 +145,16 @@ def upgrade() -> list[str]:
                     "ALTER TABLE leagues ADD COLUMN provider_credential_user_id "
                     "INTEGER"))
             done.append("added leagues.provider_credential_user_id")
+
+        if "provider_credential_assigned_at" not in league_columns:
+            # PLAIN TIMESTAMP, NO DEFAULT. Backfilling `now()` onto existing
+            # leagues would assert that somebody assigned a credential owner at
+            # migration time, which nobody did. NULL is the honest value and it
+            # reads as "never assigned", which is exactly true.
+            connection.execute(text(
+                "ALTER TABLE leagues ADD COLUMN "
+                "provider_credential_assigned_at TIMESTAMP"))
+            done.append("added leagues.provider_credential_assigned_at")
 
     return done or ["nothing to do — already applied"]
 

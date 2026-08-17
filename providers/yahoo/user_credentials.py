@@ -53,6 +53,7 @@ that could be repr'd into a log.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Callable
 
 from sqlalchemy.orm import Session
@@ -69,6 +70,7 @@ __all__ = [
     "credential_owner_id",
     "league_credential_state",
     "set_credential_owner",
+    "token_provider_for_league",
 ]
 
 
@@ -91,6 +93,7 @@ class LeagueCredential:
     connected: bool
     status: str | None
     reason_code: str | None = None
+    assigned_at: str | None = None
 
 
 def credential_owner_id(db: Session, *, league_id: int) -> int | None:
@@ -101,7 +104,8 @@ def credential_owner_id(db: Session, *, league_id: int) -> int | None:
     return league.provider_credential_user_id
 
 
-def set_credential_owner(db: Session, *, league_id: int, user_id: int) -> None:
+def set_credential_owner(db: Session, *, league_id: int, user_id: int,
+                         now: datetime | None = None) -> None:
     """Record whose authorization this league's Yahoo reads run on.
 
     CALLED WHEN A COMMISSIONER CONNECTS THE LEAGUE, and it records a fact rather
@@ -109,12 +113,19 @@ def set_credential_owner(db: Session, *, league_id: int, user_id: int) -> None:
     decided by the existing commissioner guards before this is reached, and this
     function deliberately checks nothing about authority so that it cannot
     become a second, weaker place where that decision is made.
+
+    REASSIGNMENT IS A PLAIN REPLACEMENT, and it is the intended path rather than
+    an edge case: a commissioner hands the league over, or the previous owner's
+    grant died and somebody else authorizes. The previous owner's GRANT is not
+    touched — it remains theirs, and it simply stops being what this league
+    reads on. Nothing about the league's history, Ledger or membership moves.
     """
     league = db.query(League).filter(League.id == league_id).first()
     if league is None:
         raise CredentialOwnerMissing("league_not_found",
                                      f"league {league_id} does not exist")
     league.provider_credential_user_id = user_id
+    league.provider_credential_assigned_at = now or datetime.now(timezone.utc)
     db.commit()
 
 
@@ -125,7 +136,11 @@ def league_credential_state(db: Session, *, league_id: int) -> LeagueCredential:
     bearer material. It reports the grant's STATUS, which is a product fact, and
     nothing about the credential itself.
     """
-    owner = credential_owner_id(db, league_id=league_id)
+    league = db.query(League).filter(League.id == league_id).first()
+    owner = league.provider_credential_user_id if league else None
+    assigned = (league.provider_credential_assigned_at
+                if league is not None else None)
+    assigned_iso = assigned.isoformat() if assigned else None
     if owner is None:
         return LeagueCredential(league_id=league_id, owner_user_id=None,
                                 connected=False, status=None,
@@ -134,13 +149,15 @@ def league_credential_state(db: Session, *, league_id: int) -> LeagueCredential:
     if not state.exists:
         return LeagueCredential(league_id=league_id, owner_user_id=owner,
                                 connected=False, status=None,
-                                reason_code="not_connected")
+                                reason_code="not_connected",
+                                assigned_at=assigned_iso)
     return LeagueCredential(
         league_id=league_id, owner_user_id=owner,
         connected=state.status == "active",
         status=state.status,
         reason_code=(None if state.status == "active"
-                     else (state.last_error_code or state.status)))
+                     else (state.last_error_code or state.status)),
+        assigned_at=assigned_iso)
 
 
 def bearer_for_league(db: Session, *, league_id: int,
@@ -164,6 +181,27 @@ def bearer_for_league(db: Session, *, league_id: int,
             f"must connect the league before its reads can be authorized")
     return access_token_for(db, user_id=owner, provider=PROVIDER_YAHOO,
                             refresher=refresher, environ=environ)
+
+
+def token_provider_for_league(db: Session, *, league_id: int,
+                              refresher: Callable | None = None,
+                              environ: dict | None = None) -> Callable[[], str]:
+    """A callable the transport can ask for a bearer token, per request.
+
+    THE INDIRECTION IS THE POINT. A transport handed a raw token holds whatever
+    was valid when it was built; a transport handed this asks again for every
+    query, so a worker that runs past the access token's one-hour life gets a
+    renewed one from the canonical store instead of sending an expired one.
+
+    IT CLOSES OVER THE LEAGUE, NOT OVER A USER. The owner is re-read on every
+    call, so a commissioner handing the league over — or disconnecting — takes
+    effect on the next read rather than at the next process restart.
+    """
+    def provide() -> str:
+        return bearer_for_league(db, league_id=league_id,
+                                 refresher=refresher, environ=environ)
+
+    return provide
 
 
 def _unused() -> None:                    # pragma: no cover - import anchor

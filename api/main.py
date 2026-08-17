@@ -6416,10 +6416,20 @@ def _skunk_out(result, *, replayed: bool) -> WeeklySkunkOut:
 #: surface: production gets the live transport, and the certification suites
 #: substitute FixtureTransport so settlement is provable offline with no
 #: credentials. Same shape tuesday_sync uses for the same reason.
-def _pool_settlement_transport():
+#:
+#: YAHOO-LIVE-1-FIX — IT NOW TAKES THE LEAGUE, because the credential is the
+#: league's. The factory used to construct a bare transport, which loaded the
+#: repository's operator token: every league in the product read Yahoo on one
+#: person's account, and a league whose commissioner had authorized nothing
+#: succeeded anyway. The league is passed so the transport can be given the
+#: authorization that league actually holds, and so a league holding none fails
+#: instead of borrowing.
+def _pool_settlement_transport(db: Session, league_id: int):
     from providers.yahoo.transport import YahooLiveTransport
+    from providers.yahoo.user_credentials import token_provider_for_league
 
-    return YahooLiveTransport()
+    return YahooLiveTransport(
+        token_provider=token_provider_for_league(db, league_id=league_id))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -6491,7 +6501,7 @@ def _provider_week_snapshot(db, league, week: int, *,
 
     from providers.yahoo.week_snapshot import fetch_week_snapshot
 
-    return fetch_week_snapshot(_pool_settlement_transport(),
+    return fetch_week_snapshot(_pool_settlement_transport(db, league.id),
                                league_key=league.provider_league_key, week=week,
                                with_rosters=with_rosters)
 
@@ -7064,6 +7074,145 @@ class ProviderStatusOut(BaseModel):
     #: an empty list, which would read as "nothing is stuck".
     blocked_reason:          Optional[str]
     stuck_pools:             list[PoolDiagnosisOut]
+
+
+class ProviderCredentialOut(BaseModel):
+    """Whose Yahoo authorization a league reads on. NEVER a token.
+
+    Every field here is a product fact an operator may see. There is no field
+    for bearer material, no field for a ciphertext, and no field whose value
+    narrows one — a commissioner screen is a screenshot waiting to happen.
+    """
+
+    league_id:     int
+    provider:      Optional[str]
+    owner_user_id: Optional[int]
+    is_you:        bool
+    connected:     bool
+    status:        Optional[str]
+    reason_code:   Optional[str]
+    assigned_at:   Optional[str]
+
+
+@app.post("/league/{league_id}/provider/credential",
+          response_model=ProviderCredentialOut)
+def connect_league_provider_credential(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    comm:      User    = Depends(require_league_commissioner),
+):
+    """Use MY Yahoo authorization for this league's provider reads.
+
+    YAHOO-LIVE-1-FIX — THE SECOND MISSING SEAM. The grant store and the
+    credential resolver both existed; nothing could put a league and an
+    authorization together, so every Yahoo-backed league had a NULL credential
+    owner and would have failed closed forever.
+
+    ── THE ACTOR IS THE OWNER, AND THERE IS NO PARAMETER FOR ANYTHING ELSE ──
+
+    This route takes NO user id, no email and no subject. It assigns the
+    authenticated commissioner, and only ever them. That is not a convenience:
+    a route that accepted a user id would be a route where a commissioner —
+    who is, correctly, authorized to administer the league — could point the
+    league at a member's personal Yahoo grant and read that member's Yahoo
+    account for as long as the grant lived. Administering a league and holding
+    somebody's credential are different powers, and no argument here can
+    conflate them.
+
+    ── WHAT IT REFUSES, AND WHY EACH ONE MATTERS ───────────────────────────
+
+      401  not signed in                        (get_current_gm)
+      403  signed in, not this league's commissioner
+                                                (require_league_commissioner)
+      409  the league is not Yahoo-backed — Demo needs no authorization and
+           must never acquire one, and a league with no provider at all has
+           nothing for a credential to speak to
+      409  the caller has no Yahoo grant, or one that is disconnected or that
+           Yahoo has rejected. ASSIGNING A DEAD GRANT WOULD LOOK LIKE
+           CONNECTING AND BEHAVE LIKE FAILING, which is the worst of both — so
+           it is refused here, and `bearer_for_league` refuses it again later.
+           Two belts, because this one is a convenience and that one is the
+           boundary.
+
+    ── REASSIGNMENT IS THE ORDINARY PATH ───────────────────────────────────
+
+    Calling it again replaces the owner. A commissioner hands the league over,
+    or the previous owner's grant died and a different commissioner authorizes.
+    The previous owner's GRANT is untouched — it stays theirs and simply stops
+    being what this league reads on — and nothing about the league's Ledger,
+    membership, wagers or history moves. The assignment is timestamped so an
+    operator can see when a league changed hands.
+    """
+    from auth.provider_grant import PROVIDER_YAHOO, snapshot
+    from providers.yahoo.user_credentials import (
+        league_credential_state, set_credential_owner,
+    )
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:                       # pragma: no cover - guard-covered
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    # DEMO IS NOT A PROVIDER THAT HAS CREDENTIALS. It is deterministic and
+    # local by construction, and giving it a Yahoo grant would be giving it a
+    # dependency the whole point of Demo is not having.
+    if _is_demo(league) or league.provider != PROVIDER_YAHOO:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "not_a_yahoo_league",
+            "message": ("This league does not read from Yahoo, so it needs no "
+                        "Yahoo authorization.")})
+
+    state = snapshot(db, user_id=comm.id, provider=PROVIDER_YAHOO)
+    if not state.exists:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "not_connected",
+            "message": ("Sign in with Yahoo again to authorize FantasyStakes "
+                        "to read your leagues, then connect this league.")})
+    if state.status != "active":
+        raise HTTPException(status_code=409, detail={
+            "reason_code": state.status or "reconnect_required",
+            "message": ("Your Yahoo connection is no longer active. Sign in "
+                        "with Yahoo again, then connect this league.")})
+
+    set_credential_owner(db, league_id=league_id, user_id=comm.id)
+
+    result = league_credential_state(db, league_id=league_id)
+    return ProviderCredentialOut(
+        league_id=league_id, provider=league.provider,
+        owner_user_id=result.owner_user_id, is_you=True,
+        connected=result.connected, status=result.status,
+        reason_code=result.reason_code, assigned_at=result.assigned_at)
+
+
+@app.get("/league/{league_id}/provider/credential",
+         response_model=ProviderCredentialOut)
+def read_league_provider_credential(
+    league_id: int,
+    db:        Session = Depends(get_db),
+    comm:      User    = Depends(require_league_commissioner),
+):
+    """Whose authorization this league currently reads on.
+
+    COMMISSIONER-ONLY, like every other provider diagnostic, and it answers the
+    question an operator actually asks when a league stops syncing: is there an
+    owner at all, is their grant still good, and when was it set.
+    """
+    from providers.yahoo.user_credentials import league_credential_state
+
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:                       # pragma: no cover - guard-covered
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "league_not_found",
+            "message": f"League {league_id} not found."})
+
+    result = league_credential_state(db, league_id=league_id)
+    return ProviderCredentialOut(
+        league_id=league_id, provider=league.provider,
+        owner_user_id=result.owner_user_id,
+        is_you=result.owner_user_id == comm.id,
+        connected=result.connected, status=result.status,
+        reason_code=result.reason_code, assigned_at=result.assigned_at)
 
 
 @app.get("/league/{league_id}/provider/status", response_model=ProviderStatusOut)

@@ -215,6 +215,14 @@ class League(Base):
     # operator credential, which is the thing being removed.
     provider_credential_user_id = Column(
         Integer, ForeignKey("users.id"), nullable=True)
+    #: WHEN the credential owner was assigned — YAHOO-LIVE-1-FIX.
+    #:
+    #: WHO is already answered: the operation assigns the acting commissioner
+    #: and only ever themselves, so the owner column IS the actor. What it could
+    #: not answer is when, and "this league started syncing on a different
+    #: person's authorization at some unknown point" is not a thing an operator
+    #: should have to reconstruct from a backup.
+    provider_credential_assigned_at = Column(DateTime, nullable=True)
 
     teams    = relationship("Team",         back_populates="league")
     matchups = relationship("Matchup",      back_populates="league")
