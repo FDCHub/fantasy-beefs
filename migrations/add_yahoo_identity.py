@@ -72,22 +72,57 @@ def upgrade() -> list[str]:
         # two FantasyStakes identities and two Ledgers. A unique index is the
         # only thing that makes "one account per Yahoo account" true under
         # concurrency; a query-then-insert cannot.
-        index_name = "uq_user_provider_subject"
+        # PG-CERT-1 — A CONSTRAINT ON POSTGRESQL, NOT MERELY AN INDEX.
+        #
+        # Both enforce the rule, and the original unique INDEX did enforce it —
+        # certified against real PostgreSQL, a duplicate subject is refused
+        # either way. What it did NOT do is match the schema a FRESH deployment
+        # gets: `db.schema` declares a `UniqueConstraint`, so `create_all`
+        # produces a constraint while this migration produced an index, and two
+        # deployments of the same product ended up structurally different
+        # depending on how old they were.
+        #
+        # PostgreSQL's ADD CONSTRAINT ... UNIQUE creates the backing index under
+        # the same name, so the guard below still recognises an already-migrated
+        # database whichever form it is in — including one migrated by the
+        # earlier version of this file, which is left exactly as it is rather
+        # than rebuilt.
+        constraint_name = "uq_user_provider_subject"
         indexes = {i["name"] for i in inspect(connection).get_indexes("users")}
-        if index_name not in indexes:
-            connection.execute(text(
-                f"CREATE UNIQUE INDEX {index_name} "
-                "ON users (auth_provider, provider_subject)"))
-            done.append(f"created {index_name}")
+        constraints = {u["name"] for u in
+                       inspect(connection).get_unique_constraints("users")}
+        if constraint_name not in indexes | constraints:
+            if dialect == "postgresql":
+                connection.execute(text(
+                    f"ALTER TABLE users ADD CONSTRAINT {constraint_name} "
+                    "UNIQUE (auth_provider, provider_subject)"))
+            else:
+                # SQLite cannot ADD CONSTRAINT to an existing table. The unique
+                # index is the same enforcement and is what the development
+                # database has always had.
+                connection.execute(text(
+                    f"CREATE UNIQUE INDEX {constraint_name} "
+                    "ON users (auth_provider, provider_subject)"))
+            done.append(f"created {constraint_name}")
 
         # RELAXING NOT NULL. PostgreSQL does it in place. SQLite cannot alter a
         # column at all — but SQLite is development and test here, where the
         # schema is created fresh from `db.schema` on every run, so there is
         # nothing to relax: the table was built nullable already.
         if dialect == "postgresql":
-            connection.execute(text(
-                "ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL"))
-            done.append("users.hashed_password is now nullable")
+            # CHECKED FIRST, so a second run reports the truth. Dropping NOT
+            # NULL twice is harmless on PostgreSQL, but the migration announced
+            # "users.hashed_password is now nullable" on every run — so an
+            # operator re-running it could not tell an applied migration from a
+            # fresh one, and §26's idempotency claim was unprovable.
+            already = next(
+                (c for c in inspect(connection).get_columns("users")
+                 if c["name"] == "hashed_password"), None)
+            if already is not None and not already["nullable"]:
+                connection.execute(text(
+                    "ALTER TABLE users ALTER COLUMN hashed_password "
+                    "DROP NOT NULL"))
+                done.append("users.hashed_password is now nullable")
         else:
             done.append(
                 f"{dialect}: hashed_password nullability left to db.schema")

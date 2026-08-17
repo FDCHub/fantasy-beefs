@@ -137,9 +137,17 @@ def upgrade() -> list[str]:
             # real risk for a nominal gain. PostgreSQL — the production target —
             # gets the constraint.
             if dialect == "postgresql":
+                # NAMED TO MATCH `db/schema.py`, whose column declares the
+                # same constraint with `use_alter` and this exact name — so a
+                # fresh database and an upgraded one carry one constraint with
+                # one identity rather than two anonymous ones.
                 connection.execute(text(
-                    "ALTER TABLE leagues ADD COLUMN provider_credential_user_id "
-                    "INTEGER REFERENCES users (id)"))
+                    "ALTER TABLE leagues ADD COLUMN "
+                    "provider_credential_user_id INTEGER"))
+                connection.execute(text(
+                    "ALTER TABLE leagues ADD CONSTRAINT "
+                    "fk_league_provider_credential_user FOREIGN KEY "
+                    "(provider_credential_user_id) REFERENCES users (id)"))
             else:
                 connection.execute(text(
                     "ALTER TABLE leagues ADD COLUMN provider_credential_user_id "

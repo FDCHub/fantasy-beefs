@@ -283,6 +283,28 @@ def _create_tables() -> None:
     from db.schema import Base, engine
     Base.metadata.create_all(engine)
 
+    # PG-CERT-1 — THE LEDGER TABLE IS ON A DIFFERENT BASE, AND WAS BEING MISSED.
+    #
+    # `ledger_entries` lives on `ledger.ledger._LedgerBase`, deliberately: the
+    # Ledger keeps its own declarative base so no accidental relationship or
+    # cascade can be declared between an accounting row and an application row.
+    # The consequence nobody had followed through is that
+    # `db.schema.Base.metadata.create_all` — this line, the whole of the fresh
+    # bootstrap — does not create it.
+    #
+    # MEASURED ON POSTGRESQL: a brand-new database built by this startup hook
+    # came up with every application table and no `ledger_entries`. The service
+    # would start, serve, and fail on the first Credit posted — which is the
+    # first thing that happens in a real season. Existing deployments never saw
+    # it because `db/migrations/migrate_ledger_entries.py` created the table
+    # years ago; only a FRESH deployment is exposed, which is exactly what a
+    # launch is.
+    #
+    # `create_ledger_table` already existed for this and had no caller anywhere.
+    # It is additive and safe to call repeatedly.
+    from ledger.ledger import create_ledger_table
+    create_ledger_table()
+
 
 # ── Auth schemas & endpoints ──────────────────────────────────────────────────
 

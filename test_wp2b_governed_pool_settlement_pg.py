@@ -80,8 +80,14 @@ def main() -> None:
     from providers.yahoo.week_snapshot import fetch_week_snapshot
 
     # THE ONLY SUBSTITUTION: offline transport, real everything else.
-    main_mod._pool_settlement_transport = lambda: FixtureTransport(
-        frozen_now=FROZEN_NOW)
+    # THE SEAM TAKES THE LEAGUE NOW (YAHOO-LIVE-1-FIX). The production factory
+    # resolves that league's own Yahoo credential owner instead of loading a
+    # repository-level operator token, so it needs the session and the league
+    # id. The fixture transport needs neither and ignores both — but the
+    # substitution has to match the seam's signature or the route raises
+    # TypeError and every refusal this suite certifies arrives as a 500.
+    main_mod._pool_settlement_transport = (
+        lambda db, league_id: FixtureTransport(frozen_now=FROZEN_NOW))
 
     def client() -> TestClient:
         return TestClient(app, raise_server_exceptions=False)

@@ -213,8 +213,27 @@ class League(Base):
     # nobody who has authorized Yahoo reads for it. That fails closed at the
     # transport, which is correct: the alternative is falling back to the
     # operator credential, which is the thing being removed.
+    #
+    # `use_alter` IS LOAD-BEARING, AND PG-CERT-1 IS HOW WE FOUND OUT.
+    #
+    # This foreign key closes a cycle: `users.team_id` -> teams,
+    # `teams.league_id` -> leagues, and now `leagues.provider_credential_user_id`
+    # -> users. SQLAlchemy topologically sorts tables to CREATE and DROP them,
+    # and a cycle makes that sort impossible — measured, thirty-four PostgreSQL
+    # suites failed teardown with "Can't sort tables for DROP; an unresolvable
+    # foreign key dependency exists between tables: leagues, teams, users".
+    #
+    # `use_alter` emits the constraint as a separate ALTER after the tables
+    # exist, and drops it before them, which is the same treatment the
+    # beef_challenges <-> beef_proposals cycle already gets a few hundred lines
+    # up. The constraint is named explicitly because an ALTER-added constraint
+    # needs a stable name to be dropped by, and because the migration adds the
+    # same constraint under the same name.
     provider_credential_user_id = Column(
-        Integer, ForeignKey("users.id"), nullable=True)
+        Integer,
+        ForeignKey("users.id", use_alter=True,
+                   name="fk_league_provider_credential_user"),
+        nullable=True)
     #: WHEN the credential owner was assigned — YAHOO-LIVE-1-FIX.
     #:
     #: WHO is already answered: the operation assigns the acting commissioner
