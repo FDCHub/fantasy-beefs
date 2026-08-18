@@ -1,0 +1,39 @@
+name: RC2 Championship Certification
+
+on:
+  push:
+    branches:
+      - release/fantasystakes-1.0.0-rc2
+  pull_request:
+    branches:
+      - postmvp/wired-product-reconciliation
+
+jobs:
+  championship:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile RC2 modules
+        run: |
+          python -m py_compile \
+            api/main_rc2.py \
+            api/championship_routes.py \
+            economy/fantasystakes_championship_allocation.py \
+            economy/fantasystakes_championship_settlement.py \
+            economy/rc2_season_activation.py \
+            economy/championship_scoring_gate.py \
+            reports/championship_read_model.py \
+            reports/grand_champion.py
+      - name: Championship scoring certification
+        run: python test_rc2_championship.py
+      - name: Championship economy certification
+        run: python test_rc2_championship_economy.py
+      - name: Migration manifest status
+        run: python -m migrations.run --status
