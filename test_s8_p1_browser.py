@@ -141,7 +141,8 @@ def main() -> int:
 
     print(f"\nStarting the application on {origin} …")
     server = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "api.main:app",
+        # B1 — the certified production entrypoint; see test_support_app_server.
+        [sys.executable, "-m", "uvicorn", "api.main_rc2:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
         cwd=ROOT, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,

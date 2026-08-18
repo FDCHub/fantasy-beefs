@@ -89,6 +89,58 @@ for secret in ("SECRET", "PASSWORD", "KEY", "TOKEN", "postgres://"):
             secret.lower() not in _payload.lower())
 
 
+# ── 1a · the deployment entrypoint, in every place that names it ─────────────
+
+_section("1a · B1 · One production entrypoint, agreed by every launcher")
+
+# WHY THIS IS ASSERTED AND NOT ASSUMED. The RC2 tag-readiness review found the
+# platform starting `api.main` while `Procfile` said `api.main_rc2`, and the
+# consequence was not "some routes are missing": the RC1 entrypoint registers no
+# RC2 model, so a fresh database came up with none of the six championship
+# tables while the bootstrap stamped all six migrations as applied. Nothing
+# disagreed until someone tried to run a championship.
+#
+# The entrypoint is therefore load-bearing for the SCHEMA, and every file that
+# names it has to name the same one. Drift here is silent, so it is checked.
+
+_ENTRYPOINT = "api.main_rc2:app"
+
+def _repo_text(*parts: str) -> str:
+    with open(os.path.join(ROOT, *parts), encoding="utf-8") as fh:
+        return fh.read()
+
+
+_procfile = _repo_text("Procfile")
+_railway = _repo_text("railway.toml")
+
+_proc_web = [l for l in _procfile.splitlines() if l.startswith("web:")]
+_assert("the Procfile declares a web process", len(_proc_web) == 1,
+        str(_proc_web))
+_assert(f"  · and it starts {_ENTRYPOINT}",
+        _ENTRYPOINT in _proc_web[0], _proc_web[0] if _proc_web else "")
+
+_start = [l for l in _railway.splitlines() if l.strip().startswith("startCommand")]
+_assert("railway.toml declares a startCommand", len(_start) == 1, str(_start))
+_assert(f"  · and it starts {_ENTRYPOINT}",
+        _ENTRYPOINT in _start[0], _start[0] if _start else "")
+
+# THE REGRESSION, NAMED. `api.main:app` must appear in neither launcher — and
+# the check is written so that `api.main_rc2:app` does not satisfy it by
+# containing the substring `api.main`.
+for _name, _text in (("Procfile", _proc_web[0] if _proc_web else ""),
+                     ("railway.toml", _start[0] if _start else "")):
+    _assert(f"{_name} does not launch the RC1 entrypoint",
+            "api.main:app" not in _text, _text)
+
+_assert("the release command is still explicit and separate",
+        "python -m migrations.run" in _railway)
+
+# And the entrypoint an operator is TOLD to run matches the one that runs.
+_runbook = _repo_text("docs", "PRODUCTION_RUNBOOK.md")
+_assert("the production runbook documents the same entrypoint",
+        _ENTRYPOINT in _runbook and "api.main:app" not in _runbook)
+
+
 # ── 2 · configuration validation ─────────────────────────────────────────────
 
 _section("2 · §12 · Production configuration is graded and fails closed")
@@ -199,11 +251,26 @@ _section("3 · §8 · One deterministic production upgrade sequence")
 
 from migrations.manifest import ACTIVE, HISTORICAL                 # noqa: E402
 from migrations import run as migration_runner                     # noqa: E402
+from migrations.manifest import identifiers as _manifest_identifiers  # noqa: E402
+
+#: The manifest's own answer, so no assertion below can go stale when a
+#: migration is added. B1 — this suite previously hard-coded a two-entry
+#: manifest and stopped covering everything added after it.
+_MANIFEST_IDS = _manifest_identifiers()
 
 _assert("an ordered manifest exists", len(ACTIVE) >= 2, f"{len(ACTIVE)} active")
+# B1 — THE SLUG MAY CONTAIN DIGITS. The old pattern was `[a-z_]+`, which
+# rejected every RC2 entry on the `2` in `rc2` — the release name, not a defect
+# in the identifier. The ordinal prefix is still four digits and still required,
+# the slug is still lowercase, and both remain anchored; only the arbitrary
+# no-digits-in-a-name rule is gone.
 _assert("every entry has a stable identifier",
-        all(re.match(r"^\d{4}_[a-z_]+$", m.identifier) for m in ACTIVE),
+        all(re.match(r"^\d{4}_[a-z0-9_]+$", m.identifier) for m in ACTIVE),
         ", ".join(m.identifier for m in ACTIVE))
+_assert("  · and the ordinal prefixes are strictly increasing from 0001",
+        [m.identifier[:4] for m in ACTIVE]
+        == [f"{i:04d}" for i in range(1, len(ACTIVE) + 1)],
+        ", ".join(m.identifier[:4] for m in ACTIVE))
 _assert("identifiers are unique",
         len({m.identifier for m in ACTIVE}) == len(ACTIVE))
 _assert("the order is deterministic — identity before the grant that "
@@ -291,11 +358,19 @@ try:
     if line:
         out = json.loads(line[0][len("RESULT"):])
         _assert("nothing was recorded before it ran", out["before"] == [])
-        _assert("both migrations were pending",
-                out["pending_before"] == ["0001_yahoo_identity",
-                                          "0002_provider_grants"])
-        _assert("both are recorded after", out["after"]
-                == ["0001_yahoo_identity", "0002_provider_grants"])
+        # B1 — DERIVED FROM THE MANIFEST, NOT RESTATED. These pinned the two
+        # entries that existed when the suite was written, so every migration
+        # added since silently escaped the check that it is applied and
+        # recorded. Reading `identifiers()` makes the assertion cover the whole
+        # manifest permanently — strictly more than it covered before.
+        _assert("every manifest migration was pending",
+                out["pending_before"] == list(_MANIFEST_IDS),
+                f'{out["pending_before"]} != {list(_MANIFEST_IDS)}')
+        _assert("every one is recorded after",
+                out["after"] == sorted(_MANIFEST_IDS),
+                f'{out["after"]} != {sorted(_MANIFEST_IDS)}')
+        _assert("  · and that is the whole manifest, not a prefix of it",
+                len(out["after"]) == len(ACTIVE), str(len(out["after"])))
         _assert("a second run applies nothing",
                 any("nothing pending" in s for s in out["second"]),
                 "; ".join(out["second"]))
@@ -306,7 +381,9 @@ try:
                 str(out["rows"][0]) if out["rows"] else "no rows")
         _assert("status reports a clean head",
                 out["status"]["pending"] == []
-                and out["status"]["manifest_head"] == "0002_provider_grants")
+                and out["status"]["manifest_head"] == _MANIFEST_IDS[-1],
+                f'head={out["status"]["manifest_head"]} '
+                f'pending={out["status"]["pending"]}')
 finally:
     import shutil
 
@@ -358,11 +435,22 @@ import importlib                                                   # noqa: E402
 import db.schema                                                   # noqa: E402
 
 importlib.reload(db.schema)
+# B1 — THE CERTIFIED PRODUCTION ENTRYPOINT, WHICH IS WHAT THIS SECTION CLAIMS TO
+# DRIVE. `Procfile` and `railway.toml` both start `api.main_rc2`; booting
+# `api.main` here registered no RC2 model, so the fresh bootstrap built a
+# database with no championship tables and stamped all six migrations as applied
+# anyway. That database is exactly the corrupt state B1's schema verification
+# refuses, and readiness now — correctly — answers 503 for it. Driving the real
+# entrypoint makes this a genuine production readiness assertion instead of one
+# that passed only because nothing checked the schema.
 import api.main                                                    # noqa: E402
 
 importlib.reload(api.main)
+import api.main_rc2                                                # noqa: E402
 
-with TestClient(api.main.app) as client:
+importlib.reload(api.main_rc2)
+
+with TestClient(api.main_rc2.app) as client:
     version = client.get("/version")
     _assert("/version responds", version.status_code == 200)
     _assert("  · with a release and its source",
@@ -377,6 +465,13 @@ with TestClient(api.main.app) as client:
     _assert("  · it checks the database", checks.get("database") == "ok")
     _assert("  · it checks the migration head",
             checks.get("migrations") == "ok")
+    # B1 — AND THE SCHEMA ITSELF, NOT ONLY THE RECORD OF IT.
+    _assert("  · it verifies the recorded schema against the live one",
+            checks.get("schema") == "ok", str(checks.get("schema"))[:200])
+    _assert("  · it separates a healthy process from a usable database",
+            ready.json().get("process") is True
+            and ready.json().get("database") is True,
+            json.dumps({k: ready.json().get(k) for k in ("process", "database")}))
     _assert("  · it reports Yahoo WITHOUT gating on it",
             checks.get("yahoo_sign_in") == "not_configured"
             and ready.json()["ready"] is True,

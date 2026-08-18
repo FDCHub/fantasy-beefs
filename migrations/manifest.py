@@ -14,9 +14,39 @@ __all__ = ["ACTIVE", "HISTORICAL", "Migration", "identifiers"]
 
 @dataclass(frozen=True)
 class Migration:
+    """One ordered, recorded schema change — and what proves it really landed.
+
+    ── B1 · WHY `tables` AND `columns` EXIST ────────────────────────────────
+
+    A row in `schema_migrations` is a CLAIM, not evidence. Before B1 the whole
+    readiness story rested on that claim: if the record said 0003-0006 were
+    applied, `/ready` answered healthy without ever looking at the schema.
+
+    That is not hypothetical. Booting `api.main` instead of `api.main_rc2`
+    against a fresh database registers no RC2 model, so `create_all` builds none
+    of the six championship tables while `stamp_all` still records all six
+    migrations as applied. Measured on this branch: `/ready` returned 200,
+    `ready: true`, `migrations: "ok"` — against a database that cannot run a
+    championship. The entrypoint was corrected for RC2, but the READINESS
+    WEAKNESS survived it, and any other stamp/schema divergence — a restored
+    older dump, a half-applied migration on a dialect without transactional
+    DDL, a hand-edited record — lands in the same silent hole.
+
+    So each migration names the database objects that MUST be present once it is
+    applied. `migrations.run.verify` checks the claim against the live schema and
+    readiness fails closed when they disagree. This adds no second migration
+    system and changes no migration's behaviour: it is the manifest describing
+    itself well enough to be checked.
+
+    `tables` are table names. `columns` are `("table", "column")` pairs, for the
+    migrations that add columns to tables which already existed.
+    """
+
     identifier: str
     module: str
     summary: str
+    tables: tuple = ()
+    columns: tuple = ()
 
 
 ACTIVE: tuple = (
@@ -24,31 +54,41 @@ ACTIVE: tuple = (
         identifier="0001_yahoo_identity",
         module="migrations.add_yahoo_identity",
         summary="users.auth_provider / provider_subject, unique on the pair, hashed_password relaxed to nullable",
+        columns=(("users", "auth_provider"), ("users", "provider_subject")),
     ),
     Migration(
         identifier="0002_provider_grants",
         module="migrations.add_provider_grants",
         summary="provider_grants table; leagues.provider_credential_user_id and provider_credential_assigned_at",
+        tables=("provider_grants",),
+        columns=(("leagues", "provider_credential_user_id"),
+                 ("leagues", "provider_credential_assigned_at")),
     ),
     Migration(
         identifier="0003_rc2_championship_snapshot",
         module="migrations.add_rc2_championship_snapshot",
         summary="immutable FantasyStakes Championship freeze and per-team regular-season Championship Score snapshot",
+        tables=("fantasystakes_championship_freeze",
+                "fantasystakes_championship_score"),
     ),
     Migration(
         identifier="0004_rc2_fantasystakes_championship_economy",
         module="migrations.add_rc2_championship_economy",
         summary="independent FantasyStakes Championship contribution and fixed-pot allocation records",
+        tables=("fantasystakes_championship_config",
+                "fantasystakes_championship_allocation"),
     ),
     Migration(
         identifier="0005_rc2_championship_distribution",
         module="migrations.add_rc2_championship_distribution",
         summary="durable exactly-once FantasyStakes Championship 60/30/10 distribution record",
+        tables=("fantasystakes_championship_distribution_run",),
     ),
     Migration(
         identifier="0006_rc2_championship_correction",
         module="migrations.add_rc2_championship_correction",
         summary="append-only authoritative corrections to eligible regular-season championship results",
+        tables=("fantasystakes_championship_correction",),
     ),
 )
 

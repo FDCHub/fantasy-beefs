@@ -1177,18 +1177,49 @@ def ready(response: Response, db: Session = Depends(get_db)):
     if not report.serviceable:
         ready_ = False
 
+    # ── B1 · SCHEMA STATE IS CHECKED, NOT TAKEN ON TRUST ─────────────────────
+    #
+    # Two distinct questions, both gating:
+    #
+    #   pending  — the record says work is outstanding. Ordinary pre-release
+    #              state; `python -m migrations.run` fixes it.
+    #   verify   — the record claims work that the live schema cannot
+    #              corroborate. The RECORD is wrong, and an operator has to
+    #              decide; re-running is not self-evidently safe.
+    #
+    # Before B1 only the first was asked, so a database stamped 0001-0006 with
+    # every championship table absent answered 200 / `ready: true` /
+    # `migrations: "ok"`. Measured, not theorised.
+    #
+    # AND AN UNANSWERABLE QUESTION IS NOT A PASS. This block previously reported
+    # `"unknown"` on exception and left `ready_` untouched, so the one condition
+    # under which the schema state could not be established was also the one
+    # condition that could not withhold traffic. A readiness check that cannot
+    # determine the schema must fail CLOSED — that is the whole contract.
     try:
         from migrations.run import pending as pending_migrations
+        from migrations.run import verify as verify_schema
 
         from db.schema import engine
 
         outstanding = [m.identifier for m in pending_migrations(engine)]
-        checks["migrations"] = ("ok" if not outstanding
-                                else "pending:" + ",".join(outstanding))
         if outstanding:
+            checks["migrations"] = "pending:" + ",".join(outstanding)
             ready_ = False
+        else:
+            checks["migrations"] = "ok"
+
+        unverified = verify_schema(engine)
+        if unverified:
+            checks["schema"] = "unverified:" + ";".join(unverified)
+            ready_ = False
+        else:
+            checks["schema"] = "ok"
     except Exception:
+        # THE TYPE IS NOT REPORTED, for the reason the database check gives.
         checks["migrations"] = "unknown"
+        checks["schema"] = "unknown"
+        ready_ = False
 
     state = safe_mode_state()
     checks["writes"] = "disabled" if state.enabled else "enabled"
@@ -1198,7 +1229,27 @@ def ready(response: Response, db: Session = Depends(get_db)):
     if not ready_:
         response.status_code = 503
 
-    return {"ready": ready_, "checks": checks,
+    # ── B1 · A HEALTHY PROCESS AND A USABLE DATABASE ARE DIFFERENT FACTS ─────
+    #
+    # `ready` stays the single gate — the platform reads it and nothing about
+    # its meaning changes. What was missing is WHY a deployment is not ready,
+    # in a form an operator can act on without parsing strings:
+    #
+    #   process   this process booted, is configured, and can serve
+    #   database  the database is reachable AND at the schema this code needs
+    #
+    # The distinction is operational, not cosmetic. `process: false` is a
+    # configuration or build problem and a rollback is the likely answer;
+    # `database: false` with `process: true` means the code is fine and the
+    # SCHEMA is the problem — run the migration, or investigate a record that
+    # disagrees with the schema. Conflating them sends an operator to the wrong
+    # half of the system at the worst possible moment.
+    return {"ready": ready_,
+            "process": report.serviceable,
+            "database": (checks["database"] == "ok"
+                         and checks.get("migrations") == "ok"
+                         and checks.get("schema") == "ok"),
+            "checks": checks,
             **release_identity().as_dict()}
 
 

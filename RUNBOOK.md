@@ -125,7 +125,7 @@ with SessionLocal() as db:
 PY
 
 # 5 · run it — the API serves the frontend at /app from the same process
-python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn api.main_rc2:app --host 127.0.0.1 --port 8000 --reload
 
 # 6 · open  http://127.0.0.1:8000/app   and sign in as gm@dev.test / devpassword
 ```
