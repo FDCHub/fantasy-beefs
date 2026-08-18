@@ -10,10 +10,10 @@ than recording that none existed. This closes the gap without inventing history.
 ── THE CENTRAL FACT, AND IT IS WHAT MAKES THIS SMALL ───────────────────────
 
 A FRESH DEPLOYMENT RUNS NO MIGRATIONS AT ALL. `api/main.py`'s startup builds the
-complete schema from the models in one step — certified on PostgreSQL by
-PG-CERT-1 — so the migrations exist to carry an EXISTING database forward, not
-to construct a new one. There is therefore no need to replay nineteen historical
-scripts against a database that never lacked what they add.
+complete schema from the registered SQLAlchemy models in one step — certified on
+PostgreSQL by PG-CERT-1 — so the migrations exist to carry an EXISTING database
+forward, not to construct a new one. There is therefore no need to replay
+historical scripts against a database that never lacked what they add.
 
 That is why the registry below has two kinds of entry rather than one long list.
 
@@ -22,12 +22,11 @@ That is why the registry below has two kinds of entry rather than one long list.
                  additive.
 
     HISTORICAL   recorded, NOT run. These built the schema as it grew and their
-                 effects are already in `db/schema.py`, which is what a fresh
-                 database is built from. Several are one-shot data conversions
-                 or predate columns that no longer exist; running them against a
-                 modern database ranges from a no-op to an error. They are named
-                 here so the inventory is complete and so nobody has to wonder
-                 whether they were forgotten.
+                 effects are already represented by the registered SQLAlchemy
+                 models used for fresh-database bootstrap. Several are one-shot
+                 data conversions or predate columns that no longer exist;
+                 running them against a modern database ranges from a no-op to
+                 an error. They are named here so the inventory is complete.
 
 ── WHAT AN OPERATOR RUNS ───────────────────────────────────────────────────
 
@@ -63,8 +62,8 @@ class Migration:
 #: `add_yahoo_identity` is first because `add_provider_grants` builds a foreign
 #: key to `users` and adds a constraint alongside the identity columns; running
 #: them the other way round would attempt to reference a shape that is not there
-#: yet. Both are idempotent, so re-running the pair is safe, but the ORDER is
-#: not optional on a database that has neither.
+#: yet. RC2's championship tables depend only on long-standing leagues/teams and
+#: therefore follow those two launch migrations without changing their order.
 ACTIVE: tuple = (
     Migration(
         identifier="0001_yahoo_identity",
@@ -78,12 +77,18 @@ ACTIVE: tuple = (
         summary="provider_grants table; leagues.provider_credential_user_id "
                 "and provider_credential_assigned_at",
     ),
+    Migration(
+        identifier="0003_rc2_championship_snapshot",
+        module="migrations.add_rc2_championship_snapshot",
+        summary="immutable FantasyStakes Championship freeze and per-team "
+                "regular-season Championship Score snapshot",
+    ),
 )
 
 #: RECORDED, NOT RUN — see the module docstring. Grouped by why.
 HISTORICAL: tuple = (
-    # Schema growth now expressed in `db/schema.py`, which a fresh database is
-    # built from directly.
+    # Schema growth now expressed in the registered SQLAlchemy models, which a
+    # fresh database is built from directly.
     "migrations/add_matchup_refreshed_at.py",
     "db/migrations/migrate_league_commissioners.py",
     "db/migrations/migrate_leagues_economy_columns.py",
