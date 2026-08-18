@@ -1,12 +1,6 @@
 """
 migrations/manifest.py — the one answer to "what runs before a release?"
 
-PG-CERT-1 FOUND THERE WAS NO ANSWER. Twenty-eight scripts across two
-directories, no ordering, no registry, and only nine exposing a callable
-`upgrade()`. That report deliberately did not invent an order for the other
-nineteen, because asserting a sequence nobody had verified would have been worse
-than recording that none existed. This closes the gap without inventing history.
-
 A fresh deployment is built from registered SQLAlchemy models. ACTIVE migrations
 carry an existing database forward and run in deterministic order.
 """
@@ -45,6 +39,11 @@ ACTIVE: tuple = (
         identifier="0004_rc2_fantasystakes_championship_economy",
         module="migrations.add_rc2_championship_economy",
         summary="independent FantasyStakes Championship contribution and fixed-pot allocation records",
+    ),
+    Migration(
+        identifier="0005_rc2_championship_distribution",
+        module="migrations.add_rc2_championship_distribution",
+        summary="durable exactly-once FantasyStakes Championship 60/30/10 distribution record",
     ),
 )
 
