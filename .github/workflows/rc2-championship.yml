@@ -11,7 +11,7 @@ on:
 jobs:
   championship:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,11 +31,27 @@ jobs:
             economy/championship_scoring_gate.py \
             reports/championship_read_model.py \
             reports/grand_champion.py
+      - name: Import RC2 application and package surfaces
+        run: |
+          python -c "import economy; import reports"
+          python -c "import reports.standings_read_model"
+          python -c "import api.main_rc2"
       - name: Championship scoring certification
         run: python test_rc2_championship.py
       - name: Championship economy certification
         run: python test_rc2_championship_economy.py
       - name: Grand Champion certification
         run: python test_rc2_grand_champion.py
-      - name: Migration manifest status
-        run: python -m migrations.run --status
+      - name: RC1 money-path regression checks
+        run: |
+          python test_shortfall_reporting.py
+          python test_s8_p4c4_pool_certification.py
+          python test_wp3b_standings_read_model.py
+          python test_ledger.py
+      - name: Migration apply and replay certification
+        env:
+          DATABASE_URL: sqlite:///./rc2_ci_migrations.db
+        run: |
+          python -m migrations.run
+          python -m migrations.run --status
+          python -m migrations.run
