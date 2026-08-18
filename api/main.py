@@ -1356,6 +1356,19 @@ def place_bet(
     if not matchup:
         raise HTTPException(status_code=404, detail="Matchup not found")
 
+    # RC2 NEW-1 — the legacy single-GM wager path is refused for a governed
+    # FantasyStakes league. Checked here, at the mounted boundary, so the
+    # refusal costs no roster read and no odds simulation; `_place_bet` carries
+    # the same guard for any caller that never reaches this route.
+    from betting.versus_legacy_guard import (
+        LegacyVersusPathRefused, assert_legacy_wager_path_allowed,
+    )
+
+    try:
+        assert_legacy_wager_path_allowed(db, matchup.league_id)
+    except LegacyVersusPathRefused as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     wallet = db.query(Wallet).filter(Wallet.id == req.wallet_id).first()
     if not wallet:
         raise HTTPException(status_code=404, detail="Wallet not found")

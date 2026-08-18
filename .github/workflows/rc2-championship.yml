@@ -46,6 +46,8 @@ jobs:
         run: python test_rc2_championship.py
       - name: Championship field certification
         run: python test_rc2_championship_field.py
+      - name: Versus product boundary certification
+        run: python test_rc2_versus_product_boundary.py
       - name: Championship economy certification
         run: python test_rc2_championship_economy.py
       - name: Grand Champion certification
@@ -56,6 +58,12 @@ jobs:
           python test_s8_p4c4_pool_certification.py
           python test_wp3b_standings_read_model.py
           python test_ledger.py
+          # The legacy single-GM wager path. RC2 puts a governance guard at its
+          # engine funnel, so these three prove the guard stays inert for a
+          # league that carries no FantasyStakes state.
+          python test_bet_funded_retirement.py
+          python test_ledger_bet_conversion.py
+          python test_stake_precision_validation.py
       # THE TWO SUPPORTED LIFECYCLES, PROVED SEPARATELY.
       #
       # An earlier revision of this step pointed DATABASE_URL at a SQLite path

@@ -248,6 +248,76 @@ def _door_net_cents(db: Session, team_id: int, doors: tuple[str, ...]) -> int:
     return int(total or 0)
 
 
+def _legacy_wager_escrow_accounts(db: Session, team_id: int) -> tuple[str, ...]:
+    """`escrow:{bet_id}` for every LEGACY plain wager this GM owns.
+
+    A plain wager is a `Bet` with `beef_challenge_id IS NULL` — the legacy
+    single-GM product reachable through `POST /bets/place`. FantasyStakes has no
+    house, so such a wager is not FantasyStakes competition and must not appear
+    in a competitive total. `beef_challenge_id` is the durable identifier that
+    says so; it is a column on the row the wager created, not a heuristic.
+    """
+    from db.schema import Bet, Wallet
+
+    db.flush()
+    rows = (db.query(Bet.id)
+            .join(Wallet, Bet.wallet_id == Wallet.id)
+            .filter(Wallet.team_id == team_id,
+                    Bet.beef_challenge_id.is_(None))
+            .all())
+    return tuple(f"escrow:{r[0]}" for r in rows)
+
+
+def _legacy_wager_net_cents(db: Session, team_id: int,
+                            doors: tuple[str, ...]) -> int:
+    """This GM's legacy plain-wager contribution to the Versus door sum.
+
+    WHY THIS IS SUBTRACTED RATHER THAN FILTERED AT THE DOOR. `wager_placed` and
+    `wager_settled` are shared: a governed FantasyStakes matchup bet and a legacy
+    plain wager both post under them, so the door alone cannot tell them apart.
+    What CAN is the escrow account, because every posting either path makes for a
+    bet carries that bet's own `escrow:{bet_id}` leg. Selecting the postings that
+    touch a legacy bet's escrow therefore identifies legacy movement exactly, and
+    the same query shape stays correct if the legacy settlement path is ever
+    given the ledger posting it currently lacks.
+
+    TWO TERMS, BECAUSE THE OPEN-ESCROW ADD-BACK HAS TO GO TOO. `in_play_cents`
+    attributes a plain wager's escrow to its owning GM, so leaving that term in
+    while removing the placement debit would report a phantom gain of exactly the
+    stake. Both halves are removed together.
+
+    Returns the amount to REMOVE from `_door_net_cents(...) + in_play_cents`.
+    """
+    accounts = _legacy_wager_escrow_accounts(db, team_id)
+    if not accounts or not doors:
+        return 0
+
+    db.flush()
+    door_ph = ", ".join(f":d{i}" for i in range(len(doors)))
+    acct_ph = ", ".join(f":a{i}" for i in range(len(accounts)))
+    params: dict[str, object] = {f"d{i}": d for i, d in enumerate(doors)}
+    params.update({f"a{i}": a for i, a in enumerate(accounts)})
+    params["wallet"] = wallet_account(team_id)
+    params["min_pattern"] = f"min:{team_id}:%"
+
+    # (a) this GM's spend-account legs inside postings that touch a legacy escrow
+    spend = db.execute(text(
+        "SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+        f"WHERE door IN ({door_ph}) "
+        "AND (account = :wallet OR account LIKE :min_pattern) "
+        "AND posting_id IN (SELECT posting_id FROM ledger_entries "
+        f"                  WHERE account IN ({acct_ph}))"),
+        params).scalar()
+
+    # (b) whatever those legacy escrows still hold — the in_play add-back term
+    held = db.execute(text(
+        "SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+        f"WHERE account IN ({acct_ph})"),
+        {k: v for k, v in params.items() if k.startswith("a")}).scalar()
+
+    return int(spend or 0) + int(held or 0)
+
+
 def _pool_wins(db: Session, team_id: int) -> int:
     """Settled Pool occurrences that paid this GM.
 
@@ -346,8 +416,20 @@ def league_standings(db: Session, *, league_id: int,
             # (`economy/challenge_escrow_view.py` filters to OPEN_RESPONSE_STATES
             # by design), so using it would leave every accepted-but-unsettled
             # stake standing as a loss until the week settled.
+            # RC2 NEW-1 — GOVERNED FANTASYSTAKES MATCHUPS ONLY.
+            #
+            # FantasyStakes has no house. A legacy plain wager
+            # (`beef_challenge_id IS NULL`) is not FantasyStakes competition, so
+            # it is removed from this total — both its spend-account legs and
+            # the open-escrow add-back that pairs with them. Without this the
+            # Versus total would disagree with the Versus RECORD below, which has
+            # always counted governed matchups only, and Championship Score
+            # (which is this figure, frozen) could be moved by a product
+            # FantasyStakes does not have.
             versus_net_cents=(_door_net_cents(db, team_id, VERSUS_DOORS)
-                              + position.in_play_cents),
+                              + position.in_play_cents
+                              - _legacy_wager_net_cents(db, team_id,
+                                                        VERSUS_DOORS)),
             pool_net_cents=_door_net_cents(db, team_id, POOL_DOORS),
         ))
 
