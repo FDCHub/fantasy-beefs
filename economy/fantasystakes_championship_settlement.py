@@ -20,6 +20,7 @@ from economy.fantasystakes_championship_allocation import (
     pot_account,
 )
 from ledger.ledger import _balance_of_in_session, post as ledger_post
+from reports.championship_corrections import unresolved_eligible_contests
 from reports.championship_read_model import (
     ChampionshipAward,
     get_fantasystakes_championship,
@@ -95,6 +96,27 @@ def settle_fantasystakes_championship(
             db, league_id=league_id, season=season)
         if snapshot is None:
             raise ValueError("FantasyStakes Championship standings are not frozen")
+
+        # ── THE FINAL GATE ───────────────────────────────────────────────────
+        #
+        # FROZEN closes the scoring window and the funded field. FINAL closes
+        # RESULTS, and only FINAL may pay. An eligible regular-season contest
+        # that is still unsettled — or whose week is not economically final by
+        # the certified `Matchup.finalized_at` predicate — can still change the
+        # Championship Score through an audited correction, and the pot is fixed
+        # and pays exactly once. Distributing before that would pay a podium the
+        # results do not yet support, with no way to take it back: RC2 performs
+        # no clawback.
+        blockers = unresolved_eligible_contests(
+            db, league_id=league_id, season=season,
+            playoff_start_week=int(snapshot.playoff_start_week))
+        if blockers:
+            raise ValueError(
+                "FantasyStakes Championship is frozen but not final: "
+                + "; ".join(blockers)
+                + ". Every championship-eligible regular-season contest must be "
+                  "resolved before the fixed pot is distributed. Nothing was "
+                  "paid and no Credits moved.")
 
         allocations = (db.query(FantasyStakesChampionshipAllocation)
                        .filter(FantasyStakesChampionshipAllocation.league_id == league_id,

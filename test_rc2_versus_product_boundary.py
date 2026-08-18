@@ -45,6 +45,9 @@ from betting.versus_legacy_guard import (  # noqa: E402
     fantasystakes_governance_markers,
 )
 from economy.fantasystakes_championship_allocation import pot_account  # noqa: E402
+from economy.fantasystakes_championship_settlement import (  # noqa: E402
+    settle_fantasystakes_championship,
+)
 from economy.rc2_season_activation import (  # noqa: E402
     activate_fantasystakes_championship_stage,
 )
@@ -55,9 +58,12 @@ from ledger.ledger import (  # noqa: E402
 from reports.championship_read_model import (  # noqa: E402
     FantasyStakesChampionshipError, FantasyStakesChampionshipFreeze,
     FantasyStakesChampionshipScore, REASON_POSTSEASON_CONTAMINATED,
-    REASON_REGULAR_VERSUS_OPEN, freeze_fantasystakes_championship,
+    freeze_fantasystakes_championship,
 )
 from reports.standings_read_model import league_standings  # noqa: E402
+# Explicit RC2 model registration, as `api.main_rc2` performs it: the frozen
+# championship read overlays authoritative corrections, so that table must exist.
+from reports import championship_corrections as _fs_corrections  # noqa: E402,F401
 
 FAIL: list[str] = []
 SEASON = 2027
@@ -384,20 +390,31 @@ check("trial balance zero", trial_balance() == 0, str(trial_balance()))
 
 
 # ── F · pending governed regular-season matchup still blocks the freeze ──────
-print("\nRC2-VB-F - pending governed regular-season matchup blocks the freeze")
+print("")
+print("RC2-VB-F - pending governed regular-season matchup blocks the PAYOUT")
 
+# FROZEN closes eligibility and the field; it no longer waits for results,
+# because an eligible contest that settles late still counts through an audited
+# correction. What waits for results is the payout - the FINAL gate in
+# `settle_fantasystakes_championship`. Certified in full by
+# test_rc2_championship_correction.py; asserted here so this suite states the
+# contract it depends on rather than the superseded one.
 Lh, Th = build("Pending")
 governed_matchup_bet(Lh, Th, 5, settle=False)
 sh, rh = try_freeze(Lh)
-check("freeze refuses while a governed regular-season matchup is unsettled",
-      sh is None and rh == REASON_REGULAR_VERSUS_OPEN, str(rh))
+check("freeze succeeds with a governed regular-season matchup still unsettled",
+      sh is not None, str(rh))
+paid_h = None
 with SessionLocal() as db:
-    markers_h = (db.query(FantasyStakesChampionshipFreeze)
-                 .filter(FantasyStakesChampionshipFreeze.league_id == Lh).count())
-    scores_h = (db.query(FantasyStakesChampionshipScore)
-                .filter(FantasyStakesChampionshipScore.league_id == Lh).count())
-check("refusal wrote no marker and no score rows",
-      markers_h == 0 and scores_h == 0, f"{markers_h}/{scores_h}")
+    try:
+        settle_fantasystakes_championship(db, league_id=Lh)
+    except Exception as exc:
+        paid_h = str(exc)
+check("payout refuses while that eligible matchup is unresolved",
+      paid_h is not None and "not final" in paid_h, str(paid_h)[:120])
+check("the pot is untouched by the refused payout",
+      balance_of(pot_account(Lh, SEASON)) == 32_000,
+      str(balance_of(pot_account(Lh, SEASON))))
 
 # A pending PLAIN wager is not FantasyStakes competition, so it must NOT block.
 Li, Ti = build("PendPlain")

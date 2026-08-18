@@ -19,6 +19,12 @@ from economy.rc2_season_activation import (
 from economy.fantasystakes_championship_settlement import (
     settle_fantasystakes_championship,
 )
+from economy.championship_result_correction import (
+    CorrectedPoolResult, CorrectedVersusResult, apply_result_correction,
+)
+from reports.championship_corrections import (
+    ChampionshipCorrectionError, corrections_for, record_authoritative_result,
+)
 from reports.championship_read_model import (
     FantasyStakesChampionshipError,
     freeze_fantasystakes_championship,
@@ -208,6 +214,127 @@ def freeze_championship(
         "scoring_through_week": result.scoring_through_week,
         "frozen_at": result.frozen_at.isoformat(),
         "rows": [_row_dict(r) for r in result.rows],
+    }
+
+
+class ResultCorrectionRequest(BaseModel):
+    """Names the CONTEST and its corrected authoritative RESULT. Never an amount.
+
+    There is deliberately no cents field, no score field, and no generic
+    championship edit endpoint. The commissioner states what the result actually
+    was; the Credits are derived from posted ledger state and, for prop pools,
+    from the same certified even-split allocator ordinary settlement uses.
+
+    `admit_late_settlement` is the other half of the lifecycle: an eligible
+    contest whose ORDINARY settlement landed after the freeze already has correct
+    economics, so it is admitted to the Championship without any corrective
+    posting. That path takes no corrected result because nothing is being
+    restated.
+    """
+
+    competition_type: str = Field(..., pattern="^(versus|prop_pool)$")
+    contest_ref: int = Field(..., ge=1)
+    reason: str = Field(..., min_length=3, max_length=500)
+    correction_key: str = Field(..., min_length=3, max_length=200)
+    #: True  -> admit an eligible contest that settled normally after the freeze.
+    #: False -> restate a settled contest to `corrected_result`.
+    admit_late_settlement: bool = False
+    #: Versus: {"outcome": "winner", "winner_team_id": N} or {"outcome": "push"}
+    #: Prop pool: {"winner_team_ids": [N, ...]}
+    corrected_result: dict | None = None
+
+
+@router.post("/corrections")
+def record_championship_correction(
+    league_id: int,
+    req: ResultCorrectionRequest,
+    db: Session = Depends(get_db),
+    comm: User = Depends(require_league_commissioner),
+):
+    """Admit or restate an eligible regular-season result after the freeze."""
+    source = f"commissioner:{comm.id}"
+    try:
+        if req.admit_late_settlement:
+            result = record_authoritative_result(
+                db, league_id=league_id, competition_type=req.competition_type,
+                contest_ref=req.contest_ref, reason=req.reason, source=source,
+                correction_key=req.correction_key)
+        else:
+            if not req.corrected_result:
+                raise HTTPException(
+                    status_code=422,
+                    detail="corrected_result is required unless "
+                           "admit_late_settlement is true")
+            if req.competition_type == "versus":
+                payload = CorrectedVersusResult(
+                    outcome=str(req.corrected_result.get("outcome", "")),
+                    winner_team_id=(
+                        int(req.corrected_result["winner_team_id"])
+                        if req.corrected_result.get("winner_team_id") is not None
+                        else None),
+                )
+            else:
+                payload = CorrectedPoolResult(
+                    winner_team_ids=tuple(
+                        int(t) for t in
+                        req.corrected_result.get("winner_team_ids", ())),
+                )
+            result = apply_result_correction(
+                db, league_id=league_id, competition_type=req.competition_type,
+                contest_ref=req.contest_ref, corrected_result=payload,
+                reason=req.reason, source=source,
+                correction_key=req.correction_key)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except ChampionshipCorrectionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "league_id": result.league_id,
+        "season": result.season,
+        "competition_type": result.competition_type,
+        "contest_ref": result.contest_ref,
+        "scoring_week": result.scoring_week,
+        "replayed": result.replayed,
+        "total_delta_cents": result.total_delta_cents,
+        "rows": [
+            {"team_id": r.team_id, "revision": r.revision,
+             "previous_net_cents": r.previous_net_cents,
+             "corrected_net_cents": r.corrected_net_cents,
+             "delta_cents": r.delta_cents}
+            for r in result.rows
+        ],
+    }
+
+
+@router.get("/corrections")
+def list_championship_corrections(
+    league_id: int,
+    db: Session = Depends(get_db),
+    gm: User = Depends(get_current_gm),
+):
+    _require_member(db, league_id=league_id, user=gm)
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is None:
+        raise HTTPException(status_code=404, detail="league not found")
+    rows = corrections_for(db, league_id=league_id, season=int(league.season))
+    return {
+        "league_id": league_id,
+        "season": int(league.season),
+        "corrections": [
+            {"team_id": r.team_id, "competition_type": r.competition_type,
+             "contest_ref": r.contest_ref, "scoring_week": r.scoring_week,
+             "revision": r.revision, "previous_net_cents": r.previous_net_cents,
+             "corrected_net_cents": r.corrected_net_cents,
+             "delta_cents": r.delta_cents, "reason": r.reason,
+             "source": r.source}
+            for r in rows
+        ],
     }
 
 

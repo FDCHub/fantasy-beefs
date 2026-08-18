@@ -13,6 +13,7 @@ from __future__ import annotations
 # side-effect free so imports used by RC1 and RC2 cannot form package cycles.
 from economy import fantasystakes_championship_allocation as _fs_allocation  # noqa: F401
 from reports import championship_read_model as _fs_championship_read_model  # noqa: F401
+from reports import championship_corrections as _fs_championship_corrections  # noqa: F401
 from economy import fantasystakes_championship_settlement as _fs_settlement  # noqa: F401
 
 from api.championship_routes import router as championship_router

@@ -45,6 +45,11 @@ ACTIVE: tuple = (
         module="migrations.add_rc2_championship_distribution",
         summary="durable exactly-once FantasyStakes Championship 60/30/10 distribution record",
     ),
+    Migration(
+        identifier="0006_rc2_championship_correction",
+        module="migrations.add_rc2_championship_correction",
+        summary="append-only authoritative corrections to eligible regular-season championship results",
+    ),
 )
 
 

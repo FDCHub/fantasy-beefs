@@ -7,9 +7,17 @@ postseason, while postseason FantasyStakes play may continue moving Credits.
 
 This module therefore SNAPSHOTS the already-certified competitive read model at
 the regular-season boundary instead of trying to reconstruct a historical wallet
-or re-price old wagers. The snapshot is only permitted when every regular-season
-FantasyStakes matchup and prop-pool occurrence is terminal and before any
-postseason competitive result can contaminate the live competitive net.
+or re-price old wagers. The snapshot is permitted before any postseason
+competitive result can contaminate the live competitive net.
+
+FROZEN IS NOT FINAL. The freeze closes two things — the scoring window and the
+funded field — and neither ever reopens. It does NOT close RESULTS: an eligible
+regular-season contest whose authoritative result lands late still counts, and an
+authoritative correction to one still counts, both admitted through
+`reports.championship_corrections` as audited corrections rather than as new
+competition. `economy.fantasystakes_championship_settlement` is what waits for
+results: it refuses to distribute the pot while any eligible contest is
+unresolved. That is the FINAL gate, and it is why freezing early is safe.
 
 Championship Score is exactly the frozen competitive result:
 
@@ -244,7 +252,14 @@ def _existing_snapshot(db: Session, *, league_id: int, season: int
             f"score row(s) for team(s) {sorted(stray)} carrying a different "
             f"league-season than their freeze marker.")
 
-    ranked = _rank_rows(score_rows, _teams_by_id(db, frozen_ids))
+    # THE FROZEN ROWS ARE NEVER MUTATED. Authoritative post-freeze corrections
+    # to ELIGIBLE regular-season contests live in their own append-only table and
+    # are applied here as a read-time overlay, so the original snapshot stays
+    # exactly as it was written and the correction trail stays auditable.
+    from reports.championship_corrections import correction_totals
+
+    corrections = correction_totals(db, league_id=league_id, season=season)
+    ranked = _rank_rows(score_rows, _teams_by_id(db, frozen_ids), corrections)
     return ChampionshipSnapshot(
         league_id=league_id,
         season=season,
@@ -255,13 +270,24 @@ def _existing_snapshot(db: Session, *, league_id: int, season: int
     )
 
 
-def _rank_rows(score_rows, team_by_id: dict[int, Team]) -> tuple[ChampionshipRow, ...]:
-    ordered = sorted(score_rows,
-                     key=lambda r: (-int(r.championship_score_cents), int(r.team_id)))
+def _rank_rows(score_rows, team_by_id: dict[int, Team],
+               corrections: dict[int, int] | None = None
+               ) -> tuple[ChampionshipRow, ...]:
+    """Rank the frozen rows, with authoritative corrections applied.
+
+    THE PODIUM IS DERIVED FROM THE CORRECTED SCORE, not the raw frozen one — a
+    correction that creates or removes a tie must change the podium, or the
+    60/30/10 split would pay a placement the results no longer support. The
+    frozen figure remains readable in the correction rows' provenance.
+    """
+    deltas = corrections or {}
+    scored = [(int(r.championship_score_cents) + sum(deltas.get(int(r.team_id), (0, 0))), r)
+              for r in score_rows]
+    ordered = sorted(scored, key=lambda pair: (-pair[0], int(pair[1].team_id)))
     result: list[ChampionshipRow] = []
     cursor = 0
-    for score, grouped in groupby(ordered, key=lambda r: int(r.championship_score_cents)):
-        group = list(grouped)
+    for score, grouped in groupby(ordered, key=lambda pair: pair[0]):
+        group = [row for _, row in grouped]
         place = cursor + 1
         tied = len(group) > 1
         for row in group:
@@ -274,12 +300,13 @@ def _rank_rows(score_rows, team_by_id: dict[int, Team]) -> tuple[ChampionshipRow
                     f"frozen championship team {row.team_id} has no resolvable "
                     f"Team row for display. The frozen field is immutable and is "
                     f"never altered to omit an unresolvable GM.")
+            versus_delta, pool_delta = deltas.get(int(row.team_id), (0, 0))
             result.append(ChampionshipRow(
                 team_id=row.team_id,
                 team_name=team.team_name,
                 owner=team.owner,
-                matchup_net_cents=int(row.matchup_net_cents),
-                prop_pool_net_cents=int(row.prop_pool_net_cents),
+                matchup_net_cents=int(row.matchup_net_cents) + versus_delta,
+                prop_pool_net_cents=int(row.prop_pool_net_cents) + pool_delta,
                 championship_score_cents=int(score),
                 place=place,
                 tied=tied,
@@ -383,31 +410,22 @@ def freeze_fantasystakes_championship(
             f"funded field; refusing to freeze a different one. The pot is "
             f"untouched and this freeze is retryable after a governed correction.")
 
-    # Every regular-season Versus wager that can change realized net must be
-    # terminal before the score is frozen.
-    open_versus = (db.query(Bet)
-                   .join(BeefChallenge, Bet.beef_challenge_id == BeefChallenge.id)
-                   .filter(BeefChallenge.league_id == league_id,
-                           BeefChallenge.week < cutoff,
-                           Bet.status == "pending")
-                   .count())
-    if open_versus:
-        raise FantasyStakesChampionshipError(
-            REASON_REGULAR_VERSUS_OPEN,
-            f"{open_versus} regular-season FantasyStakes matchup wager(s) are "
-            f"still unsettled; Championship Score is realized net only.")
-
-    open_pools = (db.query(PoolInstance)
-                  .filter(PoolInstance.league_id == league_id,
-                          PoolInstance.season == league.season,
-                          PoolInstance.week < cutoff,
-                          PoolInstance.settled.is_(False))
-                  .count())
-    if open_pools:
-        raise FantasyStakesChampionshipError(
-            REASON_REGULAR_POOL_OPEN,
-            f"{open_pools} regular-season FantasyStakes prop-pool occurrence(s) "
-            f"are unsettled; Championship Score is realized net only.")
+    # ── FROZEN CLOSES ELIGIBILITY, NOT RESULTS ───────────────────────────────
+    #
+    # An earlier revision refused the freeze while ANY regular-season contest was
+    # unsettled. That made the boundary unreachable whenever a result was late,
+    # and because `championship_scoring_gate` auto-freezes at the first
+    # postseason action, one slow settlement deadlocked the whole postseason.
+    #
+    # The locked rule is that an eligible contest counts EVEN IF it settles after
+    # the boundary. So the freeze now closes what it is actually competent to
+    # close — the scoring window and the funded field — and an eligible result
+    # that lands later is admitted through `reports.championship_corrections` as
+    # an audited correction, never as new competition.
+    #
+    # PAYOUT IS WHAT WAITS FOR RESULTS. `settle_fantasystakes_championship`
+    # refuses while any eligible contest is unresolved, which is the FINAL gate;
+    # freezing early is safe precisely because the pot cannot move until then.
 
     # A late freeze must never snapshot a score after postseason competition has
     # already changed it. Pending Versus escrow is neutral in the certified live

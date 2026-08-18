@@ -35,7 +35,7 @@ jobs:
             economy/fantasystakes_championship_settlement.py \
             economy/rc2_season_activation.py \
             economy/championship_scoring_gate.py \
-            reports/championship_read_model.py \
+            reports/championship_read_model.py \n            reports/championship_corrections.py \n            economy/championship_result_correction.py \
             reports/grand_champion.py
       - name: Import RC2 application and package surfaces
         run: |
@@ -48,6 +48,8 @@ jobs:
         run: python test_rc2_championship_field.py
       - name: Versus product boundary certification
         run: python test_rc2_versus_product_boundary.py
+      - name: Authoritative correction and payout finality certification
+        run: python test_rc2_championship_correction.py
       - name: Championship economy certification
         run: python test_rc2_championship_economy.py
       - name: Grand Champion certification

@@ -49,7 +49,9 @@ RC2_SNAPSHOT_TABLES = ("fantasystakes_championship_freeze",
 RC2_ECONOMY_TABLES = ("fantasystakes_championship_config",
                       "fantasystakes_championship_allocation")
 RC2_DISTRIBUTION_TABLES = ("fantasystakes_championship_distribution_run",)
-RC2_TABLES = RC2_SNAPSHOT_TABLES + RC2_ECONOMY_TABLES + RC2_DISTRIBUTION_TABLES
+RC2_CORRECTION_TABLES = ("fantasystakes_championship_correction",)
+RC2_TABLES = (RC2_SNAPSHOT_TABLES + RC2_ECONOMY_TABLES + RC2_DISTRIBUTION_TABLES
+              + RC2_CORRECTION_TABLES)
 
 FAIL: list[str] = []
 
@@ -152,6 +154,9 @@ check("startup created the RC2 championship economy tables",
 check("startup created the RC2 championship distribution table",
       all(t in state_a["tables"] for t in RC2_DISTRIBUTION_TABLES),
       str([t for t in RC2_DISTRIBUTION_TABLES if t not in state_a["tables"]]))
+check("startup created the RC2 championship correction table",
+      all(t in state_a["tables"] for t in RC2_CORRECTION_TABLES),
+      str([t for t in RC2_CORRECTION_TABLES if t not in state_a["tables"]]))
 
 from migrations.manifest import ACTIVE  # noqa: E402
 
@@ -332,6 +337,9 @@ for variant_name, stamped in VARIANTS if rc1_available else ():
     check("RC2 championship distribution table exists after upgrade",
           all(t in after["tables"] for t in RC2_DISTRIBUTION_TABLES),
           str([t for t in RC2_DISTRIBUTION_TABLES if t not in after["tables"]]))
+    check("RC2 championship correction table exists after upgrade",
+          all(t in after["tables"] for t in RC2_CORRECTION_TABLES),
+          str([t for t in RC2_CORRECTION_TABLES if t not in after["tables"]]))
     check("the upgrade dropped no RC1 table",
           set(before["tables"]) <= set(after["tables"]),
           str(sorted(set(before["tables"]) - set(after["tables"]))))

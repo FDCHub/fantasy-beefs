@@ -44,6 +44,10 @@ from economy.rc2_season_activation import (  # noqa: E402
     activate_fantasystakes_championship_stage,
 )
 from ledger.ledger import create_ledger_table, trial_balance  # noqa: E402
+# Explicit RC2 model registration, as `api.main_rc2` performs it. The frozen
+# championship read now overlays authoritative post-freeze corrections, so the
+# correction table must exist before `create_all` below.
+from reports import championship_corrections as _fs_corrections  # noqa: E402,F401
 
 _failures: list[str] = []
 
