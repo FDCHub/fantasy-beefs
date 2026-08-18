@@ -1,9 +1,16 @@
 """RC2-CHAMP-ECON — FantasyStakes Championship contribution and fixed pot.
 
 This module is deliberately additive to the existing Yahoo Championship reserve.
-The existing `LeagueSeasonEconomyConfig.championship_contribution_cents` remains
+The existing ``LeagueSeasonEconomyConfig.championship_contribution_cents`` remains
 the Yahoo Championship contribution. RC2 adds a second independently editable
 FantasyStakes Championship contribution which defaults to the Yahoo amount.
+
+The FantasyStakes contribution is first advanced to the GM's championship
+reserve under the governed Season-Opening Allocation door. That positive,
+GM-keyed leg is what makes the contribution part of the GM's posted season
+advance. A second balanced posting immediately commits exactly that contribution
+from the reserve into the isolated FantasyStakes Championship Pot. Both postings
+and the allocation row live in one caller-owned transaction.
 
 The FantasyStakes Championship Pot is CLOSED after activation: its only normal
 funding source is the per-GM contribution frozen here. Top-offs, Weekly Minimum
@@ -19,7 +26,8 @@ from datetime import datetime, timezone
 from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, UniqueConstraint, Uuid
 from sqlalchemy.orm import Session, relationship
 
-from db.schema import Base, League, Team
+from db.schema import Base, League
+from economy.economy_events import reserve_account
 from economy.league_economy_config import (
     DEFAULT_CHAMPIONSHIP_CONTRIBUTION_CENTS,
     MAX_CHAMPIONSHIP_CONTRIBUTION_CENTS,
@@ -32,9 +40,8 @@ from economy.league_economy_config import (
 from ledger.ledger import SEASON_ALLOCATION_DOOR, post as ledger_post
 
 CENTS_PER_CREDIT = 100
-# This is part of the Season-Opening Allocation, so it uses the already-governed
-# season-allocation issuance exemption rather than inventing a second mint door.
 DOOR_FS_CHAMPIONSHIP_ALLOCATION = SEASON_ALLOCATION_DOOR
+DOOR_FS_CHAMPIONSHIP_COMMITMENT = "fantasystakes_championship_commitment"
 DOOR_FS_CHAMPIONSHIP_DISTRIBUTION = "fantasystakes_championship_distribution"
 
 REASON_FROZEN = "FS_CHAMPIONSHIP_CONFIG_FROZEN"
@@ -75,11 +82,13 @@ class FantasyStakesChampionshipAllocation(Base):
     season = Column(Integer, nullable=False)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
     contribution_cents = Column(Integer, nullable=False)
+    # The posting id is the GM-attributed Season-Opening Allocation posting.
+    # The paired commitment posting is in the same transaction and is
+    # independently identifiable by its dedicated door + reserve/pot accounts.
     posting_id = Column(Uuid, nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
     league = relationship("League")
-    team = relationship("Team")
 
 
 @dataclass(frozen=True)
@@ -225,7 +234,17 @@ def stage_allocation(db: Session, *, league_id: int, season: int,
                      team_ids: tuple[int, ...], contribution_cents: int,
                      now: datetime | None = None
                      ) -> FantasyStakesChampionshipAllocationResult:
-    """Stage the fixed pot inside the caller's activation transaction. No commit."""
+    """Stage the fixed pot inside the caller's activation transaction. No commit.
+
+    For each GM the transaction has two balanced postings:
+
+      1. season_issuance -> reserve:{team} under ``season_allocation``.
+         This is the posted, GM-attributed additional season advance.
+      2. reserve:{team} -> fantasystakes_championship:{league}:{season}
+         under the RC2-only commitment door. This commits the contribution to
+         the isolated pot while leaving the existing Yahoo reserve balance
+         untouched after the pair completes.
+    """
     if not team_ids:
         raise ValueError(f"[{REASON_NO_TEAMS}] league {league_id} has no teams")
     contribution = _validate_contribution(contribution_cents)
@@ -246,13 +265,25 @@ def stage_allocation(db: Session, *, league_id: int, season: int,
     now = now or datetime.now(timezone.utc)
     posting_ids: list[uuid.UUID] = []
     for team_id in team_ids:
+        # Step 1: attribute the additional Season-Opening Allocation to this GM.
         posting_id = ledger_post(
             [(issuance_account(league_id, season), -contribution),
-             (pot_account(league_id, season), contribution)],
+             (reserve_account(team_id), contribution)],
             door=DOOR_FS_CHAMPIONSHIP_ALLOCATION,
             session=db,
         )
         posting_ids.append(posting_id)
+
+        # Step 2: commit exactly the newly advanced amount into the isolated FS
+        # pot. The prior posting has been flushed into this same transaction, so
+        # the reserve has sufficient funds; rollback removes both postings.
+        ledger_post(
+            [(reserve_account(team_id), -contribution),
+             (pot_account(league_id, season), contribution)],
+            door=DOOR_FS_CHAMPIONSHIP_COMMITMENT,
+            session=db,
+        )
+
         db.add(FantasyStakesChampionshipAllocation(
             league_id=league_id,
             season=season,
