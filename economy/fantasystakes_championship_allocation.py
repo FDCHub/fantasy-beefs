@@ -82,9 +82,6 @@ class FantasyStakesChampionshipAllocation(Base):
     season = Column(Integer, nullable=False)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
     contribution_cents = Column(Integer, nullable=False)
-    # The posting id is the GM-attributed Season-Opening Allocation posting.
-    # The paired commitment posting is in the same transaction and is
-    # independently identifiable by its dedicated door + reserve/pot accounts.
     posting_id = Column(Uuid, nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
@@ -265,7 +262,6 @@ def stage_allocation(db: Session, *, league_id: int, season: int,
     now = now or datetime.now(timezone.utc)
     posting_ids: list[uuid.UUID] = []
     for team_id in team_ids:
-        # Step 1: attribute the additional Season-Opening Allocation to this GM.
         posting_id = ledger_post(
             [(issuance_account(league_id, season), -contribution),
              (reserve_account(team_id), contribution)],
@@ -274,9 +270,11 @@ def stage_allocation(db: Session, *, league_id: int, season: int,
         )
         posting_ids.append(posting_id)
 
-        # Step 2: commit exactly the newly advanced amount into the isolated FS
-        # pot. The prior posting has been flushed into this same transaction, so
-        # the reserve has sufficient funds; rollback removes both postings.
+        # The funded-balance guard reads posted state. Flush this first posting
+        # into the still-uncommitted transaction so the commitment debit sees
+        # the newly advanced reserve. A later error rolls both postings back.
+        db.flush()
+
         ledger_post(
             [(reserve_account(team_id), -contribution),
              (pot_account(league_id, season), contribution)],
