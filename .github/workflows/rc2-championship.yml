@@ -35,5 +35,7 @@ jobs:
         run: python test_rc2_championship.py
       - name: Championship economy certification
         run: python test_rc2_championship_economy.py
+      - name: Grand Champion certification
+        run: python test_rc2_grand_champion.py
       - name: Migration manifest status
         run: python -m migrations.run --status
