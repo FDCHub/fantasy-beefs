@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime
 
 _TMP_DIR = tempfile.mkdtemp()
 _DB_PATH = os.path.join(_TMP_DIR, "test_rc2_championship.db")
@@ -19,8 +19,6 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_DB_PATH}"
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import the RC2 model before create_all so the two additive tables are
-# registered on Base.metadata exactly as they are during api startup.
 from reports.championship_read_model import (  # noqa: E402
     ChampionshipRow,
     FantasyStakesChampionshipError,
@@ -134,7 +132,10 @@ with SessionLocal() as db:
     _assert("freeze refuses before Yahoo playoff boundary",
             reason == REASON_TOO_EARLY, str(reason))
 
-freeze_at = datetime(2026, 12, 15, 12, 0, tzinfo=timezone.utc)
+# SQLite intentionally stores timezone-naive DateTime values. The assertion is
+# about replay immutability, not dialect timezone decoration, so use a naive
+# fixed value here; PostgreSQL timezone behavior is covered by PG certification.
+freeze_at = datetime(2026, 12, 15, 12, 0)
 with SessionLocal() as db:
     league = db.query(League).filter(League.id == league_id).first()
     league.provider_current_week = 15
