@@ -1,4 +1,6 @@
-"""Economy package model registration for additive RC2 tables."""
+"""Economy package.
 
-from economy import fantasystakes_championship_allocation as _fs_championship_allocation  # noqa: F401,E402
-from economy import fantasystakes_championship_settlement as _fs_championship_settlement  # noqa: F401,E402
+RC2 model registration is explicit in ``api.main_rc2``. Package import must stay
+side-effect free so report modules can depend on economy helpers without creating
+an economy <-> reports initialization cycle.
+"""
