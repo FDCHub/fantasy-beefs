@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+import config
 from db.schema import League, SeasonAllocation, Team
 from economy.fantasystakes_championship_allocation import (
     FantasyStakesChampionshipAllocationResult,
@@ -53,7 +54,7 @@ def activate_fantasystakes_championship_stage(
                   .first())
         if league is None:
             raise RC2SeasonActivationError(f"league {league_id} not found")
-        season = int(league.season)
+        season = int(config.ALLOCATION_SEASON)
         teams = (db.query(Team).filter(Team.league_id == league_id)
                  .order_by(Team.id).all())
         team_ids = tuple(t.id for t in teams)
