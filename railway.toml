@@ -14,7 +14,22 @@ builder = "NIXPACKS"
 # pending — the bootstrap stamps the manifest — so this is a no-op on a new
 # deployment and the real upgrade path on an existing one.
 preDeployCommand = "python -m migrations.run"
-startCommand = "uvicorn api.main:app --host 0.0.0.0 --port $PORT"
+# RC2 — THE ENTRYPOINT IS `api.main_rc2`, AND IT IS LOAD-BEARING FOR THE SCHEMA.
+#
+# `api.main_rc2` registers the additive RC2 championship models BEFORE importing
+# the certified RC1 application, so the fresh-database bootstrap's `create_all`
+# builds them and `stamp_all` records a manifest that is true.
+#
+# Starting `api.main` instead is not merely "RC2 routes missing". The package
+# `__init__` modules are deliberately side-effect free (they have to be, or
+# reports/economy form an import cycle), so `api.main` alone registers no RC2
+# model: `create_all` would omit all six championship tables while `stamp_all`
+# still stamped 0003-0006 as applied. `migrations.run` would then report nothing
+# pending forever and `/ready` would answer healthy against a schema that cannot
+# run a championship. Measured, not theorised — see the RC2 tag-readiness review.
+#
+# This MUST stay in step with `Procfile`; on this platform `startCommand` wins.
+startCommand = "uvicorn api.main_rc2:app --host 0.0.0.0 --port $PORT"
 # LIVENESS, not readiness. `/health` answers "is this process alive"; `/ready`
 # answers "should it take traffic" and is the gate an operator checks after a
 # deploy (see docs/PRODUCTION_RUNBOOK.md §6). They are deliberately distinct.
