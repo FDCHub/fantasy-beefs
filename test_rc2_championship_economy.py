@@ -16,6 +16,7 @@ _TMP = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(_TMP, 'rc2-econ.db')}"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from sqlalchemy import text  # noqa: E402
 from db.schema import (  # noqa: E402
     Base, League, LeagueSeasonEconomyConfig, SeasonAllocation, SessionLocal,
     Team, Wallet, engine,
@@ -80,13 +81,6 @@ with SessionLocal() as db:
 
     # Certified RC1 base shape: $140 Weekly Play Reserve + $80 Yahoo reserve.
     for tid in team_ids:
-        posting_id = ledger_post(
-            [(f"season_issuance:{league_id}:{SEASON}", -22000),
-             (f"min_reserve:{tid}", 14000),
-             (f"reserve:{tid}", 8000)],
-            door=SEASON_ALLOCATION_DOOR,
-            session=db,
-        )
         db.add(SeasonAllocation(
             league_id=league_id,
             team_id=tid,
@@ -94,8 +88,14 @@ with SessionLocal() as db:
             buyin_cents=22000,
             min_reserve_cents=14000,
             reserve_cents=8000,
-            ledger_posting_id=posting_id,
         ))
+        ledger_post(
+            [(f"season_issuance:{league_id}:{SEASON}", -22000),
+             (f"min_reserve:{tid}", 14000),
+             (f"reserve:{tid}", 8000)],
+            door=SEASON_ALLOCATION_DOOR,
+            session=db,
+        )
     db.commit()
 
 print("\nRC2-E1 · default and independent commissioner edit")
@@ -179,7 +179,7 @@ with SessionLocal() as db:
           len(alloc_rows) == len(team_ids)
           and {r.season for r in alloc_rows} == {SEASON})
 
-    commitment_sum = db.execute(__import__('sqlalchemy').text(
+    commitment_sum = db.execute(text(
         "SELECT COALESCE(SUM(amount_cents),0) FROM ledger_entries "
         "WHERE door=:door AND account=:pot"),
         {"door": DOOR_FS_CHAMPIONSHIP_COMMITMENT,
