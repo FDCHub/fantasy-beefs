@@ -7386,6 +7386,23 @@ class ProviderCredentialOut(BaseModel):
     assigned_at:   Optional[str]
 
 
+class ProviderConnectionOut(BaseModel):
+    """One account's own Yahoo connection state. NEVER a token.
+
+    Same rule as `ProviderCredentialOut`: no field for bearer material, no field
+    for a ciphertext, and no field whose value narrows one. `detail` is product
+    copy written for the person reading it, never a driver or provider message.
+    """
+
+    provider:  str
+    connected: bool
+    status:    Optional[str]
+    #: Whether a grant row existed at all, so a surface can tell "never
+    #: connected" from "connected and then disconnected".
+    had_grant: bool
+    detail:    Optional[str] = None
+
+
 @app.post("/league/{league_id}/provider/credential",
           response_model=ProviderCredentialOut)
 def connect_league_provider_credential(
@@ -7505,6 +7522,89 @@ def read_league_provider_credential(
         is_you=result.owner_user_id == comm.id,
         connected=result.connected, status=result.status,
         reason_code=result.reason_code, assigned_at=result.assigned_at)
+
+
+@app.post("/provider/disconnect", response_model=ProviderConnectionOut)
+def disconnect_own_provider(
+    db: Session = Depends(get_db),
+    gm: User    = Depends(get_current_gm),
+):
+    """Stop holding this user's Yahoo authorization.
+
+    ── C1 · WHY THIS ROUTE HAD TO EXIST ─────────────────────────────────────
+
+    `auth.provider_grant.disconnect` was implemented, certified and completely
+    unreachable — no route and no control called it. A product that asks a
+    person for access to their Yahoo account and then offers no way to withdraw
+    it is not one anybody should ship, and the gap was in the surface rather
+    than in the mechanism.
+
+    SELF-SERVICE, AND ONLY SELF-SERVICE. A user disconnects THEIR OWN grant. It
+    takes no user id and reads the caller's identity from the session, so no
+    caller can revoke somebody else's authorization — not a commissioner, not
+    an operator, not by guessing an id. A commissioner who wants a league to
+    stop reading reassigns the credential owner; that is a different act with a
+    different route and a different consequence.
+
+    IT DESTROYS BEARER MATERIAL AND NOTHING ELSE. `disconnect` clears the sealed
+    envelopes and marks the grant disconnected. It reaches no wager, no settled
+    result, no Ledger row and no league membership — disconnecting a data source
+    is not forfeiting a season. That guarantee is the grant module's and is
+    asserted by the C1 suite against real tables.
+
+    LOCAL, AND SAID SO. Yahoo documents no token-revocation endpoint; the
+    documented path is the user revoking access in their own Yahoo account
+    settings. This makes the grant unusable HERE and reports exactly that,
+    rather than calling an undocumented endpoint to look thorough.
+
+    IDEMPOTENT. Disconnecting an absent or already-disconnected grant is a
+    success with `connected: false`, not a 404 — the caller asked for a state
+    and the state holds.
+    """
+    from auth.provider_grant import PROVIDER_YAHOO, disconnect, snapshot
+
+    before = snapshot(db, user_id=gm.id, provider=PROVIDER_YAHOO)
+    if not before.exists:
+        return ProviderConnectionOut(
+            provider=PROVIDER_YAHOO, connected=False, status="disconnected",
+            had_grant=False,
+            detail="No Yahoo authorization is held for this account.")
+
+    result = disconnect(db, user_id=gm.id, provider=PROVIDER_YAHOO)
+    return ProviderConnectionOut(
+        provider=PROVIDER_YAHOO,
+        connected=False,
+        status=result.status or "disconnected",
+        had_grant=True,
+        # THE HONEST SENTENCE. It says what was done and what was not, because a
+        # user who believes Yahoo has revoked access when it has not is worse
+        # off than one who was told plainly where to finish the job.
+        detail="FantasyStakes no longer holds your Yahoo authorization. "
+               "To revoke it at Yahoo as well, remove FantasyStakes from your "
+               "Yahoo account's connected apps.")
+
+
+@app.get("/provider/connection", response_model=ProviderConnectionOut)
+def read_own_provider_connection(
+    db: Session = Depends(get_db),
+    gm: User    = Depends(get_current_gm),
+):
+    """Whether this account currently has a Yahoo authorization on file.
+
+    THE READ THAT MAKES THE DISCONNECT CONTROL HONEST. A control that offers to
+    disconnect something the user does not have is noise, so the surface asks
+    first. Carries no bearer material and no ciphertext — status only, the same
+    rule the commissioner credential view follows.
+    """
+    from auth.provider_grant import PROVIDER_YAHOO, snapshot
+
+    state = snapshot(db, user_id=gm.id, provider=PROVIDER_YAHOO)
+    return ProviderConnectionOut(
+        provider=PROVIDER_YAHOO,
+        connected=bool(state.exists and state.status == "active"),
+        status=state.status if state.exists else None,
+        had_grant=bool(state.exists),
+        detail=None)
 
 
 @app.get("/league/{league_id}/provider/status", response_model=ProviderStatusOut)

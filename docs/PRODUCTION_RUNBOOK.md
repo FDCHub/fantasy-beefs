@@ -250,6 +250,52 @@ this exists for includes "the database is suspect".
 
 ---
 
+## 11a. Yahoo connection and data retention
+
+**The retention question is an OPEN CONTRACTUAL GATE.** The Yahoo agreement's
+data storage and retention terms have not been clarified. Nothing in this
+repository asserts a right to retain Yahoo data, no retention period is
+implemented, and this section does not claim compliance.
+
+What the software actually persists is inventoried:
+
+```bash
+python -m ops.yahoo_retention            # the full inventory
+python -m ops.yahoo_retention --gate     # the open gate, alone
+python -m ops.yahoo_retention --json     # machine-readable
+```
+
+The inventory is kept honest by `test_c1_yahoo_retention.py`, which fails when a
+provider-origin column exists in `db/schema.py` and is not inventoried.
+
+**Six persisted fields carry an economic dependency** — settled wagers, skunk
+charges, pool settlements and Championship Scores were derived from them, and
+they cannot be recomputed if the source is deleted. Those are the fields a
+retention ruling actually governs. See the inventory's REQUIRES RULING list.
+
+**Scopes are `openid`, `email`, `fspt-r`** — read-only. FantasyStakes writes
+nothing to Yahoo.
+
+**A user may disconnect their own authorization** at any time:
+
+| | |
+|---|---|
+| `GET /provider/connection` | whether this account holds a grant |
+| `POST /provider/disconnect` | clear it — self-service only, no user id parameter |
+
+Disconnecting destroys the sealed OAuth material and marks the grant
+disconnected. It touches **no** wager, settled result, Ledger row, wallet or
+league membership. FantasyStakes cannot revoke at Yahoo — Yahoo documents no
+revocation endpoint — so the response tells the user to remove the app from
+their Yahoo account's connected apps if they want that too.
+
+**Attribution** — "Fantasy data provided by Yahoo Fantasy" is rendered on every
+surface displaying Yahoo Fantasy Information. It claims no sponsorship,
+endorsement, partnership or affiliation, and `test_c1_yahoo_retention.py`
+asserts the product makes no such claim anywhere.
+
+---
+
 ## 12. Yahoo outage
 
 Do nothing hasty. The architecture already fails closed:
