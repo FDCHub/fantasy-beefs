@@ -45,6 +45,8 @@ import { previewSheet } from './preview.js';
 import { matchupMarketCells, wagerCard } from './wagercard.js';
 import { onActivate } from './interaction.js';
 import { skunkOfTheWeek, skunkWeek } from './skunk-model.js';
+import { seasonResultsSection } from './season-results.js';
+import { championshipResults } from './standings-model.js';
 
 /** Locked Rev 4.2 subtitle. */
 // WP3D — `Official` IS GONE, AND THE PROVENANCE IS NOT.
@@ -474,6 +476,15 @@ function poolsModule() {
 /**
  * @returns {string}
  */
+/** Team display name from the frozen championship rows already served. */
+function weekTeamName(teamId) {
+  const results = championshipResults();
+  const rows = (results && results.fantasystakes_podium) || [];
+  const hit = rows.find((r) => Number(r.team_id) === Number(teamId));
+  return hit ? (hit.team_name || `Team ${teamId}`) : `Team ${teamId}`;
+}
+
+
 export function buildWeekPanel() {
   const composer = new PanelComposer('week');
 
@@ -488,6 +499,12 @@ export function buildWeekPanel() {
   // dashboard module — it has no rail, no carousel and nothing to tap — so it
   // leads the scroll as a callout above the three, where the week's headline
   // belongs, and the locked module set is untouched.
+  // SEASON RESULTS LEAD WRAP UP ONCE THE SEASON IS DECIDED, and only then. The
+  // block returns '' for every lifecycle before FINAL, so the weekly modules
+  // below are untouched during the season — the locked three-module set is not
+  // extended, it is preceded by the season's own headline once there is one.
+  composer.add(seasonResultsSection(championshipResults(), weekTeamName));
+
   composer.add(
     '<div class="fs-wkscroll">' +
     skunkCallout() +

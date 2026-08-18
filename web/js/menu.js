@@ -97,7 +97,7 @@ export function menuEntries() {
     entries.push({
       id: 'economy',
       label: 'Economy configuration',
-      help: 'Weekly Bet Minimum, Championship Pot Contribution and Skunk Fee.',
+      help: 'Weekly Bet Minimum, Yahoo Championship Contribution and Skunk Fee.',
       kind: 'sheet',
     });
   }

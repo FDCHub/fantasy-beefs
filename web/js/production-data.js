@@ -38,7 +38,9 @@ export async function loadProductionData({ leagueId, week }) {
   );
 
   const [ledger, settings, slate, positions, reconciliation, action,
-         weekMatchups, lifecycle, skunk, standings, championship] = await Promise.all([
+         weekMatchups, lifecycle, skunk, standings, championship,
+         championshipResults, championshipCorrections,
+         championshipConfig] = await Promise.all([
     optional(apiFetch(`/league/${leagueId}/ledger/me`)),
     optional(apiFetch(`/league/${leagueId}/settings`)),
     resolvedWeek === null
@@ -62,13 +64,23 @@ export async function loadProductionData({ leagueId, week }) {
     // season this is the live chase; after the cutoff it is the immutable
     // regular-season snapshot even while ordinary FantasyStakes play continues.
     optional(apiFetch(`/league/${leagueId}/championship`)),
+    // RC2 season results: lifecycle, frozen podium, recorded awards and the
+    // Yahoo podium, all server-derived. The browser recomputes none of it.
+    optional(apiFetch(`/league/${leagueId}/championship/results`)),
+    // Append-only correction audit. Member-scoped, so the whole league can read
+    // why a championship figure changed.
+    optional(apiFetch(`/league/${leagueId}/championship/corrections`)),
+    // The governed championship contributions. Commissioner-editable until
+    // activation freezes them; the surface reads this rather than assuming a
+    // default, so a league that configured its own amount sees its own amount.
+    optional(apiFetch(`/league/${leagueId}/championship/config`)),
   ]);
 
   // Keep one standings binding seam in shell.js. RC2 championship state rides
   // beside the existing three server-ranked standings arrays; no ranking or
   // money is recomputed here.
   const standingsWithChampionship = standings
-    ? Object.freeze({ ...standings, championship })
+    ? Object.freeze({ ...standings, championship, championshipResults })
     : null;
 
   snapshot = Object.freeze({
@@ -86,6 +98,9 @@ export async function loadProductionData({ leagueId, week }) {
     skunk,
     standings: standingsWithChampionship,
     championship,
+    championshipResults,
+    championshipCorrections,
+    championshipConfig,
   });
   return snapshot;
 }

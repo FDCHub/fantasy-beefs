@@ -90,6 +90,7 @@ import {
 } from './action-model.js';
 import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
+import { bindChampionshipState } from './commissioner.js';
 import { bindRules, buildRulesPanel } from './rules.js';
 import {
   beginSession, composerSheet, endSession, setIssueHook, setMarketHook,
@@ -127,7 +128,8 @@ import {
   bindCommissioner, markCommissionerUnavailable, unbindCommissioner,
 } from './commissioner-model.js';
 import {
-  bindSettings, markSettingsUnavailable, unbindSettings,
+  bindChampionshipAllocation, bindSettings, markSettingsUnavailable,
+  unbindSettings,
 } from './settings-model.js';
 import {
   bindSlate, markSlateUnavailable, setSlateEntryCents, unbindSlate,
@@ -313,7 +315,17 @@ function redrawRulesPanel() {
   const panel = document.getElementById('panel-rules');
   if (!panel) return;
   panel.innerHTML = buildPanelContent('rules');
-  bindRules(panel, { openSheet });
+  bindRules(panel, {
+    openSheet,
+    closeSheet,
+    leagueId: currentLeagueId(),
+    // A successful championship mutation re-reads the authoritative state and
+    // redraws, rather than patching what the browser believes.
+    refreshChampionship: async () => {
+      await bindAuthoritativeData();
+      redrawRulesPanel();
+    },
+  });
 }
 
 /* ── Pop-out / bottom sheet ─────────────────────────────────────────────── */
@@ -710,6 +722,17 @@ async function bindAuthoritativeData() {
 
   if (data && data.positions) bindCommissioner(data.positions, data.reconciliation);
   else markCommissionerUnavailable();
+
+  // RC2 — the championship lifecycle the commissioner area draws. All three are
+  // ordinary reads from the one production load; nothing here mutates.
+  bindChampionshipState(
+    data ? data.championshipResults : null,
+    data ? data.championshipConfig : null,
+    data ? data.championshipCorrections : null);
+  // The full three-part Season-Opening Allocation the League Settings row
+  // reports. Server-derived; the browser performs none of the arithmetic.
+  bindChampionshipAllocation(
+    data && data.championshipResults ? data.championshipResults.allocation : null);
 
   if (data && data.settings) bindSettings(data.settings);
   else markSettingsUnavailable();

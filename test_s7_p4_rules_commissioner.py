@@ -211,17 +211,31 @@ _assert("the certified default stop is the one the settings show",
         or re.search(r"weekly_min_cents=1000,\s*min_reserve_cents=14000,\s*"
                      r"buyin_cents=22000,\s*reserve_cents=8000", ECONOMY_CONFIG_PY) is not None)
 _assert("DEFAULT_STOP is that row", "DEFAULT_STOP = ECONOMY_STOPS[1]" in ECONOMY_CONFIG_PY)
-_assert("the UI carries the same four figures",
+# RC2 — THE ALLOCATION IS THREE PARTS, NOT TWO. The backend's legacy stop above
+# is the BASE stage (Weekly Play Reserve + Yahoo Championship Contribution);
+# RC2 advances a second, independent FantasyStakes Championship Contribution in
+# its own activation stage, so a GM's total season advance is 300 Credits. That
+# is what `rc2_season_activation` reports and what Current Settle charges, and
+# it is therefore what the rules copy must state.
+_assert("the UI carries all five figures",
         stop.get("weeklyMinCents") == 1000 and stop.get("minReserveCents") == 14000
-        and stop.get("reserveCents") == 8000 and stop.get("buyinCents") == 22000,
+        and stop.get("reserveCents") == 8000
+        and stop.get("fantasystakesReserveCents") == 8000
+        and stop.get("buyinCents") == 22000
+        and stop.get("seasonOpeningTotalCents") == 30000,
         str(stop))
-_assert("season-opening allocation is 220 Credits", stop.get("buyinCents") == 22000)
+_assert("season-opening allocation is 300 Credits",
+        stop.get("seasonOpeningTotalCents") == 30000)
 _assert("regular-season minimum reserve is 140 Credits", stop.get("minReserveCents") == 14000)
-_assert("championship reserve is 80 Credits", stop.get("reserveCents") == 8000)
-_assert("the three certified invariants hold on the UI's copy",
-        stop.get("minReserveCents", 0) + stop.get("reserveCents", 0) == stop.get("buyinCents")
+_assert("Yahoo championship contribution is 80 Credits", stop.get("reserveCents") == 8000)
+_assert("FantasyStakes championship contribution is 80 Credits",
+        stop.get("fantasystakesReserveCents") == 8000)
+_assert("the certified invariants hold on the UI's copy",
+        stop.get("minReserveCents", 0) + stop.get("reserveCents", 0)
+        + stop.get("fantasystakesReserveCents", 0)
+        == stop.get("seasonOpeningTotalCents")
         and stop.get("minReserveCents") == stop.get("weeklyMinCents", 0) * 14
-        and stop.get("reserveCents", 0) * 11 == stop.get("buyinCents", 0) * 4)
+        and stop.get("reserveCents") == stop.get("fantasystakesReserveCents"))
 
 skunk = APP.get("skunk", {})
 # WP3C — the FIXTURE fee, and no season maximum in the UI at all.
@@ -323,9 +337,12 @@ CURRENT_SETTLE_PY = _read_root("economy", "current_settle.py")
 WEEKLY_MIN_PY = _read_root("economy", "weekly_minimum.py")
 
 groups = APP.get("groups", [])
-LOCKED_ORDER = ["The Money", "Weekly Grind", "Big Money", "The Bets", "The Fine Print"]
+# RC2 adds one group: the two championships, their scoring, the 60/30/10 payout,
+# Grand Champion and authoritative corrections.
+LOCKED_ORDER = ["The Money", "Weekly Grind", "The Championships", "Big Money",
+                "The Bets", "The Fine Print"]
 
-_assert("exactly five top-level rule groups", len(groups) == 5, str(len(groups)))
+_assert("exactly six top-level rule groups", len(groups) == 6, str(len(groups)))
 _assert("in the locked order",
         [g["title"] for g in groups] == LOCKED_ORDER,
         " / ".join(g["title"] for g in groups))

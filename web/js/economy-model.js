@@ -9,7 +9,9 @@
  * `economy/league_economy_config.py` owns the arithmetic:
  *
  *     Weekly Minimum Reserve   = Weekly Bet Minimum × Regular-Season Weeks
- *     Championship Reserve     = Championship Pot Contribution
+ *     Yahoo Championship Reserve = Yahoo Championship Contribution
+ *     (RC2 adds a second, independent FantasyStakes Championship Contribution;
+ *      the full three-part total is served by /championship/results.allocation)
  *     Season-Opening Allocation = the two above, per player
  *     League allocation total  = Season-Opening Allocation × active teams
  *
@@ -24,6 +26,8 @@
  * and a league in that state cannot activate. Substituting a plausible number
  * would show a commissioner an allocation the server would not issue.
  * ========================================================================== */
+
+import { championshipAllocation } from './settings-model.js';
 
 export const ECONOMY_MODE_DEMO = 'demo';
 export const ECONOMY_MODE_AUTHORITATIVE = 'authoritative';
@@ -51,8 +55,8 @@ export const ECONOMY_INPUTS = Object.freeze([
   Object.freeze({
     key: 'championshipContributionCents',
     field: 'championship_contribution_cents',
-    label: 'Championship Pot Contribution',
-    help: 'Each GM’s share of the end-of-season pot.',
+    label: 'Yahoo Championship Contribution',
+    help: 'Each GM’s share of the Yahoo Championship pot.',
     minCents: 100,
     maxCents: 100000,
     defaultCents: 8000,
@@ -87,7 +91,15 @@ export const ECONOMY_DERIVED = Object.freeze([
   }),
   Object.freeze({
     field: 'championship_reserve_per_player_cents',
-    label: 'Championship Reserve',
+    label: 'Yahoo Championship Reserve',
+    cents: true,
+  }),
+  // RC2 — the second, independent championship contribution. Read-only here:
+  // it is configured through the championship surface and served by
+  // `/championship/config`, so this panel reports it and never derives it.
+  Object.freeze({
+    field: 'fantasystakes_championship_contribution_cents',
+    label: 'FantasyStakes Championship Contribution',
     cents: true,
   }),
   Object.freeze({
@@ -247,12 +259,44 @@ export function leagueAllocation() {
 }
 
 /**
+ * The two RC2 rows the `/settings` economy payload cannot carry.
+ *
+ * WHY THEY COME FROM SOMEWHERE ELSE. `/settings` serves the CERTIFIED base
+ * economy: its `season_opening_allocation_per_player_cents` is Weekly Play
+ * Reserve + Yahoo Championship Contribution, and it has no field at all for the
+ * FantasyStakes Championship Contribution, which RC2 configures and freezes in
+ * its own activation stage. Redefining the served base field to mean the new
+ * total would change a certified value to fix a presentation problem. So these
+ * two rows read the authoritative championship allocation — the same single
+ * server read `/championship/results` returns and League Settings already binds
+ * — and every other derived row is left entirely alone.
+ *
+ * NOTHING IS COMPUTED HERE. Both values are served figures; the total's
+ * arithmetic happens once, on the server, in `_season_opening_allocation`.
+ */
+const ALLOCATION_SOURCED = Object.freeze({
+  fantasystakes_championship_contribution_cents:
+    'fantasystakes_championship_contribution_cents',
+  season_opening_allocation_per_player_cents:
+    'season_opening_allocation_cents',
+});
+
+/**
  * One derived row's served value, or null when the server did not derive it.
  *
  * @param {{field: string}} spec
  * @returns {number|null}
  */
 export function derivedValue(spec) {
+  const sourced = ALLOCATION_SOURCED[spec.field];
+  if (sourced) {
+    const allocation = championshipAllocation();
+    const served = allocation ? allocation[sourced] : null;
+    // Falls through to the certified base figure rather than drawing a dash:
+    // before the championship read lands, the base allocation is still the
+    // true answer for the stage the league is actually in.
+    if (typeof served === 'number') return served;
+  }
   if (MODE !== ECONOMY_MODE_AUTHORITATIVE || !SERVED) return null;
   const value = SERVED[spec.field];
   return typeof value === 'number' ? value : null;

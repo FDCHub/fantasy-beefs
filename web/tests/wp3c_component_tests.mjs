@@ -399,16 +399,37 @@ for (const g of RULE_GROUPS) rulesText += ruleSheet(g).body;
 for (const row of settingsRows()) rulesText += settingSheet(row).body;
 rulesText = rulesText.replace(/<[^>]*>/g, ' ');
 
-for (const stale of ['BAB', 'BAB-504', 'Economy Stop', 'fourteen', '14 weeks',
+for (const stale of ['BAB', 'BAB-504', 'Economy Stop', 'fourteen',
   '14-week', 'capped at', '$140 max', 'Buy-In', 'buy-in',
-  'five certified stops']) {
+  'five certified stops', 'Championship Pot Contribution']) {
   check(`no stale term: ${stale}`, !rulesText.includes(stale));
 }
+
+// A3.2 — "14 weeks" was banned outright while the rules ASSERTED a fixed
+// fourteen-week season. RC2 derives the Weekly Play Reserve from each league's
+// own Yahoo schedule, and the rules now show a worked example so a GM can see
+// how the three parts combine. A worked example needs numbers. So the ban
+// becomes what it always meant: a week count may appear only inside a passage
+// that says it is one league's arithmetic and that another league differs.
+const weekCountSentences = (rulesText.match(/[^.]*\b\d{1,2} weeks\b[^.]*\./g) || []);
+check('a week count is only ever shown as a labelled example',
+  weekCountSentences.every((s) => /works out as/.test(s)),
+  JSON.stringify(weekCountSentences));
+check('and the example says plainly that another league differs',
+  weekCountSentences.length === 0
+  || /different weekly minimum or a different schedule gets a different/
+    .test(rulesText));
+check('the rules never state a week count as universal',
+  !/every league plays \d{1,2} weeks|all leagues play \d{1,2} weeks|the \d{1,2}-week season/i
+    .test(rulesText));
 check('no internal file citation', !/\.py\b|web\/js\//.test(rulesText));
 
 for (const required of [
   'Season-Opening Allocation', 'Weekly Bet Minimum',
-  'Championship Pot Contribution', 'Skunk Fee',
+  // A3.2 — RC2 has TWO independently configured contributions, so the rules
+  // must name both rather than the retired single "Championship Pot".
+  'Weekly Play Reserve', 'Yahoo Championship Contribution',
+  'FantasyStakes Championship Contribution', 'Skunk Fee',
   'largest margin', 'Tied largest losers split one fee',
   'Points For', 'no enforced season maximum',
   'no Skunk in the postseason', 'no Weekly Minimum in the postseason',

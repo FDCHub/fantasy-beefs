@@ -126,3 +126,101 @@ if _failures:
     sys.exit(1)
 
 print("PASS: RC2 Grand Champion certification")
+
+
+# ── RC2 A3.2 · the locked FantasyStakes Championship Score tiebreaker ────────
+#
+# Step 1 scores the component finishes 3/2/1 with exact fractional pooling for a
+# tied component. Step 2 breaks a tie on combined points using the authoritative
+# FantasyStakes CHAMPIONSHIP SCORE — the frozen realized-net figure, never a
+# wallet balance. Step 3 keeps a surviving tie as a real co-championship.
+#
+# The tiebreak is a SECOND STEP, not a second score: it is applied only to GMs
+# already level on points, and it must never reorder anyone else.
+
+print("\nGC-TIE · the FantasyStakes Championship Score tiebreaker")
+
+# The owner's worked example.
+#   A: Yahoo 2nd (2) + FantasyStakes 1st (3) = 5, Championship Score +84
+#   B: Yahoo 1st (3) + FantasyStakes 2nd (2) = 5, Championship Score +63
+_tie = calculate_grand_champion(
+    yahoo_finishes=(ChampionshipFinish(2, 1), ChampionshipFinish(1, 2),
+                    ChampionshipFinish(3, 3)),
+    fantasystakes_finishes=(ChampionshipFinish(1, 1), ChampionshipFinish(2, 2),
+                            ChampionshipFinish(3, 3)),
+    fantasystakes_scores={1: 8_400, 2: 6_300, 3: 100})
+_assert("both candidates really are level on Grand Champion points",
+        {r.team_id: str(r.combined_points) for r in _tie.rows if r.team_id in (1, 2)}
+        == {1: "5", 2: "5"},
+        str({r.team_id: str(r.combined_points) for r in _tie.rows}))
+_assert("the higher FantasyStakes Championship Score wins outright",
+        _tie.champion_team_ids == (1,) and not _tie.co_champions,
+        str(_tie.champion_team_ids))
+_assert("and the result records that the tiebreak decided it",
+        _tie.tiebreak_used is True)
+
+# Step 3 — level on points AND level on score is a real co-championship.
+_still = calculate_grand_champion(
+    yahoo_finishes=(ChampionshipFinish(2, 1), ChampionshipFinish(1, 2),
+                    ChampionshipFinish(3, 3)),
+    fantasystakes_finishes=(ChampionshipFinish(1, 1), ChampionshipFinish(2, 2),
+                            ChampionshipFinish(3, 3)),
+    fantasystakes_scores={1: 8_400, 2: 8_400, 3: 100})
+_assert("equal points and equal Championship Score are co-Grand Champions",
+        _still.champion_team_ids == (1, 2) and _still.co_champions,
+        str(_still.champion_team_ids))
+_assert("a tie the tiebreak did not resolve is not reported as resolved",
+        _still.tiebreak_used is False)
+
+# The tiebreak must be irrelevant when nobody is level.
+_clear = calculate_grand_champion(
+    yahoo_finishes=(ChampionshipFinish(1, 1), ChampionshipFinish(2, 2),
+                    ChampionshipFinish(3, 3)),
+    fantasystakes_finishes=(ChampionshipFinish(1, 1), ChampionshipFinish(2, 2),
+                            ChampionshipFinish(3, 3)),
+    fantasystakes_scores={1: 0, 2: 999_999, 3: 500_000})
+_assert("a clear points winner wins despite the lowest Championship Score",
+        _clear.champion_team_ids == (1,), str(_clear.champion_team_ids))
+_assert("no tiebreak is reported when none was needed",
+        _clear.tiebreak_used is False)
+
+# Step 1 is untouched: fractional pooling still governs component ties.
+_frac = calculate_grand_champion(
+    yahoo_finishes=(ChampionshipFinish(1, 1), ChampionshipFinish(2, 1),
+                    ChampionshipFinish(3, 3)),
+    fantasystakes_finishes=(ChampionshipFinish(1, 1), ChampionshipFinish(2, 2),
+                            ChampionshipFinish(3, 3)),
+    fantasystakes_scores={1: 100, 2: 100, 3: 100})
+_assert("a tied component finish still pools 3+2 into exact halves",
+        {r.team_id: str(r.yahoo_points) for r in _frac.rows if r.team_id in (1, 2)}
+        == {1: "5/2", 2: "5/2"},
+        str({r.team_id: str(r.yahoo_points) for r in _frac.rows}))
+_assert("fractional totals survive the tiebreak step",
+        all(isinstance(r.combined_points, Fraction) for r in _frac.rows))
+
+# Absent scores decide nothing — the previous behaviour, not a guess.
+_blind = calculate_grand_champion(
+    yahoo_finishes=(ChampionshipFinish(2, 1), ChampionshipFinish(1, 2),
+                    ChampionshipFinish(3, 3)),
+    fantasystakes_finishes=(ChampionshipFinish(1, 1), ChampionshipFinish(2, 2),
+                            ChampionshipFinish(3, 3)))
+_assert("without authoritative scores a tie stays a co-championship",
+        _blind.champion_team_ids == (1, 2) and _blind.tiebreak_used is False,
+        str(_blind.champion_team_ids))
+
+# The score is carried for explanation only and never enters the points.
+_assert("the Championship Score never becomes points",
+        all(r.combined_points == r.yahoo_points + r.fantasystakes_points
+            for r in _tie.rows))
+
+
+# The summary above runs before this file's later sections, so a failure added
+# after it would print and still exit 0. This is the real gate.
+print("")
+print("=" * 64)
+if _failures:
+    print(f"FAILED: {len(_failures)} assertion(s)")
+    for _f in _failures:
+        print(f"  - {_f}")
+    sys.exit(1)
+print("PASS: RC2 Grand Champion certification (including the Championship Score tiebreaker)")

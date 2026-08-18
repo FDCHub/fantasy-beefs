@@ -171,8 +171,27 @@ _assert("every network call goes through session.js, the app's one door",
 
 _section("2 · Standings never ranks on Wallet — Rev 4.3 §7.1")
 
-_assert("no standings module mentions a wallet",
-        not re.search(r"wallet", STANDINGS_JS + STANDINGS_MODEL_JS, re.I))
+# A3.2 — the owner ruled that the Standings explainer must say, in words, that
+# a Wallet balance does not count toward the Championship Score. That sentence
+# is the OPPOSITE of ranking on a wallet, so the guard now asserts what it was
+# always protecting rather than the mere absence of a seven-letter string:
+# the ranking model may not know the word at all, and the view may say it only
+# to deny it — never attached to a figure, and never read off a served row.
+_assert("the ranking model does not mention a wallet anywhere",
+        not re.search(r"wallet", STANDINGS_MODEL_JS, re.I))
+# Property access, not prose: `row.wallet_cents` has no space after the dot,
+# while the ruled sentence ends "...score wins. Wallet balance does not count."
+_assert("the standings view reads no wallet field from a served row",
+        not re.search(r"\w\.wallet\w*|wallet\w*\s*:|\[['\"]wallet", STANDINGS_JS, re.I))
+_assert("the standings view never draws a wallet figure",
+        not re.search(r"wallet[^.!?\n]{0,40}(formatCredits|formatSignedCredits"
+                      r"|_cents|\$)", STANDINGS_JS, re.I))
+_STANDINGS_WALLET_WORDS = re.findall(r"[^\n]*wallet[^\n]*", STANDINGS_JS, re.I)
+_assert("every wallet mention in the view is the ruled denial or a comment",
+        all("Wallet balance does not count" in line or line.lstrip().startswith("*")
+            or line.lstrip().startswith("//")
+            for line in _STANDINGS_WALLET_WORDS),
+        str(_STANDINGS_WALLET_WORDS))
 _assert("the ranking figure is read from the served row, never recomputed",
         "return Number(row.net_cents)" in STANDINGS_MODEL_JS)
 _assert("the rank itself is the server's, not an index",

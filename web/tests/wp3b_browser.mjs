@@ -13,6 +13,7 @@
  * ========================================================================== */
 
 import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
+import { STANDINGS_TABLES } from '../js/standings-model.js';
 
 const { check, section, finish } = createReporter();
 
@@ -176,9 +177,12 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
     standings.count === 3, String(standings.count));
   check('in the locked order',
     standings.keys.join(',') === 'overall,versus,pools', standings.keys.join(','));
+  /* A3.2 — the product's headings are the FantasyStakes ones, and this suite
+     was still asserting the pre-RC2 names. The list is taken from
+     `standings-model.js` so the two can no longer drift apart. */
   check('with the locked headings',
     standings.headings.join(' | ')
-      === 'OVERALL STANDINGS | VERSUS STANDINGS | POOL STANDINGS',
+      === STANDINGS_TABLES.map((t) => t.heading).join(' | '),
     standings.headings.join(' | '));
   check('they are stacked vertically, each below the last',
     standings.stacked === true);
@@ -225,8 +229,18 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
       strips: panel.querySelectorAll('.fs-strip').length,
     };
   `);
-  check('the word Wallet appears nowhere on Standings',
-    !/wallet/i.test(wallet.text));
+  /* A3.2 — the ruled explainer states in words that a Wallet balance does not
+     count toward the Championship Score, so the word itself is now expected on
+     this page. What must never appear is a wallet FIGURE, which is what this
+     section is named for: the word may occur only inside that denial, and no
+     amount may be attached to it. */
+  const walletMentions = wallet.text.match(/[^.!?]*wallet[^.!?]*[.!?]?/gi) || [];
+  check('the only mention of a Wallet is the ruled denial',
+    walletMentions.every((s) => /Wallet balance does not count/i.test(s)),
+    JSON.stringify(walletMentions));
+  check('no Wallet figure of any kind is drawn',
+    !/wallet[^.!?]{0,40}[$\d]/i.test(wallet.text),
+    JSON.stringify(walletMentions));
   check('no Available, Current Settle or obligation figure appears',
     !/available|current settle|obligation|advance|top-?off/i.test(wallet.text));
   check('Standings carries no four-cell strip — it is a table page',

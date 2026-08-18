@@ -96,6 +96,54 @@ export function championshipIsFinal() {
   return Boolean(state && state.status === 'FINAL');
 }
 
+/**
+ * The server-derived championship lifecycle.
+ *
+ * FOUR STATES, NOT TWO. The frozen snapshot answers "is the field closed", which
+ * is not the same question as "is every eligible result in" or "has the pot been
+ * paid". Reporting FINAL the moment a snapshot exists told a GM the season was
+ * decided while an eligible regular-season contest was still unresolved.
+ *
+ * DERIVED BY THE SERVER, READ HERE. `/championship/results` owns the rule; this
+ * returns what it said and falls back to the older two-state read only when that
+ * surface is unavailable, so an older server degrades rather than breaks.
+ *
+ * @returns {'LIVE'|'FROZEN'|'FINAL'|'PAID'}
+ */
+export function championshipLifecycle() {
+  const results = championshipResults();
+  if (results && typeof results.lifecycle === 'string') return results.lifecycle;
+  // FAIL CONSERVATIVELY. A frozen snapshot proves the scoring window closed; it
+  // proves nothing about whether every eligible result is in, and only the
+  // server can answer that. Reporting FINAL here would tell a GM the season was
+  // decided on the strength of a fact that does not decide it, so the fallback
+  // reports FROZEN and lets the server upgrade it.
+  return championshipIsFinal() ? 'FROZEN' : 'LIVE';
+}
+
+/** The `/championship/results` body, when bound. @returns {object|null} */
+export function championshipResults() {
+  if (MODE !== STANDINGS_MODE_AUTHORITATIVE || !SERVED) return null;
+  return SERVED.championshipResults || null;
+}
+
+/** Eligible contests still unresolved. Empty once the championship is FINAL. */
+export function championshipUnresolved() {
+  const results = championshipResults();
+  return results && Array.isArray(results.unresolved) ? results.unresolved : [];
+}
+
+/**
+ * Whether this row shares its Championship Score with another GM.
+ *
+ * READ FROM THE SERVER'S OWN `tied` FLAG, never recomputed by comparing cents
+ * here — that would be a second place the tie rule lives, and the payout splits
+ * on the server's answer, not this one.
+ */
+export function isTiedRow(row) {
+  return Boolean(row && (row.championship_tied || row.tied));
+}
+
 export function actingTeamId() {
   if (MODE !== STANDINGS_MODE_AUTHORITATIVE || !SERVED) return null;
   return typeof SERVED.acting_team_id === 'number'

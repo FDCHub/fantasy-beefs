@@ -75,12 +75,34 @@ export function servedSettings() {
  *
  * @returns {Array<object>} rows in `rules.js` settingRow shape
  */
+/**
+ * The FULL RC2 Season-Opening Allocation, served by
+ * `/championship/results.allocation`.
+ *
+ * WHY IT IS BOUND SEPARATELY. `/settings` reports the certified BASE stage —
+ * Weekly Play Reserve + Yahoo Championship Contribution — and that field is not
+ * to be redefined to mean something new. RC2 advances a second, independently
+ * configured FantasyStakes Championship Contribution in its own stage, so the
+ * total a GM actually owes is the base plus that. The server derives the whole
+ * thing; this holds the answer and does no arithmetic.
+ */
+let ALLOCATION = null;
+
+export function bindChampionshipAllocation(allocation) {
+  ALLOCATION = allocation || null;
+}
+
+export function championshipAllocation() {
+  return ALLOCATION;
+}
+
 export function settingsRows() {
   if (MODE !== SETTINGS_MODE_AUTHORITATIVE) return SETTINGS;
 
   const s = SERVED;
   const stop = s.economy_stop;
   const pool = s.pool_entry;
+  const alloc = ALLOCATION;
 
   return Object.freeze([
     // WP3C — SEASON-OPENING ALLOCATION, not "Economy Stop" (Rev 4.3 §15, §22).
@@ -97,22 +119,41 @@ export function settingsRows() {
     // weekly_min`, and Rev 4.3 §16.2 forbids reimplementing the economic
     // formula in the browser to explain it. The components are shown; the
     // multiplication that relates them is the server's.
+    // RC2 — THREE PARTS WHEN THE CHAMPIONSHIP READ IS AVAILABLE, two when it is
+    // not. Every figure is the server's: the Weekly Play Reserve is the
+    // commissioner's weekly minimum multiplied by this league's own Yahoo
+    // regular-season week count, so a 13-week league reports a different
+    // reserve and a different total than a 14-week one. No number below is
+    // fixed by FantasyStakes and none is computed here.
     Object.freeze({
       id: 'economy-stop',
       label: 'Season-Opening Allocation',
-      value: formatCredits(stop.buyin_cents),
-      exactCents: stop.buyin_cents,
+      value: formatCredits(
+        alloc ? alloc.season_opening_allocation_cents : stop.buyin_cents),
+      exactCents: (
+        alloc ? alloc.season_opening_allocation_cents : stop.buyin_cents),
       editable: stop.editable,
-      detail:
-        `Each GM is advanced ${formatCredits(stop.buyin_cents)} at season open: `
-        + `${formatCredits(stop.min_reserve_cents)} as the Weekly Minimum `
-        + `reserve — your league's ${formatCredits(stop.weekly_min_cents)} Weekly `
-        + 'Bet Minimum across its regular-season weeks — plus '
-        + `${formatCredits(stop.reserve_cents)} as the Championship Pot `
-        + 'Contribution. The commissioner sets those two before the season and '
-        + 'they lock at activation, because changing them would re-price '
-        + 'obligations GMs have already funded. The Skunk Fee is contingent and '
-        + 'is not part of this allocation.',
+      detail: alloc
+        ? `Each GM is advanced ${formatCredits(alloc.season_opening_allocation_cents)} `
+          + 'at season open, in three parts. Weekly Play Reserve '
+          + `${formatCredits(alloc.weekly_play_reserve_cents)} — your league's `
+          + `${formatCredits(alloc.weekly_minimum_cents)} weekly minimum across `
+          + `its ${alloc.regular_season_week_count} Yahoo regular-season weeks. `
+          + `Yahoo Championship Contribution `
+          + `${formatCredits(alloc.yahoo_championship_contribution_cents)}. `
+          + 'FantasyStakes Championship Contribution '
+          + `${formatCredits(alloc.fantasystakes_championship_contribution_cents)}. `
+          + 'The commissioner sets the weekly minimum and both contributions '
+          + 'before the season and they lock at activation, because changing '
+          + 'them would re-price obligations GMs have already funded. The Skunk '
+          + 'Fee is contingent and is not part of this allocation.'
+        : `Each GM is advanced ${formatCredits(stop.buyin_cents)} at season open: `
+          + `${formatCredits(stop.min_reserve_cents)} as the Weekly Play `
+          + `Reserve — your league's ${formatCredits(stop.weekly_min_cents)} weekly `
+          + 'minimum across its regular-season weeks — plus '
+          + `${formatCredits(stop.reserve_cents)} as the Yahoo Championship `
+          + 'Contribution. The FantasyStakes Championship Contribution could not '
+          + 'be read, so it is not shown rather than shown wrongly.',
       source: 'League economy configuration',
     }),
     Object.freeze({
