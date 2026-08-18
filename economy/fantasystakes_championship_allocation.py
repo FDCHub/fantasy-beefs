@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Integer, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, UniqueConstraint, Uuid
 from sqlalchemy.orm import Session, relationship
 
 from db.schema import Base, League, Team
@@ -29,10 +29,12 @@ from economy.league_economy_config import (
     REASON_OUT_OF_RANGE,
     read_draft as read_economy_draft,
 )
-from ledger.ledger import post as ledger_post
+from ledger.ledger import SEASON_ALLOCATION_DOOR, post as ledger_post
 
 CENTS_PER_CREDIT = 100
-DOOR_FS_CHAMPIONSHIP_ALLOCATION = "fantasystakes_championship_allocation"
+# This is part of the Season-Opening Allocation, so it uses the already-governed
+# season-allocation issuance exemption rather than inventing a second mint door.
+DOOR_FS_CHAMPIONSHIP_ALLOCATION = SEASON_ALLOCATION_DOOR
 DOOR_FS_CHAMPIONSHIP_DISTRIBUTION = "fantasystakes_championship_distribution"
 
 REASON_FROZEN = "FS_CHAMPIONSHIP_CONFIG_FROZEN"
@@ -182,7 +184,7 @@ def set_contribution(db: Session, *, league_id: int, contribution_cents: int,
 
 def freeze_config(db: Session, *, league_id: int, season: int,
                   now: datetime | None = None) -> FantasyStakesChampionshipConfig:
-    """Freeze FS contribution; absent explicit edit defaults to frozen Yahoo amount."""
+    """Freeze FS contribution; absent explicit edit defaults to Yahoo amount."""
     now = now or datetime.now(timezone.utc)
     row = _row(db, league_id=league_id, season=season)
     if row is None:
