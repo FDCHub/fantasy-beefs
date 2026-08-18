@@ -35,7 +35,8 @@ import { formatCredits } from '../credits.js';
  *
  * WP3C — THESE ARE FIXTURE FIGURES, NOT PRODUCT CONSTANTS. Rev 4.3 §15 replaced
  * the five-stop ladder with a configurable economy: a commissioner sets the
- * Weekly Bet Minimum, the Championship Pot Contribution and the Skunk Fee, and
+ * Weekly Bet Minimum, the Yahoo Championship Contribution and the Skunk Fee,
+ * and
  * the server derives the Season-Opening Allocation from them and the league's
  * own regular-season week count. A bound session reads all of that through
  * `settings-model.js`; these values are what an UNBOUND one draws, and the only
@@ -47,9 +48,25 @@ import { formatCredits } from '../credits.js';
  */
 export const ECONOMY_STOP = Object.freeze({
   weeklyMinCents: 1000,        // $10
-  minReserveCents: 14000,      // $140
-  reserveCents: 8000,          // $80
-  buyinCents: 22000,           // $220
+  // DERIVED, NOT FIXED. The commissioner sets the weekly minimum; FantasyStakes
+  // reads the league's number of Yahoo regular-season weeks and multiplies. The
+  // $140 here is this demo league's answer to 10 x 14, not a universal reserve.
+  minReserveCents: 14000,      // $140  = weeklyMinCents x regular-season weeks
+  reserveCents: 8000,          // $80   Yahoo Championship Contribution
+  // RC2 — THE SECOND CHAMPIONSHIP CONTRIBUTION. FantasyStakes runs its own
+  // championship with its own fixed pot, funded only by this contribution and
+  // independently configurable before activation. It defaults to the Yahoo
+  // amount, which is why both read $80 here.
+  fantasystakesReserveCents: 8000,   // $80  FantasyStakes Championship Contribution
+  // THE BASE STAGE, unchanged. `payments/economy_config.py`'s stop is Weekly
+  // Play Reserve + Yahoo Championship Contribution, and the demo ledger
+  // arithmetic in this app is built on it. RC2's FantasyStakes contribution is
+  // advanced by its own activation stage, so the GM's TOTAL season advance is
+  // the field below — that is what `rc2_season_activation` reports and what
+  // Current Settle charges.
+  regularSeasonWeeks: 14,      // this demo league's schedule
+  buyinCents: 22000,           // $220  base stage (Weekly Play + Yahoo)
+  seasonOpeningTotalCents: 30000,  // $300 total advance per GM, all three parts
   source: 'League economy configuration',
 });
 
@@ -98,17 +115,30 @@ export const SETTINGS = Object.freeze([
   Object.freeze({
     id: 'economy-stop',
     label: 'Season-Opening Allocation',
-    value: formatCredits(ECONOMY_STOP.buyinCents),
-    exactCents: ECONOMY_STOP.buyinCents,
+    exampleOnly: true,
+    value: formatCredits(ECONOMY_STOP.seasonOpeningTotalCents),
+    exactCents: ECONOMY_STOP.seasonOpeningTotalCents,
     detail:
-      `Each GM is advanced ${formatCredits(ECONOMY_STOP.buyinCents)} at season ` +
-      `open: ${formatCredits(ECONOMY_STOP.minReserveCents)} as the Weekly ` +
-      `Minimum reserve — the ${formatCredits(ECONOMY_STOP.weeklyMinCents)} ` +
-      'Weekly Bet Minimum across the league’s regular-season weeks — plus ' +
-      `${formatCredits(ECONOMY_STOP.reserveCents)} as the Championship Pot ` +
-      'Contribution. The commissioner sets both before the season and they lock ' +
-      'at activation. The Skunk Fee is contingent and is not part of this ' +
-      'allocation.',
+      'EXAMPLE CONFIGURATION. The figure beside this row is one league' +
+      String.fromCharCode(8217) + 's arithmetic, shown while live settings are ' +
+      'unavailable; your league reports its own. ' +
+      'Your Season-Opening Allocation is the sum of three parts, and all of ' +
+      'them come from your league' + String.fromCharCode(8217) + 's own ' +
+      'settings rather than being fixed by FantasyStakes. ' +
+      'The Weekly Play Reserve is derived: your commissioner sets the weekly ' +
+      'minimum, FantasyStakes reads how many Yahoo regular-season weeks your ' +
+      'league plays, and multiplies the two. The Yahoo Championship ' +
+      'Contribution and the FantasyStakes Championship Contribution are each ' +
+      'set by your commissioner, independently of one another. ' +
+      `In this league that works out as ${formatCredits(ECONOMY_STOP.weeklyMinCents)} ` +
+      `x ${ECONOMY_STOP.regularSeasonWeeks} weeks = ` +
+      `${formatCredits(ECONOMY_STOP.minReserveCents)}, plus ` +
+      `${formatCredits(ECONOMY_STOP.reserveCents)} and ` +
+      `${formatCredits(ECONOMY_STOP.fantasystakesReserveCents)}, for ` +
+      `${formatCredits(ECONOMY_STOP.seasonOpeningTotalCents)}. A league with a ` +
+      'different weekly minimum or a different schedule gets a different ' +
+      'figure. Both championship contributions lock at activation. The Skunk ' +
+      'Fee is contingent and is not part of this allocation.',
     source: ECONOMY_STOP.source,
   }),
   Object.freeze({
@@ -141,11 +171,13 @@ export const SETTINGS = Object.freeze([
     label: 'Championship split',
     value: CHAMPIONSHIP_SPLIT.split.join(' / '),
     detail:
-      'How the championship pot divides: 60 to the champion, 30 to the ' +
-      'runner-up, 10 to the official third place. Yahoo is authoritative for ' +
-      'all three. Amounts are integer cents: each ordinary place takes the ' +
-      'floor of its percentage, and first place takes the remainder so the pot ' +
-      'distributes exactly.',
+      'How a championship pot divides: 60 to the champion, 30 to the ' +
+      'runner-up, 10 to third place. This is the split for BOTH championships — ' +
+      'Yahoo is authoritative for the Yahoo podium, and the FantasyStakes ' +
+      'Championship pays its own fixed pot on FantasyStakes Championship Score. ' +
+      'Amounts are integer cents. Exact ties are real ties: the prize shares for ' +
+      'the places a tied group occupies are pooled and split evenly among them, ' +
+      'and the pot still distributes to the cent.',
     source: CHAMPIONSHIP_SPLIT.source,
   }),
 ]);
@@ -201,9 +233,11 @@ export const RULE_GROUPS = Object.freeze([
         body:
           'At season open every GM is advanced their Season-Opening Allocation: ' +
           'the league’s Weekly Bet Minimum across its regular-season weeks, held ' +
-          'as the Weekly Minimum reserve, plus its Championship Pot ' +
-          'Contribution, held as the championship reserve. The commissioner ' +
-          'configures both before activation and the server derives the total — ' +
+          'as the Weekly Play Reserve, plus its Yahoo Championship ' +
+          'Contribution and its FantasyStakes Championship Contribution, each ' +
+          'held as a committed championship reserve. The commissioner ' +
+          'configures all three before activation and the server derives the ' +
+          'total — ' +
           'see League Settings for your league’s own figures. That advance is an ' +
           'obligation for the whole season. It is subtracted in Current Settle, ' +
           'so a GM who has wagered nothing sits at a deficit rather than at zero.',
@@ -318,6 +352,88 @@ export const RULE_GROUPS = Object.freeze([
   }),
 
   Object.freeze({
+    id: 'championships',
+    title: 'The Championships',
+    blurb: 'How the two championships are won, scored and paid.',
+    rules: Object.freeze([
+      Object.freeze({
+        heading: 'Championship Score is what you have WON, not what you hold',
+        body:
+          'Your FantasyStakes Championship Score is your total realized net ' +
+          'winnings from championship-counting FantasyStakes competition: ' +
+          'matchups against other GMs and prop pools. Your wallet balance is ' +
+          'not your Championship Score. Credits you were advanced at season ' +
+          'open, a Top-Off, a released Weekly Minimum, a refund or a ' +
+          'championship payout all move your wallet without anybody winning ' +
+          'anything, so none of them move your Championship Score. Credits ' +
+          'decide how much you can play; results decide whether you are winning.',
+        source: 'FantasyStakes Championship POR',
+      }),
+      Object.freeze({
+        heading: 'Scoring ends with the final Yahoo regular-season week',
+        body:
+          'The FantasyStakes Championship race runs through the Yahoo regular ' +
+          'season. At the playoff boundary the standings freeze: the field and ' +
+          'the scoring window are closed and neither reopens. FantasyStakes ' +
+          'play continues in the postseason and those wagers still move real ' +
+          'Credits — they simply no longer change Championship Score or the ' +
+          'Grand Champion.',
+        source: 'FantasyStakes Championship POR',
+      }),
+      Object.freeze({
+        heading: 'A regular-season contest still counts if it settles late',
+        body:
+          'Eligibility belongs to the contest, not to the clock. A matchup or ' +
+          'prop pool from the regular season counts even if its result lands ' +
+          'after the freeze. That is why the championship is FROZEN before it ' +
+          'is FINAL: frozen means the field is closed, final means every ' +
+          'eligible result is in. The pot is never paid before FINAL.',
+        source: 'FantasyStakes Championship POR',
+      }),
+      Object.freeze({
+        heading: 'The FantasyStakes Championship pot is fixed and pays 60 / 30 / 10',
+        body:
+          'The pot is fixed at activation and funded only by the FantasyStakes ' +
+          'Championship Contributions. It never grows from Top-Offs, Weekly ' +
+          'Minimum amounts, pool remainders or anything else. It pays 60 to ' +
+          'the champion, 30 to the runner-up and 10 to third. Exact ties are ' +
+          'real ties: the shares for the places a tied group occupies are ' +
+          'pooled and split evenly, and no wallet balance, wager count or team ' +
+          'id ever breaks a tie for money.',
+        source: 'FantasyStakes Championship POR',
+      }),
+      Object.freeze({
+        heading: 'How the Grand Champion is selected',
+        body:
+          'The Grand Champion combines each GM’s Yahoo Championship and ' +
+          'FantasyStakes Championship finish. 1st = 3 points, 2nd = 2, and ' +
+          '3rd = 1. Highest total wins. If tied, the higher FantasyStakes ' +
+          'Championship Score wins — that is your realized net winnings from ' +
+          'FantasyStakes matchups and prop pools, not your wallet balance. If ' +
+          'still tied, they are co-Grand Champions. Grand Champion rewards ' +
+          'overall performance across both championships, not combined dollars ' +
+          'or credits won. It is a season-ending recognition: there is no ' +
+          'Grand Champion pot and it moves no Credits.',
+        source: 'Grand Champion POR',
+      }),
+      Object.freeze({
+        heading: 'An authoritative correction can restate a result, never a score',
+        body:
+          'If an eligible regular-season contest was settled on the wrong ' +
+          'result, the commissioner can file an authoritative correction. The ' +
+          'correction names the contest and its corrected result — who won, or ' +
+          'that it was a push — and the server derives the Credits from that ' +
+          'contest’s own economics. Nobody types an amount, and no championship ' +
+          'score is ever edited directly. Corrections are append-only and ' +
+          'visible to the whole league. Postseason contests can never be ' +
+          'corrected into the championship, and once the pot has been paid a ' +
+          'correction is refused outright — there is no clawback and no second ' +
+          'distribution.',
+        source: 'FantasyStakes Championship POR',
+      }),
+    ]),
+  }),
+  Object.freeze({
     id: 'big-money',
     title: 'Big Money',
     blurb: 'Pools and the championship.',
@@ -350,7 +466,8 @@ export const RULE_GROUPS = Object.freeze([
       Object.freeze({
         heading: `The championship pot pays ${CHAMPIONSHIP_SPLIT.split.join(' / ')} by place`,
         body:
-          'Every GM’s Championship Pot Contribution sweeps into the league pot ' +
+          'Every GM’s Yahoo Championship Contribution sweeps into the Yahoo ' +
+          'championship pot ' +
           'at season close. It pays the champion, the runner-up and the official ' +
           'third place. Payouts are integer cents: each ordinary place takes the ' +
           'floor of its share and first place takes the remainder, so the pot ' +

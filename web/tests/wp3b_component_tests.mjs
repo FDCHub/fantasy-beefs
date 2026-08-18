@@ -142,10 +142,10 @@ check('the model declares exactly three tables',
   STANDINGS_TABLES.length === 3);
 check('their headings are the locked ones, in order',
   STANDINGS_TABLES.map((t) => t.heading).join(' | ')
-    === 'OVERALL STANDINGS | VERSUS STANDINGS | POOL STANDINGS',
+    === 'FANTASYSTAKES CHAMPIONSHIP | MATCHUP STANDINGS | PROP POOL STANDINGS',
   STANDINGS_TABLES.map((t) => t.heading).join(' | '));
-check('Overall carries RK | TEAM | VERSUS | POOLS | NET',
-  STANDINGS_TABLES[0].columns.join(' | ') === 'RK | TEAM | VERSUS | POOLS | NET',
+check('Overall carries RK | TEAM | MATCHUPS | PROP POOLS | NET',
+  STANDINGS_TABLES[0].columns.join(' | ') === 'RK | TEAM | MATCHUPS | PROP POOLS | NET',
   STANDINGS_TABLES[0].columns.join(' | '));
 check('Versus carries RK | TEAM | W-L | NET',
   STANDINGS_TABLES[1].columns.join(' | ') === 'RK | TEAM | W-L | NET',
@@ -212,8 +212,28 @@ check('every table is a real table element with a header row',
 
 section('G · Overall ranks on the served competitive NET, never on Wallet');
 
-check('no standings module mentions a wallet at all',
-  !/wallet/i.test(panel));
+// RC2 — THE INTENT WAS "NO WALLET FIGURE", AND IT STILL HOLDS. The original
+// assertion forbade the WORD, which was a fair proxy while nothing said
+// anything about wallets. Sprint A2 states the distinction out loud — "your
+// wallet balance is not your Championship Score" — because it is the single
+// most confusable fact in the product. So the guard is now the property it
+// always meant, plus the positive claim, which is strictly stronger than the
+// word ban was: no wallet VALUE may be rendered, and the panel must say why.
+// RC2 — THE ONLY WALLET IN STANDINGS IS THE SENTENCE DENYING IT. The original
+// assertion banned the word outright, which was a fair proxy while the panel
+// said nothing about wallets. Sprint A states the distinction out loud, so a
+// blanket ban is no longer usable — but a loosened regex would have let
+// `<td>Wallet</td><td>$140</td>` through, which is the exact regression the ban
+// existed to catch. The invariant is therefore COUNTED: the word may appear
+// exactly once, and that once must be the locked explanatory sentence.
+const walletMentions = (panel.match(/wallet/gi) || []).length;
+check('wallet is mentioned exactly once in the standings panel',
+  walletMentions === 1, String(walletMentions));
+// A3.2 — the owner shortened the explainer. The COUNTED invariant above is
+// unchanged and is what keeps `<td>Wallet</td><td>$140</td>` out; only the
+// sentence it must be is restated, to the one the product now ships.
+check('and that once is the locked explanatory sentence',
+  /Wallet balance does not count/i.test(panel), panel.match(/[^.>]*wallet[^.]*\./i));
 check('Overall is descending in combined NET, as served',
   rowsFor('overall').every((r, i, a) => i === 0
     || rankingCents('overall', a[i - 1]) >= rankingCents('overall', r)));
@@ -364,7 +384,7 @@ check('exactly three inputs are offered',
   ECONOMY_INPUTS.length === 3, String(ECONOMY_INPUTS.length));
 check('they are the POR’s three, in order',
   ECONOMY_INPUTS.map((i) => i.label).join(' | ')
-    === 'Weekly Bet Minimum | Championship Pot Contribution | Skunk Fee',
+    === 'Weekly Bet Minimum | Yahoo Championship Contribution | Skunk Fee',
   ECONOMY_INPUTS.map((i) => i.label).join(' | '));
 check('the ranges are $1–$100 / $1–$1,000 / $1–$100',
   ECONOMY_INPUTS.map((i) => `${i.minCents}-${i.maxCents}`).join(' ')
@@ -379,12 +399,16 @@ check('the current values are read from the server, not from the defaults',
 
 section('K · Derived values are the server’s, and are never recomputed');
 
-check('all five derived rows are declared',
-  ECONOMY_DERIVED.length === 5, String(ECONOMY_DERIVED.length));
-check('they are the POR’s five, in order',
+// RC2 adds the second, independent FantasyStakes Championship Contribution as
+// a sixth read-only derived row, and names the RC1 row for the championship it
+// has always described.
+check('all six derived rows are declared',
+  ECONOMY_DERIVED.length === 6, String(ECONOMY_DERIVED.length));
+check('they are the POR’s six, in order',
   ECONOMY_DERIVED.map((d) => d.label).join(' | ')
-    === 'Regular-Season Weeks | Weekly Minimum Reserve | Championship Reserve | '
-      + 'Season-Opening Allocation | League allocation total',
+    === 'Regular-Season Weeks | Weekly Minimum Reserve | Yahoo Championship Reserve | '
+      + 'FantasyStakes Championship Contribution | Season-Opening Allocation | '
+      + 'League allocation total',
   ECONOMY_DERIVED.map((d) => d.label).join(' | '));
 check('every derived row renders the served figure',
   economySheet().body.includes('data-derived="regular_season_week_count"')

@@ -81,18 +81,21 @@ check('no Credits disclaimer', countDisclaimers(panel) === 0, String(countDiscla
 
 /* ── A · Rules ──────────────────────────────────────────────────────────── */
 
-section('The five rule groups, in the locked order');
+// RC2 adds "The Championships": the two championships, their scoring, the
+// 60/30/10 payout, Grand Champion and authoritative corrections.
+section('The six rule groups, in the locked order');
 
-const LOCKED_ORDER = ['The Money', 'Weekly Grind', 'Big Money', 'The Bets', 'The Fine Print'];
+const LOCKED_ORDER = ['The Money', 'Weekly Grind', 'The Championships', 'Big Money',
+  'The Bets', 'The Fine Print'];
 
-check('exactly five top-level groups', RULE_GROUPS.length === 5, String(RULE_GROUPS.length));
+check('exactly six top-level groups', RULE_GROUPS.length === 6, String(RULE_GROUPS.length));
 check('the order is the locked order',
   RULE_GROUPS.map((g) => g.title).join(' / ') === LOCKED_ORDER.join(' / '),
   RULE_GROUPS.map((g) => g.title).join(' / '));
 check('every group renders as a tappable row',
   RULE_GROUPS.every((g) => panel.includes(`data-rule="${g.id}"`)));
 check('every row carries a disclosure affordance',
-  (panel.match(/fs-rulerow__chev/g) || []).length === 5);
+  (panel.match(/fs-rulerow__chev/g) || []).length === RULE_GROUPS.length);
 check('the rows appear in the locked order in the markup',
   RULE_GROUPS.every((g, i) => (i === 0
     ? true
@@ -114,7 +117,7 @@ const allRuleText = RULE_GROUPS
 // These assertions REQUIRED the rule prose to quote $220, $140 and $80 as
 // governed universal figures. Rev 4.3 §15 replaced the five-stop ladder with a
 // configurable economy — the commissioner sets the Weekly Bet Minimum and the
-// Championship Pot Contribution, and the server derives the allocation from
+// two championship contributions, and the server derives the allocation from
 // them and the league's own regular-season week count — so a league playing
 // thirteen weeks is advanced $210 and one on a $20 minimum is advanced more
 // again. Prose asserting $220 was telling most leagues the wrong number.
@@ -126,10 +129,17 @@ const allRuleText = RULE_GROUPS
 check('the rule prose quotes no universal allocation figure (§21, §22)',
   !/\$220|\$140|\$80\b/.test(allRuleText),
   (allRuleText.match(/\$220|\$140|\$80\b/) || [''])[0]);
+// A3.2 — RC2 configures TWO independent championship contributions, so the
+// single "Championship Pot Contribution" this once required no longer exists.
+// Both must be named, and named apart, or a GM cannot tell which one the
+// commissioner just changed.
 check('it names the configurable inputs instead',
   /Weekly Bet Minimum/.test(allRuleText)
-  && /Championship Pot Contribution/.test(allRuleText)
+  && /Yahoo Championship Contribution/.test(allRuleText)
+  && /FantasyStakes Championship Contribution/.test(allRuleText)
   && /Season-Opening Allocation/.test(allRuleText));
+check('and the retired single-contribution name is gone',
+  !/Championship Pot Contribution/.test(allRuleText));
 check('it asserts no fixed regular-season week count',
   !/fourteen|14 weeks|14-week/i.test(allRuleText));
 check('the demo fixture figures still add up',
@@ -143,6 +153,49 @@ check('the minimum stake quoted is the engine minimum',
   allRuleText.includes('$5') && MIN_STAKE_CENTS === 500);
 check('Current Settle is described as derived, never stored',
   /derived/i.test(allRuleText) && /never stored|no Current Settle column/i.test(allRuleText));
+
+// ── A3.3 · THE GRAND CHAMPION RULE THE PRODUCT ACTUALLY APPLIES ────────────
+//
+// The rules page previously told GMs "There is no tiebreaker" while the engine
+// awarded the title outright on the higher FantasyStakes Championship Score.
+// In the one scenario the tiebreak exists for, Season Results named a sole
+// Grand Champion while the Rules page said the two were co-champions. These
+// assertions exist so the governing copy can never drift from the engine
+// again: the tiebreak must be STATED, and a co-championship must be reachable
+// in the copy only AFTER it.
+check('the rules state the Championship Score tiebreak',
+  /higher FantasyStakes Championship Score wins/.test(allRuleText));
+check('and define that score as realized net, never a wallet balance',
+  /realized net winnings/.test(allRuleText)
+  && /not your wallet balance/.test(allRuleText));
+check('the obsolete "There is no tiebreaker" copy is gone',
+  !/There is no tiebreaker/.test(allRuleText));
+// Every co-Grand Champions sentence must be gated behind the tiebreak. A bare
+// "equal totals are co-Grand Champions" is the exact obsolete claim.
+const coChampSentences = allRuleText.match(/[^.]*co-Grand Champions[^.]*\./g) || [];
+check('co-Grand Champions are stated only after the tiebreak also ties',
+  coChampSentences.length > 0
+  && coChampSentences.every((s) => /still tied/i.test(s)),
+  JSON.stringify(coChampSentences));
+check('no copy says a points tie alone creates co-Grand Champions',
+  !/same highest combined total, they are co-Grand Champions/.test(allRuleText)
+  && !/equal totals[^.]*co-Grand Champions/i.test(allRuleText));
+check('the three steps appear in the governing order',
+  (() => {
+    const total = allRuleText.indexOf('Highest total wins');
+    const tiebreak = allRuleText.indexOf('higher FantasyStakes Championship Score wins');
+    const co = allRuleText.indexOf('If still tied');
+    return total >= 0 && tiebreak > total && co > tiebreak;
+  })());
+// The remaining "no FantasyStakes tiebreaker" is about the YAHOO podium, which
+// Yahoo alone decides. That claim is still true and must not be swept away.
+check('any surviving "no tiebreaker" phrase is scoped to the Yahoo podium',
+  (allRuleText.match(/no [A-Za-z]* ?tiebreaker/g) || []).every((m) =>
+    /Yahoo/.test(allRuleText.slice(Math.max(0, allRuleText.indexOf(m) - 260),
+      allRuleText.indexOf(m)))),
+  JSON.stringify(allRuleText.match(/no [A-Za-z]* ?tiebreaker/g) || []));
+check('Grand Champion is still recognition only, moving no Credits',
+  /moves no Credits/.test(allRuleText));
 
 section('Locked and Dynamic descriptions remain the ruling’s own');
 
@@ -223,8 +276,10 @@ for (const label of LOCKED_SETTINGS) {
   check(`${label} renders`, panel.includes(`>${label}</span>`), label);
 }
 
+// RC2 — the advance is three parts: Weekly Play Reserve 140, Yahoo Championship
+// Contribution 80, FantasyStakes Championship Contribution 80.
 check('Season-Opening Allocation shows the demo fixture allocation',
-  SETTINGS[0].value === '$220', SETTINGS[0].value);
+  SETTINGS[0].value === '$300', SETTINGS[0].value);
 check('Standard Pool Bet shows the governed entry',
   SETTINGS[1].value === '$1' && POOL_ENTRY.cents === 100, SETTINGS[1].value);
 check('the Pool entry sits inside its governed bounds',

@@ -14,7 +14,10 @@ import {
   STANDINGS_TABLES,
   actingTeamId,
   cellsFor,
+  championshipLifecycle,
   championshipState,
+  championshipUnresolved,
+  isTiedRow,
   rowsFor,
   standingsState,
 } from './standings-model.js';
@@ -53,6 +56,10 @@ function tableRows(table) {
   return rowsFor(table.key).map((row) => {
     const view = cellsFor(table.key, row);
     const isMe = me !== null && row.team_id === me;
+    // EXACT TIES ARE REAL TIES and are shown as such. The flag is the server's;
+    // nothing here compares cents, because the payout splits on the server's
+    // answer and a second opinion would eventually disagree with it.
+    const tied = table.key === 'overall' && isTiedRow(row);
     const cells = view.cells.map((cell) => (
       cell.kind === 'cents'
         ? moneyCell(cell.value)
@@ -63,7 +70,9 @@ function tableRows(table) {
       `<tr class="fs-st__row${isMe ? ' is-me' : ''}" `
       + `data-team-id="${escapeHtml(String(row.team_id))}"`
       + `${isMe ? ' aria-current="true"' : ''}>`
-      + `<td class="fs-st__rank">${escapeHtml(String(view.rank))}</td>`
+      + `<td class="fs-st__rank">${escapeHtml(String(view.rank))}`
+      + (tied ? '<span class="fs-st__tie" title="Exact tie">T</span>' : '')
+      + '</td>'
       + `<td class="fs-st__team">${escapeHtml(view.teamName)}`
       + (isMe ? '<span class="fs-st__you">YOU</span>' : '')
       + '</td>'
@@ -105,21 +114,64 @@ function stateBlock(state) {
 
 let CONTEXT = null;
 
+/**
+ * The subheading, driven by the four-state server lifecycle.
+ *
+ * FROZEN AND FINAL ARE DIFFERENT SENTENCES. Frozen means the field and the
+ * scoring window are closed; final means every eligible result is actually in.
+ * Saying FINAL while a regular-season contest is still unsettled tells a GM the
+ * season is decided when it is not.
+ */
 function championshipSubheading() {
   const championship = championshipState();
-  if (championship && championship.status === 'FINAL') {
-    const through = Number(championship.scoring_through_week);
-    return Number.isFinite(through)
-      ? `FINAL · Championship scoring through Week ${through}`
-      : 'FINAL · FantasyStakes Championship';
-  }
+  const through = Number(
+    championship ? championship.scoring_through_week : NaN);
+  const suffix = Number.isFinite(through) ? ` · through Week ${through}` : '';
 
-  const parts = ['CHAMPIONSHIP CHASE'];
-  if (CONTEXT && typeof CONTEXT.current_week === 'number') {
-    parts.push(`Week ${CONTEXT.current_week}`);
+  switch (championshipLifecycle()) {
+    case 'PAID':
+      return `PAID · FantasyStakes Championship${suffix}`;
+    case 'FINAL':
+      return `FINAL · Championship scoring${suffix}`;
+    case 'FROZEN': {
+      const open = championshipUnresolved().length;
+      return `FROZEN${suffix}`
+        + (open ? ` · ${open} eligible result${open === 1 ? '' : 's'} outstanding`
+                : '');
+    }
+    default: {
+      const parts = ['CHAMPIONSHIP CHASE'];
+      if (CONTEXT && typeof CONTEXT.current_week === 'number') {
+        parts.push(`Week ${CONTEXT.current_week}`);
+      }
+      return parts.join(' · ');
+    }
   }
-  return parts.join(' · ');
 }
+
+/**
+ * One line telling a GM what this number actually is.
+ *
+ * SHORT ON PURPOSE. This sits directly under the standings, where a paragraph
+ * is a wall a GM scrolls past. It states the one fact that is genuinely
+ * confusable — a wallet full of Credits is not a lead — and leaves the rest to
+ * Rules, which is where long-form reading belongs.
+ */
+function championshipExplainer() {
+  const base = 'Championship Score is your net winnings from FantasyStakes '
+    + 'matchups and prop pools. Highest score wins. Wallet balance does not count.';
+  switch (championshipLifecycle()) {
+    case 'PAID':
+      return `${base} Pot paid.`;
+    case 'FINAL':
+      return `${base} Scoring closed.`;
+    case 'FROZEN':
+      return `${base} Scoring closed; postseason play no longer changes it.`;
+    default:
+      return base;
+  }
+}
+
 
 export function buildStandingsPanel() {
   const state = standingsState();
@@ -135,6 +187,7 @@ export function buildStandingsPanel() {
     + `<div class="fs-tabhead__sub">${escapeHtml(championshipSubheading())}</div>`
     + '</div>'
     + '</div>'
+    + `<p class="fs-st__explainer">${escapeHtml(championshipExplainer())}</p>`
     + creditsDisclaimer()
     + `<div class="fs-st__scroll" id="fs-standings-scroll">${body}</div>`
     + attributionFooter()

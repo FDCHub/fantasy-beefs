@@ -23,6 +23,14 @@
  * ========================================================================== */
 
 import { escapeHtml, note, sectionHeading } from './components.js';
+import {
+  championshipAdminSection, configSheet, confirmSheet, correctionConfirmSheet,
+  correctionHistorySection, correctionRequest, correctionSheet, refusalNote,
+} from './championship-admin.js';
+import {
+  activateChampionship, correctionKey, explainRefusal, freezeChampionship,
+  settleChampionship, submitCorrection, updateContribution,
+} from './championship-command.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
 import { ledgerRow } from './ledger.js';
 import {
@@ -417,17 +425,40 @@ export function commissionerArea() {
     '<section class="fs-commish" id="fs-commissioner">' +
     `<div class="fs-commish__head">${escapeHtml(COMMISSIONER_HEADING)}</div>` +
     topOffSection() +
+    // RC2 — the certified championship lifecycle, in the commissioner's own
+    // area rather than a new tab. Rendering comes from `championship-admin`;
+    // every mutation goes through `championship-command` to the governed route.
+    championshipAdminSection(championshipResultsState(), championshipConfigState()) +
+    correctionHistorySection(championshipCorrectionsState()) +
     gmCardsSection() +
     reconciliationSection() +
     '</section>'
   );
 }
 
+/* ── Championship state, bound from the one production read ─────────────── */
+
+let CHAMP_RESULTS = null;
+let CHAMP_CONFIG = null;
+let CHAMP_CORRECTIONS = null;
+let CHAMP_DRAFT = null;
+
+export function bindChampionshipState(results, config, corrections) {
+  CHAMP_RESULTS = results || null;
+  CHAMP_CONFIG = config || null;
+  CHAMP_CORRECTIONS = corrections || null;
+}
+
+export function championshipResultsState() { return CHAMP_RESULTS; }
+export function championshipConfigState() { return CHAMP_CONFIG; }
+export function championshipCorrectionsState() { return CHAMP_CORRECTIONS; }
+
 /**
  * @param {HTMLElement} panel
  * @param {{openSheet: Function}} api
  */
 export function bindCommissioner(panel, api) {
+  bindChampionshipControls(panel, api);
   panel.querySelectorAll('[data-request]').forEach((el) => {
     el.addEventListener('click', () => {
       const request = TOPOFF_REQUESTS.find((r) => String(r.id) === el.dataset.request);
@@ -442,6 +473,121 @@ export function bindCommissioner(panel, api) {
       if (position) api.openSheet(gmSheet(position));
     });
   });
+}
+
+/**
+ * The championship lifecycle controls.
+ *
+ * EVERY MUTATION IS THE SERVER'S DECISION. This binds clicks to the governed
+ * routes and shows what comes back; it re-reads authorization from nothing and
+ * enforces no rule. A refusal is rendered with its stable reason code so the
+ * operator sees the same vocabulary the logs and the runbook use.
+ *
+ * IRREVERSIBLE ACTIONS ARE TWO-STEP. Activate, freeze, settle and every
+ * correction open a confirmation sheet first; only the confirm control inside
+ * that sheet issues the request.
+ */
+export function bindChampionshipControls(panel, api) {
+  const leagueId = api && api.leagueId;
+  const reload = async () => {
+    if (!api || typeof api.refreshChampionship !== 'function') return;
+    await api.refreshChampionship();
+  };
+
+  const run = async (fn) => {
+    try {
+      await fn();
+      await reload();
+      if (api && typeof api.closeSheet === 'function') api.closeSheet();
+    } catch (error) {
+      const { code, message } = explainRefusal(error);
+      if (api && typeof api.openSheet === 'function') {
+        api.openSheet({
+          title: 'Refused',
+          sub: code || 'The server declined the request.',
+          body: refusalNote(code ? `[${code}] ${message}` : message),
+        });
+      }
+    }
+  };
+
+  panel.querySelectorAll('[data-fs-champ-action]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const action = el.dataset.fsChampAction;
+      if (!api || typeof api.openSheet !== 'function') return;
+      if (action === 'edit-config') {
+        api.openSheet(configSheet(CHAMP_CONFIG));
+        return;
+      }
+      if (action === 'correct') {
+        CHAMP_DRAFT = null;
+        api.openSheet(correctionSheet());
+        return;
+      }
+      const spec = confirmSheet(action, CHAMP_RESULTS);
+      if (spec) api.openSheet(spec);
+    });
+  });
+
+  // The confirm controls live inside the sheet, so they are delegated from the
+  // document rather than bound to markup that does not exist yet.
+  const host = (api && api.sheetHost) || panel.ownerDocument;
+  if (host && !host.__fsChampBound) {
+    host.__fsChampBound = true;
+
+    host.addEventListener('click', (event) => {
+      const el = event.target.closest
+        ? event.target.closest('[data-fs-champ-confirm]') : null;
+      if (!el) return;
+      const action = el.dataset.fsChampConfirm;
+      if (action === 'activate') run(() => activateChampionship(leagueId));
+      else if (action === 'freeze') run(() => freezeChampionship(leagueId));
+      else if (action === 'settle') run(() => settleChampionship(leagueId));
+      else if (action === 'correction' && CHAMP_DRAFT) {
+        const draft = {
+          ...CHAMP_DRAFT,
+          correction_key: correctionKey(CHAMP_DRAFT),
+        };
+        run(() => submitCorrection(leagueId, correctionRequest(draft)));
+      }
+    });
+
+    host.addEventListener('submit', (event) => {
+      const form = event.target;
+      if (!form || !form.dataset) return;
+      const kind = form.dataset.fsChampForm;
+      if (!kind) return;
+      event.preventDefault();
+      const data = new FormData(form);
+
+      if (kind === 'config') {
+        // Whole Credits in, exact cents out. The governed range lives on the
+        // server, so an out-of-range value is sent and refused there.
+        const credits = Number(data.get('contribution'));
+        run(() => updateContribution(leagueId, Math.round(credits * 100)));
+        return;
+      }
+
+      if (kind === 'correction') {
+        const competition = String(data.get('competition_type'));
+        CHAMP_DRAFT = {
+          competition_type: competition,
+          contest_ref: Number(data.get('contest_ref')),
+          reason: String(data.get('reason') || ''),
+        };
+        if (competition === 'versus') {
+          CHAMP_DRAFT.outcome = String(data.get('outcome') || 'winner');
+          CHAMP_DRAFT.winner_team_id = Number(data.get('winner_team_id'));
+        } else {
+          CHAMP_DRAFT.winner_team_ids = String(data.get('winner_team_ids') || '')
+            .split(',').map((t) => t.trim()).filter(Boolean).map(Number);
+        }
+        if (api && typeof api.openSheet === 'function') {
+          api.openSheet(correctionConfirmSheet(CHAMP_DRAFT));
+        }
+      }
+    });
+  }
 }
 
 /** Exposed for the suites: the seam this area is blocked on. */

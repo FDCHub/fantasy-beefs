@@ -577,11 +577,37 @@ _FORMS = re.findall(r"<form\b[^>]*", APP_RENDERED_SOURCE + INDEX)
 # carried NO control at all, and the only shipped pick surface wrote a legacy
 # row the settlement engine never reads. This list growing by one is what
 # closing that gap looks like.
+# GOVERNED REVISION, RC2 SPRINT A. Two more: the commissioner's FantasyStakes
+# Championship contribution form and the authoritative correction form. Both are
+# commissioner-only, both post through `championship-command.js` to routes behind
+# `require_league_commissioner`, and both are refused server-side by the RC2
+# lifecycle guards regardless of what the browser drew — the contribution outside
+# its governed range or after the freeze, the correction after payout or against
+# a pool that is not a WINNER_DISTRIBUTION. Neither carries an amount field for
+# the correction: it submits a corrected RESULT and the server re-derives the
+# economics, which is the property `_CHAMPIONSHIP_CMD` below asserts.
 _GOVERNED_FORMS = {"fs-gate-form", "fs-pool-entry-form", "fs-poolpick-form"}
+_GOVERNED_CHAMPIONSHIP_FORMS = {'data-fs-champ-form="config"',
+                                'data-fs-champ-form="correction"'}
 _assert("every form in the application is enumerated and governed",
-        len(_FORMS) == len(_GOVERNED_FORMS)
-        and all(any(name in f for f in _FORMS) for name in _GOVERNED_FORMS),
+        len(_FORMS) == len(_GOVERNED_FORMS) + len(_GOVERNED_CHAMPIONSHIP_FORMS)
+        and all(any(name in f for f in _FORMS) for name in _GOVERNED_FORMS)
+        and all(any(name in f for f in _FORMS)
+                for name in _GOVERNED_CHAMPIONSHIP_FORMS),
         str(_FORMS))
+
+# The championship forms reach the server ONLY through the certified routes, and
+# the correction has no way to name an amount. A cents field here would let a
+# commissioner hand-post economics, which is exactly what the RC2 correction
+# architecture exists to prevent.
+_CHAMPIONSHIP_CMD = _strip_comments(_read("js", "championship-command.js"))
+_assert("the championship forms post to the governed championship routes",
+        "'/championship/config'" in _CHAMPIONSHIP_CMD.replace("`", "'")
+        or "/championship/config`" in _CHAMPIONSHIP_CMD)
+_assert("and the correction submits a result, never an amount",
+        "/championship/corrections`" in _CHAMPIONSHIP_CMD
+        and not re.search(r"(amount|cents|score)_?\w*\s*:", _CHAMPIONSHIP_CMD
+                          .split("export function submitCorrection")[-1]))
 _assert("the mutating form targets the governed command, not the legacy route",
         "/settings/pool-entry" in APP_SOURCE
         and "'/pool/config'" not in APP_SOURCE)

@@ -61,7 +61,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
 
   /* ── Rules ────────────────────────────────────────────────────────────── */
 
-  section('The five rule groups render in the locked order');
+  section('The six rule groups render in the locked order');
 
   const rules = await evaluate(`
     const rows = [...document.querySelectorAll('#fs-rule-groups .fs-rulerow')];
@@ -73,9 +73,10 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
       clipped: rows.filter(r => r.scrollWidth > r.clientWidth + 1).length,
     };
   `);
-  check('exactly five groups', rules.count === 5, String(rules.count));
+  check('exactly six groups', rules.count === 6, String(rules.count));
   check('the order is locked',
-    rules.titles.join(' / ') === 'The Money / Weekly Grind / Big Money / The Bets / The Fine Print',
+    rules.titles.join(' / ') === 'The Money / Weekly Grind / The Championships / '
+      + 'Big Money / The Bets / The Fine Print',
     rules.titles.join(' / '));
   check('every group is a tappable row', rules.allButtons === true);
   check('every row shows a disclosure affordance', rules.allChevrons === true);

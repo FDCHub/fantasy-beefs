@@ -310,7 +310,7 @@ export function activationSheet() {
       '<div class="fs-econ__confirm" id="fs-econ-confirm">'
       + '<p class="fs-econ__confirm-body">Activating issues every GM their '
       + 'Season-Opening Allocation and locks this season’s economy. The Weekly '
-      + 'Bet Minimum, Championship Pot Contribution and Skunk Fee cannot be '
+      + 'Bet Minimum, Yahoo Championship Contribution and Skunk Fee cannot be '
       + 'changed afterwards.</p>'
       + figures
       + '<div class="fs-econ__error" id="fs-econ-confirm-error" role="alert">'
