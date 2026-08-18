@@ -11,7 +11,6 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-import config
 from db.schema import League, SeasonAllocation, Team
 from economy.fantasystakes_championship_allocation import (
     FantasyStakesChampionshipAllocationResult,
@@ -42,10 +41,11 @@ def activate_fantasystakes_championship_stage(
 ) -> RC2SeasonActivationResult:
     """Freeze/fund the RC2 FantasyStakes Championship stage. Owns transaction.
 
-    The RC1/base SeasonAllocation must already be complete. This makes the RC2
-    extension recoverable without mutating or reopening the certified RC1
-    allocation rows. A failed second stage is visible and retryable; it never
-    causes a second base allocation or a duplicate championship contribution.
+    The RC1/base SeasonAllocation must already be complete for the league's own
+    season. This makes the RC2 extension recoverable without mutating or
+    reopening the certified RC1 allocation rows. A failed second stage is
+    visible and retryable; it never causes a second base allocation or duplicate
+    championship contribution.
     """
     try:
         league = (db.query(League)
@@ -54,7 +54,7 @@ def activate_fantasystakes_championship_stage(
                   .first())
         if league is None:
             raise RC2SeasonActivationError(f"league {league_id} not found")
-        season = int(config.ALLOCATION_SEASON)
+        season = int(league.season)
         teams = (db.query(Team).filter(Team.league_id == league_id)
                  .order_by(Team.id).all())
         team_ids = tuple(t.id for t in teams)
@@ -67,7 +67,8 @@ def activate_fantasystakes_championship_stage(
                      .order_by(SeasonAllocation.team_id).all())
         if {r.team_id for r in base_rows} != set(team_ids):
             raise RC2SeasonActivationError(
-                "base Season-Opening Allocation is not complete; activate the base economy first")
+                "base Season-Opening Allocation is not complete for the league season; "
+                "activate the base economy first")
         base_amounts = {int(r.buyin_cents) for r in base_rows}
         if len(base_amounts) != 1:
             raise RC2SeasonActivationError(
