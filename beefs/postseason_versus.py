@@ -5,6 +5,15 @@ THE ONE THING THIS MODULE DOES: answer, for one league-week and two teams,
 whether both are permitted to enter or materially advance a NEW Versus
 commitment. It moves no money, writes nothing, and opens no transaction.
 
+RC2 ADDS ONE ORDERING PREREQUISITE, NOT A SECOND ELIGIBILITY RULE. Before any
+postseason Versus action may be admitted, the regular-season FantasyStakes
+Championship standings must already be frozen. Otherwise the postseason wager
+could settle into the live competitive read model before the Championship Score
+snapshot exists and contaminate a race whose scoring window has already closed.
+The freeze prerequisite is checked here because every governed postseason Versus
+admission already converges here; eligibility itself remains owned by the
+championship-track state below.
+
 ── PARTICIPATION IS THE RESTRICTION HERE, UNLIKE POOLS ──────────────────────
 
 WP1B settled that an eliminated GM remains a full Pool PARTICIPANT — they may
@@ -56,6 +65,8 @@ action returns its committed result without re-evaluating current eligibility.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from sqlalchemy.orm import object_session
 
 REASON_NO_TRACK_STATE = "POSTSEASON_STATE_NOT_SUPPLIED"
 REASON_TRACK_UNKNOWN = "POSTSEASON_STATE_UNKNOWN"
@@ -147,6 +158,34 @@ def eligible_team_ids(state, resolver) -> frozenset[int]:
     return frozenset(resolved)
 
 
+def _require_rc2_championship_freeze(league, week: int) -> None:
+    """Require the regular-season Championship snapshot before postseason play.
+
+    `league` is an ORM row loaded by the funding path, so its object session is
+    the same transaction that will continue into admission/funding. No new
+    session is opened and no write occurs here.
+    """
+    db = object_session(league)
+    if db is None:
+        # Every production caller supplies a persistent League ORM row. A
+        # detached row cannot prove the freeze and therefore cannot safely
+        # authorize postseason money movement.
+        from economy.championship_scoring_gate import (
+            ChampionshipScoringGateError,
+            REASON_CHAMPIONSHIP_NOT_FROZEN,
+        )
+        raise ChampionshipScoringGateError(
+            REASON_CHAMPIONSHIP_NOT_FROZEN,
+            "postseason Versus admission received a detached league row and "
+            "cannot prove the FantasyStakes Championship standings were frozen.")
+
+    from economy.championship_scoring_gate import (
+        require_championship_frozen_for_postseason,
+    )
+    require_championship_frozen_for_postseason(
+        db, league_id=league.id, week=week)
+
+
 def assert_admissible(*, league, week: int, team_ids, state, resolver,
                       action: str) -> AdmissionDecision:
     """Refuse unless EVERY participating team is postseason-eligible.
@@ -159,14 +198,19 @@ def assert_admissible(*, league, week: int, team_ids, state, resolver,
     otherwise — so a caller that forgets to inspect the return value still
     cannot proceed past a refusal.
 
-    REGULAR SEASON SHORT-CIRCUITS FIRST, before the state or the resolver is
-    touched. Below `playoff_start_week` this is one phase comparison against a
+    REGULAR SEASON SHORT-CIRCUITS FIRST, before the state, resolver or RC2 freeze
+    is touched. Below `playoff_start_week` this is one phase comparison against a
     column the league row already carries: no provider call, no identity build,
     no behaviour change.
     """
     if not is_postseason_week(league, week):
         return AdmissionDecision(eligible_team_ids=frozenset(), week=week,
                                  admitted=True)
+
+    # RC2 ordering invariant: the regular-season Championship Score must exist
+    # before any postseason action can later settle into the live competitive
+    # ledger. This is separate from (and deliberately before) field eligibility.
+    _require_rc2_championship_freeze(league, week)
 
     eligible = eligible_team_ids(state, resolver)
     wanted = frozenset(int(t) for t in team_ids)
