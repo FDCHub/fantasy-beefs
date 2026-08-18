@@ -113,6 +113,23 @@ def _place_bet(
     odds_dec: float,
 ) -> Bet:
     """Deduct stake and write a pending bet + debit transaction."""
+    # RC2 NEW-1 — FANTASYSTAKES HAS NO HOUSE.
+    #
+    # This is the single funnel every one of the four single-party entry points
+    # passes through, so guarding here covers the engine no matter which caller
+    # reaches it. It runs FIRST: before the stake validation, before the wallet
+    # mutex, before the Bet row and before any ledger posting, so a refused
+    # attempt leaves no row, no lock and no posting.
+    #
+    # Inert for a league carrying no FantasyStakes governance state — see
+    # betting/versus_legacy_guard.py for the markers and the stated boundary.
+    from betting.versus_legacy_guard import assert_legacy_wager_path_allowed
+    from db.schema import Matchup
+
+    _league_id = (db.query(Matchup.league_id)
+                  .filter(Matchup.id == matchup_id).scalar())
+    assert_legacy_wager_path_allowed(db, _league_id)
+
     # FR-7.50: reject a sub-cent stake before validate_bet_amount()'s
     # MIN_BET/MAX_BET_PCT guard. Single funnel for all four single-party
     # entry points (place_straight_bet/spread/over_under/prop). Return value
