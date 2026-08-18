@@ -44,6 +44,17 @@ REASON_REGULAR_POOL_OPEN = "FS_CHAMPIONSHIP_REGULAR_POOL_OPEN"
 REASON_POSTSEASON_CONTAMINATED = "FS_CHAMPIONSHIP_POSTSEASON_ALREADY_ACTIVE"
 REASON_PARTIAL_SNAPSHOT = "FS_CHAMPIONSHIP_PARTIAL_SNAPSHOT"
 REASON_NO_TEAMS = "FS_CHAMPIONSHIP_NO_TEAMS"
+#: No FantasyStakes Championship activation exists for this league-season, so
+#: there is no funded field to freeze. A championship is never inferred from the
+#: roster: without allocation rows there is no pot, no contribution and no field.
+REASON_NOT_ACTIVATED = "FS_CHAMPIONSHIP_NOT_ACTIVATED"
+#: The league's current team set no longer equals the field funded at season
+#: activation. The championship field is the FUNDED field, so this refuses the
+#: freeze rather than silently competing a field the pot was not sized for.
+REASON_FIELD_CHANGED = "FS_CHAMPIONSHIP_FIELD_CHANGED_AFTER_ACTIVATION"
+#: A frozen team id has no resolvable Team row for display. The frozen field is
+#: never altered to route around this — the read refuses instead.
+REASON_HISTORICAL_TEAM_UNRESOLVED = "FS_CHAMPIONSHIP_HISTORICAL_TEAM_UNRESOLVED"
 
 
 class FantasyStakesChampionshipError(ValueError):
@@ -151,8 +162,59 @@ def _teams(db: Session, league_id: int) -> list[Team]:
             .order_by(Team.id).all())
 
 
+def _teams_by_id(db: Session, team_ids: set[int]) -> dict[int, Team]:
+    """Display metadata for an explicit set of team ids.
+
+    DISPLAY ONLY. This resolves names and owners for a field that is already
+    decided; it never contributes a team to a field and never removes one.
+    """
+    if not team_ids:
+        return {}
+    rows = db.query(Team).filter(Team.id.in_(sorted(team_ids))).all()
+    return {t.id: t for t in rows}
+
+
+def funded_championship_field(db: Session, *, league_id: int, season: int
+                              ) -> frozenset[int] | None:
+    """The team-ID set funded at season activation, or None before activation.
+
+    THE FUNDED FIELD IS THE CHAMPIONSHIP FIELD. One
+    `FantasyStakesChampionshipAllocation` row exists per GM who was advanced a
+    contribution into the fixed pot, and that row set is immutable — activation
+    refuses `partial` and `conflict` states rather than repairing them. A later
+    roster change therefore cannot enlarge or shrink the field it addresses.
+
+    Imported inside the function on purpose. `api.main_rc2` owns RC2 model
+    registration order explicitly, and package `__init__` modules are kept
+    side-effect free, so `reports` must not take a module-import-time dependency
+    on an `economy` RC2 model module.
+    """
+    from economy.fantasystakes_championship_allocation import (
+        FantasyStakesChampionshipAllocation,
+    )
+
+    rows = (db.query(FantasyStakesChampionshipAllocation.team_id)
+            .filter(FantasyStakesChampionshipAllocation.league_id == league_id,
+                    FantasyStakesChampionshipAllocation.season == season)
+            .all())
+    if not rows:
+        return None
+    return frozenset(int(r[0]) for r in rows)
+
+
 def _existing_snapshot(db: Session, *, league_id: int, season: int
                        ) -> ChampionshipSnapshot | None:
+    """Read the immutable frozen snapshot.
+
+    INTEGRITY IS SELF-CONTAINED, NOT MEASURED AGAINST THE CURRENT ROSTER. An
+    earlier revision compared the score rows against `teams` as it stands today,
+    which made an unrelated later team row turn a valid, already-frozen
+    championship into a `PARTIAL_SNAPSHOT` refusal. The frozen field is whatever
+    was frozen; the checks below ask only whether this marker's own rows are a
+    coherent field — at least one row, no duplicate team, every row belonging to
+    this marker's league-season. Current `Team` rows supply display metadata and
+    nothing else.
+    """
     marker = (db.query(FantasyStakesChampionshipFreeze)
               .filter(FantasyStakesChampionshipFreeze.league_id == league_id,
                       FantasyStakesChampionshipFreeze.season == season)
@@ -160,21 +222,29 @@ def _existing_snapshot(db: Session, *, league_id: int, season: int
     if marker is None:
         return None
 
-    teams = _teams(db, league_id)
     score_rows = (db.query(FantasyStakesChampionshipScore)
                   .filter(FantasyStakesChampionshipScore.freeze_id == marker.id)
                   .order_by(FantasyStakesChampionshipScore.championship_score_cents.desc(),
                             FantasyStakesChampionshipScore.team_id.asc())
                   .all())
-    if len(score_rows) != len(teams) or {r.team_id for r in score_rows} != {t.id for t in teams}:
+    frozen_ids = {int(r.team_id) for r in score_rows}
+    if not score_rows or len(frozen_ids) != len(score_rows):
         raise FantasyStakesChampionshipError(
             REASON_PARTIAL_SNAPSHOT,
             f"league {league_id} season {season} has a championship freeze marker "
-            f"but {len(score_rows)} score row(s) for {len(teams)} team(s). The "
-            f"immutable snapshot is partial and is never repaired automatically.")
+            f"but {len(score_rows)} score row(s) covering {len(frozen_ids)} distinct "
+            f"team(s). The immutable snapshot is partial and is never repaired "
+            f"automatically.")
+    stray = [int(r.team_id) for r in score_rows
+             if int(r.league_id) != int(league_id) or int(r.season) != int(season)]
+    if stray:
+        raise FantasyStakesChampionshipError(
+            REASON_PARTIAL_SNAPSHOT,
+            f"league {league_id} season {season} championship snapshot contains "
+            f"score row(s) for team(s) {sorted(stray)} carrying a different "
+            f"league-season than their freeze marker.")
 
-    team_by_id = {t.id: t for t in teams}
-    ranked = _rank_rows(score_rows, team_by_id)
+    ranked = _rank_rows(score_rows, _teams_by_id(db, frozen_ids))
     return ChampionshipSnapshot(
         league_id=league_id,
         season=season,
@@ -195,7 +265,15 @@ def _rank_rows(score_rows, team_by_id: dict[int, Team]) -> tuple[ChampionshipRow
         place = cursor + 1
         tied = len(group) > 1
         for row in group:
-            team = team_by_id[row.team_id]
+            team = team_by_id.get(row.team_id)
+            if team is None:
+                # The frozen field is never edited to route around a missing
+                # display row. Refuse with a specific reason instead.
+                raise FantasyStakesChampionshipError(
+                    REASON_HISTORICAL_TEAM_UNRESOLVED,
+                    f"frozen championship team {row.team_id} has no resolvable "
+                    f"Team row for display. The frozen field is immutable and is "
+                    f"never altered to omit an unresolvable GM.")
             result.append(ChampionshipRow(
                 team_id=row.team_id,
                 team_name=team.team_name,
@@ -220,8 +298,11 @@ def freeze_fantasystakes_championship(
     The League row is locked before state is inspected. A replay returns the
     immutable existing snapshot. A first freeze refuses until the provider says
     the playoff boundary has been reached, refuses while any regular-season
-    scoring result remains open, and refuses if postseason economics have
-    already changed the live competitive result.
+    scoring result remains open, refuses if postseason economics have already
+    changed the live competitive result, refuses unless the league-season's
+    FantasyStakes Championship has been activated and therefore has a funded
+    field, and refuses if the league's current team set no longer equals that
+    funded field.
     """
     now = now or datetime.now(timezone.utc)
 
@@ -259,6 +340,48 @@ def freeze_fantasystakes_championship(
     if not teams:
         raise FantasyStakesChampionshipError(
             REASON_NO_TEAMS, f"league {league_id} has no teams")
+    current_ids = frozenset(int(t.id) for t in teams)
+
+    # ── THE FIELD IS THE FIELD THAT WAS FUNDED ───────────────────────────────
+    #
+    # Activation advances one contribution per GM into the fixed pot and records
+    # one allocation row per GM. That row set is the championship field. If the
+    # roster has since changed, the current team set is NOT the field, and
+    # freezing on it would snapshot a field the pot was never sized for — which
+    # settlement then refuses forever, stranding the pot.
+    #
+    # REFUSED BEFORE THE MARKER AND BEFORE ANY SCORE ROW, so the pot stays whole
+    # and the freeze stays retryable once a governed correction lands. Nothing is
+    # minted, refunded, added or dropped here: reconciling a changed roster with
+    # a funded field is an operator decision, not one this read model may make.
+    #
+    # A CHAMPIONSHIP IS NEVER INFERRED FROM THE ROSTER. An earlier revision fell
+    # back to the current team set when no allocation rows existed, which let a
+    # league freeze a championship it had never activated: no contribution, no
+    # pot, and a snapshot settlement could never pay because it would find no
+    # allocations. Activation is the precondition, and its absence is a refusal
+    # rather than a default. Nothing is activated or funded on this path.
+    funded_ids = funded_championship_field(db, league_id=league_id,
+                                           season=league.season)
+    if not funded_ids:
+        raise FantasyStakesChampionshipError(
+            REASON_NOT_ACTIVATED,
+            f"league {league_id} season {league.season} has no FantasyStakes "
+            f"Championship allocation, so no championship field has been funded. "
+            f"Complete championship activation before freezing. Nothing was "
+            f"written and no Credits moved.")
+    expected_ids = funded_ids
+    if funded_ids != current_ids:
+        added = sorted(current_ids - funded_ids)
+        removed = sorted(funded_ids - current_ids)
+        raise FantasyStakesChampionshipError(
+            REASON_FIELD_CHANGED,
+            f"league {league_id} season {league.season} funded a FantasyStakes "
+            f"Championship field of {len(funded_ids)} GM(s) at activation, but the "
+            f"league now carries {len(current_ids)} team(s) "
+            f"(added={added}, removed={removed}). The championship field is the "
+            f"funded field; refusing to freeze a different one. The pot is "
+            f"untouched and this freeze is retryable after a governed correction.")
 
     # Every regular-season Versus wager that can change realized net must be
     # terminal before the score is frozen.
@@ -311,6 +434,19 @@ def freeze_fantasystakes_championship(
             f"competitive ledger.")
 
     live = league_standings(db, league_id=league_id)
+    # The competitive read model derives its membership through `league_positions`
+    # rather than from `teams` directly. Prove the rows about to be frozen ARE the
+    # field before a single one is written, so the snapshot cannot silently differ
+    # from the funded field by that seam either.
+    live_ids = frozenset(int(row.team_id) for row in live.rows)
+    if live_ids != expected_ids:
+        raise FantasyStakesChampionshipError(
+            REASON_FIELD_CHANGED,
+            f"league {league_id} season {league.season} competitive read model "
+            f"returned {sorted(live_ids)} but the championship field is "
+            f"{sorted(expected_ids)}. Refusing to freeze a field that does not "
+            f"match the one that was funded. Nothing was written.")
+
     marker = FantasyStakesChampionshipFreeze(
         league_id=league_id,
         season=league.season,

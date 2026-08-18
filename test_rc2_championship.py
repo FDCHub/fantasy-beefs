@@ -22,13 +22,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from reports.championship_read_model import (  # noqa: E402
     ChampionshipRow,
     FantasyStakesChampionshipError,
+    FantasyStakesChampionshipFreeze,
+    FantasyStakesChampionshipScore,
+    REASON_NOT_ACTIVATED,
     REASON_TOO_EARLY,
     freeze_fantasystakes_championship,
     get_fantasystakes_championship,
     tied_championship_distribution,
 )
-from db.schema import Base, League, SessionLocal, Team, Wallet, engine  # noqa: E402
-from ledger.ledger import create_ledger_table  # noqa: E402
+from db.schema import (  # noqa: E402
+    Base, League, LeagueSeasonEconomyConfig, SeasonAllocation, SessionLocal,
+    Team, Wallet, engine,
+)
+# Explicit RC2 economy model registration, as `api.main_rc2` performs it. The
+# freeze reads the funded FantasyStakes Championship field (the allocation row
+# set) to prove the field has not changed since activation, so the RC2 economy
+# tables must exist before `create_all` below. Package __init__ modules are
+# deliberately side-effect free, so the registration is named here.
+from economy import fantasystakes_championship_allocation as _fs_allocation  # noqa: E402,F401
+from economy.rc2_season_activation import (  # noqa: E402
+    activate_fantasystakes_championship_stage,
+)
+from ledger.ledger import create_ledger_table, trial_balance  # noqa: E402
 
 _failures: list[str] = []
 
@@ -110,6 +125,7 @@ with SessionLocal() as db:
     db.add(league)
     db.flush()
     league_id = league.id
+    team_ids: list[int] = []
     for i in range(4):
         team = Team(
             league_id=league_id,
@@ -119,7 +135,28 @@ with SessionLocal() as db:
         )
         db.add(team)
         db.flush()
+        team_ids.append(team.id)
         db.add(Wallet(team_id=team.id, balance=0.0))
+    # Preconditions for RC2 championship activation. These are the BASE economy
+    # rows only — they deliberately create no FantasyStakesChampionshipAllocation,
+    # so the pre-activation refusal below is proven to be about championship
+    # activation specifically and not about the base Season-Opening Allocation.
+    db.add(LeagueSeasonEconomyConfig(
+        league_id=league_id,
+        season=2026,
+        weekly_bet_minimum_cents=1_000,
+        championship_contribution_cents=8_000,
+        skunk_fee_cents=1_000,
+        regular_season_week_count=14,
+        active_team_count=4,
+        start_week_used=1,
+        playoff_start_week_used=15,
+        frozen_at=None,
+    ))
+    for tid in team_ids:
+        db.add(SeasonAllocation(
+            league_id=league_id, team_id=tid, season=2026,
+            buyin_cents=22_000, min_reserve_cents=14_000, reserve_cents=8_000))
     db.commit()
 
 with SessionLocal() as db:
@@ -140,6 +177,32 @@ with SessionLocal() as db:
     league = db.query(League).filter(League.id == league_id).first()
     league.provider_current_week = 15
     db.commit()
+
+# The boundary has been reached, but the FantasyStakes Championship has not been
+# activated, so no contribution has been advanced and no pot exists. A
+# championship is never inferred from the roster.
+with SessionLocal() as db:
+    reason = None
+    try:
+        freeze_fantasystakes_championship(db, league_id=league_id)
+    except FantasyStakesChampionshipError as exc:
+        reason = exc.reason
+        db.rollback()
+    _assert("freeze refuses before championship activation",
+            reason == REASON_NOT_ACTIVATED, str(reason))
+
+with SessionLocal() as db:
+    _assert("pre-activation refusal wrote no freeze marker and no score rows",
+            db.query(FantasyStakesChampionshipFreeze).count() == 0
+            and db.query(FantasyStakesChampionshipScore).count() == 0)
+_assert("pre-activation refusal left the trial balance at zero",
+        trial_balance() == 0, str(trial_balance()))
+
+with SessionLocal() as db:
+    activation = activate_fantasystakes_championship_stage(league_id, db)
+    _assert("championship activation funds the field this freeze will use",
+            activation.fantasystakes_championship_pot_cents == 8_000 * 4
+            and set(activation.team_ids) == set(team_ids), str(activation))
 
 with SessionLocal() as db:
     snapshot = freeze_fantasystakes_championship(
