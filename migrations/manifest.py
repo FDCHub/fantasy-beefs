@@ -83,6 +83,12 @@ ACTIVE: tuple = (
         summary="immutable FantasyStakes Championship freeze and per-team "
                 "regular-season Championship Score snapshot",
     ),
+    Migration(
+        identifier="0004_rc2_fantasystakes_championship_economy",
+        module="migrations.add_rc2_fantasystakes_championship_economy",
+        summary="independent commissioner-editable FantasyStakes Championship "
+                "contribution and per-team fixed-pot allocation records",
+    ),
 )
 
 #: RECORDED, NOT RUN — see the module docstring. Grouped by why.
