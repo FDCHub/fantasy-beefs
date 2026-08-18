@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from auth.jwt_auth import User, get_current_gm, require_league_commissioner
+from auth.jwt_auth import User, get_current_gm
+from auth.allocation_gate import require_league_commissioner
 from db.deps import get_db
 from db.schema import League
 from economy.fantasystakes_championship_allocation import (
