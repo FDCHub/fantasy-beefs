@@ -82,6 +82,65 @@ def pending(engine) -> list:
     return [m for m in ACTIVE if m.identifier not in done]
 
 
+def verify(engine) -> list:
+    """Which APPLIED migrations cannot be corroborated by the live schema.
+
+    ── B1 · THE RECORD IS A CLAIM; THIS IS THE CHECK ────────────────────────
+
+    `pending()` answers "what has this database not been told to do". It cannot
+    answer "is this database actually shaped the way the record says", and those
+    are different questions with the same consequence when they disagree: a
+    process serving production traffic against a schema it cannot use.
+
+    Measured before this existed: a database stamped 0001-0006 with all six
+    championship tables absent answered `/ready` 200, `ready: true`,
+    `migrations: "ok"`. Nothing in the system disagreed with a record that was
+    simply untrue.
+
+    So for every migration RECORDED AS APPLIED, the objects the manifest says it
+    creates are looked up in the live schema. Returns one string per missing
+    object, empty when the record and the schema agree.
+
+    NOT THE SAME AS PENDING, AND DELIBERATELY SO. A migration that is pending is
+    an ordinary pre-release state — run it. A migration that is recorded and
+    unverifiable is a CORRUPT record: running it again is not obviously safe and
+    the operator has to decide. Readiness refuses traffic for both; only this
+    one tells an operator the record itself is wrong.
+
+    A DATABASE WITH NO RECORD AT ALL RETURNS NOTHING HERE. It has claimed
+    nothing, so it has contradicted nothing; `pending()` is what refuses it.
+    """
+    done = applied_identifiers(engine)
+    if not done:
+        return []
+
+    inspector = inspect(engine)
+    present = set(inspector.get_table_names())
+    columns_by_table: dict = {}
+    problems: list = []
+
+    for migration in ACTIVE:
+        if migration.identifier not in done:
+            continue
+        for table in migration.tables:
+            if table not in present:
+                problems.append(f"{migration.identifier}: table {table} missing")
+        for table, column in migration.columns:
+            if table not in present:
+                problems.append(
+                    f"{migration.identifier}: table {table} missing "
+                    f"(needed for column {column})")
+                continue
+            if table not in columns_by_table:
+                columns_by_table[table] = {
+                    c["name"] for c in inspector.get_columns(table)}
+            if column not in columns_by_table[table]:
+                problems.append(
+                    f"{migration.identifier}: {table}.{column} missing")
+
+    return problems
+
+
 def _record(connection, migration, release: str, version: str) -> None:
     connection.execute(
         text(f"INSERT INTO {TABLE} (identifier, applied_at, release, "

@@ -500,7 +500,14 @@ class AppServer:
         env.update(self._server_env)
 
         self._process = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "api.main:app",
+            # B1 — THE CERTIFIED PRODUCTION ENTRYPOINT, AS `Procfile` AND
+            # `railway.toml` both name it. Booting `api.main` here registered no
+            # RC2 model, so every fresh certification database was built without
+            # the six championship tables while the bootstrap still stamped
+            # 0003-0006 as applied — the precise corrupt state B1's schema
+            # verification now refuses. A harness must not manufacture a
+            # database shape production can never have.
+            [sys.executable, "-m", "uvicorn", "api.main_rc2:app",
              "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
             cwd=ROOT, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
