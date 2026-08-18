@@ -115,7 +115,14 @@ Base scoring:
 
 The highest combined score is Grand Champion. Equal highest combined scores produce co-Grand Champions; there is no Grand Champion tiebreaker.
 
-**Open implementation detail:** how component points are assigned when the Yahoo or FantasyStakes championship itself contains a tie must be owner-ruled before Grand Champion settlement/final recognition is encoded. Do not infer a rule from display ordering.
+When either component championship contains a tie, the Grand Champion points for the ordinal places occupied by that tied group are pooled and divided equally among every GM in the tie. This preserves the total points available from the component championship and does not use display ordering as a competitive tiebreaker.
+
+Examples:
+
+- two-way tie for 1st: `(3 + 2) / 2 = 2.5` Grand Champion points each
+- two-way tie for 2nd: `(2 + 1) / 2 = 1.5` points each
+- three-way tie for 1st: `(3 + 2 + 1) / 3 = 2` points each
+- a tie group extending beyond 3rd shares only the 1st/2nd/3rd points occupied by that group
 
 The Regular Season Points Champion / Skunk award is not part of the Grand Champion calculation in RC2.
 
