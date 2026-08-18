@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from auth.jwt_auth import User, get_current_gm
 from auth.allocation_gate import require_league_commissioner
 from db.deps import get_db
-from db.schema import League
+from db.schema import League, Team
 from economy.fantasystakes_championship_allocation import (
     read_config, set_contribution,
 )
@@ -33,6 +33,30 @@ class ContributionRequest(BaseModel):
     contribution_cents: int = Field(..., ge=100, le=100_000)
 
 
+def _require_member(db: Session, *, league_id: int, user: User) -> int:
+    """Return the caller's team id only when it belongs to this league.
+
+    Championship reads expose league-wide standings, so they use the same
+    membership boundary as the certified RC1 standings surface. Refuse before
+    reading league state; an authenticated GM from another league gets 403.
+    """
+    team_id = getattr(user, "team_id", None)
+    if team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": "Authenticated user owns no team in this league.",
+        })
+    team = (db.query(Team.id)
+            .filter(Team.id == int(team_id), Team.league_id == league_id)
+            .first())
+    if team is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": "Authenticated user owns no team in this league.",
+        })
+    return int(team_id)
+
+
 def _row_dict(row) -> dict:
     return {
         "team_id": row.team_id,
@@ -50,8 +74,9 @@ def _row_dict(row) -> dict:
 def championship_config(
     league_id: int,
     db: Session = Depends(get_db),
-    _gm: User = Depends(get_current_gm),
+    gm: User = Depends(get_current_gm),
 ):
+    _require_member(db, league_id=league_id, user=gm)
     view = read_config(db, league_id=league_id)
     return {
         "league_id": view.league_id,
@@ -115,8 +140,9 @@ def activate_championship_economy(
 def championship_chase(
     league_id: int,
     db: Session = Depends(get_db),
-    _gm: User = Depends(get_current_gm),
+    gm: User = Depends(get_current_gm),
 ):
+    acting_team_id = _require_member(db, league_id=league_id, user=gm)
     league = db.query(League).filter(League.id == league_id).first()
     if league is None:
         raise HTTPException(status_code=404, detail="league not found")
@@ -126,15 +152,15 @@ def championship_chase(
             "status": "FINAL",
             "league_id": league_id,
             "season": frozen.season,
+            "acting_team_id": acting_team_id,
             "scoring_through_week": frozen.scoring_through_week,
             "frozen_at": frozen.frozen_at.isoformat(),
             "rows": [_row_dict(r) for r in frozen.rows],
         }
 
-    live = league_standings(db, league_id=league_id)
+    live = league_standings(db, league_id=league_id, acting_team_id=acting_team_id)
     rows = []
     ordered = live.overall
-    cursor = 0
     last_score = None
     last_place = 0
     for index, row in enumerate(ordered, start=1):
@@ -156,6 +182,7 @@ def championship_chase(
         "status": "LIVE",
         "league_id": league_id,
         "season": league.season,
+        "acting_team_id": acting_team_id,
         "scoring_through_week": None,
         "playoff_start_week": league.playoff_start_week,
         "rows": rows,
