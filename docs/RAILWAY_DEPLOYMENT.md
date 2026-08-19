@@ -248,18 +248,17 @@ DATABASE_URL=postgresql://…/fs_restore python -m ops.audit
 ### Making a restored database the active one
 
 1. Disable writes on the application: `FS_WRITES_DISABLED=1` with a reason
-   (runbook §11). Reads, sign-in and commissioner diagnostics stay up.
-2. Point `DATABASE_URL` at the restored database. **Scale `web` to 1 replica**
-   for the cutover, for the §4 reason.
-3. `python -m migrations.run` — if the backup predates a release, this is where
-   the schema catches up.
-4. `python -m ops.demo_ledger_check --require-demo` and `python -m ops.audit`.
-   **Both must pass before the next step.**
+   (runbook section 11). Reads and commissioner diagnostics stay up.
+2. Point `DATABASE_URL` at the restored database. **No replica scaling is
+   needed** - the bootstrap runs pre-deploy, not per replica (WEBDEPLOY-2).
+3. Redeploy. `preDeployCommand` runs `migrations.run`, which catches the schema
+   up if the backup predates a release and blocks the release if it cannot.
+4. `ops.demo_ledger_check --require-demo` and `ops.audit`, both through
+   `railway ssh` as above. **Both must pass before the next step.**
 5. `GET /ready` returns 200.
-6. Scale back to 2 replicas, confirm `/ready` on the new instances, then clear
-   `FS_WRITES_DISABLED`.
-7. `python -m ops.smoke --base-url …` and, for the demo, `python -m
-   ops.demo_probe --base-url …`.
+6. Confirm `/ready`, then clear `FS_WRITES_DISABLED`.
+7. `python -m ops.smoke --base-url ...` and `python -m ops.demo_probe
+   --base-url ...` from a workstation - these are HTTP-only and need no shell.
 
 **Recovery owner:** the operator holding the Railway project and the
 `FS_TOKEN_ENCRYPTION_KEY` custody described in runbook §4. A restore performed
@@ -275,15 +274,53 @@ public route that can bring a league into existence is a public route that can b
 made to bring leagues into existence repeatedly. There is no public seed
 endpoint and none is added.
 
-### First-deploy sequence
+### How an operator command is actually run - WEBDEPLOY-3 correction
+
+**`railway run` does NOT work for these commands.** It runs the command on the
+*workstation* with Railway's variables injected, and `DATABASE_URL` points at
+`postgres.railway.internal` - a name that resolves only inside Railway's private
+network. Every operator command must run INSIDE the container:
 
 ```bash
-# ── with the web service at 1 REPLICA (see §4) ──────────────────────────────
-railway run python -m migrations.run          # no-op on a fresh database
-railway run python -m demo.seed --status      # expect: "no showcase demo league exists"
-railway run python -m demo.seed               # ~20s; builds the showcase
-railway run python -m ops.demo_ledger_check --require-demo
-# ── then scale web to 2 replicas ────────────────────────────────────────────
+# Read the running process's own library path rather than hard-coding a Nix
+# store hash, which changes on every rebuild.
+LD=$(railway ssh --service fantasystakes-app -- cat /proc/1/environ \
+     | tr '\0' '\n' | grep '^LD_LIBRARY_PATH=' | cut -d= -f2-)
+
+railway ssh --service fantasystakes-app -- \
+  env LD_LIBRARY_PATH="$LD" /opt/venv/bin/python -m demo.seed --status
+```
+
+Two details, both learned the hard way on the first Railway seed:
+
+* **`/opt/venv/bin/python`, not `python`.** An SSH session does not source the
+  container profile, so a bare `python` resolves to the Nix system interpreter,
+  which has none of this application's dependencies.
+* **`LD_LIBRARY_PATH` must be passed**, or `import numpy` dies with
+  `libstdc++.so.6: cannot open shared object file`.
+
+**Getting this wrong is not harmless.** A seed that dies part-way leaves a
+PARTIAL showcase - league and teams created, season never played - and
+`find_showcase` will happily return it. That is exactly what happened on the
+first Railway seed. Recovery is the ordinary path (`demo.seed` retires the
+partial league and rebuilds it), and `--status` plus `ops.demo_ledger_check` are
+what reveal the problem.
+
+### First-deploy sequence
+
+**No replica juggling is required any more.** WEBDEPLOY-2 moved the
+fresh-database bootstrap into `preDeployCommand`, so the schema exists before the
+first instance boots and every replica takes the inert startup path. The old
+"scale to 1, seed, scale to 2" sequence is obsolete.
+
+```bash
+# migrations/bootstrap already ran as preDeployCommand - nothing to do here
+railway ssh --service fantasystakes-app -- env LD_LIBRARY_PATH="$LD" \
+  /opt/venv/bin/python -m demo.seed --status    # "no showcase demo league exists"
+railway ssh --service fantasystakes-app -- env LD_LIBRARY_PATH="$LD" \
+  /opt/venv/bin/python -m demo.seed             # ~20s; builds the showcase
+railway ssh --service fantasystakes-app -- env LD_LIBRARY_PATH="$LD" \
+  /opt/venv/bin/python -m ops.demo_ledger_check --require-demo
 ```
 
 ### Idempotency, stated exactly
@@ -526,20 +563,70 @@ question — it is what makes the demo launch independent of the answer.
 | `fantasystakesapp.com` | marketing website | later |
 | `app.fantasystakesapp.com` | this application + demo | when authorized |
 
-When DNS is authorized:
+**WEBDEPLOY-3 established exactly how this works.** Step 1 is already done —
+the service is live on `fantasystakes-app-production.up.railway.app` with
+`/ready` returning 200.
 
-1. Create the Railway service and deploy it. Confirm it serves on its
-   `*.up.railway.app` hostname and that `/ready` returns 200.
-2. Add `app.fantasystakesapp.com` as a custom domain **on the `web` service**.
-3. **Railway then generates the DNS records to create.** Capture the generated
-   values verbatim — host, type and target — and put them in the deploy record.
-   **Do not pre-write a `CNAME` target here.** Railway's routing and verification
-   targets are per-service and per-account; a value assumed in advance is a value
-   that will be wrong and will look right.
-4. Create the records at the registrar exactly as generated. Wait for Railway to
-   report the domain verified and its certificate issued.
+### Railway will not tell you the DNS values until the domain exists
+
+Checked against Railway's own API: `CustomDomainStatus` carries `dnsRecords`,
+`verificationDnsHost`, `verificationToken` and `certificateStatus` — but only for
+a custom domain that has already been created. The read-only
+`customDomainAvailable` query answers **Not Authorized** for a normal account
+token, so there is no way to preview the target. **The values therefore cannot be
+recorded until `customDomainCreate` runs, and guessing a CNAME target is exactly
+the mistake this section forbids.**
+
+What creation returns is a list of `DNSRecords`, each carrying:
+
+`recordType` · `hostlabel` · `zone` · `fqdn` · `requiredValue` · `currentValue` ·
+`status` · `purpose`
+
+`purpose` is one of `DNS_RECORD_PURPOSE_TRAFFIC_ROUTE` (the routing record) or
+`DNS_RECORD_PURPOSE_ACME_DNS01_CHALLENGE` (ownership validation for the
+certificate). `recordType` is drawn from `A` / `CNAME` / `NS` / `TXT`. For a
+subdomain such as `app.` the routing record is normally a `CNAME`, but **take the
+type and the value from Railway's output, not from that expectation.**
+
+### Cloudflare
+
+Railway detects it explicitly — `CDNProvider` includes
+`DETECTED_CDN_PROVIDER_CLOUDFLARE` — and reports it on the domain's status.
+
+**Set the record to DNS only (grey cloud) for cutover.** Railway issues its own
+certificate and must reach the host to validate ownership
+(`CERTIFICATE_STATUS_TYPE_VALIDATING_OWNERSHIP` → `ISSUING` → `VALID`); an
+orange-cloud proxy stands in front of that exchange. Once Railway reports
+`certificateStatus = CERTIFICATE_STATUS_TYPE_VALID`, whether to enable proxying
+is a separate decision — and Railway's own domain view is the authority on
+whether it is supported, not this document.
+
+### The sequence, when authorized
+
+1. `railway domain app.fantasystakesapp.com --service fantasystakes-app`
+   (or the dashboard). **This attaches the domain and begins live binding** — it
+   is the step this package deliberately did not take.
+2. Capture every generated record verbatim — `recordType`, `hostlabel`, `zone`,
+   `requiredValue` — into the deploy record.
+3. Create them in Cloudflare, **DNS only**.
+4. Wait for `verified: true` and `certificateStatus: …VALID`.
 5. Set `FS_PUBLIC_BASE_URL=https://app.fantasystakesapp.com` and redeploy.
-6. `python -m ops.smoke --base-url https://app.fantasystakesapp.com --expect-release <sha>`.
+6. `python -m ops.smoke --base-url https://app.fantasystakesapp.com --expect-release <sha>`
+   and `python -m ops.demo_probe --base-url https://app.fantasystakesapp.com --concurrency 12`.
+7. Keep the `*.up.railway.app` hostname until the custom domain is proven.
+
+### The application needs almost nothing changed
+
+Verified in WEBDEPLOY-3 by reading the code rather than assuming:
+
+| Concern | Change needed at cutover? |
+|---|---|
+| Cookie domain | **No** — `auth/session.py` sets no `domain=`, so cookies are host-only and bind to whatever host serves them |
+| CSRF origin check | **No** — `_origin_is_same_site` compares `Origin`/`Referer` host against the request's own `Host` header; it is relative, never a configured constant |
+| CORS | **No** — `FS_ALLOWED_ORIGINS` is empty and same-origin requests never consult CORS |
+| Allowed hosts | **No** — there is no `TrustedHostMiddleware` or host allowlist |
+| Yahoo redirect URI | **No** — Yahoo stays unconfigured |
+| `FS_PUBLIC_BASE_URL` | **YES** — the one variable to change. It is only read by `ops/config.py` to check that it is set at all, so it is not load-bearing, but it should be true |
 
 The apex `fantasystakesapp.com` is **not** pointed at this service. The marketing
 site is a separate phase, and pointing the apex at the application now would make
@@ -716,3 +803,106 @@ surface, not to the composition.
 3. Nothing here retroactively invalidates the demo's own certification of what
    it demonstrates. It records that one production control had not been applied
    to it, and that it now has been.
+
+---
+
+## 18. Operational state after WEBDEPLOY-3
+
+### Deploy triggers - there are none, deliberately
+
+`environment.deploymentTriggers` and `service.repoTriggers` are both **empty**.
+The service knows its source repo (`FDCHub/fantasy-beefs`) but no branch trigger
+exists, so **no GitHub push to any branch - master included - can deploy this
+service.** Three `master` builds did fire early in WEBDEPLOY-2 from the trigger
+Railway created with the service; all three failed and none ever served traffic,
+and the trigger is gone.
+
+The trade-off is explicit: the certified branch does not auto-deploy either.
+Deployment is a deliberate act:
+
+```bash
+railway service source connect --repo FDCHub/fantasy-beefs \
+  --branch deploy/fantasystakesapp-demo --service fantasystakes-app
+```
+
+For a certified deployment that is the safer default - nothing reaches
+production because somebody pushed.
+
+### Restart is not a deploy, and only one of them is zero-downtime
+
+WEBDEPLOY-2 measured ~4 seconds of 502s during `railway service restart`. The
+cause is structural, not a fault:
+
+**Every deploy setting in this service comes from `railway.toml`, applied at
+DEPLOY time.** Queried directly, the service-level settings are all null -
+`healthcheckPath`, `numReplicas`, `overlapSeconds`, `drainingSeconds`. So:
+
+| Action | Health-gated? | Replicas replaced | Downtime |
+|---|---|---|---|
+| deploy / `source connect` | **yes** - `/ready` must pass | rolling, with overlap | none observed |
+| `service restart` | **no** - not a deployment | all at once | ~4 s |
+
+`service restart` restarts the running containers in place. There is no new
+deployment, so `railway.toml`'s healthcheck never gates it and there is no
+overlap window; both replicas go down and come back together, and the gap is
+simply this application's start-up time.
+
+**So use a redeploy, never `service restart`, for routine maintenance.** No
+configuration change would help: `overlapSeconds` and `drainingSeconds` govern
+deploys, not restarts. Left at Railway defaults deliberately.
+
+Evidence that deploys really are gated: during the failed `master` builds the
+previous deployment kept serving throughout, and a deployment whose
+`preDeployCommand` failed never took traffic at all.
+
+### Spend guard
+
+Set on the workspace via `usageLimitSet`, grounded in Railway's own
+`estimatedUsage` rather than a guess:
+
+| | |
+|---|---|
+| Soft limit (notify) | **$20** |
+| Hard limit (stop services) | **$40** |
+
+At the time of setting, period-to-date usage was **$2.40** and the two legacy
+`fantasy-beefs` projects accounted for ~98% of it; FantasyStakes' own run-rate
+projects to roughly $17/month for 2 replicas plus PostgreSQL. $40 is therefore a
+runaway guard at about twice projection, not an operational cliff - **but it does
+stop services when reached.** Adjust with `usageLimitSet`, remove with
+`usageLimitRemove`.
+
+### External uptime monitoring - defined, NOT active
+
+Railway health checks gate a deploy and then stop asking. Nothing currently
+watches the deployment continuously. The monitor to create:
+
+| | |
+|---|---|
+| Target | `https://fantasystakes-app-production.up.railway.app/ready` |
+| Method | `GET`, unauthenticated, **non-mutating** |
+| Expect | HTTP `200` (it returns **503** when the database, configuration, migrations or schema are wrong - that is the signal) |
+| Interval | 5 minutes or better |
+| Alert after | 2-3 consecutive failures, not one |
+| Notify | email to the operator |
+
+**`/ready` is the correct target and `/health` is not.** `/health` always answers
+200 and would report a dead database as healthy. `/ready` is already public and
+carries no secret - `ops/smoke.py` sweeps its body for credential markers on
+every run.
+
+Not created here because every candidate needs a new third-party account, which
+is the user's to make. A GitHub Actions scheduled monitor is **not** viable:
+scheduled workflows only run from a repository's default branch, and that is
+`master`, which this package does not touch.
+
+### Findings not actioned
+
+* **FastAPI docs are public.** `/docs`, `/redoc` and `/openapi.json` all answer
+  200 in production, publishing the full route map. Not a vulnerability - every
+  route keeps its own auth - but unnecessary surface. Closing it is a code
+  change (`FastAPI(docs_url=None, redoc_url=None, openapi_url=None)`) and was
+  out of scope here.
+* **No security headers.** No HSTS, `X-Content-Type-Options`, `Referrer-Policy`,
+  frame policy or CSP on any response. Adding them is a middleware change and
+  does not block domain cutover.
