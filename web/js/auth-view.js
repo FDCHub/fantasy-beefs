@@ -164,10 +164,83 @@ export function buildGate() {
 
       yahooBlock +
 
+      demoEntry() +
+
       devSignIn() +
 
       '<p class="fs-gate__note">Virtual Credits · $ is display only · no cash value</p>' +
     '</div>'
+  );
+}
+
+/**
+ * Wire "Try Demo" to the public entry route.
+ *
+ * BOUND SEPARATELY FROM THE SIGN-IN FORM, and before it. `bindGate` returns
+ * early when the development sign-in form is absent — which it is on every
+ * production build — so binding the demo control inside that path would have
+ * left the button dead in exactly the deployment it exists for.
+ *
+ * The route needs no CSRF header: it carries no authority to abuse, takes no
+ * parameters, and the session it issues is the one the visitor is asking for.
+ *
+ * @param {ParentNode} root
+ */
+export function bindDemoEntry(root) {
+  const button = root.querySelector('#fs-gate-demo');
+  if (!button) return;
+  let inFlight = false;
+  button.addEventListener('click', async () => {
+    if (inFlight) return;
+    inFlight = true;
+    button.setAttribute('disabled', 'disabled');
+    try {
+      // THROUGH `session.js`, LIKE EVERY OTHER MODULE. A raw `fetch` here broke
+      // the certified invariant that exactly one module in the application
+      // makes network calls — `test_s7_full_ui_certification.py` caught it, and
+      // it was right to: the one-door rule is what makes "no illustrative UI
+      // path can bypass the authenticated client" a fact rather than a habit.
+      await apiFetch('/demo/enter', { method: 'POST' });
+      // A full reload, so the shell re-reads the session it now holds rather
+      // than trying to reconcile a signed-out page into a signed-in one.
+      window.location.assign('/app/index.html');
+    } catch (error) {
+      const el = root.querySelector('#fs-gate-error');
+      if (el) {
+        el.textContent = error instanceof ApiError
+          ? 'The demo league is not available on this deployment yet.'
+          : 'The demo could not be started. Please try again shortly.';
+      }
+    } finally {
+      inFlight = false;
+      button.removeAttribute('disabled');
+    }
+  });
+}
+
+/**
+ * "Try Demo" — the way into the product without a Yahoo account.
+ *
+ * ── D1.1 · WHY THE GATE NEEDED THIS ──────────────────────────────────────
+ *
+ * Before this, the signed-out gate offered exactly one control: Sign in with
+ * Yahoo. A prospective GM, a commissioner deciding whether to bring a league
+ * across, or a Yahoo reviewer could not see the product at all without first
+ * handing over an account. That is the opposite of what a demo is for.
+ *
+ * IT IS NOT A SIGN-IN AND IS NOT DRESSED AS ONE. Secondary styling, placed
+ * below the Yahoo control, and it says plainly that what follows is sample
+ * data — so nobody can arrive in the demo believing they are looking at their
+ * own league.
+ *
+ * @returns {string}
+ */
+export function demoEntry() {
+  return (
+    '<button class="fs-btn fs-gate__demo" id="fs-gate-demo" type="button">'
+      + 'Try Demo</button>'
+    + '<p class="fs-gate__explain">Explore a sample league with fictional '
+      + 'teams and results. No Yahoo account, no sign-in, nothing to connect.</p>'
   );
 }
 
@@ -218,6 +291,8 @@ function devSignIn() {
  * @param {HTMLElement} root the gate container
  */
 export function bindGate(root) {
+  bindDemoEntry(root);
+
   const form = root.querySelector('#fs-gate-form');
   if (!form) return;
   const errorEl = root.querySelector('#fs-gate-deverror');

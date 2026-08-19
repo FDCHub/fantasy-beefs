@@ -338,10 +338,30 @@ def _validate_production_configuration() -> None:
     from ops.release import release_identity
 
     identity = release_identity()
+    # ── WEBDEPLOY-1 · WHICH REPLICA IS SPEAKING ──────────────────────────────
+    #
+    # With one replica, "the log" and "this process" were the same thing. With
+    # two behind a load balancer they are not, and an interleaved log in which
+    # no line says who wrote it cannot answer the first question a multi-replica
+    # incident asks: is this happening on both, or on one?
+    #
+    # The platform supplies the identifiers and they are read defensively —
+    # absent on a laptop, absent under pytest, and possibly renamed by the
+    # platform later. An unknown replica is reported as unknown; nothing here
+    # fails, and nothing invents a value.
+    #
+    # NEITHER IS A SECRET. `RAILWAY_REPLICA_ID` names an instance and
+    # `RAILWAY_REPLICA_REGION` names a datacentre; neither is a credential and
+    # neither can be turned into one. Every genuinely sensitive variable in this
+    # process is reported by NAME ONLY, by `ops.config`, and that rule is
+    # untouched here.
+    replica = (os.getenv("RAILWAY_REPLICA_ID", "") or "local")[:12]
+    region = os.getenv("RAILWAY_REPLICA_REGION", "") or "local"
     # ONE STRUCTURED LINE AN OPERATOR CAN GREP, carrying no value of anything.
     print(f"[startup] fantasystakes version={identity.version} "
           f"release={identity.short} source={identity.source} "
           f"env={report.environment} serviceable={report.serviceable} "
+          f"replica={replica} region={region} "
           f"yahoo={report.can_sign_in_with_yahoo} "
           f"token_storage={report.can_store_provider_tokens}"
           + (f" degraded={','.join(report.missing_degraded)}"
@@ -374,6 +394,15 @@ def _create_tables() -> None:
     from db.schema import Base, engine
 
     existing = set(inspect(engine).get_table_names())
+    # WEBDEPLOY-1 — THE BACKEND, BY NAME, WITH NO URL IN IT. Which dialect a
+    # replica actually resolved is the fact that separates "PostgreSQL, as
+    # deployed" from "SQLite, because DATABASE_URL was missing" — and under
+    # `FS_ENV=production` the second cannot happen, because `startup_guard`
+    # refuses to start without `DATABASE_URL`. Printing the dialect makes that
+    # guarantee observable rather than merely asserted. The URL itself is NEVER
+    # printed: it carries the password.
+    print(f"[startup] database dialect={engine.dialect.name} "
+          f"tables={len(existing)}")
     if is_production() and existing:
         print(f"[startup] schema present ({len(existing)} tables) — "
               f"bootstrap skipped; upgrades run via `python -m migrations.run`")
