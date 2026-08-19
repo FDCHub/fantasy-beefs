@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FantasyStakes social card source</title>
+<!--
+  SOURCE FOR site/assets/og-image.png. Rasterised at exactly 1200x630 by
+  tools/marketing/build_assets.mjs. It is NOT published: it lives outside the
+  Cloudflare Pages publish root so the card is served as a single flat PNG,
+  which is what every social scraper actually reads.
+
+  It borrows the site stylesheet for the palette tokens and then states its own
+  geometry, because a social card is a fixed-size canvas and has no business
+  responding to anything.
+-->
+<link rel="stylesheet" href="/styles/site.css">
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0b0a; }
+  .card {
+    position: relative;
+    width: 1200px; height: 630px;
+    box-sizing: border-box;
+    padding: 76px 84px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    background:
+      radial-gradient(52% 60% at 12% 0%, rgba(200, 162, 77, .16), transparent 68%),
+      radial-gradient(46% 52% at 96% 10%, rgba(200, 162, 77, .09), transparent 70%),
+      #0b0b0a;
+    overflow: hidden;
+  }
+  .card::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px;
+    background: linear-gradient(90deg, #c8a24d, rgba(200, 162, 77, .12));
+  }
+  .word { font-size: 46px; font-weight: 800; letter-spacing: -.01em; line-height: 1; }
+  .word .a { color: #f3eddc; }
+  .word .b { color: #c8a24d; }
+  .descriptor {
+    margin-top: 12px;
+    font-size: 17px; letter-spacing: .22em; text-transform: uppercase; color: #8d846c;
+  }
+  .headline {
+    margin: 0;
+    font-size: 66px; line-height: 1.06; font-weight: 800; letter-spacing: -.02em;
+    color: #f3eddc; max-width: 17ch;
+  }
+  .foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; }
+  .tagline { font-size: 26px; font-weight: 700; color: #e0bd68; }
+  .trust {
+    margin-top: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 17px; letter-spacing: .06em; text-transform: uppercase; color: #b8ad8e;
+  }
+  .odds { display: flex; gap: 10px; }
+  .chip {
+    min-width: 92px; padding: 12px 14px; text-align: center;
+    border: 1px solid rgba(200, 162, 77, .38); border-radius: 12px;
+    background: rgba(200, 162, 77, .10); color: #e0bd68;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 20px; font-weight: 600;
+  }
+  .chip.quiet { background: #1d1a12; border-color: rgba(243, 237, 220, .09); color: #b8ad8e; }
+</style>
+</head>
+<body>
+<div class="card" id="og-card">
+  <div>
+    <div class="word"><span class="a">Fantasy</span><span class="b">Stakes</span></div>
+    <div class="descriptor">Fantasy Stakes for Fantasy Leagues</div>
+  </div>
+
+  <h1 class="headline">Turn your fantasy league into a whole new game.</h1>
+
+  <div class="foot">
+    <div>
+      <div class="tagline">Real odds. Sportsbook action. More ways to win.</div>
+      <div class="trust">No deposits. No payouts. No house. No vig.</div>
+    </div>
+    <div class="odds">
+      <span class="chip">&#8722;135</span>
+      <span class="chip">+115</span>
+      <span class="chip quiet">O 233.5</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

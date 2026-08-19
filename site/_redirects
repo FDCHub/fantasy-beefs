@@ -1,0 +1,22 @@
+# =============================================================================
+# Cloudflare Pages redirects - fantasystakesapp.com
+#
+# NOTHING HERE TAKES EFFECT UNTIL A CUSTOM DOMAIN IS ATTACHED. On the
+# *.pages.dev preview hostname the www rule simply never matches, which is why
+# it is safe to commit ahead of the cutover.
+#
+# WWW TO APEX. Both hostnames must be attached to the Pages project for this to
+# fire; attaching only the apex leaves www unresolved at DNS and this line is
+# never reached. The alternative - a Cloudflare Redirect Rule at the zone - is
+# equally valid and is the better choice if www should redirect before it ever
+# reaches Pages. Pick one; running both is how a redirect loop gets built.
+#
+# THE DEMO IS NOT REDIRECTED FROM HERE. The demo lives on the application at
+# app.fantasystakesapp.com and is reached through the configured link in
+# site/js/config.js. A /demo redirect on the marketing host would be a second
+# place to change the destination, which is the exact thing that configuration
+# file exists to prevent.
+# =============================================================================
+
+https://www.fantasystakesapp.com/* https://fantasystakesapp.com/:splat 301!
+http://www.fantasystakesapp.com/*  https://fantasystakesapp.com/:splat 301!

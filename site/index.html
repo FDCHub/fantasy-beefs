@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FantasyStakes — Fantasy Stakes for Fantasy Leagues</title>
+<meta name="description" content="FantasyStakes adds a sportsbook-style game layer to the fantasy league you already play: head-to-head matchups, calculated odds and league-wide prop pools, all with virtual credits.">
+<link rel="canonical" href="https://fantasystakesapp.com/">
+<meta name="theme-color" content="#0b0b0a">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="index, follow">
+
+<!-- Open Graph / social. The card image is a local 1200x630 PNG generated from
+     site/assets/og-image.html by tools/marketing/build_assets.mjs, so nothing
+     on this page reaches a third-party host. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="FantasyStakes">
+<meta property="og:locale" content="en_US">
+<meta property="og:url" content="https://fantasystakesapp.com/">
+<meta property="og:title" content="FantasyStakes — Fantasy Stakes for Fantasy Leagues">
+<meta property="og:description" content="Real odds. Sportsbook action. More ways to win. FantasyStakes adds a sportsbook-style game layer to the fantasy league you already play — all with virtual credits.">
+<meta property="og:image" content="https://fantasystakesapp.com/assets/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="FantasyStakes — Real odds. Sportsbook action. More ways to win.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="FantasyStakes — Fantasy Stakes for Fantasy Leagues">
+<meta name="twitter:description" content="Real odds. Sportsbook action. More ways to win. FantasyStakes adds a sportsbook-style game layer to the fantasy league you already play — all with virtual credits.">
+<meta name="twitter:image" content="https://fantasystakesapp.com/assets/og-image.png">
+<meta name="twitter:image:alt" content="FantasyStakes — Real odds. Sportsbook action. More ways to win.">
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="stylesheet" href="/styles/site.css">
+<script src="/js/config.js" defer></script>
+<script src="/js/site.js" defer></script>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- ── Masthead ─────────────────────────────────────────────────────────────
+     Brand, the primary call to action, and a disclosure holding the section
+     links. The call to action sits OUTSIDE the disclosure so it is reachable on
+     a phone without opening anything. -->
+<header class="masthead">
+  <div class="wrap">
+    <div class="masthead__bar">
+      <a class="brand" href="/" aria-label="FantasyStakes home">
+        <span class="brand__word"><span class="brand__a">Fantasy</span><span class="brand__b">Stakes</span></span>
+      </a>
+
+      <a class="btn btn--primary btn--sm masthead__cta" href="#demo" data-fs-demo-link>Try the Demo</a>
+
+      <button class="nav__toggle" type="button" hidden
+              data-fs-nav-toggle
+              aria-controls="site-nav" aria-expanded="true" aria-label="Open menu">
+        <span aria-hidden="true"></span>
+      </button>
+
+      <!-- Inside the bar so it can be a row beside the brand at desktop widths
+           and a full-width stack beneath it on a phone, ordered by CSS rather
+           than duplicated in the markup. -->
+      <nav class="nav" id="site-nav" aria-label="Primary">
+        <ul class="nav__list">
+          <li><a class="nav__link" href="#how-it-works">How It Works</a></li>
+          <li><a class="nav__link" href="#commissioners">For Commissioners</a></li>
+          <li><a class="nav__link" href="#players">For Players</a></li>
+          <li><a class="nav__link" href="#faq">FAQ</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ── 1 · Hero ─────────────────────────────────────────────────────────── -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div class="hero__grid">
+        <div>
+          <p class="eyebrow">Fantasy Stakes for Fantasy Leagues</p>
+          <h1 id="hero-title">Turn your fantasy league into a whole new game.</h1>
+          <p class="lead hero__lead">FantasyStakes adds a Vegas-style sportsbook game layer to the fantasy league you already play. Go head-to-head with anyone in your league using calculated moneylines, spreads and over/unders based on your league’s projections, or take on everyone through league-wide prop pools built around your league’s weekly action. All with virtual credits.</p>
+
+          <div class="cta-row">
+            <a class="btn btn--primary" href="#demo" data-fs-demo-link>Try the Demo</a>
+            <a class="btn btn--ghost" href="#how-it-works">See How It Works</a>
+          </div>
+
+          <p class="hero__trust">No deposits. No payouts. No house. No vig.</p>
+        </div>
+
+        <!-- Illustrative matchup fragment. Labelled as an image so a screen
+             reader is told what it shows rather than reading loose figures. -->
+        <div class="motif" role="img" aria-label="Illustration of a FantasyStakes head-to-head matchup card showing two league teams with moneyline, spread and total odds, entered with virtual credits.">
+          <div class="motif__head">
+            <span class="motif__label">FantasyStakes Matchup</span>
+            <span class="motif__meta">Week 7</span>
+          </div>
+
+          <div class="motif__row">
+            <span class="motif__team">Gridiron Sons
+              <span class="motif__sub">Proj 118.4</span>
+            </span>
+            <span class="motif__odds">
+              <span class="pill">−135</span>
+              <span class="pill pill--quiet">−3.5</span>
+            </span>
+          </div>
+
+          <div class="motif__row">
+            <span class="motif__team">Waiver Wolves
+              <span class="motif__sub">Proj 114.9</span>
+            </span>
+            <span class="motif__odds">
+              <span class="pill">+115</span>
+              <span class="pill pill--quiet">+3.5</span>
+            </span>
+          </div>
+
+          <div class="motif__row">
+            <span class="motif__team">Combined total
+              <span class="motif__sub">Over / Under</span>
+            </span>
+            <span class="motif__odds">
+              <span class="pill">O 233.5</span>
+              <span class="pill pill--quiet">U 233.5</span>
+            </span>
+          </div>
+
+          <div class="motif__foot">
+            <span>Virtual credits</span>
+            <span class="motif__stake">250 in action</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 2 · What is FantasyStakes ────────────────────────────────────────── -->
+  <section class="section" id="what-is" aria-labelledby="what-is-title">
+    <div class="wrap">
+      <div class="section__head">
+        <p class="eyebrow">What is FantasyStakes</p>
+        <h2 id="what-is-title">Turn your fantasy league into a whole new game.</h2>
+      </div>
+      <div class="section__body">
+        <p class="copy">FantasyStakes modernizes the fantasy sports experience by adding a sportsbook-style game layer to the league you already play. Your league stays intact, but now every week brings more ways to compete through calculated odds, head-to-head FantasyStakes matchups and league-wide prop pools.</p>
+        <p class="copy">Your regular fantasy matchups, standings and playoffs remain the foundation. FantasyStakes adds its own virtual-credit competition, season-long standings and championship alongside them.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 3 · More action ──────────────────────────────────────────────────── -->
+  <section class="section" id="more-action" aria-labelledby="more-action-title">
+    <div class="wrap">
+      <div class="section__head">
+        <p class="eyebrow">Built to keep the league moving</p>
+        <h2 id="more-action-title">More action. Less to manage.</h2>
+      </div>
+      <div class="section__body">
+        <p class="copy">FantasyStakes keeps track of the competitions, credits, results and standings throughout the season, so commissioners spend less time keeping score and everyone can see where things stand.</p>
+        <p class="close-line">The game stays competitive. The recordkeeping stays simple.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 4 · Two ways to compete ──────────────────────────────────────────── -->
+  <section class="section" id="two-ways" aria-labelledby="two-ways-title">
+    <div class="wrap">
+      <div class="section__head">
+        <h2 id="two-ways-title">Two new ways to compete</h2>
+        <p class="lead">Go head-to-head. Or take on the whole league.</p>
+      </div>
+
+      <div class="grid grid--2 section__wide">
+        <article class="card">
+          <h3>Matchups</h3>
+          <p>Go head-to-head with anyone in your league using calculated moneylines, spreads and over/unders built around your league’s weekly projections and action.</p>
+          <div class="pill-row" role="img" aria-label="Illustration of moneyline, spread and total odds pills used in a FantasyStakes matchup.">
+            <span class="pill">−135</span>
+            <span class="pill">+115</span>
+            <span class="pill pill--quiet">−3.5</span>
+            <span class="pill pill--quiet">O 233.5</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>Pools</h3>
+          <p>Take on the whole league through weekly prop pools built around calling what happens next, from team scoring and player performances to other fantasy outcomes.</p>
+          <div class="standings" role="img" aria-label="Illustration of a weekly FantasyStakes prop pool showing entries and the credits in the pool.">
+            <div class="standings__row">
+              <span class="standings__pos">1</span>
+              <span>Highest scoring team</span>
+              <span class="standings__score">10 entries</span>
+            </div>
+            <div class="standings__row">
+              <span class="standings__pos">2</span>
+              <span>Top WR of the week</span>
+              <span class="standings__score">10 entries</span>
+            </div>
+            <div class="standings__row">
+              <span class="standings__pos">3</span>
+              <span>Closest final margin</span>
+              <span class="standings__score">10 entries</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <p class="close-line">More competition. More action. More ways to win.</p>
+    </div>
+  </section>
+
+  <!-- ── 5 · Commissioner ─────────────────────────────────────────────────── -->
+  <section class="section" id="commissioners" aria-labelledby="commissioners-title">
+    <div class="wrap">
+      <div class="section__head">
+        <p class="eyebrow">For Commissioners</p>
+        <h2 id="commissioners-title">Don’t replace your league. Modernize it.</h2>
+      </div>
+      <div class="section__body">
+        <p class="copy">Keep the history, rivalries and traditions that make your league great, then add a new layer of weekly competition with calculated odds, head-to-head FantasyStakes matchups and league-wide prop pools.</p>
+        <p class="copy">FantasyStakes sits on top of the league you already run, adding a new layer of competition without replacing the core fantasy experience. No new draft room. No new waiver system. No need to abandon your league history. Just more ways to compete.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 6 · Player ───────────────────────────────────────────────────────── -->
+  <section class="section" id="players" aria-labelledby="players-title">
+    <div class="wrap">
+      <div class="section__head">
+        <p class="eyebrow">For Players</p>
+        <h2 id="players-title">More ways to win every week.</h2>
+      </div>
+      <div class="section__body">
+        <p class="copy">FantasyStakes gives you new ways to compete throughout the season. Go head-to-head with anyone in your league using calculated moneylines, spreads and over/unders, or take on everyone through league-wide prop pools, all built around your league’s weekly action and projections.</p>
+
+        <div class="standings" role="img" aria-label="Illustration of a FantasyStakes season standings table ranking three teams by Championship Score.">
+          <div class="standings__row standings__row--lead">
+            <span class="standings__pos">1</span>
+            <span>Gridiron Sons</span>
+            <span class="standings__score">1,485</span>
+          </div>
+          <div class="standings__row">
+            <span class="standings__pos">2</span>
+            <span>Waiver Wolves</span>
+            <span class="standings__score">1,240</span>
+          </div>
+          <div class="standings__row">
+            <span class="standings__pos">3</span>
+            <span>Bye Week Bandits</span>
+            <span class="standings__score">1,105</span>
+          </div>
+        </div>
+
+        <p class="close-line">Real odds. Sportsbook action. More ways to win.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 7 · Virtual credits ──────────────────────────────────────────────── -->
+  <section class="section" id="credits" aria-labelledby="credits-title">
+    <div class="wrap">
+      <div class="section__head">
+        <p class="eyebrow">Virtual credits</p>
+        <h2 id="credits-title">The odds are real. The action is your fantasy league. FantasyStakes keeps score.</h2>
+      </div>
+      <div class="section__body">
+        <p class="copy">FantasyStakes is played entirely with virtual credits. Credits have no cash value and cannot be purchased, deposited, withdrawn or redeemed. All $ amounts shown in FantasyStakes represent virtual credits.</p>
+        <p class="copy">Each GM starts the season with a preset amount of virtual credits and puts those credits into action through FantasyStakes matchups and prop pools. Competitive results are tracked throughout the season, creating a FantasyStakes Championship Score that determines the FantasyStakes standings and season champion.</p>
+        <p class="copy">Your FantasyStakes finish is then combined with your Yahoo finish to determine the league’s Grand Champion.</p>
+        <p class="copy">Credits have no cash value, but they have real meaning inside the game. They measure the action, track competitive results and help determine who wins.</p>
+      </div>
+
+      <div class="stats" role="img" aria-label="Illustration of a season of virtual credits: a preset starting balance, credits currently in action, and a FantasyStakes Championship Score.">
+        <div class="stat">
+          <div class="stat__k">Season start</div>
+          <div class="stat__v">1,000</div>
+          <div class="stat__n">Virtual credits</div>
+        </div>
+        <div class="stat">
+          <div class="stat__k">In action</div>
+          <div class="stat__v">250</div>
+          <div class="stat__n">Across matchups and pools</div>
+        </div>
+        <div class="stat">
+          <div class="stat__k">Championship Score</div>
+          <div class="stat__v">1,485</div>
+          <div class="stat__n">Determines the standings</div>
+        </div>
+      </div>
+
+      <p class="close-line">More ways to compete. More ways to win.</p>
+    </div>
+  </section>
+
+  <!-- ── 8 · How it works ─────────────────────────────────────────────────── -->
+  <section class="section" id="how-it-works" aria-labelledby="how-it-works-title">
+    <div class="wrap">
+      <div class="section__head">
+        <p class="eyebrow">How it works</p>
+        <h2 id="how-it-works-title">Connect your league. FantasyStakes does the rest.</h2>
+      </div>
+
+      <ol class="grid grid--4 steps">
+        <li class="card step">
+          <span class="step__n" aria-hidden="true">1</span>
+          <h3>Connect Yahoo</h3>
+          <p>FantasyStakes uses your league settings and projections to create additional matchups you can enter with anyone in your league, then uses your league results to power a game experience tailored to your league.</p>
+        </li>
+        <li class="card step">
+          <span class="step__n" aria-hidden="true">2</span>
+          <h3>Play with virtual credits</h3>
+          <p>Go head-to-head with FantasyStakes Matchups or take on the whole league through weekly FantasyStakes Prop Pools.</p>
+        </li>
+        <li class="card step">
+          <span class="step__n" aria-hidden="true">3</span>
+          <h3>Compete all season</h3>
+          <p>Every settled competition feeds your FantasyStakes results and impacts your standings as you pursue the FantasyStakes Championship.</p>
+        </li>
+        <li class="card step">
+          <span class="step__n" aria-hidden="true">4</span>
+          <h3>Crown the champion</h3>
+          <p>FantasyStakes crowns its own season champion, then combines your FantasyStakes finish with your Yahoo finish to determine the league’s Grand Champion.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ── 9 · Demo ─────────────────────────────────────────────────────────── -->
+  <section class="section" id="demo" aria-labelledby="demo-title">
+    <div class="wrap">
+      <div class="panel">
+        <h2 id="demo-title">See FantasyStakes in action.</h2>
+        <p class="copy">Explore a complete FantasyStakes demo league with head-to-head matchups, calculated odds, prop pools, standings, virtual-credit activity and championship results.</p>
+        <p class="panel__trust">No Yahoo account required. No real money. Just a fully playable FantasyStakes demo.</p>
+        <div class="cta-row">
+          <a class="btn btn--primary" href="#demo" data-fs-demo-link>Try the Demo</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 10 · FAQ ─────────────────────────────────────────────────────────── -->
+  <section class="section" id="faq" aria-labelledby="faq-title">
+    <div class="wrap">
+      <div class="section__head">
+        <p class="eyebrow">FAQ</p>
+        <h2 id="faq-title">Questions, answered</h2>
+      </div>
+
+      <div class="faq">
+        <details class="faq__item">
+          <summary class="faq__q">Does FantasyStakes handle real money?</summary>
+          <div class="faq__a">
+            <p>No. FantasyStakes does not accept deposits, process payments or make payouts. The game is played entirely with virtual credits. Any separate arrangements between league members happen independently of FantasyStakes.</p>
+          </div>
+        </details>
+
+        <details class="faq__item">
+          <summary class="faq__q">Can I get additional credits?</summary>
+          <div class="faq__a">
+            <p>Yes, if your league allows Top-Offs. GMs may request additional virtual credits during the season, subject to the league’s preset Top-Off rules and limits. Top-Offs are part of the FantasyStakes game economy and cannot be purchased with real money.</p>
+          </div>
+        </details>
+
+        <details class="faq__item">
+          <summary class="faq__q">Does FantasyStakes replace Yahoo?</summary>
+          <div class="faq__a">
+            <p>No. FantasyStakes sits on top of the Yahoo league you already play, adding new matchup opportunities, prop pools, standings and championships without replacing your existing league.</p>
+          </div>
+        </details>
+
+        <details class="faq__item">
+          <summary class="faq__q">What can I play?</summary>
+          <div class="faq__a">
+            <p>You can go head-to-head with other GMs through FantasyStakes Matchups using moneylines, spreads and over/unders, or take on the whole league through weekly FantasyStakes Prop Pools.</p>
+          </div>
+        </details>
+
+        <details class="faq__item">
+          <summary class="faq__q">Is there a house?</summary>
+          <div class="faq__a">
+            <p>No. There is no house in FantasyStakes. FantasyStakes is a peer-to-peer game, like a traditional fantasy sports league. It does not take the other side of your competitions and does not charge a vig.</p>
+          </div>
+        </details>
+
+        <details class="faq__item">
+          <summary class="faq__q">Does the demo require Yahoo?</summary>
+          <div class="faq__a">
+            <p>No. The demo uses a fictional sample league and does not require Yahoo authentication.</p>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 11 · Final CTA ───────────────────────────────────────────────────── -->
+  <section class="section" id="get-started" aria-labelledby="get-started-title">
+    <div class="wrap">
+      <div class="panel">
+        <h2 id="get-started-title">Your league already has the rivalries. FantasyStakes gives you more ways to settle them.</h2>
+        <p class="copy">Bring sportsbook-style action to the fantasy league you already play with additional head-to-head matchups, weekly prop pools and a season-long FantasyStakes Championship.</p>
+        <p class="panel__tagline">Real odds. Sportsbook action. More ways to win.</p>
+        <div class="cta-row">
+          <a class="btn btn--primary" href="#demo" data-fs-demo-link>Try the Demo</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ── 12 · Footer ──────────────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer__grid">
+      <div>
+        <p class="footer__word"><span class="brand__a">Fantasy</span><span class="brand__b">Stakes</span></p>
+        <p class="footer__descriptor">Fantasy Stakes for Fantasy Leagues</p>
+        <p class="footer__claim">No house. No vig. No cash. Only FantasyStakes.</p>
+        <p class="footer__fine">FantasyStakes is played entirely with virtual credits. Credits have no cash value and cannot be purchased, deposited, withdrawn or redeemed.</p>
+      </div>
+
+      <nav class="footer__nav" aria-labelledby="footer-nav-title">
+        <h2 id="footer-nav-title">Site</h2>
+        <ul class="footer__links">
+          <li><a href="#how-it-works">How It Works</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="/terms/">Terms</a></li>
+          <li><a href="/privacy/">Privacy</a></li>
+          <li><a href="/contact/">Contact</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="footer__bottom">
+      <!-- CONTRACTUAL ATTRIBUTION. The string is fixed by the Yahoo API Access
+           and Use Agreement and is reproduced character for character. No mark,
+           no logo, no "powered by", no endorsement language of any kind. -->
+      <p class="attribution">Fantasy data provided by <a href="https://football.fantasysports.yahoo.com/" rel="noopener nofollow">Yahoo Fantasy</a></p>
+      <p>&copy; 2026 FantasyStakes</p>
+    </div>
+  </div>
+</footer>
+
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Does FantasyStakes handle real money?","acceptedAnswer":{"@type":"Answer","text":"No. FantasyStakes does not accept deposits, process payments or make payouts. The game is played entirely with virtual credits. Any separate arrangements between league members happen independently of FantasyStakes."}},{"@type":"Question","name":"Can I get additional credits?","acceptedAnswer":{"@type":"Answer","text":"Yes, if your league allows Top-Offs. GMs may request additional virtual credits during the season, subject to the league's preset Top-Off rules and limits. Top-Offs are part of the FantasyStakes game economy and cannot be purchased with real money."}},{"@type":"Question","name":"Does FantasyStakes replace Yahoo?","acceptedAnswer":{"@type":"Answer","text":"No. FantasyStakes sits on top of the Yahoo league you already play, adding new matchup opportunities, prop pools, standings and championships without replacing your existing league."}},{"@type":"Question","name":"What can I play?","acceptedAnswer":{"@type":"Answer","text":"You can go head-to-head with other GMs through FantasyStakes Matchups using moneylines, spreads and over/unders, or take on the whole league through weekly FantasyStakes Prop Pools."}},{"@type":"Question","name":"Is there a house?","acceptedAnswer":{"@type":"Answer","text":"No. There is no house in FantasyStakes. FantasyStakes is a peer-to-peer game, like a traditional fantasy sports league. It does not take the other side of your competitions and does not charge a vig."}},{"@type":"Question","name":"Does the demo require Yahoo?","acceptedAnswer":{"@type":"Answer","text":"No. The demo uses a fictional sample league and does not require Yahoo authentication."}}]}</script>
+
+</body>
+</html>

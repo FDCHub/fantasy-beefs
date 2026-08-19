@@ -13,3 +13,10 @@ spec/pool_catalog_rev*.json text eol=lf
 # Governed canonical stat vocabulary. Byte identity is product authority
 # and is verified by SHA-256. See FR-REPO-CRLF-3.
 spec/pool_stat_vocabulary_rev*.json text eol=lf
+# Marketing site (WEB-1). Cloudflare Pages serves these bytes directly and the
+# CSP in site/_headers pins a sha256 of the inline JSON-LD block in
+# site/index.html, so the published bytes must be the reviewed bytes on every
+# platform. LF is pinned rather than left to core.autocrlf.
+site/**   text eol=lf
+site/**/*.png binary
+tools/marketing/** text eol=lf

@@ -1,0 +1,7 @@
+# fantasystakesapp.com - public marketing site
+# Everything here is public marketing content and is meant to be indexed.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://fantasystakesapp.com/sitemap.xml

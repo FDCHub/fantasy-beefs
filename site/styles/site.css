@@ -1,0 +1,505 @@
+/* ==========================================================================
+ * FantasyStakes - public marketing site (fantasystakesapp.com)
+ * WEB-1 - static, dependency-free, mobile-first
+ *
+ * PALETTE IS LOCKED BY THE MARKETING POR AND IS NOT A DESIGN DECISION MADE
+ * HERE. The five foundation values below are reproduced verbatim; everything
+ * else (surfaces, rules, tints) is derived from them so the page cannot drift
+ * away from the brand while still having enough steps to build depth with.
+ *
+ * The wordmark treatment - "Fantasy" in ivory, "Stakes" in gold - is the
+ * application's existing lockup (web/styles/shell.css), carried across so the
+ * site and the product read as one thing.
+ *
+ * NO FRAMEWORK, NO WEBFONT, NO REMOTE ANYTHING. The whole page is one CSS
+ * file, one small behaviour script and one config file; a marketing page that
+ * pulls a font from a third party pays a DNS round trip and a render block for
+ * type the system already has.
+ * ========================================================================== */
+
+/* -- Foundation ---------------------------------------------------------- */
+:root {
+  /* POR foundation colours - values are load-bearing. */
+  --bg:       #0b0b0a;
+  --ivory:    #f3eddc;
+  --muted:    #b8ad8e;
+  --gold:     #c8a24d;
+  --gold-hi:  #e0bd68;
+
+  /* Derived surfaces. Each is the background lifted, never a new hue. */
+  --surface:  #121110;   /* cards */
+  --surface-2:#17150f;   /* inset tiles */
+  --surface-3:#1d1a12;   /* emphasised tiles */
+
+  /* Thin gold rules - the POR structural motif. */
+  --rule:      rgba(200, 162, 77, .18);
+  --rule-soft: rgba(243, 237, 220, .09);
+  --rule-firm: rgba(200, 162, 77, .38);
+  --gold-tint: rgba(200, 162, 77, .10);
+
+  --ink:      var(--ivory);
+  --ink-2:    var(--muted);
+  --ink-3:    #8d846c;   /* tertiary - still 5.4:1 on --bg */
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Odds, credits and any figure that has to line up vertically. */
+  --font-num: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --radius:    14px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+
+  --nav-h: 60px;
+
+  /* Fluid scale. Every step is clamped so 375px and 1440px are both deliberate
+     rather than one being the other divided by a magic number. */
+  --t-display: clamp(2rem, 1.35rem + 2.8vw, 3.5rem);
+  --t-h2:      clamp(1.5rem, 1.16rem + 1.5vw, 2.25rem);
+  --t-h3:      clamp(1.125rem, 1.03rem + .42vw, 1.375rem);
+  --t-lead:    clamp(1.0625rem, 1rem + .34vw, 1.25rem);
+  --t-body:    clamp(1rem, .97rem + .16vw, 1.0625rem);
+  --t-small:   .9375rem;
+  --t-fine:    .8125rem;
+  --t-eyebrow: .75rem;
+
+  --gap:   clamp(1rem, .7rem + 1.2vw, 1.5rem);
+  --pad-x: clamp(1.125rem, .6rem + 2.2vw, 2rem);
+  --sec-y: clamp(3.5rem, 2.4rem + 4.4vw, 6rem);
+
+  --wrap: 1120px;
+}
+
+/* -- Reset (minimal, deliberate) ----------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  /* `clip` rather than `hidden`: it prevents horizontal overflow without
+     creating a scroll container, which would break `position: sticky` on the
+     masthead. */
+  overflow-x: clip;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: clip;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+img, svg { max-width: 100%; height: auto; display: block; }
+
+h1, h2, h3, h4 { margin: 0; line-height: 1.15; font-weight: 700; letter-spacing: -.015em; }
+p  { margin: 0; }
+ul, ol { margin: 0; padding: 0; }
+li { list-style: none; }
+
+a { color: var(--gold-hi); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--ivory); }
+
+/* Focus is VISIBLE EVERYWHERE and is never removed. `:focus-visible` keeps it
+   off mouse clicks; the fallback pair keeps it for browsers without support. */
+:focus { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+:focus:not(:focus-visible) { outline: none; }
+:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; border-radius: 4px; }
+
+/* Anchor scrolling has to clear the sticky masthead, or every jump lands with
+   the heading hidden underneath it. */
+[id] { scroll-margin-top: calc(var(--nav-h) + 16px); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* -- Utilities ----------------------------------------------------------- */
+.wrap { width: 100%; max-width: var(--wrap); margin-inline: auto; padding-inline: var(--pad-x); }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+
+.skip {
+  position: absolute; left: 50%; top: 0; transform: translate(-50%, -140%);
+  z-index: 100;
+  background: var(--gold); color: #0b0b0a; font-weight: 700;
+  padding: .7rem 1.1rem; border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+.skip:focus { transform: translate(-50%, 0); color: #0b0b0a; }
+
+.eyebrow {
+  font-size: var(--t-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: .16em;
+  font-weight: 600;
+  color: var(--gold);
+  margin: 0 0 .75rem;
+}
+
+.lead  { font-size: var(--t-lead); color: var(--ink-2); }
+.copy  { color: var(--ink-2); }
+.copy + .copy { margin-top: 1rem; }
+
+.close-line {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+  font-size: var(--t-lead);
+  font-weight: 600;
+  color: var(--ivory);
+}
+
+/* -- Buttons ------------------------------------------------------------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: .5rem;
+  min-height: 46px;
+  padding: .75rem 1.35rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  font: inherit; font-weight: 700; line-height: 1.2;
+  text-decoration: none; text-align: center;
+  cursor: pointer;
+  transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+}
+.btn--primary { background: var(--gold); color: #0b0b0a; }
+.btn--primary:hover, .btn--primary:focus-visible { background: var(--gold-hi); color: #0b0b0a; }
+.btn--ghost { background: transparent; color: var(--ivory); border-color: var(--rule-firm); }
+.btn--ghost:hover, .btn--ghost:focus-visible { color: var(--ivory); border-color: var(--gold-hi); background: var(--gold-tint); }
+.btn--sm { min-height: 38px; padding: .45rem 1rem; font-size: var(--t-fine); }
+
+.cta-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.75rem; }
+.cta-row .btn { flex: 1 1 auto; }
+@media (min-width: 560px) { .cta-row .btn { flex: 0 0 auto; } }
+
+/* -- Masthead ------------------------------------------------------------ */
+.masthead {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(11, 11, 10, .92);
+  border-bottom: 1px solid var(--rule);
+  backdrop-filter: blur(10px);
+}
+/* One flex row that wraps. On a phone the brand, the call to action and the
+   toggle share the first line and the disclosure takes a full-width second one;
+   at 900px everything is a single row. Ordering is done here rather than by
+   writing the navigation into the markup twice. */
+.masthead__bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .625rem;
+  min-height: var(--nav-h);
+}
+.brand { display: inline-flex; align-items: baseline; text-decoration: none; margin-right: auto; order: 1; }
+.masthead__cta { order: 2; }
+.nav__toggle { order: 3; }
+.brand__word { font-size: 1.1875rem; font-weight: 800; letter-spacing: -.01em; line-height: 1; }
+.brand__a { color: var(--ivory); }
+.brand__b { color: var(--gold); }
+
+.nav__toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; flex: 0 0 auto;
+  background: transparent; border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
+  color: var(--ivory); cursor: pointer;
+}
+/* The toggle ships `hidden` and is revealed by `site.js`. An author `display`
+   rule outranks the user-agent rule behind `hidden`, so it has to be restated
+   here or a reader without JavaScript would see a button that does nothing. */
+.nav__toggle[hidden] { display: none; }
+.nav__toggle span, .nav__toggle span::before, .nav__toggle span::after {
+  display: block; width: 17px; height: 1.5px; background: currentColor; border-radius: 2px;
+}
+.nav__toggle span { position: relative; }
+.nav__toggle span::before, .nav__toggle span::after { content: ""; position: absolute; left: 0; }
+.nav__toggle span::before { top: -5.5px; }
+.nav__toggle span::after  { top:  5.5px; }
+
+.nav {
+  display: block;
+  order: 4; flex: 0 0 100%; width: 100%;
+  padding: .25rem 0 1rem;
+  border-top: 1px solid var(--rule);
+}
+/* COLLAPSED STATE IS AN ATTRIBUTE, NOT THE `hidden` PROPERTY. The HTML
+   rendering spec gives `[hidden]` `display: none !important` in the user-agent
+   sheet, so no author rule can re-show the panel as a row at desktop widths -
+   a reader who opened the menu on a phone and then rotated into a tablet
+   layout would be left with a navigation nothing could bring back. A data
+   attribute the media query can override does not have that failure mode. */
+.nav[data-open="false"] { display: none; }
+.nav__list { display: block; }
+.nav__link {
+  display: block;
+  padding: .8rem .25rem;
+  color: var(--ink-2); font-weight: 600; text-decoration: none;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.nav__link:hover, .nav__link:focus-visible { color: var(--ivory); }
+
+@media (min-width: 900px) {
+  /* Both selectors are listed so the row wins whatever state the mobile
+     disclosure was left in. */
+  .brand { margin-right: 2.5rem; }
+  .nav,
+  .nav[data-open="false"] {
+    display: flex; align-items: center; gap: 1.5rem;
+    order: 2; flex: 0 1 auto; width: auto; margin-right: auto;
+    padding: 0; border-top: 0;
+  }
+  .masthead__cta { order: 3; }
+  .nav__list { display: flex; gap: 1.5rem; }
+  .nav__link { padding: .25rem 0; border-bottom: 0; font-size: var(--t-small); }
+  .nav__toggle { display: none; }
+}
+
+/* -- Section rhythm ------------------------------------------------------ */
+.section { padding-block: var(--sec-y); border-top: 1px solid var(--rule-soft); }
+.section--flush { border-top: 0; }
+.section__head { max-width: 46rem; }
+.section__head h2 { font-size: var(--t-h2); margin-bottom: 1rem; }
+.section__body { margin-top: 1.5rem; max-width: 46rem; }
+.section__wide { margin-top: 2rem; }
+
+/* -- Hero ---------------------------------------------------------------- */
+.hero {
+  position: relative;
+  padding-block: clamp(3rem, 1.8rem + 5vw, 5.5rem) var(--sec-y);
+}
+/* A single radial wash, painted rather than downloaded. No image, no layout
+   shift, no bytes. */
+.hero::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(60% 42% at 18% 0%, rgba(200, 162, 77, .11), transparent 70%),
+    radial-gradient(48% 38% at 92% 8%, rgba(200, 162, 77, .06), transparent 72%);
+}
+.hero > .wrap { position: relative; }
+.hero__grid { display: grid; gap: clamp(2rem, 1rem + 4vw, 3.5rem); }
+@media (min-width: 1024px) {
+  .hero__grid { grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); align-items: center; }
+}
+.hero h1 { font-size: var(--t-display); max-width: 15ch; }
+.hero__lead { margin-top: 1.25rem; max-width: 54ch; }
+.hero__trust {
+  margin-top: 1.5rem; padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-num);
+  font-size: var(--t-fine);
+  letter-spacing: .06em;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+
+/* -- Cards --------------------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: clamp(1.25rem, 1rem + 1vw, 1.75rem);
+}
+.card h3 { font-size: var(--t-h3); margin-bottom: .75rem; }
+.card p { color: var(--ink-2); }
+
+.grid { display: grid; gap: var(--gap); }
+@media (min-width: 768px) {
+  .grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) { .grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* -- Product motifs --------------------------------------------------------
+ * Restrained sportsbook furniture - odds pills, a matchup fragment, a pool
+ * fragment, credit figures. Drawn in CSS from the same palette as the rest of
+ * the page. Nothing here is a casino motif and nothing here is a photograph.
+ * Each block carries `role="img"` plus a label, so a screen reader is told what
+ * the illustration shows instead of reading a column of stray numbers. */
+.motif {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 1.1rem;
+  box-shadow: 0 1px 0 rgba(243, 237, 220, .03) inset;
+}
+.motif__head {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  padding-bottom: .7rem; margin-bottom: .85rem;
+  border-bottom: 1px solid var(--rule);
+}
+.motif__label {
+  font-size: var(--t-eyebrow); text-transform: uppercase; letter-spacing: .14em;
+  font-weight: 700; color: var(--gold);
+}
+.motif__meta { font-size: var(--t-fine); color: var(--ink-3); font-family: var(--font-num); }
+
+.motif__row {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  padding: .6rem 0;
+}
+.motif__row + .motif__row { border-top: 1px solid var(--rule-soft); }
+.motif__team { font-weight: 600; font-size: var(--t-small); min-width: 0; }
+.motif__sub { display: block; font-size: var(--t-fine); color: var(--ink-3); font-weight: 400; }
+.motif__odds { display: flex; gap: .4rem; flex: 0 0 auto; }
+
+.pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 60px; padding: .34rem .5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--rule-firm);
+  background: var(--gold-tint);
+  color: var(--gold-hi);
+  font-family: var(--font-num); font-size: var(--t-fine); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pill--quiet { background: var(--surface-3); border-color: var(--rule-soft); color: var(--ink-2); }
+.pill-row { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: 1.25rem; }
+
+.motif__foot {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  margin-top: .9rem; padding-top: .75rem;
+  border-top: 1px solid var(--rule);
+  font-size: var(--t-fine); color: var(--ink-3);
+}
+.motif__stake { font-family: var(--font-num); color: var(--ivory); font-variant-numeric: tabular-nums; }
+
+/* Credit / championship figure strip */
+.stats { display: grid; gap: .75rem; margin-top: 1.75rem; }
+@media (min-width: 560px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.stat {
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  padding: .9rem 1rem;
+}
+.stat__k { font-size: var(--t-eyebrow); text-transform: uppercase; letter-spacing: .13em; color: var(--ink-3); }
+.stat__v {
+  margin-top: .3rem;
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 1.375rem; font-weight: 700; color: var(--gold-hi);
+}
+.stat__n { font-size: var(--t-fine); color: var(--ink-3); }
+
+/* Standings hint */
+.standings { margin-top: 1.25rem; }
+.standings__row {
+  display: grid; grid-template-columns: 1.6rem 1fr auto;
+  gap: .75rem; align-items: center;
+  padding: .55rem 0;
+  font-size: var(--t-small);
+}
+.standings__row + .standings__row { border-top: 1px solid var(--rule-soft); }
+.standings__pos { font-family: var(--font-num); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.standings__score { font-family: var(--font-num); color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+.standings__row--lead .standings__pos { color: var(--gold); }
+
+/* -- Steps --------------------------------------------------------------- */
+.steps { margin-top: 2rem; }
+.step__n {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; margin-bottom: .9rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--rule-firm); background: var(--gold-tint);
+  color: var(--gold-hi);
+  font-family: var(--font-num); font-weight: 700; font-size: var(--t-small);
+}
+
+/* -- FAQ ------------------------------------------------------------------ *
+ * `<details>` rather than a scripted accordion: it is keyboard operable,
+ * screen-reader announced and printable with no JavaScript at all. */
+.faq { margin-top: 2rem; max-width: 52rem; }
+.faq__item {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  margin-bottom: .75rem;
+}
+.faq__q {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 1rem 1.15rem;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ivory);
+  list-style: none;
+}
+.faq__q::-webkit-details-marker { display: none; }
+.faq__q::after {
+  content: "+";
+  flex: 0 0 auto;
+  font-family: var(--font-num); font-size: 1.25rem; line-height: 1;
+  color: var(--gold);
+}
+.faq__item[open] .faq__q::after { content: "\2013"; }
+.faq__item[open] .faq__q { border-bottom: 1px solid var(--rule); }
+.faq__a { padding: 1rem 1.15rem; color: var(--ink-2); }
+
+/* -- Demo + final CTA panels --------------------------------------------- */
+.panel {
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(200, 162, 77, .07), rgba(200, 162, 77, .02));
+  padding: clamp(1.5rem, 1rem + 2.4vw, 2.75rem);
+}
+.panel h2 { font-size: var(--t-h2); max-width: 24ch; }
+.panel .copy { margin-top: 1rem; max-width: 52ch; }
+.panel__trust {
+  margin-top: 1.25rem;
+  font-family: var(--font-num); font-size: var(--t-fine);
+  color: var(--gold); letter-spacing: .04em;
+}
+.panel__tagline {
+  margin-top: 1.5rem;
+  font-size: var(--t-lead); font-weight: 700; color: var(--ivory);
+}
+
+/* -- Footer -------------------------------------------------------------- */
+.footer { border-top: 1px solid var(--rule); padding-block: var(--sec-y) 2.5rem; }
+.footer__grid { display: grid; gap: 2rem; }
+@media (min-width: 768px) { .footer__grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); } }
+.footer__word { font-size: 1.375rem; font-weight: 800; letter-spacing: -.01em; }
+.footer__descriptor {
+  margin-top: .35rem;
+  font-size: var(--t-fine); text-transform: uppercase; letter-spacing: .18em;
+  color: var(--ink-3);
+}
+.footer__claim { margin-top: 1.25rem; font-weight: 600; color: var(--ivory); }
+.footer__fine { margin-top: .75rem; font-size: var(--t-small); color: var(--ink-2); max-width: 48ch; }
+.footer__nav h2 { font-size: var(--t-eyebrow); text-transform: uppercase; letter-spacing: .16em; color: var(--ink-3); margin-bottom: .75rem; }
+.footer__links { display: flex; flex-wrap: wrap; gap: .35rem 1.5rem; }
+.footer__links a { color: var(--ink-2); text-decoration: none; font-weight: 600; font-size: var(--t-small); }
+.footer__links a:hover, .footer__links a:focus-visible { color: var(--ivory); text-decoration: underline; }
+.footer__bottom {
+  margin-top: 2.5rem; padding-top: 1.5rem;
+  border-top: 1px solid var(--rule-soft);
+  display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; justify-content: space-between;
+  font-size: var(--t-fine); color: var(--ink-3);
+}
+/* The Yahoo attribution is a contractual string. It states a data source and
+   nothing else - no mark, no logo, no endorsement language. */
+.attribution { color: var(--ink-3); }
+.attribution a { color: var(--ink-2); }
+
+/* -- Legal / content pages ----------------------------------------------- */
+.doc { padding-block: clamp(2.5rem, 1.8rem + 3vw, 4rem) var(--sec-y); }
+.doc__inner { max-width: 46rem; }
+.doc h1 { font-size: var(--t-h2); }
+.doc h2 { font-size: var(--t-h3); margin-top: 2.5rem; }
+.doc p, .doc li { color: var(--ink-2); }
+.doc p { margin-top: 1rem; }
+.doc ul { margin-top: 1rem; }
+.doc li { position: relative; padding-left: 1.15rem; margin-top: .5rem; }
+.doc li::before { content: ""; position: absolute; left: 0; top: .7em; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+.doc__stamp {
+  margin-top: 1.25rem; padding: 1rem 1.15rem;
+  border: 1px dashed var(--rule-firm); border-radius: var(--radius-sm);
+  background: var(--gold-tint);
+  color: var(--ink-2); font-size: var(--t-small);
+}
+.doc__stamp strong { color: var(--gold-hi); }
