@@ -1,9 +1,5 @@
 # FantasyStakes — Railway deployment, HA and public synthetic demo
 
-> **STATUS: NOT CERTIFIED TO DEPLOY.** One production gate fails on this branch —
-> S6 `test_s6_provider_gateway_pg.py` C-7. See §15. Nothing here may be deployed
-> until it is resolved.
-
 **Scope.** This is the deployment architecture for `app.fantasystakesapp.com`:
 the FantasyStakes application serving the **certified synthetic demo**, on
 Railway, on PostgreSQL, across two replicas.
@@ -590,71 +586,75 @@ multi-replica argument is that it holds none.
 
 ---
 
-## 15. Open blocker — S6 gate C-7 on the composed branch
+## 15. Resolved — S6 gate C-7 and the synthetic finality writer
 
-**`test_s6_provider_gateway_pg.py` gate C-7 (FINALITY IMMUTABILITY) FAILS on this
-branch, and this deployment is not certified until it is resolved.**
+**Closed by WEBDEPLOY-1a.** `test_s6_provider_gateway_pg.py` C-7 passes on this
+branch. The record is kept because the shape of the problem matters more than
+the fix.
 
-### What fails
+### What failed, and where it came from
 
-C-7 does more than exercise the finality writer: it walks the whole repository
-and asserts that the four load-bearing `Matchup` fields — `finalized_at`,
-`home_score`, `away_score`, `winner_team_id` — are assigned in production code
-ONLY by the guarded provider writers named in its allowlist
-(`providers/certify/run.py`, `allowed_orm`). Fixtures are exempted by a
-`test_*` name rule.
+C-7 walks the repository and asserts that the four load-bearing `Matchup`
+fields — `finalized_at`, `home_score`, `away_score`, `winner_team_id` — are
+written in production code only by certified writers. `demo/states.py`'s
+`finalize_week` assigns all four to post the showcase fixture's result onto
+matchup rows the seeder already created, and `demo/` ships, so the `test_*`
+fixture exemption did not cover it.
 
-`demo/states.py:112-117` assigns all four, in `finalize_week`, to post the
-showcase fixture's result onto an already-scheduled matchup row. `demo/` is
-production code that ships, so the name rule does not exempt it, and the gate
-fails.
+It was **inherited, not introduced by the composition.** Measured on all three
+trees:
 
-### Where it comes from
-
-**It is inherited, not introduced by this integration.** Measured, both ways:
-
-| Tree | C-7 |
+| Tree | C-7 before WEBDEPLOY-1a |
 |---|---|
 | `fantasystakes-1.0.0-rc3` (`9490127`) — no `demo/` | passes |
 | `preprod/demo-environment` (`8b3daaf`) — certified demo | **FAILS** |
-| `deploy/fantasystakesapp-demo` — this branch | **FAILS**, identically |
+| `deploy/fantasystakesapp-demo` (`9051f72`) | **FAILS**, identically |
 
-The certified demo commit already fails this gate. The demo certification did
-not run the S6 provider-gateway suite, so the conflict was latent there and this
-package is the first composition that runs both sets of gates over one tree.
+The certified demo commit fails a production gate its own certification never
+ran. That is a gap in the demo certification, not in this composition — see §17.
 
-### What is and is not at risk
+### The certification model, and why it is not a path exemption
 
-The PROPERTY C-7 defends — *no provider ingestion path can retract a finalized
-matchup* — is not violated. `demo/states.py` is a fixture builder, not an
-ingestion path: `restore_in_place` calls `assert_demo_league(league)` before any
-row is touched, `demo.seed` writes only the league it just created, and both
-refuse a Yahoo league, an unbound league, and a demo league that is not the
-showcase. What has broken is the mechanical CONTROL, which cannot distinguish a
-guarded fixture builder from an unguarded second writer.
+`allowed_orm` exempts whole FILES, which is right for the provider writers:
+those modules exist to be the writer and hold nothing else. `demo/states.py` is
+not like that — it is a 370-line module that also drives the season, the
+championship and the close — so a file exemption would have licensed every
+future function written in it.
 
-### What must NOT be done about it
+So the grant is **(file, module-level function)**, resolved from the AST:
 
-**Do not add `demo/` to `allowed_orm` as part of a deployment pass.** That edit
-changes what a production certification gate certifies, and it must be made — if
-it is made — by the release owner, with the same scrutiny the allowlist's
-existing entries were given, and applied to the demo branch's own certification
-rather than only to the tree that happened to surface it. Widening a control to
-make a deploy green is the failure mode the control exists to prevent.
+```python
+_CERTIFIED_FUNCTION_WRITERS = {"demo/states.py": ("finalize_week",)}
+```
 
-### Recommended resolution (WEBDEPLOY-1a, before any deploy)
+`demo/evil_writer.py` fails even with a function of the same name; a second
+function or a method in `demo/states.py` fails; a nested closure inside
+`finalize_week` fails; module scope fails; a `demo/states.py` that will not parse
+fails closed. Nine such cases run **inside the gate itself** against the real
+classifier, so the grant cannot widen without C-7 saying so.
 
-1. Decide, at release-owner level, whether `demo/states.py` is a legitimate
-   fifth writer. The evidence above is the input.
-2. If yes: extend `allowed_orm` with `demo/states.py`, in the same commented
-   style as the existing entries, recording WHY the demo path is safe
-   (`assert_demo_league`, demo-provider binding) — and add a C-7 assertion that
-   the demo writer is unreachable for a non-demo league, so the allowlist entry
-   is backed by a test rather than by a comment.
-3. If no: move the fixture's finality write behind `providers/persist.py`, so
-   there continues to be exactly one implementation.
-4. Re-run `test_s6_provider_gateway_pg.py` on **both** this branch and
-   `preprod/demo-environment`.
+### The writer was made to guard itself
+
+Before this, `finalize_week`'s safety was entirely its callers': `advance_to_final`
+and `retire_showcase` each call `assert_demo_league` first and take their league
+from `find_showcase` rather than from an argument. True, and fragile — the safety
+of a certified writer should not be a property of the three call sites that
+happen to exist today. `assert_demo_league(league)` is now its first statement,
+matching the standard `providers/persist.py` is held to. No behaviour changes on
+any existing path.
+
+### It is proven by behaviour, not by comment
+
+`test_d26_demo_finality_guard.py` builds five **structural clones** of the
+showcase — same twelve team names, same week-11 pairings, rows unfinalized — under
+five false identities, so the writer's own row lookup genuinely resolves against
+them and a refusal cannot be an artefact of an empty query. All five are refused
+and left byte-identical; a legitimate call reaches only its own league and week;
+`finalized_at` moves NULL → timestamp and never back; a repeat call is an exact
+no-op; and no HTTP route reaches the writer.
+
+Removing the guard makes that suite fail with the Yahoo clone's rows actually
+rewritten — measured, which is what makes the suite worth keeping.
 
 ---
 
@@ -663,9 +663,56 @@ make a deploy green is the failure mode the control exists to prevent.
 Both suites must remain green on this branch — that is the claim the composition
 makes. `docs/PRODUCTION_RUNBOOK.md` §15 lists the production gates; the demo
 gates are `test_d1_demo_environment.py`, `test_d24_complete_lifecycle.py`,
-`test_d24_hostile_gameplay.py`, `test_d24_determinism.py` and
-`test_d251_concurrent_entry.py`.
+`test_d24_hostile_gameplay.py`, `test_d24_determinism.py`,
+`test_d251_concurrent_entry.py` and `test_d26_demo_finality_guard.py`.
+
+**Run both families over the composed tree, every time.** `run_pg_suites.py`
+covers the 63 production PostgreSQL suites and does NOT pick up the demo
+suites, which carry no `_pg` suffix. Running only one family is exactly how a
+production gate came to be failing on a certified demo branch for a whole
+release — see §15.
 
 **PostgreSQL is authoritative.** A SQLite pass is a smoke test of the test, not
 of the product: advisory locks, `FOR UPDATE` semantics and JSONB behaviour are
 exactly what the deployment depends on and exactly what SQLite does not have.
+
+---
+
+## 17. Status of the original demo certification
+
+**The certified demo commit `8b3daaf` is immutable and is not being reissued.**
+It is not moved, not rewritten and not retagged by this package.
+
+**It should nonetheless be treated as certified INCOMPLETELY.** Not wrong — the
+demo's own D1 and D2.x gates were run and passed there, and every finding in §15
+concerns a control the demo commit never executed rather than a defect in what it
+demonstrated. But `test_s6_provider_gateway_pg.py` fails on that commit as it
+stands, and it fails for a real reason: the tree contains a fifth writer of the
+protected `Matchup` fields, and nothing on that branch had asked whether that was
+allowed.
+
+The distinction that matters:
+
+| | |
+|---|---|
+| Does the demo work as certified? | Yes — D1, D2.4 ×3 and D2.5.1 pass on `8b3daaf` |
+| Was the demo's finality writer ever certified? | **No** — S6 was never run there |
+| Is it certified now? | Yes, on `deploy/fantasystakesapp-demo` |
+
+**So this work does more than unblock the deployment composition.** Had the demo
+branch ever been merged, tagged or deployed on its own, it would have carried an
+uncertified writer of the four fields that decide whether a settled result can be
+rewritten. The composition is what surfaced it; the fix belongs to the demo
+surface, not to the composition.
+
+**What follows from that:**
+
+1. Any future release that carries `demo/` must run **both** gate families — the
+   production PostgreSQL sweep and the demo suites (§16). Neither is a superset
+   of the other.
+2. If `preprod/demo-environment` is ever advanced, the WEBDEPLOY-1a changes —
+   the `assert_demo_league` self-guard in `finalize_week`, the function-scoped
+   C-7 grant, and `test_d26_demo_finality_guard.py` — must travel with it.
+3. Nothing here retroactively invalidates the demo's own certification of what
+   it demonstrates. It records that one production control had not been applied
+   to it, and that it now has been.

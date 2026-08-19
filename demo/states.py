@@ -95,8 +95,35 @@ def finalize_week(db, league, teams, week: int) -> int:
     the ones not yet played, so this posts a result onto a fixture rather than
     conjuring a game at transition time. That is also what makes the finality
     gate meaningful: the week was genuinely unfinalized until this ran.
+
+    ── WEBDEPLOY-1a · THIS FUNCTION GUARDS ITSELF ───────────────────────────
+
+    This is the ONE function outside the provider writers that S6 gate C-7
+    certifies to assign `finalized_at`, `home_score`, `away_score` and
+    `winner_team_id`. A writer that is certified by name has to be safe by
+    itself, not safe because of who happens to call it today.
+
+    Before this line the guarantee was entirely the callers': `advance_to_final`
+    and `retire_showcase` each call `assert_demo_league` first, and both take
+    their league from `find_showcase` rather than from any argument, so no
+    reachable path could hand this a Yahoo league. That was true and it was
+    fragile — it made the safety of a certified writer a property of three call
+    sites that a future change could add a fourth to. `providers/persist.py` is
+    certified because it refuses bad input itself, and this is now held to the
+    same standard.
+
+    IT COSTS NOTHING ON ANY REAL PATH. Every existing caller already passes a
+    league that satisfies all four conditions, so no behaviour changes; what
+    changes is that a caller which did not would now be refused HERE, with
+    nothing written, rather than relying on having been refused earlier.
     """
     from db.schema import Matchup
+
+    # FAIL CLOSED, FIRST, BEFORE A SINGLE ROW IS READ OR TOUCHED. Provider
+    # binding, demo namespace, showcase namespace and season — all four, from
+    # the persisted row. A retired showcase no longer carries `showcase` in its
+    # key and is refused here too.
+    assert_demo_league(league)
 
     rows = {(m.home_team_id, m.away_team_id): m
             for m in db.query(Matchup)
