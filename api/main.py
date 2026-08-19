@@ -317,6 +317,38 @@ def service_worker():
 app.mount("/app", StaticFiles(directory=_WEB_DIR, html=True), name="app")
 
 
+# ── WEBDEPLOY-4a · THE BARE ORIGIN LANDS ON THE APP, NOT ON A RAW 404 ────────
+#
+# `https://app.fantasystakesapp.com/` answered `{"detail":"Not Found"}` — the
+# FastAPI default for a path nothing claims. Every real surface was healthy;
+# nothing had ever registered `/`, because until the custom domain existed the
+# application was only ever reached at a path.
+#
+# A REDIRECT, NOT A SECOND COPY OF THE SHELL. `/app/index.html` is already the
+# whole user-facing application and `_APP_HOME` is already the constant that
+# names it — `_sign_in_failure` and the sign-in success path both redirect
+# there. Serving the shell from `/` as well would create a second URL for one
+# page: two cache entries, two service-worker scopes, and a relative asset path
+# (`js/…`, `styles/…`) that resolves against the wrong base and 404s. So the
+# root hands over to the one canonical URL and owns nothing itself.
+#
+# 303, MATCHING THE CONVENTION ALREADY IN THIS FILE. The two existing landing
+# redirects use 303; the 307 above is the OAuth handoff, where preserving the
+# method matters. 303 is also the honest status for "your GET is finished, go
+# and GET this instead", and unlike 301 it is not cached permanently by the
+# browser — which matters for a route whose destination may yet change.
+#
+# IT DOES NOTHING ELSE. No session is issued, no cookie is set, no demo league
+# is created or restored. Entering the demo remains `POST /demo/enter`, reached
+# by the Try Demo control on the gate this redirect leads to — a GET that
+# quietly mutated state would be exactly the defect `/demo/enter` was designed
+# to avoid.
+@app.get("/", include_in_schema=False)
+def root_landing() -> RedirectResponse:
+    """Send the bare origin to the application's canonical home."""
+    return RedirectResponse(url=_APP_HOME, status_code=303)
+
+
 @app.on_event("startup")
 def _validate_production_configuration() -> None:
     """Refuse to serve if this production process cannot serve safely.
