@@ -12,8 +12,9 @@ This suite fails loudly if any of that is undone. It asserts, in order:
      still caught.
   2. payments.stripe_connect is NOT importable, and NO production module
      imports the stripe SDK.
-  3. activate_season_allocation() is the SOLE production call site that posts a
-     reserve:{team_id} ledger leg — proven structurally against the AST.
+  3. EVERY production call site that posts a reserve:{team_id} ledger leg is a
+     certified economy site — proven structurally against the AST, and named in
+     an allowlist so a payment path reintroduced under any name is caught.
   4. A second season allocation CANNOT duplicate funding: the replay returns
      created=False, posts nothing, and leaves every balance unchanged.
   5. The championship reserve total remains correct after the relocation of
@@ -122,9 +123,9 @@ _assert("no production module imports the stripe SDK or stripe_connect",
         _sdk_importers == [], f"got {_sdk_importers}")
 
 
-# ── ITEM 3: activate_season_allocation is the sole reserve-posting site ──────
+# ── ITEM 3: every reserve-posting site is certified economy, never a payment ─
 
-print("\nItem 3: activate_season_allocation() is the sole production writer of a reserve:{...} leg")
+print("\nItem 3: every production writer of a reserve:{...} leg is certified economy")
 
 
 def _is_reserve_account(node) -> bool:
@@ -132,9 +133,8 @@ def _is_reserve_account(node) -> bool:
 
     THREE SPELLINGS, because S5-P1 moved the account names into
     economy.economy_events and the call sites now use the helper. A literal-only
-    matcher would have reported ZERO writers and passed the "exactly one" check
-    only by accident of counting — which is why the assertion below also
-    requires the site to be activate_season_allocation by name.
+    matcher would have reported ZERO writers, which would have made the check
+    below vacuous — which is why it also asserts that the scan found something.
     """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value.startswith("reserve:")
@@ -174,12 +174,44 @@ for rel, path in _production_py_files():
                 if parts and _is_reserve_account(parts[0]):
                     _sites.append((rel.replace(os.sep, "/"), node.lineno, owner.get(node, "<module>")))
 
-_assert("exactly one production call site posts a reserve:{...} leg",
-        len(_sites) == 1, f"got {_sites}")
-if len(_sites) == 1:
-    rel, lineno, func = _sites[0]
-    _assert("that site is economy/season_allocation.py", rel == "economy/season_allocation.py", f"got {rel}")
-    _assert("inside activate_season_allocation()", func == "activate_season_allocation", f"got {func!r}")
+#: The production sites certified to post a `reserve:{...}` leg.
+#:
+#: ── WHY THIS IS AN ALLOWLIST AND NO LONGER A COUNT ──────────────────────────
+#:
+#: This item used to assert "exactly one" such call site. That was a HISTORICAL
+#: IMPLEMENTATION COUNT, not the product rule, and it went stale the moment the
+#: RC2 FantasyStakes Championship shipped: `stage_allocation` legitimately posts
+#: twice per GM — issuance -> reserve under the season-allocation door, then
+#: reserve -> championship pot under the commitment door. Both move VIRTUAL
+#: CREDITS between internal accounts. Neither is a payment.
+#:
+#: The rule being protected is not "one writer". It is that FantasyStakes takes
+#: no deposits, processes no payments, makes no payouts and uses no Stripe. So
+#: the assertion now names every certified writer and fails on any OTHER one —
+#: which is exactly what a reintroduced payment path would be. Adding a new
+#: certified economy site here is a deliberate, reviewable act; a payment path
+#: cannot be added without someone stating plainly what they are doing.
+_CERTIFIED_RESERVE_SITES = {
+    ("economy/season_allocation.py", "activate_season_allocation"),
+    ("economy/fantasystakes_championship_allocation.py", "stage_allocation"),
+}
+
+_found = {(rel, func) for rel, _lineno, func in _sites}
+_unexpected = _found - _CERTIFIED_RESERVE_SITES
+
+_assert("every production reserve:{...} writer is a certified economy site",
+        not _unexpected, f"uncertified writer(s): {sorted(_unexpected)}")
+_assert("the Season-Opening Allocation is still one of them",
+        ("economy/season_allocation.py", "activate_season_allocation") in _found,
+        f"got {sorted(_found)}")
+_assert("no reserve:{...} leg is posted from a payment-shaped module",
+        not [site for site in _found
+             if any(word in site[0].lower()
+                    for word in ("payment", "stripe", "checkout", "billing",
+                                 "deposit", "payout"))],
+        f"got {sorted(_found)}")
+_assert("at least one writer was found — the AST scan still works",
+        bool(_found), "the scan produced no sites at all")
 
 
 # ── ITEM 4: a second allocation cannot duplicate funding ─────────────────────
