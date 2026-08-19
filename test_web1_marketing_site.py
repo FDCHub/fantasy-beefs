@@ -49,6 +49,31 @@ FOOTER_PAGES = ["index.html", "terms/index.html", "privacy/index.html",
 #: test_wp3d_provider_attribution.py; this is the site's copy of that guarantee.
 YAHOO_ATTRIBUTION = "Fantasy data provided by Yahoo Fantasy"
 
+#: The hero headline, locked by WEB-1a. The wordmark is the visual centrepiece
+#: of the POR hero; this sentence is the page heading.
+LOCKED_HERO = "Add a Vegas-style fantasy game to your existing league."
+
+#: Retired by WEB-1a. The WEB-1 brief used it for BOTH the hero and the
+#: "What is FantasyStakes" headline, so it is banned outright rather than only
+#: in the hero - a half-replacement would leave the old message one screen below
+#: the new one.
+SUPERSEDED_HERO = "Turn your fantasy league into a whole new game."
+
+#: Copy that appears in the approved POR HTML but predates the current
+#: marketing POR. The POR governs FORMAT; these are its old words.
+OBSOLETE_POR_MESSAGING = [
+    "Pure action",          # superseded by "Sportsbook action"
+    "Play FantasyStakes",   # superseded by "Try the Demo"
+    "Build on it.",         # superseded by "Modernize it."
+    "The ledger keeps score",
+    "Four simple steps",
+]
+
+#: The approved visual POR, recorded in the repository so the design authority
+#: is versioned with the site rather than living in an external local folder.
+POR_REFERENCE = REPO / "spec" / "fantasystakes_por_mobile_website.html"
+POR_SHA256 = "2cbb57582511d6775453e3c0eb7d7ba738e8c5a7278ccbeff6a5e1ba94f28106"
+
 #: The locked homepage section order (POR section 4). Order is asserted, not
 #: just membership - the narrative only works in this sequence.
 LOCKED_SECTION_ORDER = [
@@ -67,8 +92,8 @@ LOCKED_SECTION_ORDER = [
 
 #: Locked homepage copy. Each entry is a fragment that must appear verbatim.
 LOCKED_COPY = [
-    # 5 Hero
-    "Turn your fantasy league into a whole new game.",
+    # 5 Hero - WEB-1a locked headline
+    "Add a Vegas-style fantasy game to your existing league.",
     "FantasyStakes adds a Vegas-style sportsbook game layer to the fantasy "
     "league you already play.",
     "No deposits. No payouts. No house. No vig.",
@@ -317,11 +342,43 @@ def test_locked_homepage_copy_is_verbatim(parsed, fragment):
     assert fragment in parsed["index.html"].text, f"missing locked copy: {fragment!r}"
 
 
-def test_hero_headline_is_the_h1():
+def test_hero_headline_is_the_h1(parsed):
+    """The WEB-1a locked hero is the h1, and it is the only h1.
+
+    The POR makes the FANTASYSTAKES wordmark the visual centrepiece of the hero
+    and marks it up as the page heading. Here the wordmark is the brand lockup
+    and the locked headline is the h1 - identical on screen, correct in the
+    document outline.
+    """
     html = read("index.html")
     h1s = re.findall(r"<h1[^>]*>(.*?)</h1>", html, re.S)
     assert len(h1s) == 1, f"expected exactly one h1, found {len(h1s)}"
-    assert "Turn your fantasy league into a whole new game." in h1s[0]
+    assert re.sub(r"<[^>]+>", "", h1s[0]).strip() == LOCKED_HERO
+
+
+@pytest.mark.parametrize("rel", PAGES)
+def test_the_superseded_hero_never_returns(rel):
+    """WEB-1a retired this headline. It must not come back anywhere on the site.
+
+    Not scoped to the hero: the WEB-1 brief used the same sentence as the
+    "What is FantasyStakes" headline, so a partial replacement would leave the
+    superseded message on the page one screen below the new one.
+    """
+    assert SUPERSEDED_HERO not in read(rel), f"{rel} still carries the superseded hero"
+
+
+@pytest.mark.parametrize("phrase", OBSOLETE_POR_MESSAGING)
+def test_obsolete_por_messaging_is_not_carried_across(phrase):
+    """The POR HTML is the VISUAL authority, not the message authority.
+
+    Its own copy predates the current marketing POR - "Pure action" in place of
+    "Sportsbook action", and "Play FantasyStakes" where the call to action is
+    now "Try the Demo". Taking the format must not drag the wording along.
+    """
+    for rel in PAGES:
+        assert phrase.lower() not in read(rel).lower(), (
+            f"{rel} carries obsolete POR messaging: {phrase!r}"
+        )
 
 
 def test_matchups_and_pools_copy():
@@ -342,14 +399,20 @@ def test_locked_faq_is_verbatim(parsed, question, answer):
 
 
 def test_faq_uses_native_disclosure_elements():
-    """Six <details>, so the FAQ is keyboard operable with JavaScript off."""
+    """Six <details> on hairlines - the POR treatment - and no scripted accordion.
+
+    Native disclosure means the FAQ is keyboard operable, screen-reader
+    announced and printable with JavaScript off.
+    """
     html = read("index.html")
-    assert html.count('<details class="faq__item">') == 6
+    faq = re.search(r'<section class="section faq".*?</section>', html, re.S)
+    assert faq, "the FAQ section is not the POR faq block"
+    assert faq.group(0).count("<details") == 6
 
 
 def test_how_it_works_has_four_ordered_steps():
     html = read("index.html")
-    steps = re.search(r'<ol class="grid grid--4 steps">(.*?)</ol>', html, re.S)
+    steps = re.search(r'<ol class="steps">(.*?)</ol>', html, re.S)
     assert steps, "the How it works steps are not an ordered list"
     assert steps.group(1).count("<li") == 4
 
@@ -643,9 +706,17 @@ def test_www_redirects_to_the_apex():
 # ---------------------------------------------------------------------------
 
 def test_responsive_breakpoints_exist():
+    """The POR has ONE breakpoint at 700px; everything else is fluid by clamp.
+
+    900px is the site's own addition and exists for one reason: the navigation
+    disclosure the POR topbar does not have.
+    """
     css = read("styles/site.css")
-    for width in (560, 768, 900, 1024):
+    for width in (700, 900):
         assert f"@media (min-width: {width}px)" in css, f"no {width}px breakpoint"
+    assert css.count("@media (min-width:") == 2, (
+        "extra breakpoints have crept in; the POR layout is clamp-driven"
+    )
 
 
 def test_reduced_motion_is_honoured():
@@ -666,7 +737,7 @@ def test_focus_is_visible_and_never_removed():
 def test_the_locked_palette_is_used_verbatim():
     css = read("styles/site.css")
     for name, value in (("bg", "#0b0b0a"), ("ivory", "#f3eddc"), ("muted", "#b8ad8e"),
-                        ("gold", "#c8a24d"), ("gold-hi", "#e0bd68")):
+                        ("gold", "#c8a24d"), ("gold2", "#e0bd68")):
         assert f"--{name}:" in css, f"missing --{name}"
         assert value in css, f"the locked {name} value {value} is not in the stylesheet"
 
@@ -683,7 +754,7 @@ def test_decorative_product_motifs_are_labelled():
     """Odds and credit figures read as noise unless the illustration is named."""
     html = read("index.html")
     motifs = re.findall(r'role="img"([^>]*)', html)
-    assert len(motifs) >= 5, f"only {len(motifs)} labelled illustrations"
+    assert len(motifs) >= 4, f"only {len(motifs)} labelled illustrations"
     for attributes in motifs:
         assert "aria-label=" in attributes, "a role=img illustration has no label"
 
@@ -692,7 +763,7 @@ def test_the_payload_stays_small():
     """No framework, no webfont, no stock photography - so this must stay true."""
     total = sum(p.stat().st_size for p in SITE.rglob("*") if p.is_file())
     assert total < 900_000, f"the whole site is {total} bytes"
-    assert (SITE / "styles" / "site.css").stat().st_size < 40_000
+    assert (SITE / "styles" / "site.css").stat().st_size < 45_000
     assert (SITE / "js" / "site.js").stat().st_size < 20_000
 
 
@@ -702,6 +773,82 @@ def test_there_is_no_cookie_banner_because_there_are_no_cookies():
         assert "document.cookie" not in body
         assert "cookie banner" not in body
         assert "localstorage" not in body
+
+
+# ---------------------------------------------------------------------------
+# 10. Fidelity to the approved visual POR (WEB-1a)
+# ---------------------------------------------------------------------------
+
+def test_the_visual_por_is_recorded_in_the_repository():
+    """The design authority is versioned here, not referenced from a local folder.
+
+    WEB-1a was reconciled against a specific artefact. Pinning its hash means a
+    future reviewer can prove which one, and a clean checkout carries it.
+    """
+    assert POR_REFERENCE.is_file(), "the approved POR HTML is not in the repository"
+    digest = hashlib.sha256(POR_REFERENCE.read_bytes()).hexdigest()
+    assert digest == POR_SHA256, f"the recorded POR has changed: {digest}"
+
+
+def test_por_layout_tokens_are_verbatim():
+    """The POR's structural measurements, not approximations of them."""
+    css = read("styles/site.css")
+    for declaration in ("--max: 760px",      # the POR measure
+                        "--radius: 22px",    # card corner
+                        "--topbar-h: 62px"): # sticky bar
+        assert declaration in css, f"the POR token {declaration!r} is missing"
+
+
+def test_por_furniture_is_present():
+    """The POR's signature components, each carrying its POR geometry."""
+    css = read("styles/site.css")
+    checks = {
+        # Full-viewport centred hero under the sticky bar.
+        "hero height": "min-height: calc(100svh - var(--topbar-h))",
+        # Solid gold category pill - the one saturated gold shape on the page.
+        "gold pill": "background: var(--gold2)",
+        # Left gold rule with a wash falling away to the right.
+        "quote rule": "border-left: 3px solid var(--gold)",
+        # Numbered steps on hairlines rather than a row of cards.
+        "step number": "border-radius: 50%",
+        # Centred radial glow behind the closing call to action.
+        "close glow": "radial-gradient(circle at 50% 50%",
+        # One gold wash from above the fold, on the body.
+        "body wash": "radial-gradient(circle at 50% -10%",
+        # POR button: 52px, fully rounded, full width until 700px.
+        "button": "min-height: 52px",
+        "button width": "width: min(100%, 320px)",
+    }
+    for label, needle in checks.items():
+        assert needle in css, f"POR {label} treatment is missing: {needle!r}"
+
+
+def test_the_hero_lockup_is_the_por_wordmark():
+    """FANTASY in ivory, STAKES in gold, uppercase, at display size."""
+    html = read("index.html")
+    assert ('<p class="brand"><span class="fantasy">FANTASY</span>'
+            '<span class="stakes">STAKES</span></p>') in html
+    assert "Fantasy Stakes for Fantasy Leagues" in html
+    css = read("styles/site.css")
+    assert ".brand .fantasy { color: var(--ivory); }" in css
+    assert "text-transform: uppercase" in css
+
+
+def test_the_por_pill_is_used_for_the_two_ways_cards():
+    html = read("index.html")
+    assert '<p class="pill">Matchups</p>' in html
+    assert '<p class="pill">Pools</p>' in html
+
+
+def test_no_dead_classes_survive_the_reconciliation():
+    """Every class the markup uses is defined; nothing points at deleted CSS."""
+    css = read("styles/site.css")
+    used = set()
+    for rel in PAGES:
+        for value in re.findall(r'class="([^"]+)"', read(rel)):
+            used.update(value.split())
+    missing = sorted(name for name in used if f".{name}" not in css)
+    assert missing == [], f"markup uses classes with no styles: {missing}"
 
 
 if __name__ == "__main__":

@@ -1,81 +1,104 @@
 /* ==========================================================================
  * FantasyStakes - public marketing site (fantasystakesapp.com)
- * WEB-1 - static, dependency-free, mobile-first
+ * WEB-1a - reconciled to the approved visual POR
  *
- * PALETTE IS LOCKED BY THE MARKETING POR AND IS NOT A DESIGN DECISION MADE
- * HERE. The five foundation values below are reproduced verbatim; everything
- * else (surfaces, rules, tints) is derived from them so the page cannot drift
- * away from the brand while still having enough steps to build depth with.
+ * VISUAL AUTHORITY: spec/fantasystakes_por_mobile_website.html
+ * (sha256 2cbb57582511d6775453e3c0eb7d7ba738e8c5a7278ccbeff6a5e1ba94f28106)
  *
- * The wordmark treatment - "Fantasy" in ivory, "Stakes" in gold - is the
- * application's existing lockup (web/styles/shell.css), carried across so the
- * site and the product read as one thing.
+ * Every token below is the POR's own value. The POR is a single-column,
+ * mobile-first, centred composition on near-black, with an ivory/gold lockup, a
+ * 760px measure, 22px card radii, hairline section rules and one solid-gold
+ * pill. WEB-1 built a wider two-column editorial layout from the written brief
+ * because the POR was not available; this file replaces that layout with the
+ * POR's, and keeps every engineering property WEB-1 certified.
  *
- * NO FRAMEWORK, NO WEBFONT, NO REMOTE ANYTHING. The whole page is one CSS
- * file, one small behaviour script and one config file; a marketing page that
- * pulls a font from a third party pays a DNS round trip and a render block for
- * type the system already has.
+ * THREE DELIBERATE DEPARTURES FROM THE POR SOURCE, each recorded where it
+ * occurs below and none of them visual:
+ *
+ *   1. px sizes are expressed in rem at the same rendered size. The POR is
+ *      authored in px, which pins type against a reader's browser font-size
+ *      setting. Same pixels at default settings, but they now scale.
+ *   2. The topbar keeps a navigation disclosure. The POR topbar carries only a
+ *      brand and one gold link; the locked brief requires four section links,
+ *      and WEB-1 certified the mobile disclosure. It is styled as the POR
+ *      topbar rather than removed.
+ *   3. The FAQ keeps a small gold open/close marker. The POR hides the native
+ *      one and leaves no affordance at all.
+ *
+ * Still no framework, no webfont, no remote request. The POR names Inter first
+ * and loads nothing, so it renders in the system font for anyone without Inter
+ * installed; that stack is reproduced exactly rather than "fixed" by adding a
+ * font download the CSP forbids and the POR never had.
  * ========================================================================== */
 
-/* -- Foundation ---------------------------------------------------------- */
+/* -- POR tokens ---------------------------------------------------------- */
 :root {
-  /* POR foundation colours - values are load-bearing. */
-  --bg:       #0b0b0a;
-  --ivory:    #f3eddc;
-  --muted:    #b8ad8e;
-  --gold:     #c8a24d;
-  --gold-hi:  #e0bd68;
+  /* Foundation - POR values, load-bearing. */
+  --bg:     #0b0b0a;
+  --ivory:  #f3eddc;
+  --muted:  #b8ad8e;
+  --gold:   #c8a24d;
+  --gold2:  #e0bd68;
 
-  /* Derived surfaces. Each is the background lifted, never a new hue. */
-  --surface:  #121110;   /* cards */
-  --surface-2:#17150f;   /* inset tiles */
-  --surface-3:#1d1a12;   /* emphasised tiles */
+  /* POR structure. `--line` is gold-derived; the section and FAQ rules are the
+     far fainter white hairlines the POR uses to separate without drawing. */
+  --line:       rgba(224, 189, 104, .22);
+  --hairline:   rgba(255, 255, 255, .05);
+  --hairline-2: rgba(255, 255, 255, .06);
+  --card-line:  rgba(224, 189, 104, .14);
+  --card-fill:  linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, .012));
+  --num-fill:   rgba(200, 162, 77, .12);
+  --num-line:   rgba(224, 189, 104, .26);
 
-  /* Thin gold rules - the POR structural motif. */
-  --rule:      rgba(200, 162, 77, .18);
-  --rule-soft: rgba(243, 237, 220, .09);
-  --rule-firm: rgba(200, 162, 77, .38);
-  --gold-tint: rgba(200, 162, 77, .10);
+  /* POR ink ramp. Body copy is warmer and lighter than WEB-1's muted tan. */
+  --ink:        var(--ivory);
+  --ink-body:   #d7cfb8;   /* section copy      - 12.4:1 on --bg */
+  --ink-lede:   #ddd4bc;   /* hero lede         - 13.3:1 */
+  --ink-card:   #cfc6ae;   /* card copy         - 11.4:1 */
+  --ink-fine:   #9c927b;   /* footer fine print -  6.4:1 */
+  --ink-link:   #b7ad96;   /* footer links      -  8.3:1 */
+  --on-gold:    #11100c;   /* text on a gold fill - 7.9:1 */
 
-  --ink:      var(--ivory);
-  --ink-2:    var(--muted);
-  --ink-3:    #8d846c;   /* tertiary - still 5.4:1 on --bg */
+  --max: 760px;
+  --radius: 22px;
+  --topbar-h: 62px;
 
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  /* Odds, credits and any figure that has to line up vertically. */
-  --font-num: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  /* The POR names Inter first and never loads it. Reproduced verbatim: with
+     Inter installed the page is the POR exactly; without it, the system UI
+     font, which is what the POR itself renders as on most machines. */
+  --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+             Roboto, Helvetica, Arial, sans-serif;
+  --font-num: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --radius:    14px;
-  --radius-sm: 10px;
-  --radius-pill: 999px;
-
-  --nav-h: 60px;
-
-  /* Fluid scale. Every step is clamped so 375px and 1440px are both deliberate
-     rather than one being the other divided by a magic number. */
-  --t-display: clamp(2rem, 1.35rem + 2.8vw, 3.5rem);
-  --t-h2:      clamp(1.5rem, 1.16rem + 1.5vw, 2.25rem);
-  --t-h3:      clamp(1.125rem, 1.03rem + .42vw, 1.375rem);
-  --t-lead:    clamp(1.0625rem, 1rem + .34vw, 1.25rem);
-  --t-body:    clamp(1rem, .97rem + .16vw, 1.0625rem);
-  --t-small:   .9375rem;
-  --t-fine:    .8125rem;
-  --t-eyebrow: .75rem;
-
-  --gap:   clamp(1rem, .7rem + 1.2vw, 1.5rem);
-  --pad-x: clamp(1.125rem, .6rem + 2.2vw, 2rem);
-  --sec-y: clamp(3.5rem, 2.4rem + 4.4vw, 6rem);
-
-  --wrap: 1120px;
+  /* Type scale - POR values converted px -> rem at a 16px base. */
+  /* The POR sets 12vw here, and at 12vw "FANTASYSTAKES" is wider than a
+     390px phone: the POR page itself clips the final S. "FANTASYSTAKES" is
+     8.57em wide at this weight and tracking, so 10.1vw is the largest
+     coefficient that still fits inside the 20px gutters at 320px and up.
+     Same intent - the wordmark as large as the viewport allows - actually
+     honoured. preview_check.mjs measures it at every viewport. */
+  --t-brand:      clamp(2rem, 10.1vw, 4.75rem);      /* 32 -> 76 */
+  --t-descriptor: clamp(1.0625rem, 4.7vw, 1.4375rem);/* 17 -> 23 */
+  --t-hero:       clamp(2rem, 8.6vw, 3.5rem);        /* 32 -> 56, see .hero h1 */
+  --t-lede:       clamp(1.125rem, 4.7vw, 1.4375rem); /* 18 -> 23 */
+  --t-h2:         clamp(1.875rem, 8vw, 2.875rem);    /* 30 -> 46 */
+  --t-close:      clamp(2.25rem, 9vw, 3.625rem);     /* 36 -> 58 */
+  --t-quote:      clamp(1.5rem, 7vw, 2.25rem);       /* 24 -> 36 */
+  --t-body:       1.125rem;   /* 18 */
+  --t-card:       1rem;       /* 16 */
+  --t-card-title: 1.375rem;   /* 22 */
+  --t-step-title: 1.1875rem;  /* 19 */
+  --t-summary:    1.125rem;   /* 18 */
+  --t-eyebrow:    .75rem;     /* 12 */
+  --t-fine:       .8125rem;   /* 13 */
 }
 
-/* -- Reset (minimal, deliberate) ----------------------------------------- */
+/* -- Reset --------------------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
 
 html {
   /* `clip` rather than `hidden`: it prevents horizontal overflow without
-     creating a scroll container, which would break `position: sticky` on the
-     masthead. */
+     creating a scroll container, which would break the sticky topbar. */
   overflow-x: clip;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
@@ -84,33 +107,33 @@ html {
 body {
   margin: 0;
   overflow-x: clip;
-  background: var(--bg);
+  /* POR: one gold wash from above the fold, centred. No image, no bytes. */
+  background:
+    radial-gradient(circle at 50% -10%, rgba(200, 162, 77, .12), transparent 28rem),
+    var(--bg);
   color: var(--ink);
   font-family: var(--font-ui);
   font-size: var(--t-body);
-  line-height: 1.6;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 
 img, svg { max-width: 100%; height: auto; display: block; }
 
-h1, h2, h3, h4 { margin: 0; line-height: 1.15; font-weight: 700; letter-spacing: -.015em; }
-p  { margin: 0; }
+h1, h2, h3 { margin: 0; }
+p { margin: 0; }
 ul, ol { margin: 0; padding: 0; }
 li { list-style: none; }
 
-a { color: var(--gold-hi); text-decoration-thickness: 1px; text-underline-offset: 3px; }
-a:hover { color: var(--ivory); }
+a { color: inherit; text-underline-offset: 3px; }
 
-/* Focus is VISIBLE EVERYWHERE and is never removed. `:focus-visible` keeps it
-   off mouse clicks; the fallback pair keeps it for browsers without support. */
-:focus { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+/* Focus is VISIBLE EVERYWHERE and is never removed. */
+:focus { outline: 2px solid var(--gold2); outline-offset: 3px; }
 :focus:not(:focus-visible) { outline: none; }
-:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--gold2); outline-offset: 3px; border-radius: 4px; }
 
-/* Anchor scrolling has to clear the sticky masthead, or every jump lands with
-   the heading hidden underneath it. */
-[id] { scroll-margin-top: calc(var(--nav-h) + 16px); }
+/* Anchor jumps have to clear the sticky topbar. */
+[id] { scroll-margin-top: calc(var(--topbar-h) + 12px); }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -122,7 +145,8 @@ a:hover { color: var(--ivory); }
 }
 
 /* -- Utilities ----------------------------------------------------------- */
-.wrap { width: 100%; max-width: var(--wrap); margin-inline: auto; padding-inline: var(--pad-x); }
+/* POR: a 760px measure with 20px gutters, 28px from 700px up. */
+.wrap { width: min(100%, var(--max)); margin: 0 auto; padding: 0 20px; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px;
@@ -133,87 +157,79 @@ a:hover { color: var(--ivory); }
 .skip {
   position: absolute; left: 50%; top: 0; transform: translate(-50%, -140%);
   z-index: 100;
-  background: var(--gold); color: #0b0b0a; font-weight: 700;
-  padding: .7rem 1.1rem; border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: var(--gold); color: var(--on-gold); font-weight: 800;
+  padding: .7rem 1.1rem; border-radius: 0 0 12px 12px; text-decoration: none;
 }
-.skip:focus { transform: translate(-50%, 0); color: #0b0b0a; }
+.skip:focus { transform: translate(-50%, 0); }
 
 .eyebrow {
-  font-size: var(--t-eyebrow);
-  text-transform: uppercase;
-  letter-spacing: .16em;
-  font-weight: 600;
-  color: var(--gold);
-  margin: 0 0 .75rem;
+  margin: 0 0 8px;
+  text-transform: uppercase; letter-spacing: .12em;
+  color: var(--gold2); font-weight: 800; font-size: var(--t-eyebrow);
 }
 
-.lead  { font-size: var(--t-lead); color: var(--ink-2); }
-.copy  { color: var(--ink-2); }
-.copy + .copy { margin-top: 1rem; }
+.copy { margin: 18px 0 0; color: var(--ink-body); font-size: var(--t-body); }
 
-.close-line {
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--rule);
-  font-size: var(--t-lead);
-  font-weight: 600;
-  color: var(--ivory);
-}
-
-/* -- Buttons ------------------------------------------------------------- */
+/* -- Buttons (POR) ------------------------------------------------------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
-  gap: .5rem;
-  min-height: 46px;
-  padding: .75rem 1.35rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid transparent;
-  font: inherit; font-weight: 700; line-height: 1.2;
+  min-height: 52px; padding: 0 22px;
+  border-radius: 999px; border: 1px solid transparent;
+  font: inherit; font-weight: 800; line-height: 1.2;
   text-decoration: none; text-align: center;
-  cursor: pointer;
-  transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+  /* POR: full-width stacked on a phone, intrinsic from 700px up. */
+  width: min(100%, 320px);
+  transition: background-color .18s ease, border-color .18s ease;
 }
-.btn--primary { background: var(--gold); color: #0b0b0a; }
-.btn--primary:hover, .btn--primary:focus-visible { background: var(--gold-hi); color: #0b0b0a; }
-.btn--ghost { background: transparent; color: var(--ivory); border-color: var(--rule-firm); }
-.btn--ghost:hover, .btn--ghost:focus-visible { color: var(--ivory); border-color: var(--gold-hi); background: var(--gold-tint); }
-.btn--sm { min-height: 38px; padding: .45rem 1rem; font-size: var(--t-fine); }
+.btn--primary {
+  background: var(--gold); color: var(--on-gold);
+  box-shadow: 0 10px 28px rgba(200, 162, 77, .18);
+}
+.btn--primary:hover, .btn--primary:focus-visible { background: var(--gold2); }
+.btn--secondary {
+  border-color: var(--line); color: var(--ivory); background: rgba(255, 255, 255, .02);
+}
+.btn--secondary:hover, .btn--secondary:focus-visible { border-color: var(--gold2); }
 
-.cta-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.75rem; }
-.cta-row .btn { flex: 1 1 auto; }
-@media (min-width: 560px) { .cta-row .btn { flex: 0 0 auto; } }
+.cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
 
-/* -- Masthead ------------------------------------------------------------ */
-.masthead {
-  position: sticky; top: 0; z-index: 50;
-  background: rgba(11, 11, 10, .92);
-  border-bottom: 1px solid var(--rule);
-  backdrop-filter: blur(10px);
+/* -- Topbar (POR) -------------------------------------------------------- *
+ * POR geometry exactly: 62px, blurred near-black, one faint white hairline.
+ * The POR carries a brand and a single gold link; this adds the four locked
+ * section links behind a disclosure, which is why the toggle exists. */
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(14px);
+  background: rgba(11, 11, 10, .82);
+  border-bottom: 1px solid var(--hairline);
 }
-/* One flex row that wraps. On a phone the brand, the call to action and the
-   toggle share the first line and the disclosure takes a full-width second one;
-   at 900px everything is a single row. Ordering is done here rather than by
-   writing the navigation into the markup twice. */
-.masthead__bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: .625rem;
-  min-height: var(--nav-h);
+.topbar__inner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  min-height: var(--topbar-h); gap: 16px;
 }
-.brand { display: inline-flex; align-items: baseline; text-decoration: none; margin-right: auto; order: 1; }
-.masthead__cta { order: 2; }
-.nav__toggle { order: 3; }
-.brand__word { font-size: 1.1875rem; font-weight: 800; letter-spacing: -.01em; line-height: 1; }
-.brand__a { color: var(--ivory); }
-.brand__b { color: var(--gold); }
+.mini-brand {
+  font-weight: 900; letter-spacing: .02em; font-size: 1rem;
+  text-decoration: none; order: 1; margin-right: auto;
+}
+.mini-brand .fantasy { color: var(--ivory); }
+.mini-brand .stakes  { color: var(--gold); }
+
+/* The POR's right-hand call to action: a gold text link, not a filled pill. */
+.mini-link {
+  text-decoration: none; color: var(--gold2); font-weight: 700; font-size: .875rem;
+  order: 2; padding: 8px 0; min-height: 44px; display: inline-flex; align-items: center;
+}
+.mini-link:hover, .mini-link:focus-visible { color: var(--ivory); }
 
 .nav__toggle {
+  order: 3; flex: 0 0 auto;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 42px; height: 42px; flex: 0 0 auto;
-  background: transparent; border: 1px solid var(--rule-firm); border-radius: var(--radius-sm);
+  width: 44px; height: 44px;
+  background: transparent; border: 1px solid var(--line); border-radius: 12px;
   color: var(--ivory); cursor: pointer;
 }
-/* The toggle ships `hidden` and is revealed by `site.js`. An author `display`
-   rule outranks the user-agent rule behind `hidden`, so it has to be restated
-   here or a reader without JavaScript would see a button that does nothing. */
+/* Restated because an author `display` rule outranks the UA rule behind
+   `hidden`; without this a reader with no JavaScript would see a dead button. */
 .nav__toggle[hidden] { display: none; }
 .nav__toggle span, .nav__toggle span::before, .nav__toggle span::after {
   display: block; width: 17px; height: 1.5px; background: currentColor; border-radius: 2px;
@@ -224,282 +240,277 @@ a:hover { color: var(--ivory); }
 .nav__toggle span::after  { top:  5.5px; }
 
 .nav {
-  display: block;
-  order: 4; flex: 0 0 100%; width: 100%;
-  padding: .25rem 0 1rem;
-  border-top: 1px solid var(--rule);
+  display: block; order: 4; flex: 0 0 100%; width: 100%;
+  padding: 4px 0 12px;
+  border-top: 1px solid var(--hairline);
 }
-/* COLLAPSED STATE IS AN ATTRIBUTE, NOT THE `hidden` PROPERTY. The HTML
-   rendering spec gives `[hidden]` `display: none !important` in the user-agent
-   sheet, so no author rule can re-show the panel as a row at desktop widths -
-   a reader who opened the menu on a phone and then rotated into a tablet
-   layout would be left with a navigation nothing could bring back. A data
-   attribute the media query can override does not have that failure mode. */
+/* COLLAPSED STATE IS AN ATTRIBUTE, NOT `hidden`. The HTML rendering spec gives
+   `[hidden]` `display: none !important`, so a panel closed that way could not
+   be re-shown as a desktop row by any author rule - a reader who opened the
+   menu on a phone and rotated into a tablet layout would lose it entirely. */
 .nav[data-open="false"] { display: none; }
-.nav__list { display: block; }
 .nav__link {
-  display: block;
-  padding: .8rem .25rem;
-  color: var(--ink-2); font-weight: 600; text-decoration: none;
-  border-bottom: 1px solid var(--rule-soft);
+  display: block; padding: 12px 2px;
+  color: var(--ink-link); font-weight: 700; font-size: var(--t-card);
+  text-decoration: none;
+  border-bottom: 1px solid var(--hairline);
 }
 .nav__link:hover, .nav__link:focus-visible { color: var(--ivory); }
 
-@media (min-width: 900px) {
-  /* Both selectors are listed so the row wins whatever state the mobile
-     disclosure was left in. */
-  .brand { margin-right: 2.5rem; }
-  .nav,
-  .nav[data-open="false"] {
-    display: flex; align-items: center; gap: 1.5rem;
-    order: 2; flex: 0 1 auto; width: auto; margin-right: auto;
-    padding: 0; border-top: 0;
-  }
-  .masthead__cta { order: 3; }
-  .nav__list { display: flex; gap: 1.5rem; }
-  .nav__link { padding: .25rem 0; border-bottom: 0; font-size: var(--t-small); }
-  .nav__toggle { display: none; }
-}
-
-/* -- Section rhythm ------------------------------------------------------ */
-.section { padding-block: var(--sec-y); border-top: 1px solid var(--rule-soft); }
-.section--flush { border-top: 0; }
-.section__head { max-width: 46rem; }
-.section__head h2 { font-size: var(--t-h2); margin-bottom: 1rem; }
-.section__body { margin-top: 1.5rem; max-width: 46rem; }
-.section__wide { margin-top: 2rem; }
-
-/* -- Hero ---------------------------------------------------------------- */
+/* -- Hero (POR) ---------------------------------------------------------- *
+ * Full viewport below the topbar, vertically centred, everything on the centre
+ * line: wordmark lockup, descriptor, headline, lede, calls to action. */
 .hero {
-  position: relative;
-  padding-block: clamp(3rem, 1.8rem + 5vw, 5.5rem) var(--sec-y);
+  min-height: calc(100vh - var(--topbar-h));
+  min-height: calc(100svh - var(--topbar-h));
+  display: flex; align-items: center;
+  padding: 52px 0 54px;
+  border-top: 0;
 }
-/* A single radial wash, painted rather than downloaded. No image, no layout
-   shift, no bytes. */
-.hero::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background:
-    radial-gradient(60% 42% at 18% 0%, rgba(200, 162, 77, .11), transparent 70%),
-    radial-gradient(48% 38% at 92% 8%, rgba(200, 162, 77, .06), transparent 72%);
+.lockup { text-align: center; margin-bottom: 32px; }
+.brand {
+  margin: 0;
+  font-size: var(--t-brand); line-height: .92; letter-spacing: .015em;
+  font-weight: 950; text-transform: uppercase;
 }
-.hero > .wrap { position: relative; }
-.hero__grid { display: grid; gap: clamp(2rem, 1rem + 4vw, 3.5rem); }
-@media (min-width: 1024px) {
-  .hero__grid { grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); align-items: center; }
-}
-.hero h1 { font-size: var(--t-display); max-width: 15ch; }
-.hero__lead { margin-top: 1.25rem; max-width: 54ch; }
-.hero__trust {
-  margin-top: 1.5rem; padding-top: 1.25rem;
-  border-top: 1px solid var(--rule);
-  font-family: var(--font-num);
-  font-size: var(--t-fine);
-  letter-spacing: .06em;
-  color: var(--gold);
-  text-transform: uppercase;
+.brand .fantasy { color: var(--ivory); }
+.brand .stakes  { color: var(--gold); text-shadow: 0 0 24px rgba(200, 162, 77, .14); }
+.descriptor {
+  margin: 16px 0 0; color: var(--muted);
+  font-size: var(--t-descriptor); letter-spacing: .01em; font-weight: 650;
 }
 
-/* -- Cards --------------------------------------------------------------- */
+.hero__copy { text-align: center; margin: 0 auto; max-width: 650px; }
+/* The POR tagline is three short lines at up to 68px. The locked headline is
+   one long sentence, so the ceiling comes down and the line-height comes up a
+   fraction - the POR's typographic voice at a length it was not set for. */
+.hero h1 {
+  margin: 0;
+  font-size: var(--t-hero); line-height: 1.04; letter-spacing: -.03em; font-weight: 900;
+}
+.hero h1 .gold { color: var(--gold2); }
+.lede { margin: 24px auto 0; max-width: 560px; color: var(--ink-lede); font-size: var(--t-lede); }
+.trust {
+  margin: 26px 0 0;
+  font-family: var(--font-num); font-size: var(--t-fine);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--gold);
+}
+
+/* -- Sections (POR) ------------------------------------------------------ */
+.section { padding: 56px 0; border-top: 1px solid var(--hairline); }
+.section h2 { font-size: var(--t-h2); line-height: 1.04; letter-spacing: -.025em; }
+
+/* -- Cards and the gold pill (POR) --------------------------------------- */
+.card-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 26px; }
 .card {
-  background: var(--surface);
-  border: 1px solid var(--rule);
+  background: var(--card-fill);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius);
-  padding: clamp(1.25rem, 1rem + 1vw, 1.75rem);
+  padding: 22px;
 }
-.card h3 { font-size: var(--t-h3); margin-bottom: .75rem; }
-.card p { color: var(--ink-2); }
+.card h3 { margin: 0; color: var(--ivory); font-size: var(--t-card-title); }
+.card p  { margin-top: 10px; font-size: var(--t-card); color: var(--ink-card); }
 
-.grid { display: grid; gap: var(--gap); }
-@media (min-width: 768px) {
-  .grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (min-width: 1024px) { .grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-
-/* -- Product motifs --------------------------------------------------------
- * Restrained sportsbook furniture - odds pills, a matchup fragment, a pool
- * fragment, credit figures. Drawn in CSS from the same palette as the rest of
- * the page. Nothing here is a casino motif and nothing here is a photograph.
- * Each block carries `role="img"` plus a label, so a screen reader is told what
- * the illustration shows instead of reading a column of stray numbers. */
-.motif {
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  padding: 1.1rem;
-  box-shadow: 0 1px 0 rgba(243, 237, 220, .03) inset;
-}
-.motif__head {
-  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
-  padding-bottom: .7rem; margin-bottom: .85rem;
-  border-bottom: 1px solid var(--rule);
-}
-.motif__label {
-  font-size: var(--t-eyebrow); text-transform: uppercase; letter-spacing: .14em;
-  font-weight: 700; color: var(--gold);
-}
-.motif__meta { font-size: var(--t-fine); color: var(--ink-3); font-family: var(--font-num); }
-
-.motif__row {
-  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
-  padding: .6rem 0;
-}
-.motif__row + .motif__row { border-top: 1px solid var(--rule-soft); }
-.motif__team { font-weight: 600; font-size: var(--t-small); min-width: 0; }
-.motif__sub { display: block; font-size: var(--t-fine); color: var(--ink-3); font-weight: 400; }
-.motif__odds { display: flex; gap: .4rem; flex: 0 0 auto; }
-
-.pill {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 60px; padding: .34rem .5rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--rule-firm);
-  background: var(--gold-tint);
-  color: var(--gold-hi);
-  font-family: var(--font-num); font-size: var(--t-fine); font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.pill--quiet { background: var(--surface-3); border-color: var(--rule-soft); color: var(--ink-2); }
-.pill-row { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: 1.25rem; }
-
-.motif__foot {
-  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
-  margin-top: .9rem; padding-top: .75rem;
-  border-top: 1px solid var(--rule);
-  font-size: var(--t-fine); color: var(--ink-3);
-}
-.motif__stake { font-family: var(--font-num); color: var(--ivory); font-variant-numeric: tabular-nums; }
-
-/* Credit / championship figure strip */
-.stats { display: grid; gap: .75rem; margin-top: 1.75rem; }
-@media (min-width: 560px) { .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.stat {
-  background: var(--surface-2);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-  padding: .9rem 1rem;
-}
-.stat__k { font-size: var(--t-eyebrow); text-transform: uppercase; letter-spacing: .13em; color: var(--ink-3); }
-.stat__v {
-  margin-top: .3rem;
-  font-family: var(--font-num); font-variant-numeric: tabular-nums;
-  font-size: 1.375rem; font-weight: 700; color: var(--gold-hi);
-}
-.stat__n { font-size: var(--t-fine); color: var(--ink-3); }
-
-/* Standings hint */
-.standings { margin-top: 1.25rem; }
-.standings__row {
-  display: grid; grid-template-columns: 1.6rem 1fr auto;
-  gap: .75rem; align-items: center;
-  padding: .55rem 0;
-  font-size: var(--t-small);
-}
-.standings__row + .standings__row { border-top: 1px solid var(--rule-soft); }
-.standings__pos { font-family: var(--font-num); color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.standings__score { font-family: var(--font-num); color: var(--gold-hi); font-variant-numeric: tabular-nums; }
-.standings__row--lead .standings__pos { color: var(--gold); }
-
-/* -- Steps --------------------------------------------------------------- */
-.steps { margin-top: 2rem; }
-.step__n {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; margin-bottom: .9rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--rule-firm); background: var(--gold-tint);
-  color: var(--gold-hi);
-  font-family: var(--font-num); font-weight: 700; font-size: var(--t-small);
+/* The POR pill: SOLID gold, a category label. Not an odds chip.
+ *
+ * `.card .pill` IS IN THE SELECTOR LIST ON PURPOSE. The pill is a <p>, and
+ * `.card p` above it is more specific than a bare `.pill`, so without this the
+ * label inherits the card's light body colour and renders near-invisible gold
+ * on gold. */
+.pill,
+.card .pill {
+  display: inline-flex; align-items: center;
+  color: var(--on-gold); background: var(--gold2);
+  border-radius: 999px; padding: 6px 10px;
+  font-weight: 850; font-size: var(--t-eyebrow); line-height: 1.2;
+  letter-spacing: .02em;
+  margin: 0 0 14px;
 }
 
-/* -- FAQ ------------------------------------------------------------------ *
- * `<details>` rather than a scripted accordion: it is keyboard operable,
- * screen-reader announced and printable with no JavaScript at all. */
-.faq { margin-top: 2rem; max-width: 52rem; }
-.faq__item {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  margin-bottom: .75rem;
+/* -- Quote / highlight (POR) --------------------------------------------- *
+ * The POR's signature emphasis block, used for the lines the brief calls
+ * closes. Gold rule on the left, gold wash falling away to the right. */
+.quote {
+  padding: 26px 24px;
+  border-left: 3px solid var(--gold);
+  background: linear-gradient(90deg, rgba(200, 162, 77, .09), transparent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-top: 26px;
 }
-.faq__q {
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-  padding: 1rem 1.15rem;
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--ivory);
-  list-style: none;
+.quote strong {
+  display: block;
+  font-size: var(--t-quote); line-height: 1.1; color: var(--ivory); font-weight: 900;
 }
-.faq__q::-webkit-details-marker { display: none; }
-.faq__q::after {
+
+/* -- Steps (POR) --------------------------------------------------------- *
+ * A numbered list on hairlines, not a row of cards. */
+.steps { display: grid; gap: 14px; margin-top: 28px; }
+.step {
+  display: grid; grid-template-columns: 42px 1fr; gap: 14px; align-items: start;
+  padding: 18px 0; border-bottom: 1px solid var(--hairline);
+}
+.num {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--num-fill); border: 1px solid var(--num-line);
+  color: var(--gold2); font-weight: 900;
+}
+.step h3 { margin: 0; font-size: var(--t-step-title); }
+.step p  { margin: 5px 0 0; font-size: var(--t-card); color: var(--ink-body); }
+
+/* -- FAQ (POR) ----------------------------------------------------------- *
+ * Hairline rows, no boxes. `<details>` so it is keyboard operable and readable
+ * with JavaScript off. */
+.faq details { border-top: 1px solid var(--hairline-2); padding: 18px 0; }
+.faq details:last-child { border-bottom: 1px solid var(--hairline-2); }
+.faq summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  cursor: pointer; font-weight: 800; font-size: var(--t-summary);
+  color: var(--ivory); list-style: none;
+}
+.faq summary::-webkit-details-marker { display: none; }
+/* DEPARTURE FROM THE POR, DELIBERATE. The POR hides the native marker and puts
+   nothing in its place, which leaves a disclosure with no visible affordance -
+   readable, but not discoverable. This is the smallest possible replacement. */
+.faq summary::after {
   content: "+";
   flex: 0 0 auto;
   font-family: var(--font-num); font-size: 1.25rem; line-height: 1;
-  color: var(--gold);
+  color: var(--gold); font-weight: 400;
 }
-.faq__item[open] .faq__q::after { content: "\2013"; }
-.faq__item[open] .faq__q { border-bottom: 1px solid var(--rule); }
-.faq__a { padding: 1rem 1.15rem; color: var(--ink-2); }
+.faq details[open] summary::after { content: "\2013"; }
+.faq details p { font-size: var(--t-card); margin-top: 10px; color: var(--ink-body); }
 
-/* -- Demo + final CTA panels --------------------------------------------- */
-.panel {
-  border: 1px solid var(--rule-firm);
-  border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(200, 162, 77, .07), rgba(200, 162, 77, .02));
-  padding: clamp(1.5rem, 1rem + 2.4vw, 2.75rem);
+/* -- Closing call to action (POR) ---------------------------------------- */
+.close {
+  text-align: center;
+  padding: 68px 0 76px;
+  border-top: 1px solid var(--hairline);
+  background: radial-gradient(circle at 50% 50%, rgba(200, 162, 77, .12), transparent 22rem);
 }
-.panel h2 { font-size: var(--t-h2); max-width: 24ch; }
-.panel .copy { margin-top: 1rem; max-width: 52ch; }
-.panel__trust {
-  margin-top: 1.25rem;
-  font-family: var(--font-num); font-size: var(--t-fine);
-  color: var(--gold); letter-spacing: .04em;
-}
-.panel__tagline {
-  margin-top: 1.5rem;
-  font-size: var(--t-lead); font-weight: 700; color: var(--ivory);
+.close h2 { font-size: var(--t-close); line-height: 1.04; letter-spacing: -.025em; }
+.close p { max-width: 520px; margin-left: auto; margin-right: auto; }
+.close .tagline {
+  margin: 22px 0 0;
+  font-size: var(--t-lede); font-weight: 800; color: var(--gold2);
 }
 
-/* -- Footer -------------------------------------------------------------- */
-.footer { border-top: 1px solid var(--rule); padding-block: var(--sec-y) 2.5rem; }
-.footer__grid { display: grid; gap: 2rem; }
-@media (min-width: 768px) { .footer__grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); } }
-.footer__word { font-size: 1.375rem; font-weight: 800; letter-spacing: -.01em; }
-.footer__descriptor {
-  margin-top: .35rem;
-  font-size: var(--t-fine); text-transform: uppercase; letter-spacing: .18em;
-  color: var(--ink-3);
+/* -- Restrained sportsbook motifs ---------------------------------------- *
+ * Odds chips, a standings strip and credit figures. Subordinate to the POR
+ * furniture above: outlined rather than filled, so the solid gold `.pill`
+ * stays the only saturated gold shape on the page. Each block is labelled
+ * `role="img"` so a screen reader is told what the illustration shows instead
+ * of reading a column of stray numbers. */
+.odds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 62px; padding: 6px 10px;
+  border-radius: 12px; border: 1px solid var(--card-line);
+  background: rgba(200, 162, 77, .07);
+  color: var(--gold2);
+  font-family: var(--font-num); font-size: .8125rem; font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
-.footer__claim { margin-top: 1.25rem; font-weight: 600; color: var(--ivory); }
-.footer__fine { margin-top: .75rem; font-size: var(--t-small); color: var(--ink-2); max-width: 48ch; }
-.footer__nav h2 { font-size: var(--t-eyebrow); text-transform: uppercase; letter-spacing: .16em; color: var(--ink-3); margin-bottom: .75rem; }
-.footer__links { display: flex; flex-wrap: wrap; gap: .35rem 1.5rem; }
-.footer__links a { color: var(--ink-2); text-decoration: none; font-weight: 600; font-size: var(--t-small); }
+.chip--quiet { color: var(--ink-card); border-color: var(--hairline-2); background: rgba(255, 255, 255, .02); }
+
+.ledger { margin-top: 20px; }
+.ledger__row {
+  display: grid; grid-template-columns: 1.5rem 1fr auto; gap: 12px; align-items: center;
+  padding: 11px 0; font-size: var(--t-card);
+  border-bottom: 1px solid var(--hairline);
+}
+.ledger__pos { font-family: var(--font-num); color: var(--ink-fine); font-variant-numeric: tabular-nums; }
+.ledger__val { font-family: var(--font-num); color: var(--gold2); font-variant-numeric: tabular-nums; }
+.ledger__row--lead .ledger__pos { color: var(--gold); }
+
+.figures { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 26px; }
+.figure {
+  border: 1px solid var(--card-line); border-radius: 16px;
+  background: var(--card-fill);
+  padding: 16px 18px;
+}
+.figure__k { font-size: var(--t-eyebrow); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-fine); }
+.figure__v {
+  margin-top: 4px;
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 1.5rem; font-weight: 800; color: var(--gold2);
+}
+.figure__n { font-size: var(--t-fine); color: var(--ink-fine); }
+
+/* -- Footer (POR) -------------------------------------------------------- */
+.footer {
+  padding: 28px 0 38px;
+  color: var(--ink-fine); font-size: var(--t-fine);
+  border-top: 1px solid var(--hairline);
+}
+.footer__links { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 14px; }
+.footer__links a { text-decoration: none; color: var(--ink-link); font-weight: 700; }
 .footer__links a:hover, .footer__links a:focus-visible { color: var(--ivory); text-decoration: underline; }
+.footer__word { font-size: 1.375rem; font-weight: 900; letter-spacing: .02em; text-transform: uppercase; }
+.footer__word .fantasy { color: var(--ivory); }
+.footer__word .stakes  { color: var(--gold); }
+.footer__descriptor { margin-top: 4px; color: var(--muted); font-size: var(--t-card); font-weight: 650; }
+.footer__claim { margin-top: 16px; color: var(--ivory); font-weight: 800; font-size: var(--t-card); }
+.footer__fine { margin-top: 10px; max-width: 52ch; }
 .footer__bottom {
-  margin-top: 2.5rem; padding-top: 1.5rem;
-  border-top: 1px solid var(--rule-soft);
-  display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; justify-content: space-between;
-  font-size: var(--t-fine); color: var(--ink-3);
+  margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+  display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between;
 }
 /* The Yahoo attribution is a contractual string. It states a data source and
    nothing else - no mark, no logo, no endorsement language. */
-.attribution { color: var(--ink-3); }
-.attribution a { color: var(--ink-2); }
+.attribution a { color: var(--ink-link); }
 
-/* -- Legal / content pages ----------------------------------------------- */
-.doc { padding-block: clamp(2.5rem, 1.8rem + 3vw, 4rem) var(--sec-y); }
-.doc__inner { max-width: 46rem; }
-.doc h1 { font-size: var(--t-h2); }
-.doc h2 { font-size: var(--t-h3); margin-top: 2.5rem; }
-.doc p, .doc li { color: var(--ink-2); }
-.doc p { margin-top: 1rem; }
-.doc ul { margin-top: 1rem; }
-.doc li { position: relative; padding-left: 1.15rem; margin-top: .5rem; }
-.doc li::before { content: ""; position: absolute; left: 0; top: .7em; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
-.doc__stamp {
-  margin-top: 1.25rem; padding: 1rem 1.15rem;
-  border: 1px dashed var(--rule-firm); border-radius: var(--radius-sm);
-  background: var(--gold-tint);
-  color: var(--ink-2); font-size: var(--t-small);
+/* -- Legal and content pages --------------------------------------------- */
+.doc { padding: 44px 0 56px; }
+.doc h1 { font-size: var(--t-h2); line-height: 1.04; letter-spacing: -.025em; }
+.doc h2 { font-size: var(--t-card-title); margin-top: 40px; }
+.doc p { margin-top: 16px; color: var(--ink-body); font-size: var(--t-card); }
+.doc ul { margin-top: 16px; }
+.doc li {
+  position: relative; padding-left: 18px; margin-top: 8px;
+  color: var(--ink-body); font-size: var(--t-card);
 }
-.doc__stamp strong { color: var(--gold-hi); }
+.doc li::before {
+  content: ""; position: absolute; left: 0; top: .62em;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--gold);
+}
+.doc code { font-family: var(--font-num); font-size: .875em; color: var(--gold2); }
+.doc__stamp {
+  margin-top: 18px; padding: 18px 20px;
+  border-left: 3px solid var(--gold);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: linear-gradient(90deg, rgba(200, 162, 77, .09), transparent);
+  color: var(--ink-body); font-size: var(--t-card);
+}
+.doc__stamp strong { color: var(--gold2); }
+
+/* -- The POR's one breakpoint -------------------------------------------- *
+ * 700px: wider gutters, two-up cards, intrinsic buttons. Everything else is
+ * fluid by clamp, which is why the POR needs no other. */
+@media (min-width: 700px) {
+  .wrap { padding: 0 28px; }
+  .card-grid { grid-template-columns: 1fr 1fr; }
+  .figures { grid-template-columns: repeat(3, 1fr); }
+  .btn { width: auto; }
+}
+
+/* The navigation disclosure is the one thing the POR does not have, so it is
+   the one thing needing a breakpoint of its own: at 900px the four links fit
+   beside the brand and the toggle goes away. */
+@media (min-width: 900px) {
+  .nav,
+  .nav[data-open="false"] {
+    display: flex; align-items: center; gap: 22px;
+    order: 2; flex: 0 1 auto; width: auto; margin: 0 auto 0 8px;
+    padding: 0; border-top: 0;
+  }
+  /* The list itself has to become the row. `.nav` going flex only lays out its
+     single <ul> child; without this the four links stay stacked and the topbar
+     grows to three times its height. */
+  .nav ul { display: flex; align-items: center; gap: 22px; }
+  .mini-brand { margin-right: 0; }
+  .mini-link { order: 3; }
+  .nav__link { padding: 4px 0; border-bottom: 0; font-size: .875rem; white-space: nowrap; }
+  .nav__toggle { display: none; }
+}

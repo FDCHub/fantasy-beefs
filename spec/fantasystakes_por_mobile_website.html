@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0a">
+<title>FantasyStakes — Fantasy Stakes for Fantasy Leagues</title>
+<style>
+:root{
+  --bg:#0b0b0a;--ivory:#f3eddc;--muted:#b8ad8e;--gold:#c8a24d;--gold2:#e0bd68;
+  --line:rgba(224,189,104,.22);--max:760px;--radius:22px;
+}
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;background:radial-gradient(circle at 50% -10%,rgba(200,162,77,.12),transparent 28rem),var(--bg);
+color:var(--ivory);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:inherit}.wrap{width:min(100%,var(--max));margin:0 auto;padding:0 20px}
+.topbar{position:sticky;top:0;z-index:10;backdrop-filter:blur(14px);background:rgba(11,11,10,.82);border-bottom:1px solid rgba(255,255,255,.05)}
+.topbar-inner{display:flex;align-items:center;justify-content:space-between;min-height:62px;gap:16px}
+.mini-brand{font-weight:900;letter-spacing:.02em;font-size:16px}.mini-brand .stakes{color:var(--gold)}
+.mini-link{text-decoration:none;color:var(--gold2);font-weight:700;font-size:14px}
+.hero{min-height:calc(100svh - 62px);display:flex;align-items:center;padding:52px 0 54px}
+.lockup{text-align:center;margin-bottom:32px}.brand{margin:0;font-size:clamp(42px,12vw,76px);line-height:.92;letter-spacing:.015em;font-weight:950;text-transform:uppercase}
+.brand .fantasy{color:var(--ivory)}.brand .stakes{color:var(--gold);text-shadow:0 0 24px rgba(200,162,77,.14)}
+.descriptor{margin:16px 0 0;color:var(--muted);font-size:clamp(17px,4.7vw,23px);letter-spacing:.01em;font-weight:650}
+.hero-copy{text-align:center;margin:0 auto;max-width:650px}.tagline{margin:0;font-size:clamp(36px,10vw,68px);line-height:1.02;letter-spacing:-.03em;font-weight:900}
+.tagline .gold{color:var(--gold2)}.lede{margin:24px auto 0;max-width:560px;color:#ddd4bc;font-size:clamp(18px,4.7vw,23px)}
+.cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:30px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 22px;border-radius:999px;text-decoration:none;font-weight:800;border:1px solid transparent;width:min(100%,320px)}
+.btn.primary{background:var(--gold);color:#11100c;box-shadow:0 10px 28px rgba(200,162,77,.18)}
+.btn.secondary{border-color:var(--line);color:var(--ivory);background:rgba(255,255,255,.02)}
+section{padding:56px 0;border-top:1px solid rgba(255,255,255,.05)}
+.eyebrow{margin:0 0 8px;text-transform:uppercase;letter-spacing:.12em;color:var(--gold2);font-weight:800;font-size:12px}
+h2{margin:0;font-size:clamp(30px,8vw,46px);line-height:1.04;letter-spacing:-.025em}
+p{margin:18px 0 0;color:#d7cfb8;font-size:18px}
+.card-grid{display:grid;grid-template-columns:1fr;gap:14px;margin-top:26px}
+.card{background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.012));border:1px solid rgba(224,189,104,.14);border-radius:var(--radius);padding:22px}
+.card h3{margin:0;color:var(--ivory);font-size:22px}.card p{margin-top:10px;font-size:16px;color:#cfc6ae}
+.pill{display:inline-flex;align-items:center;color:#11100c;background:var(--gold2);border-radius:999px;padding:6px 10px;font-weight:850;font-size:12px;margin-bottom:14px}
+.quote{padding:26px 24px;border-left:3px solid var(--gold);background:linear-gradient(90deg,rgba(200,162,77,.09),transparent);border-radius:0 var(--radius) var(--radius) 0;margin-top:26px}
+.quote strong{display:block;font-size:clamp(24px,7vw,36px);line-height:1.1;color:var(--ivory)}
+.steps{display:grid;gap:14px;margin-top:28px}.step{display:grid;grid-template-columns:42px 1fr;gap:14px;align-items:start;padding:18px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.num{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:rgba(200,162,77,.12);border:1px solid rgba(224,189,104,.26);color:var(--gold2);font-weight:900}
+.step h3{margin:0;font-size:19px}.step p{margin:5px 0 0;font-size:16px}
+.faq details{border-top:1px solid rgba(255,255,255,.06);padding:18px 0}.faq details:last-child{border-bottom:1px solid rgba(255,255,255,.06)}
+.faq summary{cursor:pointer;font-weight:800;font-size:18px;color:var(--ivory);list-style:none}.faq summary::-webkit-details-marker{display:none}.faq details p{font-size:16px;margin-top:10px}
+.close{text-align:center;padding:68px 0 76px;background:radial-gradient(circle at 50% 50%,rgba(200,162,77,.12),transparent 22rem)}
+.close h2{font-size:clamp(36px,9vw,58px)}.close p{max-width:520px;margin-left:auto;margin-right:auto}
+footer{padding:28px 0 38px;color:#9c927b;font-size:13px;border-top:1px solid rgba(255,255,255,.05)}
+.footer-links{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:14px}.footer-links a{text-decoration:none;color:#b7ad96}
+@media(min-width:700px){.wrap{padding:0 28px}.card-grid{grid-template-columns:1fr 1fr}.btn{width:auto}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <div class="mini-brand"><span>FANTASY</span><span class="stakes">STAKES</span></div>
+    <a class="mini-link" href="#play">Play FantasyStakes</a>
+  </div>
+</header>
+
+<main>
+<section class="hero" style="border-top:0">
+  <div class="wrap">
+    <div class="lockup">
+      <h1 class="brand"><span class="fantasy">FANTASY</span><span class="stakes">STAKES</span></h1>
+      <p class="descriptor">Fantasy Stakes for Fantasy Leagues</p>
+    </div>
+    <div class="hero-copy">
+      <p class="tagline">Real odds.<br><span class="gold">Pure action.</span><br>More ways to win.</p>
+      <p class="lede">FantasyStakes adds a Vegas-style sportsbook game to the fantasy league you already play.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="#play">Play FantasyStakes</a>
+        <a class="btn secondary" href="#how">How It Works</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="what">
+<div class="wrap">
+  <p class="eyebrow">What is FantasyStakes?</p>
+  <h2>Your league. More action.</h2>
+  <p>Go head-to-head with anyone in your league or take on everyone through weekly pool contests. Play moneylines, spreads and over/unders using virtual credits.</p>
+  <div class="quote"><strong>No house. No vig. No cash. Only FantasyStakes.</strong></div>
+</div>
+</section>
+
+<section id="ways">
+<div class="wrap">
+  <p class="eyebrow">More Ways to Win</p>
+  <h2>Your fantasy season doesn't have to come down to one championship.</h2>
+  <p>FantasyStakes adds new ways to compete and win every week without replacing the league you already know and love.</p>
+  <div class="card-grid">
+    <article class="card">
+      <div class="pill">Head-to-Head</div>
+      <h3>Challenge anyone in your league.</h3>
+      <p>Play sportsbook-style moneylines, spreads and over/unders built around your fantasy league's teams, lineups, scoring and projections.</p>
+    </article>
+    <article class="card">
+      <div class="pill">League-Wide Pools</div>
+      <h3>Take on the entire league.</h3>
+      <p>Enter weekly pool contests tied to the week's fantasy action and compete against everyone, not just your scheduled opponent.</p>
+    </article>
+  </div>
+</div>
+</section>
+
+<section id="players">
+<div class="wrap">
+  <p class="eyebrow">For Players</p>
+  <h2>New ways to win every week.</h2>
+  <p>Go head-to-head with anyone in your league, play Vegas-style sportsbook face-offs, or take on everyone through league-wide pool contests.</p>
+</div>
+</section>
+
+<section id="commissioners">
+<div class="wrap">
+  <p class="eyebrow">For Commissioners</p>
+  <h2>Don't replace your league. Build on it.</h2>
+  <p>FantasyStakes builds on the league you already know and love. Keep the history, rivalries and traditions that make your league yours, then add a new layer of weekly competition with real odds, head-to-head challenges and league-wide pool bets.</p>
+  <p>FantasyStakes also makes the added competition easier to manage by tracking contests, results, credits and league activity for you.</p>
+</div>
+</section>
+
+<section id="ledger">
+<div class="wrap">
+  <p class="eyebrow">Trusted Scorekeeping</p>
+  <h2>The odds are real. The stakes are fantasy. The ledger keeps score.</h2>
+  <p>FantasyStakes tracks contests, results and credit movements through a highly accurate double-entry ledger, giving your league a trusted record of game activity and where everyone stands.</p>
+</div>
+</section>
+
+<section id="credits">
+<div class="wrap">
+  <p class="eyebrow">How Credits Work</p>
+  <h2>Virtual credits. Real competition.</h2>
+  <p>FantasyStakes is played using virtual credits. Credits have no cash value and cannot be purchased, deposited, withdrawn or redeemed.</p>
+  <p>Where <strong>$</strong> amounts appear in FantasyStakes, they represent virtual FantasyStakes credits rather than U.S. dollars.</p>
+</div>
+</section>
+
+<section id="how">
+<div class="wrap">
+  <p class="eyebrow">How It Works</p>
+  <h2>Four simple steps.</h2>
+  <div class="steps">
+    <div class="step"><div class="num">1</div><div><h3>Connect your league.</h3><p>Sign in and connect FantasyStakes to your existing Yahoo Fantasy league.</p></div></div>
+    <div class="step"><div class="num">2</div><div><h3>See the action.</h3><p>FantasyStakes uses your league's teams, settings, scoring and Yahoo-provided fantasy data to create the FantasyStakes experience.</p></div></div>
+    <div class="step"><div class="num">3</div><div><h3>Compete.</h3><p>Challenge another GM head-to-head or enter a league-wide pool contest.</p></div></div>
+    <div class="step"><div class="num">4</div><div><h3>Follow the results.</h3><p>FantasyStakes tracks contests, credits and results and keeps score throughout the season.</p></div></div>
+  </div>
+</div>
+</section>
+
+<section id="faq" class="faq">
+<div class="wrap">
+  <p class="eyebrow">FAQ</p>
+  <h2>Quick answers.</h2>
+  <details open>
+    <summary>Does FantasyStakes handle real money?</summary>
+    <p>No. FantasyStakes does not accept deposits, process payments or make payouts. The game is played entirely with virtual credits. Any separate arrangements between league members happen independently of FantasyStakes.</p>
+  </details>
+  <details>
+    <summary>Do I need to leave my existing fantasy league?</summary>
+    <p>No. FantasyStakes is designed as a companion game layer for the fantasy league you already play.</p>
+  </details>
+  <details>
+    <summary>Do I need to download an app?</summary>
+    <p>No App Store download is required for FantasyStakes 1.0. Open FantasyStakes in Safari or Chrome and optionally add it to your Home Screen.</p>
+  </details>
+</div>
+</section>
+
+<section id="play" class="close">
+<div class="wrap">
+  <h2>Real odds. Pure action. More ways to win.</h2>
+  <p>Build on the league you already know and love.</p>
+  <div class="cta-row"><a class="btn primary" href="#">Play FantasyStakes</a></div>
+</div>
+</section>
+</main>
+
+<footer>
+<div class="wrap">
+  <div class="footer-links">
+    <a href="#">How to Play</a><a href="#">FAQ</a><a href="#">Terms</a><a href="#">Privacy</a><a href="#">Support</a>
+  </div>
+  <div>FantasyStakes is a companion experience for existing fantasy leagues. All $ amounts shown in FantasyStakes represent virtual credits.</div>
+</div>
+</footer>
+</body>
+</html>

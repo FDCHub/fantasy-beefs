@@ -139,20 +139,25 @@ await withBrowser(async ({ cdp, origin }) => {
   check(new Set(demoLinks).size === 1, 'every demo control shares one destination', demoLinks.join(' | '));
 
   const faq = await evaluate(cdp, `
-    var items = document.querySelectorAll('.faq__item');
+    var items = document.querySelectorAll('.faq details');
     if (items.length === 0) return { count: 0 };
     // Measured on the <details> element itself. A closed <details> still gives
     // its hidden children a resolvable box in Chrome, so measuring the answer
     // panel would report the same height open or closed and prove nothing.
+    // The POR ships the FIRST entry open, so the measurement drives the state
+    // explicitly rather than assuming it starts closed - and puts it back.
     var first = items[0];
+    var was = first.open;
+    first.open = false;
     var closed = first.getBoundingClientRect().height;
     first.open = true;
     var open = first.getBoundingClientRect().height;
-    first.open = false;
-    return { count: items.length, closed: closed, open: open };
+    first.open = was;
+    return { count: items.length, closed: closed, open: open, shipsOpen: was };
   `);
   check(faq.count === 6, 'six FAQ entries', `found ${faq.count}`);
   check(faq.open > faq.closed + 20, 'the FAQ opens and closes', JSON.stringify(faq));
+  check(faq.shipsOpen === true, 'the first FAQ entry ships open, as the POR does');
 
   const attribution = await evaluate(cdp, `
     return (document.querySelector('.attribution') || {}).textContent || '';
@@ -185,7 +190,7 @@ await withBrowser(async ({ cdp, origin }) => {
       function box(el) { return el ? el.getBoundingClientRect() : null; }
       var toggle = document.querySelector('[data-fs-nav-toggle]');
       var panel = document.getElementById('site-nav');
-      var cta = document.querySelector('.masthead [data-fs-demo-link]');
+      var cta = document.querySelector('.topbar [data-fs-demo-link]');
       var t = box(toggle), p = box(panel), c = box(cta);
       return {
         toggleVisible: !!t && t.width > 0 && t.height > 0,
@@ -193,12 +198,22 @@ await withBrowser(async ({ cdp, origin }) => {
         panelVisible: !!p && p.height > 0,
         ctaVisible: !!c && c.width > 0 && c.height > 0,
         ctaTop: c ? c.top : -1,
-        expanded: toggle ? toggle.getAttribute('aria-expanded') : null
+        expanded: toggle ? toggle.getAttribute('aria-expanded') : null,
+        barHeight: document.querySelector('.topbar').getBoundingClientRect().height,
+        linksOnOneRow: (function () {
+          var links = document.querySelectorAll('#site-nav a');
+          if (!links.length) return false;
+          var top = links[0].getBoundingClientRect().top;
+          for (var i = 1; i < links.length; i += 1) {
+            if (Math.abs(links[i].getBoundingClientRect().top - top) > 1) return false;
+          }
+          return true;
+        }())
       };
     `);
 
-    check(nav.ctaVisible, 'the masthead Try the Demo control is visible');
-    check(nav.ctaTop >= 0 && nav.ctaTop < vp.height, 'the masthead call to action is above the fold', String(nav.ctaTop));
+    check(nav.ctaVisible, 'the topbar Try the Demo control is visible');
+    check(nav.ctaTop >= 0 && nav.ctaTop < vp.height, 'the topbar call to action is above the fold', String(nav.ctaTop));
 
     if (vp.width < 900) {
       check(nav.toggleVisible, 'the menu toggle is shown below 900px');
@@ -238,20 +253,78 @@ await withBrowser(async ({ cdp, origin }) => {
     } else {
       check(!nav.toggleVisible, 'the menu toggle is hidden at 900px and up');
       check(nav.panelVisible, 'the navigation row is shown at 900px and up');
+      // A stacked list turns the 62px bar into a 110px one and pushes the hero
+      // down; the bar height is the cheapest way to notice.
+      check(
+        nav.barHeight <= 70,
+        'the topbar stays a single row at 900px and up',
+        `${Math.round(nav.barHeight)}px`,
+      );
+      check(nav.linksOnOneRow, 'the four navigation links share one row');
     }
 
-    /* Anchor scrolling has to land the heading clear of the sticky masthead. */
+    const hero = await evaluate(cdp, `
+      var section = document.getElementById('top');
+      var brand = document.querySelector('.brand');
+      var h1 = document.getElementById('hero-title');
+      var cta = section.querySelector('.cta-row .btn--primary');
+      var box = section.getBoundingClientRect();
+      var b = brand.getBoundingClientRect();
+      var t = h1.getBoundingClientRect();
+      var centred = Math.abs((b.left + b.right) / 2 - window.innerWidth / 2);
+      return {
+        height: box.height,
+        viewport: window.innerHeight,
+        brandCentreOffset: centred,
+        // scrollWidth exceeds clientWidth exactly when the wordmark is being
+        // clipped by the page-level overflow guard - which is what the POR
+        // source does at 390px and what this build must not do.
+        brandTextWidth: brand.scrollWidth,
+        brandBoxWidth: brand.clientWidth,
+        brandOverflow: brand.scrollWidth - brand.clientWidth,
+        brandSize: parseFloat(getComputedStyle(brand).fontSize),
+        h1Size: parseFloat(getComputedStyle(h1).fontSize),
+        h1Text: h1.textContent.trim(),
+        align: getComputedStyle(h1).textAlign,
+        ctaWidth: cta ? cta.getBoundingClientRect().width : 0
+      };
+    `);
+    check(
+      hero.height >= hero.viewport - 62 - 1,
+      'the hero fills the viewport below the topbar',
+      `${Math.round(hero.height)} vs ${hero.viewport - 62}`,
+    );
+    check(hero.brandCentreOffset < 2, 'the wordmark lockup is centred', String(Math.round(hero.brandCentreOffset)));
+    check(
+      hero.brandOverflow <= 1,
+      'the wordmark fits its column without clipping',
+      `text ${Math.round(hero.brandTextWidth)} in ${Math.round(hero.brandBoxWidth)}`,
+    );
+    check(hero.align === 'center', 'the hero is centre-aligned', hero.align);
+    check(hero.brandSize > hero.h1Size, 'the wordmark outsizes the headline',
+      `brand ${Math.round(hero.brandSize)} vs h1 ${Math.round(hero.h1Size)}`);
+    check(
+      hero.h1Text === 'Add a Vegas-style fantasy game to your existing league.',
+      'the hero carries the WEB-1a locked headline',
+      hero.h1Text,
+    );
+    if (vp.width < 700) {
+      check(hero.ctaWidth > vp.width * 0.6, 'the primary call to action is full width below 700px',
+        String(Math.round(hero.ctaWidth)));
+    }
+
+    /* Anchor scrolling has to land the heading clear of the sticky topbar. */
     const anchored = await evaluate(cdp, `
       location.hash = '';
       location.hash = '#faq';
-      var head = document.querySelector('.masthead').getBoundingClientRect();
+      var head = document.querySelector('.topbar').getBoundingClientRect();
       var title = document.getElementById('faq-title').getBoundingClientRect();
-      return { mastheadBottom: head.bottom, titleTop: title.top };
+      return { topbarBottom: head.bottom, titleTop: title.top };
     `);
     check(
-      anchored.titleTop >= anchored.mastheadBottom - 1,
-      'an anchor jump clears the sticky masthead',
-      `title ${Math.round(anchored.titleTop)} vs masthead ${Math.round(anchored.mastheadBottom)}`,
+      anchored.titleTop >= anchored.topbarBottom - 1,
+      'an anchor jump clears the sticky topbar',
+      `title ${Math.round(anchored.titleTop)} vs topbar ${Math.round(anchored.topbarBottom)}`,
     );
 
     await evaluate(cdp, "history.replaceState(null, '', location.pathname); window.scrollTo(0, 0); return 1;");

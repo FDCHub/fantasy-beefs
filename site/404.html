@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Page not found - FantasyStakes</title>
 <meta name="description" content="That page does not exist on fantasystakesapp.com.">
 <meta name="theme-color" content="#0b0b0a">
@@ -12,40 +12,55 @@
 <link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="stylesheet" href="/styles/site.css">
+<script src="/js/config.js" defer></script>
+<script src="/js/site.js" defer></script>
 </head>
 <body>
 
 <a class="skip" href="#main">Skip to content</a>
 
-<header class="masthead">
-  <div class="wrap">
-    <div class="masthead__bar">
-      <a class="brand" href="/" aria-label="FantasyStakes home">
-        <span class="brand__word"><span class="brand__a">Fantasy</span><span class="brand__b">Stakes</span></span>
-      </a>
-    </div>
+<header class="topbar">
+  <div class="wrap topbar__inner">
+    <a class="mini-brand" href="/" aria-label="FantasyStakes home">
+      <span class="fantasy">FANTASY</span><span class="stakes">STAKES</span>
+    </a>
+    <a class="mini-link" href="/#demo" data-fs-demo-link>Try the Demo</a>
   </div>
 </header>
 
 <main id="main" class="doc">
   <div class="wrap">
-    <div class="doc__inner">
-      <p class="eyebrow">404</p>
-      <h1>That page is not in this league.</h1>
-      <p>The address you followed does not exist on fantasystakesapp.com. The links below cover everything the site has.</p>
-      <div class="cta-row">
-        <a class="btn btn--primary" href="/">Back to the homepage</a>
-        <a class="btn btn--ghost" href="/#faq">Read the FAQ</a>
-      </div>
+    <p class="eyebrow">404</p>
+    <h1>That page is not in this league.</h1>
+    <p>The address you followed does not exist on fantasystakesapp.com. The links below cover everything the site has.</p>
+    <div class="cta-row">
+      <a class="btn btn--primary" href="/">Back to the homepage</a>
+      <a class="btn btn--secondary" href="/#faq">Read the FAQ</a>
     </div>
   </div>
 </main>
 
 <footer class="footer">
   <div class="wrap">
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#how-it-works">How It Works</a>
+      <a href="/#faq">FAQ</a>
+      <a href="/terms/">Terms</a>
+      <a href="/privacy/">Privacy</a>
+      <a href="/contact/">Contact</a>
+    </nav>
+
+    <p class="footer__word"><span class="fantasy">FANTASY</span><span class="stakes">STAKES</span></p>
+    <p class="footer__descriptor">Fantasy Stakes for Fantasy Leagues</p>
+    <p class="footer__claim">No house. No vig. No cash. Only FantasyStakes.</p>
+    <p class="footer__fine">FantasyStakes is played entirely with virtual credits. Credits have no cash value and cannot be purchased, deposited, withdrawn or redeemed.</p>
+
     <div class="footer__bottom">
-      <p class="attribution">Fantasy data provided by <a href="https://football.fantasysports.yahoo.com/" rel="noopener nofollow">Yahoo Fantasy</a></p>
-      <p>&copy; 2026 FantasyStakes</p>
+    <!-- CONTRACTUAL ATTRIBUTION. Fixed by the Yahoo API Access and Use
+         Agreement and reproduced character for character. No mark, no logo,
+         no endorsement language of any kind. -->
+    <p class="attribution">Fantasy data provided by <a href="https://football.fantasysports.yahoo.com/" rel="noopener nofollow">Yahoo Fantasy</a></p>
+    <p>&copy; 2026 FantasyStakes</p>
     </div>
   </div>
 </footer>

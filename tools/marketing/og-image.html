@@ -32,17 +32,18 @@
     content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px;
     background: linear-gradient(90deg, #c8a24d, rgba(200, 162, 77, .12));
   }
-  .word { font-size: 46px; font-weight: 800; letter-spacing: -.01em; line-height: 1; }
+  .word { font-size: 46px; font-weight: 900; letter-spacing: .02em; line-height: 1; text-transform: uppercase; }
   .word .a { color: #f3eddc; }
   .word .b { color: #c8a24d; }
   .descriptor {
     margin-top: 12px;
     font-size: 17px; letter-spacing: .22em; text-transform: uppercase; color: #8d846c;
   }
+  .headline .gold { color: #e0bd68; }
   .headline {
     margin: 0;
-    font-size: 66px; line-height: 1.06; font-weight: 800; letter-spacing: -.02em;
-    color: #f3eddc; max-width: 17ch;
+    font-size: 58px; line-height: 1.06; font-weight: 800; letter-spacing: -.025em;
+    color: #f3eddc; max-width: 19ch;
   }
   .foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; }
   .tagline { font-size: 26px; font-weight: 700; color: #e0bd68; }
@@ -65,11 +66,11 @@
 <body>
 <div class="card" id="og-card">
   <div>
-    <div class="word"><span class="a">Fantasy</span><span class="b">Stakes</span></div>
+    <div class="word"><span class="a">FANTASY</span><span class="b">STAKES</span></div>
     <div class="descriptor">Fantasy Stakes for Fantasy Leagues</div>
   </div>
 
-  <h1 class="headline">Turn your fantasy league into a whole new game.</h1>
+  <h1 class="headline">Add a <span class="gold">Vegas-style</span> fantasy game to your existing league.</h1>
 
   <div class="foot">
     <div>
