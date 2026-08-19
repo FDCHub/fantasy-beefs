@@ -53,6 +53,18 @@ YAHOO_ATTRIBUTION = "Fantasy data provided by Yahoo Fantasy"
 #: of the POR hero; this sentence is the page heading.
 LOCKED_HERO = "Add a Vegas-style fantasy game to your existing league."
 
+#: The "What is FantasyStakes" headline, locked SEPARATELY from the hero.
+#:
+#: These two were one string in the WEB-1 brief, which is why WEB-1a had to
+#: replace both at once. They are now independent: the hero can be reworded
+#: without dragging this with it, and this without touching the hero. The
+#: `test_the_two_headlines_are_locked_independently` case is what keeps them
+#: from silently collapsing back into one.
+LOCKED_WHAT_IS = "A new game built on the league you already play."
+
+#: The section label above it, locked verbatim.
+LOCKED_WHAT_IS_LABEL = "What is FantasyStakes"
+
 #: Retired by WEB-1a. The WEB-1 brief used it for BOTH the hero and the
 #: "What is FantasyStakes" headline, so it is banned outright rather than only
 #: in the hero - a half-replacement would leave the old message one screen below
@@ -99,6 +111,8 @@ LOCKED_COPY = [
     "No deposits. No payouts. No house. No vig.",
     "See How It Works",
     # 6 What is FantasyStakes
+    "A new game built on the league you already play.",
+    "What is FantasyStakes",
     "FantasyStakes modernizes the fantasy sports experience by adding a "
     "sportsbook-style game layer to the league you already play.",
     "Your regular fantasy matchups, standings and playoffs remain the "
@@ -354,6 +368,50 @@ def test_hero_headline_is_the_h1(parsed):
     h1s = re.findall(r"<h1[^>]*>(.*?)</h1>", html, re.S)
     assert len(h1s) == 1, f"expected exactly one h1, found {len(h1s)}"
     assert re.sub(r"<[^>]+>", "", h1s[0]).strip() == LOCKED_HERO
+
+
+def test_the_what_is_headline_is_locked():
+    """The section h2 is its own locked string, not an echo of the hero."""
+    html = read("index.html")
+    section = re.search(r'<section class="section" id="what-is".*?</section>', html, re.S)
+    assert section, "the What is FantasyStakes section is missing"
+    block = section.group(0)
+
+    heading = re.search(r'<h2 id="what-is-title">(.*?)</h2>', block, re.S)
+    assert heading, "the What is section has no h2"
+    assert re.sub(r"<[^>]+>", "", heading.group(1)).strip() == LOCKED_WHAT_IS
+
+    label = re.search(r'<p class="eyebrow">(.*?)</p>', block, re.S)
+    assert label, "the What is section has no eyebrow label"
+    assert label.group(1).strip() == LOCKED_WHAT_IS_LABEL
+
+
+def test_the_two_headlines_are_locked_independently():
+    """The hero and the What is section must never share a headline again.
+
+    They were one string in the WEB-1 brief. Locking them apart means a future
+    change to either one cannot quietly reintroduce the duplication.
+    """
+    assert LOCKED_HERO != LOCKED_WHAT_IS
+    html = read("index.html")
+    assert html.count(f">{LOCKED_WHAT_IS}<") == 1, (
+        "the What is headline appears more than once"
+    )
+    hero = re.search(r'<h1 id="hero-title">(.*?)</h1>', html, re.S)
+    assert LOCKED_WHAT_IS not in re.sub(r"<[^>]+>", "", hero.group(1))
+
+
+def test_the_what_is_body_copy_is_unchanged():
+    """The approved body copy beneath the headline is not part of this change."""
+    text = parse("index.html").text
+    assert ("FantasyStakes modernizes the fantasy sports experience by adding a "
+            "sportsbook-style game layer to the league you already play. Your "
+            "league stays intact, but now every week brings more ways to compete "
+            "through calculated odds, head-to-head FantasyStakes matchups and "
+            "league-wide prop pools.") in text
+    assert ("Your regular fantasy matchups, standings and playoffs remain the "
+            "foundation. FantasyStakes adds its own virtual-credit competition, "
+            "season-long standings and championship alongside them.") in text
 
 
 @pytest.mark.parametrize("rel", PAGES)
