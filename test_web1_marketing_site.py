@@ -51,7 +51,7 @@ YAHOO_ATTRIBUTION = "Fantasy data provided by Yahoo Fantasy"
 
 #: The hero headline, locked by WEB-1a. The wordmark is the visual centrepiece
 #: of the POR hero; this sentence is the page heading.
-LOCKED_HERO = "Add a Vegas-style fantasy game to your existing league."
+LOCKED_HERO = "Add a Vegas-style sportsbook game to your existing fantasy league."
 
 #: The "What is FantasyStakes" headline, locked SEPARATELY from the hero.
 #:
@@ -65,11 +65,16 @@ LOCKED_WHAT_IS = "A new game built on the league you already play."
 #: The section label above it, locked verbatim.
 LOCKED_WHAT_IS_LABEL = "What is FantasyStakes"
 
-#: Retired by WEB-1a. The WEB-1 brief used it for BOTH the hero and the
-#: "What is FantasyStakes" headline, so it is banned outright rather than only
-#: in the hero - a half-replacement would leave the old message one screen below
-#: the new one.
-SUPERSEDED_HERO = "Turn your fantasy league into a whole new game."
+#: Every retired hero variant, banned from the published site outright.
+#:
+#: NOT SCOPED TO THE HERO ELEMENT. The first of these was used by the WEB-1
+#: brief for BOTH the hero and the "What is FantasyStakes" headline, so a
+#: hero-only ban would have let the retired message survive one screen below the
+#: new one. The list grows; nothing is ever removed from it.
+SUPERSEDED_HEROES = [
+    "Turn your fantasy league into a whole new game.",          # WEB-1
+    "Add a Vegas-style fantasy game to your existing league.",  # WEB-1a
+]
 
 #: Copy that appears in the approved POR HTML but predates the current
 #: marketing POR. The POR governs FORMAT; these are its old words.
@@ -105,7 +110,7 @@ LOCKED_SECTION_ORDER = [
 #: Locked homepage copy. Each entry is a fragment that must appear verbatim.
 LOCKED_COPY = [
     # 5 Hero - WEB-1a locked headline
-    "Add a Vegas-style fantasy game to your existing league.",
+    "Add a Vegas-style sportsbook game to your existing fantasy league.",
     "FantasyStakes adds a Vegas-style sportsbook game layer to the fantasy "
     "league you already play.",
     "No deposits. No payouts. No house. No vig.",
@@ -415,14 +420,39 @@ def test_the_what_is_body_copy_is_unchanged():
 
 
 @pytest.mark.parametrize("rel", PAGES)
-def test_the_superseded_hero_never_returns(rel):
-    """WEB-1a retired this headline. It must not come back anywhere on the site.
+@pytest.mark.parametrize("retired", SUPERSEDED_HEROES, ids=lambda s: s[:34])
+def test_no_superseded_hero_ever_returns(rel, retired):
+    """Every retired hero variant stays retired, on every page.
 
-    Not scoped to the hero: the WEB-1 brief used the same sentence as the
-    "What is FantasyStakes" headline, so a partial replacement would leave the
-    superseded message on the page one screen below the new one.
+    Checked against the raw source rather than the extracted text, so an
+    occurrence hiding in a meta description, an Open Graph tag or a comment is
+    caught as readily as one in the markup.
     """
-    assert SUPERSEDED_HERO not in read(rel), f"{rel} still carries the superseded hero"
+    assert retired not in read(rel), f"{rel} still carries a retired hero: {retired!r}"
+
+
+def test_the_locked_hero_is_used_everywhere_the_hero_wording_appears():
+    """Wherever the page states the hero, it states the CURRENT hero.
+
+    The h1, the meta description, and the Open Graph and Twitter descriptions
+    all carry hero wording and are the four places that drift apart when a
+    headline changes. The image `alt` attributes deliberately carry the tagline
+    instead and are not included.
+    """
+    html = read("index.html")
+    assert f'<h1 id="hero-title">Add a <span class="gold">Vegas-style</span> {LOCKED_HERO.split("Vegas-style ", 1)[1][:-1]}.</h1>' in html
+
+    for name, pattern in (
+        ("meta description", r'<meta name="description" content="([^"]+)"'),
+        ("og:description", r'<meta property="og:description" content="([^"]+)"'),
+        ("twitter:description", r'<meta name="twitter:description" content="([^"]+)"'),
+    ):
+        match = re.search(pattern, html)
+        assert match, f"{name} is missing"
+        content = match.group(1)
+        assert LOCKED_HERO[:-1] in content, (
+            f"{name} does not carry the locked hero wording: {content}"
+        )
 
 
 @pytest.mark.parametrize("phrase", OBSOLETE_POR_MESSAGING)

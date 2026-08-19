@@ -304,7 +304,7 @@ await withBrowser(async ({ cdp, origin }) => {
     check(hero.brandSize > hero.h1Size, 'the wordmark outsizes the headline',
       `brand ${Math.round(hero.brandSize)} vs h1 ${Math.round(hero.h1Size)}`);
     check(
-      hero.h1Text === 'Add a Vegas-style fantasy game to your existing league.',
+      hero.h1Text === 'Add a Vegas-style sportsbook game to your existing fantasy league.',
       'the hero carries the WEB-1a locked headline',
       hero.h1Text,
     );
