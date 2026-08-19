@@ -149,6 +149,78 @@ def _record(connection, migration, release: str, version: str) -> None:
          "r": release, "v": version})
 
 
+def _register_rc2_models() -> None:
+    """Import the additive RC2 models so `create_all` builds their tables.
+
+    THE SAME FOUR IMPORTS `api/main_rc2.py` MAKES, AND FOR THE SAME REASON. The
+    package `__init__` modules are deliberately side-effect free, so importing
+    `db.schema` alone registers no RC2 model. A `create_all` run without these
+    omits all six championship tables while `stamp_all` still records 0003-0006
+    as applied -- a database that reports itself migrated and cannot run a
+    championship. That is the exact failure `railway.toml` warns about for the
+    entrypoint, and a bootstrap performed HERE is exposed to it identically.
+    """
+    from economy import fantasystakes_championship_allocation  # noqa: F401
+    from economy import fantasystakes_championship_settlement  # noqa: F401
+    from reports import championship_corrections               # noqa: F401
+    from reports import championship_read_model                # noqa: F401
+
+
+def bootstrap_fresh(engine) -> list:
+    """Build the schema of a database that has none, and stamp the manifest.
+
+    -- WEBDEPLOY-2 . WHY THIS BELONGS TO THE MIGRATION COMMAND --------------
+
+    `preDeployCommand` runs this file ONCE, before any instance starts, and a
+    non-zero exit blocks the release. Against an EMPTY database that was fatal:
+    every ACTIVE migration is pending, the first one ALTERs `leagues`, no table
+    exists yet, and the deploy failed with NoSuchTableError. The application's
+    own startup hook would have bootstrapped it -- but the pre-deploy command
+    fails before any instance is allowed to start, so nothing ever did.
+    Measured on the first real Railway deployment, not theorised.
+
+    The fix is not to remove the pre-deploy step. It is to let the ONE command
+    that owns schema state handle the one case it did not: a database with no
+    schema at all.
+
+    -- AND IT REMOVES THE MULTI-REPLICA RACE ENTIRELY ----------------------
+
+    `api/main.py`'s startup bootstrap is inert against a production database
+    that already has tables, but on an empty one two replicas would race
+    `create_all`. Bootstrapping here means the schema exists before the first
+    instance boots, so every replica finds a populated database and takes the
+    inert path. What was an operational ordering constraint -- deploy at one
+    replica, then scale -- becomes structurally impossible to get wrong.
+
+    -- FRESH MEANS EMPTY, ON THE SAME TEST THE STARTUP HOOK USES -----------
+
+    No tables at all. Not "no `leagues`", not "no `schema_migrations`" -- an
+    entirely empty database, which is the same `fresh = not existing` predicate
+    `_create_tables` applies, so there is one answer to "is this database new"
+    rather than two that can disagree. A database with ANY table takes the
+    ordinary migration path untouched.
+    """
+    from db.schema import Base
+    from ledger.ledger import LedgerEntry
+
+    _register_rc2_models()
+    Base.metadata.create_all(engine)
+    # THE LEDGER KEEPS ITS OWN DECLARATIVE BASE, so `db.schema.Base` does not
+    # create `ledger_entries`. PG-CERT-1 measured a fresh database coming up
+    # with every application table and no ledger; the service would serve and
+    # fail on the first Credit posted.
+    #
+    # AGAINST `engine`, NOT THE DEFAULT ONE. `ledger.create_ledger_table()` is
+    # the same one-line `create_all` but is hard-bound to `db.schema.engine`,
+    # so calling it here would honour this function's `engine` argument for the
+    # application tables and silently ignore it for the ledger -- building half
+    # a schema in each of two databases the moment anyone passes an engine.
+    # Same metadata, correctly scoped. Additive and safe to repeat.
+    LedgerEntry.metadata.create_all(engine)
+    ensure_table(engine)
+    return stamp_all(engine)
+
+
 def upgrade(engine=None, *, dry_run: bool = False) -> list:
     """Apply every pending ACTIVE migration, in manifest order.
 
@@ -159,6 +231,17 @@ def upgrade(engine=None, *, dry_run: bool = False) -> list:
 
     engine = engine or default_engine
     identity = release_identity(use_cache=False)
+
+    # WEBDEPLOY-2 -- A DATABASE WITH NO SCHEMA IS BOOTSTRAPPED, NOT MIGRATED.
+    # Checked BEFORE `ensure_table`, so the record table this command would
+    # otherwise create cannot itself make an empty database look non-empty.
+    if not inspect(engine).get_table_names():
+        if dry_run:
+            return ["WOULD BOOTSTRAP a fresh database: create the schema and "
+                    "stamp the manifest (no migration would be run)"]
+        stamped = bootstrap_fresh(engine)
+        return ["fresh database -- schema created and manifest stamped: "
+                + (", ".join(stamped) or "nothing to stamp")]
 
     ensure_table(engine)
     todo = pending(engine)
