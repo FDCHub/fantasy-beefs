@@ -478,9 +478,17 @@ class LocalRecordedStatSource:
                 # stat of zero."
                 points_complete = False
                 continue
+            # PDS1 — normalized through the SAME governed helper the provider
+            # boundary uses, so the two sources cannot drift. This adaptor
+            # supplies one operand, and `player_fantasy_points` carries no
+            # governed formula, so normalization materializes nothing extra
+            # here — which is the point: the fix adds derived operands only
+            # where their raw inputs were genuinely ingested, and never invents
+            # coverage a source did not claim.
+            _values, _ = normalize_component(
+                {"player_fantasy_points": float(proj.actual_points)})
             components.append(StatComponent(
-                values={"player_fantasy_points": float(proj.actual_points)},
-                slot=slot, position=position))
+                values=_values, slot=slot, position=position))
 
         covered: set[str] = set()
         if points_complete and components:

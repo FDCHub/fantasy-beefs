@@ -55,6 +55,7 @@ from betting.pool_subjects import (
     WeeklyStructure,
     derivable_coverage,
     is_active_starter,
+    normalize_component,
 )
 from providers.base import ProviderWeek
 
@@ -261,6 +262,30 @@ class ProviderWeekStatSource:
             if stats.fantasy_points is not None:
                 values["player_fantasy_points"] = float(stats.fantasy_points)
                 values["kicking_points"] = float(stats.fantasy_points)
+
+            # ── PDS1 — MATERIALIZE THE GOVERNED DERIVED OPERANDS ─────────────
+            #
+            # §C7.2 has two halves and only one used to be wired here.
+            # `derivable_coverage` below expands the COVERAGE set, so a frame
+            # carrying rush_attempts and receptions correctly reported that it
+            # covers `touches`. Nothing materialized the VALUE, and
+            # `betting/pool_shapes.py` reads an operand as
+            # `values.get(name, 0.0)` — so `subject_value` passed the coverage
+            # gate on honest coverage and then summed a key that was never
+            # there, scoring every subject 0.0.
+            #
+            # That was a wrong-winner defect, not a cosmetic one: a CLOSED_SUM
+            # over a derived operand tied the entire field at zero and
+            # EVEN_SPLIT divided the pot across every GM in the league, and a
+            # CLOSED_RATIO computed 0/0 and refused a week it had the data to
+            # settle.
+            #
+            # The formulas are NOT restated here. `normalize_component` reads
+            # them from the governed vocabulary artifact, is the single
+            # implementation of that math, and already gives an explicitly
+            # supplied canonical value precedence over a derived one — so a
+            # provider that reports `touches` itself still wins.
+            values, _ = normalize_component(values)
 
             components.append(StatComponent(
                 values=values, slot=entry.slot,
