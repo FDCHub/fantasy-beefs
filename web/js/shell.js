@@ -470,10 +470,16 @@ export function openComposer(spec) {
     // drifted from production would have addressed the wrong GM's money — and
     // nothing on the page would have looked wrong while it happened.
     //
-    // The composer now asks instead. That is one more tap than the locked flow,
-    // and it is the smallest honest option while the League tab is still
-    // illustrative: its cards carry no authoritative id to hand over, so there
-    // is nothing to pass through except a name, and a name is not authority.
+    // THE CARD'S OWN ID IS THE TARGET NOW. WP3C bound League discovery to this
+    // same served list, so a Versus card represents one real opponent and hands
+    // that opponent's authoritative team id over as `matchupId`. A display name
+    // is still not authority and none is passed through — `beginSession`
+    // honours the handed id ONLY if it appears in the list below, so the
+    // S8-P4C-2R rule is enforced rather than relaxed.
+    //
+    // Which is why the composer no longer asks a question the card already
+    // answered. The selector it used to ask with remains as a FALLBACK, drawn
+    // only for a composer handed no authoritative id at all.
     opponents: authoritativeOpponents(),
     actingTeamName: actingTeamName(),
   });

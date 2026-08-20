@@ -247,14 +247,14 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
     const stakeAtOpen = document.querySelector('#fs-stake-input').value;
     const sendDisabledAtOpen = document.querySelector('[data-composer-send]').disabled;
 
-    // WP5 — CHOOSE THE TARGET FIRST. S8-P4C-2R removed the name bridge that
-    // carried an illustrative card's display name into a real Credits command,
-    // so the composer asks who is being challenged and Send stays disabled
-    // until it is answered. Sprint 7 never had to answer it, which is why the
-    // two Send assertions below were reading a target refusal as a stake bug.
-    const target = document.querySelector('[data-composer-opponent]');
-    if (target) target.click();
-    const targetChosen = Boolean(target);
+    // POR — THE CARD ALREADY NAMED THE OPPONENT, so nothing here asks again.
+    // A Versus card represents ONE opponent and hands that opponent's
+    // authoritative team id to the composer, which means the question S8-P4C-2R
+    // made the composer ask is answered before the sheet is drawn. The selector
+    // it asked with survives as a FALLBACK ONLY, for a composer handed no
+    // authoritative id at all — so the claim is that this tap reaches a wager
+    // rather than a second targeting question.
+    const targetOffered = Boolean(document.querySelector('[data-composer-opponent]'));
 
     // Choose a market and a stake.
     document.querySelector('[data-composer-market="ml"]').click();
@@ -280,7 +280,7 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
     const sendAfter = document.querySelector('[data-composer-send]').disabled;
     document.querySelector('#fs-sheet [data-fs-close]').click();
     return { opened: /YOUR STAKE/.test(opened), stakeAtOpen, sendDisabledAtOpen,
-             targetChosen,
+             targetOffered,
              sendAfterStake, previewOpen, backInComposer, stakeAfter, marketAfter,
              econBefore, econAfter, sendAfter,
              closedAtEnd: !document.getElementById('fs-overlay').classList.contains('is-open') };
@@ -288,8 +288,8 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
   check('a whole-card tap reaches the composer', journey.opened === true);
   check('the stake opens at $0, untouched', journey.stakeAtOpen === '0', journey.stakeAtOpen);
   check('Send opens disabled', journey.sendDisabledAtOpen === true);
-  check('the composer offers an authoritative target to choose',
-    journey.targetChosen === true);
+  check('the composer does not ask again for the opponent the card named',
+    journey.targetOffered === false, String(journey.targetOffered));
   check('Send enables once target, market, mode and stake are satisfied',
     journey.sendAfterStake === false);
   check('the Matchup Preview opens over the composer', journey.previewOpen === true);

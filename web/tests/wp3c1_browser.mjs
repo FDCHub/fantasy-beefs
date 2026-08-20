@@ -283,11 +283,23 @@ await withPage({ port: 9457 }, async ({ evaluate, reload }) => {
     return true;
   })();`);
 
+  // CHANGING OPPONENT IS CHANGING CARD, and that is the POR rather than a
+  // detour around a missing control. A Versus card represents ONE opponent and
+  // carries that opponent's served team id into the composer, so there is no
+  // second picker inside the sheet to re-steer — the GM goes back and opens the
+  // other card. The claim F has always made is unchanged and is now measured on
+  // the path a GM actually takes: `beginSession` drops any held quote before
+  // the new composer is drawn, so the previous opponent's figures cannot be
+  // left on screen beside a different opponent's name for even a frame.
+  //
+  // The new composer starts with no market and no stake, so both are entered
+  // again below — the same wager, against the other team.
   const opponentChanged = await evaluate(`return (async () => {
     const before = (() => { ${READ_ECON} })();
-    document.querySelector(
-      '#fs-sheet [data-composer-opponent="${unpriceable.id}"]').click();
+    ${openFor(unpriceable.id)}
     const instant = (() => { ${READ_ECON} })();
+    document.querySelector('#fs-sheet [data-composer-market="ml"]').click();
+    ${typeStake('55')}
     ${SETTLE}
     const after = (() => { ${READ_ECON} })();
     return { before, instant, after };
