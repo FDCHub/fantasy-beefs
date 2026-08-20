@@ -17,6 +17,3 @@
 # place to change the destination, which is the exact thing that configuration
 # file exists to prevent.
 # =============================================================================
-
-https://www.fantasystakesapp.com/* https://fantasystakesapp.com/:splat 301!
-http://www.fantasystakesapp.com/*  https://fantasystakesapp.com/:splat 301!
