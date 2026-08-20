@@ -195,7 +195,7 @@ a { color: inherit; text-underline-offset: 3px; }
 
 /* -- Topbar (POR) -------------------------------------------------------- *
  * POR geometry exactly: 62px, blurred near-black, one faint white hairline.
- * The POR carries a brand and a single gold link; this adds the four locked
+ * The POR carries a brand and a single gold link; this adds the five locked
  * section links behind a disclosure, which is why the toggle exists. */
 .topbar {
   position: sticky; top: 0; z-index: 10;
@@ -325,6 +325,17 @@ a { color: inherit; text-underline-offset: 3px; }
   font-weight: 850; font-size: var(--t-eyebrow); line-height: 1.2;
   letter-spacing: .02em;
   margin: 0 0 14px;
+}
+
+/* The line that closes BOTH cards - the claim the chips above it illustrate.
+ *
+ * BOTH SELECTORS FOR THE SAME REASON AS `.pill` ABOVE: these are <p> elements,
+ * and `.card p` is more specific than a bare class, so a single-class rule
+ * would lose its colour and size to the card's body copy. */
+.card__note,
+.card .card__note {
+  margin-top: 14px;
+  color: var(--gold2); font-size: var(--t-fine); font-weight: 800;
 }
 
 /* -- Quote / highlight (POR) --------------------------------------------- *
@@ -496,19 +507,26 @@ a { color: inherit; text-underline-offset: 3px; }
 }
 
 /* The navigation disclosure is the one thing the POR does not have, so it is
-   the one thing needing a breakpoint of its own: at 900px the four links fit
+   the one thing needing a breakpoint of its own: at 900px the five links fit
    beside the brand and the toggle goes away. */
 @media (min-width: 900px) {
+  /* THE ONE PLACE THE 760px MEASURE IS RELAXED, and only for the bar's inner
+     row. The wordmark, five section links and the demo link do not fit inside
+     760px at any readable size, and a wrapped topbar is a 110px bar that
+     pushes the hero down the page. The bar itself is already full-bleed, so
+     widening its row changes nothing about the POR composition below it; every
+     other `.wrap` on the site keeps the POR measure. */
+  .topbar .wrap { width: min(100%, 1120px); }
   .nav,
   .nav[data-open="false"] {
-    display: flex; align-items: center; gap: 22px;
+    display: flex; align-items: center; gap: 20px;
     order: 2; flex: 0 1 auto; width: auto; margin: 0 auto 0 8px;
     padding: 0; border-top: 0;
   }
   /* The list itself has to become the row. `.nav` going flex only lays out its
-     single <ul> child; without this the four links stay stacked and the topbar
+     single <ul> child; without this the five links stay stacked and the topbar
      grows to three times its height. */
-  .nav ul { display: flex; align-items: center; gap: 22px; }
+  .nav ul { display: flex; align-items: center; gap: 20px; }
   .mini-brand { margin-right: 0; }
   .mini-link { order: 3; }
   .nav__link { padding: 4px 0; border-bottom: 0; font-size: .875rem; white-space: nowrap; }

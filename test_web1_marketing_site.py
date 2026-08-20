@@ -56,7 +56,7 @@ LIVE_DEMO_URL = "https://app.fantasystakesapp.com"
 
 #: The hero headline, locked by WEB-1a. The wordmark is the visual centrepiece
 #: of the POR hero; this sentence is the page heading.
-LOCKED_HERO = "Add a Vegas-style sportsbook game to your existing fantasy league."
+LOCKED_HERO = "Add a Vegas-style sportsbook game to your fantasy league."
 
 #: The "What is FantasyStakes" headline, locked SEPARATELY from the hero.
 #:
@@ -98,28 +98,34 @@ POR_SHA256 = "2cbb57582511d6775453e3c0eb7d7ba738e8c5a7278ccbeff6a5e1ba94f28106"
 
 #: The locked homepage section order (POR section 4). Order is asserted, not
 #: just membership - the narrative only works in this sequence.
+#:
+#: TEN SECTIONS, NOT ELEVEN. The standalone "Built to keep the league moving /
+#: More action. Less to manage." section made the commissioner argument one
+#: screen before the commissioner section made it properly, so it was folded
+#: into For Commissioners and its close became that section's close. And
+#: `how-it-works` is now `how-to-play`, which is what the section is called on
+#: the page, in the navigation and in the footer of every page.
 LOCKED_SECTION_ORDER = [
     "top",            # 1  Hero
     "what-is",        # 2  What is FantasyStakes
-    "more-action",    # 3  More action
-    "two-ways",       # 4  Two ways to compete
-    "commissioners",  # 5  Commissioner
-    "players",        # 6  Player
-    "credits",        # 7  Virtual credits
-    "how-it-works",   # 8  How it works
-    "demo",           # 9  Demo
-    "faq",            # 10 FAQ
-    "get-started",    # 11 Final CTA
+    "two-ways",       # 3  Two ways to compete
+    "commissioners",  # 4  Commissioner (carries the folded-in "More action")
+    "players",        # 5  Player
+    "credits",        # 6  Virtual credits
+    "how-to-play",    # 7  How to Play
+    "demo",           # 8  Demo
+    "faq",            # 9  FAQ
+    "get-started",    # 10 Final CTA
 ]
 
 #: Locked homepage copy. Each entry is a fragment that must appear verbatim.
 LOCKED_COPY = [
     # 5 Hero - WEB-1a locked headline
-    "Add a Vegas-style sportsbook game to your existing fantasy league.",
+    "Add a Vegas-style sportsbook game to your fantasy league.",
     "FantasyStakes adds a Vegas-style sportsbook game layer to the fantasy "
     "league you already play.",
     "No deposits. No payouts. No house. No vig.",
-    "See How It Works",
+    "See How to Play",
     # 6 What is FantasyStakes
     "A new game built on the league you already play.",
     "What is FantasyStakes",
@@ -127,37 +133,42 @@ LOCKED_COPY = [
     "sportsbook-style game layer to the league you already play.",
     "Your regular fantasy matchups, standings and playoffs remain the "
     "foundation.",
-    # 7 More action
-    "Built to keep the league moving",
-    "More action. Less to manage.",
-    "The game stays competitive. The recordkeeping stays simple.",
-    # 8 Two ways to compete
+    "Your league. Your projections. Calculated odds for every matchup.",
+    # 7 Two ways to compete
     "Two new ways to compete",
     "Go head-to-head. Or take on the whole league.",
+    "Bench Boss",
+    "Bad Beat",
+    "Kicker Chaos",
+    "Calculated for your league.",
+    "Powered by your league’s action.",
     "More competition. More action. More ways to win.",
-    # 9 Commissioner
+    # 8 Commissioner - now also carries the folded-in "More action" close
     "Don’t replace your league. Modernize it.",
     "No new draft room. No new waiver system. No need to abandon your league "
-    "history. Just more ways to compete.",
-    # 10 Player
+    "history. Just more ways for everyone to compete.",
+    "More action. Less to manage.",
+    # 9 Player
     "More ways to win every week.",
+    "Every settled Matchup and Prop Pool also builds a separate FantasyStakes "
+    "season, giving you another set of standings and another FantasyStakes "
+    "Championship to chase.",
     "Real odds. Sportsbook action. More ways to win.",
-    # 11 Virtual credits
-    "The odds are real. The action is your fantasy league. FantasyStakes "
-    "keeps score.",
+    # 10 Virtual credits
+    "The odds are real. The action is fast. Stakes are virtual credits. "
+    "FantasyStakes keeps score.",
     "FantasyStakes is played entirely with virtual credits. Credits have no "
     "cash value and cannot be purchased, deposited, withdrawn or redeemed.",
-    "All $ amounts shown in FantasyStakes represent virtual credits.",
-    "FantasyStakes Championship Score",
-    "Grand Champion",
-    "More ways to compete. More ways to win.",
-    # 12 How it works
-    "Connect your league. FantasyStakes does the rest.",
-    "Connect Yahoo",
-    "Play with virtual credits",
-    "Compete all season",
-    "Crown the champion",
-    # 13 Demo
+    "FantasyStakes Championship",
+    "Grand Championship",
+    "Virtual credits track the action. The ledger keeps the score.",
+    # 11 How to Play
+    "Connect your league. Find your action. Compete all season.",
+    "Connect your league.",
+    "Find your action.",
+    "Pick your market and credits.",
+    "Follow the season.",
+    # 12 Demo
     "See FantasyStakes in action.",
     "No Yahoo account required. No real money. Just a fully playable "
     "FantasyStakes demo.",
@@ -170,7 +181,15 @@ LOCKED_COPY = [
     "No house. No vig. No cash. Only FantasyStakes.",
 ]
 
-#: The six locked FAQ entries, question then answer, both verbatim.
+#: The seven locked FAQ entries, question then answer, both verbatim.
+#:
+#: TIGHTENED, NOT GROWN FOR ITS OWN SAKE. Two entries left. "Is there a house?"
+#: restated the footer claim and the real-money answer directly above it, and
+#: "Can I get additional credits?" explained Top-Off rules - a game mechanic,
+#: which belongs inside the game rather than on a marketing page that would
+#: date the moment a league changed the setting. What replaced them answers
+#: what a reader still does not know after reading the page: where the odds
+#: come from, what a virtual credit actually is, and how a league starts.
 LOCKED_FAQ = [
     (
         "Does FantasyStakes handle real money?",
@@ -180,36 +199,50 @@ LOCKED_FAQ = [
         "FantasyStakes.",
     ),
     (
-        "Can I get additional credits?",
-        "Yes, if your league allows Top-Offs. GMs may request additional "
-        "virtual credits during the season, subject to the league’s preset "
-        "Top-Off rules and limits. Top-Offs are part of the FantasyStakes game "
-        "economy and cannot be purchased with real money.",
+        "Does FantasyStakes replace Yahoo?",
+        "No. Yahoo remains your fantasy league platform. FantasyStakes sits "
+        "alongside it and adds new Matchups, Prop Pools, standings and "
+        "championships without replacing your draft, waivers, league standings "
+        "or history.",
     ),
     (
-        "Does FantasyStakes replace Yahoo?",
-        "No. FantasyStakes sits on top of the Yahoo league you already play, "
-        "adding new matchup opportunities, prop pools, standings and "
-        "championships without replacing your existing league.",
+        "How are the odds created?",
+        "FantasyStakes uses your league’s scoring settings and player "
+        "projections to simulate matchups and generate calculated moneylines, "
+        "spreads and over/unders for your league.",
+    ),
+    (
+        "What are virtual credits?",
+        "Virtual credits are how FantasyStakes keeps score. They track "
+        "competition results and have no cash value. They cannot be purchased, "
+        "deposited, withdrawn or redeemed.",
     ),
     (
         "What can I play?",
-        "You can go head-to-head with other GMs through FantasyStakes Matchups "
-        "using moneylines, spreads and over/unders, or take on the whole league "
-        "through weekly FantasyStakes Prop Pools.",
-    ),
-    (
-        "Is there a house?",
-        "No. There is no house in FantasyStakes. FantasyStakes is a "
-        "peer-to-peer game, like a traditional fantasy sports league. It does "
-        "not take the other side of your competitions and does not charge a "
-        "vig.",
+        "You can go head-to-head with other GMs using moneylines, spreads and "
+        "over/unders, or take on the whole league through weekly FantasyStakes "
+        "Prop Pools.",
     ),
     (
         "Does the demo require Yahoo?",
         "No. The demo uses a fictional sample league and does not require Yahoo "
         "authentication.",
     ),
+    (
+        "How do I use FantasyStakes with my league?",
+        "The commissioner connects the league, and FantasyStakes builds the "
+        "experience around that league’s teams, settings, scoring and "
+        "projections.",
+    ),
+]
+
+#: Game mechanics that are deliberately NOT on the marketing page. Every one of
+#: them is real and every one of them is explained inside the product. Stating
+#: them here turns a marketing page into a rulebook and dates it the first time
+#: a league changes a setting.
+RULES_THAT_BELONG_IN_THE_GAME = [
+    "Top-Off", "Top Off", "Weekly Minimum Reserve", "Championship Reserve",
+    "rollover", "skunk", "postseason eligibility",
 ]
 
 #: Claims this product must never make. FantasyStakes takes no deposits, makes
@@ -411,17 +444,36 @@ def test_the_two_headlines_are_locked_independently():
     assert LOCKED_WHAT_IS not in re.sub(r"<[^>]+>", "", hero.group(1))
 
 
-def test_the_what_is_body_copy_is_unchanged():
-    """The approved body copy beneath the headline is not part of this change."""
+def test_the_what_is_body_copy_is_the_approved_three_paragraphs():
+    """Three paragraphs, in order, each one verbatim.
+
+    The middle paragraph is the one that earns the section: it is the only
+    place on the page that says HOW the odds exist - league settings, scoring
+    and projections, simulated into moneylines, spreads and over/unders. Losing
+    it would leave "calculated odds" as an unexplained claim everywhere else.
+    """
     text = parse("index.html").text
-    assert ("FantasyStakes modernizes the fantasy sports experience by adding a "
-            "sportsbook-style game layer to the league you already play. Your "
-            "league stays intact, but now every week brings more ways to compete "
-            "through calculated odds, head-to-head FantasyStakes matchups and "
-            "league-wide prop pools.") in text
-    assert ("Your regular fantasy matchups, standings and playoffs remain the "
-            "foundation. FantasyStakes adds its own virtual-credit competition, "
-            "season-long standings and championship alongside them.") in text
+    paragraphs = [
+        "FantasyStakes modernizes the fantasy sports experience by adding a "
+        "sportsbook-style game layer to the league you already play. Your "
+        "league stays intact, but every week brings more ways to compete "
+        "through calculated odds, head-to-head FantasyStakes Matchups and "
+        "league-wide FantasyStakes Prop Pools.",
+        "FantasyStakes uses your league’s settings, scoring system and player "
+        "projections to simulate head-to-head outcomes and generate calculated "
+        "moneylines, spreads and over/unders for matchups throughout your "
+        "league. The result is a sportsbook-style market built around the "
+        "teams and players you actually compete with every week.",
+        "Your regular fantasy matchups, standings and playoffs remain the "
+        "foundation. FantasyStakes adds its own virtual-credit competition, "
+        "season-long standings and FantasyStakes Championship alongside them.",
+    ]
+    cursor = -1
+    for paragraph in paragraphs:
+        found = text.find(paragraph, cursor + 1)
+        assert found > -1, f"missing What is paragraph: {paragraph[:60]!r}"
+        assert found > cursor, "the What is paragraphs are out of order"
+        cursor = found
 
 
 @pytest.mark.parametrize("rel", PAGES)
@@ -476,12 +528,80 @@ def test_obsolete_por_messaging_is_not_carried_across(phrase):
 
 def test_matchups_and_pools_copy():
     text = parse("index.html").text
-    assert ("Go head-to-head with anyone in your league using calculated "
-            "moneylines, spreads and over/unders built around your league’s "
-            "weekly projections and action.") in text
-    assert ("Take on the whole league through weekly prop pools built around "
-            "calling what happens next, from team scoring and player "
-            "performances to other fantasy outcomes.") in text
+    assert ("Every opponent in your league becomes another matchup "
+            "opportunity. FantasyStakes uses your league’s projections and "
+            "scoring environment to generate calculated moneylines, spreads "
+            "and over/unders for each pairing.") in text
+    assert ("Every week in your league becomes another prop pool "
+            "opportunity. FantasyStakes uses your league’s projections, "
+            "scoring environment and weekly storylines to create fun, "
+            "league-wide FantasyStakes Prop Pools.") in text
+
+
+def test_the_two_cards_carry_their_market_and_pool_chips():
+    """The chips are the cards' evidence, so they are asserted as a set.
+
+    THE POOL NAMES ARE NAMED PRODUCTS, not examples of a genre - "Bench Boss"
+    is a specific weekly pool, and a reader who saw "Highest scoring team" last
+    week and "Bench Boss" this week would reasonably conclude the product had
+    changed. The generic placeholders they replaced are banned below.
+    """
+    html = read("index.html")
+    cards = re.findall(r'<article class="card">(.*?)</article>', html, re.S)
+    assert len(cards) == 2, f"expected two cards, found {len(cards)}"
+
+    matchups, pools = cards
+    assert '<p class="pill">Matchups</p>' in matchups
+    for market in ("Moneyline", "Spread", "Over/Under"):
+        assert f'>{market}</span>' in matchups, f"the Matchups card lost {market!r}"
+
+    assert '<p class="pill">Prop Pools</p>' in pools
+    for pool in ("Bench Boss", "Bad Beat", "Kicker Chaos"):
+        assert f'>{pool}</span>' in pools, f"the Prop Pools card lost {pool!r}"
+
+
+def test_the_two_cards_are_structurally_parallel():
+    """Same elements, same order, same closing treatment - twice.
+
+    The two cards sit side by side from 700px up, so any difference in their
+    shape reads as a difference in the product rather than as a layout choice.
+    Both are: gold category pill, heading, one paragraph, a row of chips, and
+    one gold line closing the card.
+    """
+    html = read("index.html")
+    cards = re.findall(r'<article class="card">(.*?)</article>', html, re.S)
+    assert len(cards) == 2
+
+    shapes = []
+    for card in cards:
+        found = re.findall(
+            r'<p class="(pill|card__note)"|<(h3)>|<div class="(odds)"', card)
+        shapes.append([next(part for part in match if part) for match in found])
+    assert shapes[0] == shapes[1] == ["pill", "h3", "odds", "card__note"], shapes
+    for card in cards:
+        assert card.count("<h3>") == 1
+        assert card.count('<div class="odds"') == 1
+        assert card.count('<span class="chip') == 3
+        # The closing line is the LAST thing in the card, under the chips.
+        assert card.rindex('class="card__note"') > card.rindex('class="odds"')
+
+    assert 'class="card__key"' not in html, (
+        "the retired pool legend is still in the markup"
+    )
+
+
+def test_the_retired_pool_legend_is_gone_from_the_stylesheet_too():
+    """A rule nobody selects is a rule the next reader has to rule out."""
+    assert ".card__key" not in read("styles/site.css")
+
+
+@pytest.mark.parametrize("placeholder", [
+    "Highest scoring team", "Top WR", "Closest margin",
+])
+def test_the_generic_pool_placeholders_are_gone(placeholder):
+    """The pre-naming placeholders never come back, on any page."""
+    for rel in PAGES:
+        assert placeholder not in read(rel), f"{rel} still shows {placeholder!r}"
 
 
 @pytest.mark.parametrize("question,answer", LOCKED_FAQ, ids=lambda s: s[:38])
@@ -492,7 +612,7 @@ def test_locked_faq_is_verbatim(parsed, question, answer):
 
 
 def test_faq_uses_native_disclosure_elements():
-    """Six <details> on hairlines - the POR treatment - and no scripted accordion.
+    """Seven <details> on hairlines - the POR treatment - no scripted accordion.
 
     Native disclosure means the FAQ is keyboard operable, screen-reader
     announced and printable with JavaScript off.
@@ -500,14 +620,55 @@ def test_faq_uses_native_disclosure_elements():
     html = read("index.html")
     faq = re.search(r'<section class="section faq".*?</section>', html, re.S)
     assert faq, "the FAQ section is not the POR faq block"
-    assert faq.group(0).count("<details") == 6
+    assert faq.group(0).count("<details") == len(LOCKED_FAQ) == 7
 
 
-def test_how_it_works_has_four_ordered_steps():
+@pytest.mark.parametrize("mechanic", RULES_THAT_BELONG_IN_THE_GAME)
+def test_game_rules_stay_inside_the_game(mechanic):
+    """The marketing page states what the game IS, never how it is scored.
+
+    The retired "Can I get additional credits?" answer walked a reader through
+    Top-Off limits, which is a rulebook paragraph in a marketing FAQ: it dates
+    the page the first time a league changes the setting, and it is the wrong
+    place to learn it either way.
+    """
+    for rel in PAGES:
+        assert mechanic.lower() not in read(rel).lower(), (
+            f"{rel} states the game rule {mechanic!r}; that belongs in the product"
+        )
+
+
+def test_how_to_play_has_four_ordered_steps():
     html = read("index.html")
     steps = re.search(r'<ol class="steps">(.*?)</ol>', html, re.S)
-    assert steps, "the How it works steps are not an ordered list"
+    assert steps, "the How to Play steps are not an ordered list"
     assert steps.group(1).count("<li") == 4
+    titles = re.findall(r"<h3>(.*?)</h3>", steps.group(1), re.S)
+    assert titles == ["Connect your league.", "Find your action.",
+                      "Pick your market and credits.", "Follow the season."], titles
+
+
+def test_how_to_play_is_named_the_same_thing_everywhere():
+    """One name for the section, on every page that points at it.
+
+    The section was "How it works" and is now "How to Play". The id, the
+    navigation, the hero's secondary call to action and the footer of all four
+    footer pages have to move together, or a reader follows a link labelled one
+    thing to a heading called another - and on the legal pages, to nothing at
+    all, because a dead fragment scrolls nowhere and reports no error.
+    """
+    for rel in PAGES:
+        body = read(rel)
+        assert "how-it-works" not in body, f"{rel} still points at the old id"
+        assert "How It Works" not in body, f"{rel} still uses the old label"
+
+    home = read("index.html")
+    assert '<section class="section" id="how-to-play"' in home
+    assert '<a class="nav__link" href="#how-to-play">How to Play</a>' in home
+    assert '<a class="btn btn--secondary" href="#how-to-play">See How to Play</a>' in home
+    for rel in ("terms/index.html", "privacy/index.html", "contact/index.html",
+                "404.html"):
+        assert '<a href="/#how-to-play">How to Play</a>' in read(rel), rel
 
 
 # ---------------------------------------------------------------------------
@@ -883,6 +1044,29 @@ def test_the_locked_palette_is_used_verbatim():
         assert value in css, f"the locked {name} value {value} is not in the stylesheet"
 
 
+def test_the_primary_navigation_is_the_locked_five():
+    """Five section links, in order, each resolving to a section on this page.
+
+    "What is FantasyStakes" is first because it is the section that explains
+    the product; before this change the page's own explanation was the one
+    section the navigation did not offer.
+    """
+    html = read("index.html")
+    nav = re.search(r'<nav class="nav" id="site-nav".*?</nav>', html, re.S)
+    assert nav, "the primary navigation is missing"
+    links = re.findall(r'<a class="nav__link" href="#([^"]+)">(.*?)</a>', nav.group(0))
+    assert links == [
+        ("what-is", "What is FantasyStakes"),
+        ("how-to-play", "How to Play"),
+        ("commissioners", "For Commissioners"),
+        ("players", "For Players"),
+        ("faq", "FAQ"),
+    ], links
+    # The sixth locked destination is the demo, which is the topbar's gold link
+    # rather than a section link - it leaves the page.
+    assert '<a class="mini-link" href="#demo" data-fs-demo-link>Try the Demo</a>' in html
+
+
 def test_skip_link_and_landmarks():
     html = read("index.html")
     assert '<a class="skip" href="#main">' in html
@@ -1078,9 +1262,15 @@ def test_the_hero_lockup_is_the_por_wordmark():
 
 
 def test_the_por_pill_is_used_for_the_two_ways_cards():
+    """The two category labels, in the POR's solid-gold pill.
+
+    "Prop Pools", not "Pools". The public terminology is "FantasyStakes Prop
+    Pools" on first reference and "Prop Pools" after it; a bare "Pools" is a
+    third name for the same thing and reads as a different feature.
+    """
     html = read("index.html")
     assert '<p class="pill">Matchups</p>' in html
-    assert '<p class="pill">Pools</p>' in html
+    assert '<p class="pill">Prop Pools</p>' in html
 
 
 def test_no_dead_classes_survive_the_reconciliation():

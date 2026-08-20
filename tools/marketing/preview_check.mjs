@@ -16,11 +16,19 @@
  *   the demo call to action     the site has one job; a viewport where the
  *                               button is not visible is a broken site
  *   navigation at every width   the disclosure has to collapse below 900px and
- *                               be a row at and above it, in BOTH directions
+ *                               be a row at and above it, in BOTH directions.
+ *                               Five links now, not four: the row is what
+ *                               overflows first when a link is added, and a
+ *                               wrapped topbar is a 110px bar
  *   every anchor resolves       an in-page link to a missing id fails silently
  *                               in a browser and is invisible in review
  *   the FAQ opens               <details> is native, but a stylesheet can still
  *                               collapse its panel to zero height
+ *   the two cards hold shape    chips on one row and a closing line that does
+ *                               not wrap. Both are width-dependent and both
+ *                               fail as a ragged card rather than as an error,
+ *                               which is exactly the class of defect a
+ *                               screenshot review skims past
  *   tap targets                 44px minimum on the controls a thumb uses
  *   a clean console             which under this server includes CSP
  *                               violations and any 404 on a local asset
@@ -49,8 +57,13 @@ const LIVE_DEMO_URL = 'https://app.fantasystakesapp.com';
 
 /** The section ids the locked homepage order requires, in order. */
 const REQUIRED_SECTIONS = [
-  'top', 'what-is', 'more-action', 'two-ways', 'commissioners', 'players',
-  'credits', 'how-it-works', 'demo', 'faq', 'get-started',
+  'top', 'what-is', 'two-ways', 'commissioners', 'players',
+  'credits', 'how-to-play', 'demo', 'faq', 'get-started',
+];
+
+/** Locked navigation: five section links, in order, plus the demo control. */
+const NAV_LINKS = [
+  'What is FantasyStakes', 'How to Play', 'For Commissioners', 'For Players', 'FAQ',
 ];
 
 const outArg = process.argv.indexOf('--out');
@@ -176,7 +189,7 @@ await withBrowser(async ({ cdp, origin }) => {
     first.open = was;
     return { count: items.length, closed: closed, open: open, shipsOpen: was };
   `);
-  check(faq.count === 6, 'six FAQ entries', `found ${faq.count}`);
+  check(faq.count === 7, 'seven FAQ entries', `found ${faq.count}`);
   check(faq.open > faq.closed + 20, 'the FAQ opens and closes', JSON.stringify(faq));
   check(faq.shipsOpen === true, 'the first FAQ entry ships open, as the POR does');
 
@@ -221,6 +234,9 @@ await withBrowser(async ({ cdp, origin }) => {
         ctaTop: c ? c.top : -1,
         expanded: toggle ? toggle.getAttribute('aria-expanded') : null,
         barHeight: document.querySelector('.topbar').getBoundingClientRect().height,
+        navRight: p ? p.right : 0,
+        barRight: document.querySelector('.topbar__inner').getBoundingClientRect().right,
+        navFits: !!p && !!c && p.right <= c.left + 1,
         linksOnOneRow: (function () {
           var links = document.querySelectorAll('#site-nav a');
           if (!links.length) return false;
@@ -251,16 +267,24 @@ await withBrowser(async ({ cdp, origin }) => {
         for (var i = 0; i < links.length; i += 1) {
           min = Math.min(min, links[i].getBoundingClientRect().height);
         }
+        var labels = [];
+        for (var j = 0; j < links.length; j += 1) labels.push(links[j].textContent.trim());
         return {
           visible: panel.getBoundingClientRect().height > 0,
           expanded: toggle.getAttribute('aria-expanded'),
           links: links.length,
+          labels: labels,
           minLinkHeight: min
         };
       `);
       check(opened.visible, 'tapping the toggle opens the navigation');
       check(opened.expanded === 'true', 'aria-expanded flips to true');
-      check(opened.links === 4, 'four navigation links', String(opened.links));
+      check(opened.links === NAV_LINKS.length, 'five navigation links', String(opened.links));
+      check(
+        opened.labels.join(' | ') === NAV_LINKS.join(' | '),
+        'the navigation carries the locked five, in order',
+        opened.labels.join(' | '),
+      );
       check(opened.minLinkHeight >= 44, 'navigation links are at least 44px tall', String(opened.minLinkHeight));
 
       const closed = await evaluate(cdp, `
@@ -281,7 +305,9 @@ await withBrowser(async ({ cdp, origin }) => {
         'the topbar stays a single row at 900px and up',
         `${Math.round(nav.barHeight)}px`,
       );
-      check(nav.linksOnOneRow, 'the four navigation links share one row');
+      check(nav.linksOnOneRow, 'the five navigation links share one row');
+      check(nav.navFits, 'the topbar row fits without clipping a link',
+        `nav ${Math.round(nav.navRight)} vs bar ${Math.round(nav.barRight)}`);
     }
 
     const hero = await evaluate(cdp, `
@@ -325,13 +351,66 @@ await withBrowser(async ({ cdp, origin }) => {
     check(hero.brandSize > hero.h1Size, 'the wordmark outsizes the headline',
       `brand ${Math.round(hero.brandSize)} vs h1 ${Math.round(hero.h1Size)}`);
     check(
-      hero.h1Text === 'Add a Vegas-style sportsbook game to your existing fantasy league.',
+      hero.h1Text === 'Add a Vegas-style sportsbook game to your fantasy league.',
       'the hero carries the WEB-1a locked headline',
       hero.h1Text,
     );
     if (vp.width < 700) {
       check(hero.ctaWidth > vp.width * 0.6, 'the primary call to action is full width below 700px',
         String(Math.round(hero.ctaWidth)));
+    }
+
+    /* The two compete cards sit side by side from 700px up, and both of the
+       things that make them read as a matched pair are width-dependent: the
+       three chips staying on one row, and the closing line staying on one
+       line. Line boxes are counted with a Range, because a <p> reports a
+       single client rect whether it wrapped or not. */
+    if (vp.width >= 700) {
+      const cards = await evaluate(cdp, `
+        function lineCount(el) {
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          return range.getClientRects().length;
+        }
+        var out = [];
+        var articles = document.querySelectorAll('#two-ways .card');
+        for (var i = 0; i < articles.length; i += 1) {
+          var chips = articles[i].querySelectorAll('.chip');
+          var top = chips.length ? chips[0].getBoundingClientRect().top : 0;
+          var oneRow = chips.length > 0;
+          for (var j = 1; j < chips.length; j += 1) {
+            if (Math.abs(chips[j].getBoundingClientRect().top - top) > 1) oneRow = false;
+          }
+          var note = articles[i].querySelector('.card__note');
+          out.push({
+            pill: (articles[i].querySelector('.pill') || {}).textContent || '',
+            chips: chips.length,
+            chipsOnOneRow: oneRow,
+            note: note ? note.textContent.trim() : null,
+            noteLines: note ? lineCount(note) : 0,
+            width: articles[i].getBoundingClientRect().width
+          });
+        }
+        return out;
+      `);
+
+      check(cards.length === 2, 'two compete cards', `found ${cards.length}`);
+      for (const card of cards) {
+        const label = card.pill || '(unlabelled card)';
+        check(card.chips === 3, `${label}: three chips`, String(card.chips));
+        check(card.chipsOnOneRow, `${label}: the chips share one row`);
+        check(card.note !== null, `${label}: the card closes on a gold line`);
+        check(
+          card.noteLines === 1,
+          `${label}: the closing line stays on one line`,
+          `${card.noteLines} lines for "${card.note}" in ${Math.round(card.width)}px`,
+        );
+      }
+      check(
+        cards.length === 2 && cards[0].width === cards[1].width,
+        'the two cards are the same width',
+        cards.map((c) => Math.round(c.width)).join(' vs '),
+      );
     }
 
     /* Anchor scrolling has to land the heading clear of the sticky topbar. */
