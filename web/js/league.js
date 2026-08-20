@@ -105,14 +105,27 @@ export function buildLeaguePanel() {
     id: 'fs-strip-league',
     label: 'Play summary',
     cells: [
-      { label: 'Net Winnings',
+      // UIRECON WAVE 1 — LABELS ARE HELD TO ONE LINE, AND THAT IS A MEASUREMENT.
+      //
+      // `Net Winnings` and `Weekly Min Left` each wrapped to two lines at both
+      // 375x667 and 390x844, and because grid rows stretch to the tallest cell
+      // that made EVERY cell in the strip 75.38px instead of 59.78px — 15.6px
+      // taken off the panel below by two labels that were unreadable on one
+      // line anyway. The primitive now refuses to wrap, so the labels are
+      // reworded to fit rather than truncated.
+      //
+      // THE BUDGET IS THE 320px CELL, which is 68px wide once the label
+      // reclaims the cell's horizontal padding. Measured in the browser at the
+      // rendered 13px: `Net Won` 52px, `Min Left` 48.2px. `Wallet` and
+      // `Available` already fitted and are untouched.
+      { label: 'Net Won',
         cents: production ? 0 : ILLUSTRATIVE.netWinningsCents,
         signed: true,
         pending: unresolved },
       { label: 'Wallet',
         cents: production ? (boundWalletFigure() ?? 0) : ILLUSTRATIVE.walletCents,
         pending: production && boundWalletFigure() === null },
-      { label: 'Weekly Min Left',
+      { label: 'Min Left',
         cents: production ? (boundWeeklyMinLiveCents() ?? 0)
                           : ILLUSTRATIVE.weeklyMinLeftCents,
         pending: production && boundWeeklyMinLiveCents() === null },
@@ -193,14 +206,14 @@ const VERSUS_COPY = Object.freeze({
   },
   [VERSUS_STATE_FIELD_UNKNOWN]: {
     heading: 'Postseason field not settled yet',
-    body: 'Versus is limited to teams still alive on the championship track. '
+    body: 'Matchups are limited to teams still alive on the championship track. '
       + 'That field is not confirmed for this week yet, so no matchups are '
       + 'offered.',
   },
   [VERSUS_STATE_NONE_ELIGIBLE]: {
-    heading: 'No Versus matchups this week',
+    heading: 'No Matchups this week',
     body: 'Only teams still on the championship track can be played in the '
-      + 'postseason. Pools stay open to you either way.',
+      + 'postseason. Prop Pools stay open to you either way.',
   },
 });
 
@@ -340,7 +353,7 @@ function versusZone() {
   if (state !== VERSUS_STATE_READY) {
     const copy = VERSUS_COPY[state] || VERSUS_COPY[VERSUS_STATE_NO_DATA];
     return (
-      sectionHeading('FANTASYSTAKES VERSUS')
+      sectionHeading('FANTASYSTAKES MATCHUPS')
       + `<div class="fs-emptyzone" data-versus-state="${escapeHtml(state)}">`
       + `<div class="fs-emptyzone__head">${escapeHtml(copy.heading)}</div>`
       + `<p class="fs-emptyzone__body">${escapeHtml(copy.body)}</p>`
@@ -362,7 +375,7 @@ function versusZone() {
   // metadata step beside it, which is what it is for and what §5's "fewer
   // readable facts" asks for.
   return (
-    sectionHeading('FANTASYSTAKES VERSUS',
+    sectionHeading('FANTASYSTAKES MATCHUPS',
       `${count} OPPONENT${count === 1 ? '' : 'S'} · ${SWIPE_WORD}`)
     + `<div class="fs-carousel" id="fs-bets-carousel" role="list">${cards}</div>`
   );
@@ -426,7 +439,7 @@ function poolsZone() {
     // the grid.
     const undrawn = slateMode() === 'undrawn';
     return (
-      sectionHeading('FANTASYSTAKES POOLS')
+      sectionHeading('FANTASYSTAKES PROP POOLS')
       + `<div class="fs-emptyzone" data-pools-state="${escapeHtml(slateMode())}">`
       + `<div class="fs-emptyzone__head">${
         undrawn ? 'No Pools drawn yet' : 'Pools unavailable'}</div>`
@@ -439,7 +452,7 @@ function poolsZone() {
   }
 
   return (
-    sectionHeading('FANTASYSTAKES POOLS', `${rows.length} THIS WEEK`)
+    sectionHeading('FANTASYSTAKES PROP POOLS', `${rows.length} THIS WEEK`)
     + `<div class="fs-pools" id="fs-pools-grid">${rows.map(poolCard).join('')}</div>`
   );
 }

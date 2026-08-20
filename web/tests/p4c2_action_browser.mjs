@@ -131,7 +131,11 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
   const cell = (label) => strip.find((c) => c.label === label);
 
   // BOUND — the week resolved it, and every other input was already served.
-  const betThisWeek = cell('Bet this week');
+  // UIRECON WAVE 1 — `Bet this week` is labelled `Staked` and
+  // `Season Bet Record` / `Upside left` are `Bet Record` / `Upside Left`.
+  // The labels were held to one line at the smallest certified width; the
+  // cells, their sources and the invariant below are unchanged.
+  const betThisWeek = cell('Staked');
   const servedCommitted = Object.values(served.sections).flat()
     .filter((c) => c.week === (served.week ?? null)
       || ['offered', 'countered', 'accepted'].includes(c.protocol_state))
@@ -143,13 +147,13 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
     `${betThisWeek ? betThisWeek.exact : 'missing'} vs served ${servedCommitted}`);
 
   // STILL UNRESOLVED — none of the three gained a source.
-  for (const label of ['Season Bet Record', 'Upside left', 'Settled']) {
+  for (const label of ['Bet Record', 'Upside Left', 'Settled']) {
     const c = cell(label);
     report.check(`${label} is still unresolved`,
       c && c.value === '—' && c.exact === null,
       c ? `${c.value} / ${c.exact}` : 'cell missing');
   }
-  report.check('the Season Bet Record cell shows no fixture record',
+  report.check('the Bet Record cell shows no fixture record',
     !strip.some((c) => c.value.includes('14')),
     JSON.stringify(strip.map((c) => c.value)));
 

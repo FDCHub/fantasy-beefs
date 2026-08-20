@@ -151,6 +151,6 @@ export const POOL_PAYOUTS_SUPPORT = Object.freeze([
 ]);
 
 export const POOL_ENTRIES_SUPPORT = Object.freeze([
-  Object.freeze({ label: 'Wk 4 · four Pools entered', cents: -400 }),
-  Object.freeze({ label: 'Wk 3 · four Pools entered', cents: -400 }),
+  Object.freeze({ label: 'Wk 4 · four Prop Pools entered', cents: -400 }),
+  Object.freeze({ label: 'Wk 3 · four Prop Pools entered', cents: -400 }),
 ]);

@@ -603,23 +603,29 @@
  * at the old scale. The strip is where a GM reads what they have; it is the
  * last place that should have been left small.
  *
- * THE CELL ABSORBS IT. The strip is a fixed row above scrollable content, so
- * the extra height comes out of the region below it - which every panel can
- * now scroll. Nothing is truncated and no cell wraps: the four labels are
- * short by design and the values are tabular figures. */
-.fs-strip__label {
-  font-size: var(--fs-r43-meta);   /* 13px — SS5.1 */
-  min-height: 0;
-  margin-bottom: 2px;
-  /* SS5.2 - less shouting. The label reads as a label without the tracking. */
-  letter-spacing: .01em;
-  text-transform: none;
-}
-
-.fs-strip__value {
-  font-size: 22px;
-  line-height: 1.1;
-}
+ * ── RETIRED BY UIRECON WAVE 1, AND THE SIZES ARE UNCHANGED ────────────────
+ *
+ * The declarations that stood here have moved into `components.css`, onto the
+ * metric-cell primitive itself, and they now read the canonical `--fs-c-*`
+ * tokens instead of restating values. The label is still 13px and the value is
+ * still at the SS5.1 step; what changed is that there is one rule for each
+ * instead of a Rev 4.2 rule and a Rev 4.3 rule that overrode it.
+ *
+ * TWO CORRECTIONS CAME WITH THE MOVE, both of which this block was hiding:
+ *
+ *   The value was hard-coded to `22px` while `--fs-r43-strip-value` said 23px
+ *   and nothing read it. The primitive reads the token now, so the POR's own
+ *   number is the one on screen.
+ *
+ *   "No cell wraps: the four labels are short by design" was not true when
+ *   measured. At 375x667 `Net Winnings` and `Weekly Min Left` each took two
+ *   lines and stretched every cell in the grid from 59.78px to 75.38px. The
+ *   primitive holds labels to one line and the labels were reworded to fit.
+ *
+ * Nothing replaces this block. It is left as a note because the reasoning
+ * above is still the reasoning for the sizes, and a future reader looking for
+ * "where did the strip get its Rev 4.3 size" should be sent to the primitive
+ * rather than find silence. */
 
 /* -- I - a short viewport lets the PANEL scroll ----------------------------
  *

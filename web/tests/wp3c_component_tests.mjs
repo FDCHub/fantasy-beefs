@@ -226,8 +226,11 @@ check('no directional arrow in any heading', !play.includes('↕'));
 check('the word SWIPE still carries the affordance', play.includes('SWIPE'));
 check('the four-cell strip is retained',
   (play.match(/fs-strip__cell/g) || []).length === 4);
+// UIRECON WAVE 1 — the labels are held to one line at the smallest certified
+// width, so two of them were reworded. The claim is unchanged: four cells,
+// four locked labels, and no rank among them.
 check('and its labels are the locked four',
-  ['Net Winnings', 'Wallet', 'Weekly Min Left', 'Available']
+  ['Net Won', 'Wallet', 'Min Left', 'Available']
     .every((l) => play.includes(l)));
 
 /* ── F · The Matchup Preview — §8 ────────────────────────────────────────── */
@@ -372,7 +375,7 @@ check('the trust anchor is exact', LEDGER_TRUST_ANCHOR
   === 'Real odds. Fantasy stakes. Ledger keeps score.');
 check('it appears on Account, once', (account.match(/fs-anchor/g) || []).length === 1);
 check('the top-level strips answer the four questions',
-  ['Available', 'In Play', 'Held', 'Weekly Min Left', 'Current Settle']
+  ['Available', 'In Play', 'Held', 'Min Left', 'Settle']
     .every((l) => account.includes(l)));
 check('Current Settle is visible without expanding anything',
   account.indexOf('fs-current-settle') > 0
@@ -387,8 +390,8 @@ check('each has a real button with aria-expanded',
   && (account.match(/aria-expanded="false"/g) || []).length >= 3);
 check('no accounting row was deleted — the detail is in the DOM',
   account.includes('Season-Opening FantasyStakes')
-  && account.includes('VERSUS ACTIVITY')
-  && account.includes('POOL ACTIVITY'));
+  && account.includes('MATCHUP ACTIVITY')
+  && account.includes('PROP POOL ACTIVITY'));
 
 /* ── J · Rules terminology — §22–§26 ─────────────────────────────────────── */
 
@@ -456,7 +459,7 @@ section('K · Wrap Up keeps its shape and loses the arrow');
 check('the bets heading carries no directional arrow',
   !BETS_HEADING.includes('↕'), BETS_HEADING);
 check('and still states the viewport treatment',
-  BETS_HEADING === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE', BETS_HEADING);
 
 unbindAll();
 

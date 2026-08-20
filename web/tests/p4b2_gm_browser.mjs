@@ -76,7 +76,7 @@ await withPage({ port: 9363, settleMs: 1400 }, async ({ evaluate }) => {
   // asset terms, so the total cannot move. That is the check that this whole
   // revision is a reallocation and not a gain.
   const WEEK = [['Available', '$40', '4000'], ['In Play', '$53', '5300'],
-                ['Held', '$25', '2500'], ['Weekly Min Left', '$10', '1000']];
+                ['Held', '$25', '2500'], ['Min Left', '$10', '1000']];
   for (const [i, [label, value, exact]] of WEEK.entries()) {
     report.check(`My Week ${label} draws ${value}`,
       ledger.week[i].label === label && ledger.week[i].value === value
@@ -84,8 +84,9 @@ await withPage({ port: 9363, settleMs: 1400 }, async ({ evaluate }) => {
       `${ledger.week[i].label} ${ledger.week[i].value} (${ledger.week[i].exact})`);
   }
 
-  report.check('Awards / Adj. uses the unresolved treatment, not a number',
-    ledger.season[2].label === 'Awards / Adj.' && ledger.season[2].value === '—',
+  // UIRECON WAVE 1 — the cell is labelled `Season Adj`; same cell, same rule.
+  report.check('Season Adj uses the unresolved treatment, not a number',
+    ledger.season[2].label === 'Season Adj' && ledger.season[2].value === '—',
     `${ledger.season[2].label} ${ledger.season[2].value}`);
   report.check('and carries no exact-cents behind it — nothing was invented',
     ledger.season[2].exact === null, String(ledger.season[2].exact));

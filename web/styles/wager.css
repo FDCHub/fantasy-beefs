@@ -69,48 +69,139 @@
   text-overflow: ellipsis;
 }
 
-/* ── Three-cell market row ─────────────────────────────────────────────────*/
+/* ══ THE CHOICE CELL — one primitive, UIRECON Wave 1 ═══════════════════════
+ *
+ * WHAT WAS WRONG. The product had two components for one idea — "a selectable
+ * cell, one of a row of peers" — built eighteen months apart and never
+ * reconciled. Measured before this wave:
+ *
+ *                      .fs-market (Play card)   .fs-seg__opt (composer)
+ *     radius                       6px                    8px
+ *     min-height                  40px                   44px
+ *     label size                   8px                   11px
+ *     value size                  11px                   10px
+ *     vertical centring           none                   none
+ *
+ * A GM taps the ML cell on a Play card and then taps the ML cell in the
+ * composer, and those are the same choice presented as two different controls.
+ * The 8px label was also below the Rev 4.3 SS5.1 floor for metadata, on the
+ * surface the app opens onto.
+ *
+ * NEITHER ALIGNED ITS CONTENT VERTICALLY. Both set `align-items: center` —
+ * which on a flex COLUMN is the horizontal axis — and neither set
+ * `justify-content`, so the content sat at the top of a min-height box and a
+ * label-only cell (LOCKED / DYNAMIC) rode higher than a label-and-value one
+ * (ML / SPR / O/U). That is the "content truly centered in both axes" failure
+ * exactly, and it is one missing declaration.
+ *
+ * ONE SELECTOR LIST, NOT A NEW CLASS. The primitive is applied to the class
+ * names that already exist rather than by rewriting markup to `.fs-choice`.
+ * That keeps Wave 1 free of any JS change: every handler binds on
+ * `data-market` / `data-composer-market` / `data-composer-mode` /
+ * `data-composer-side`, every suite selects on the existing class, and NOTHING
+ * about what these controls DO changes. The markup consolidation, if it is
+ * ever worth doing, is a later wave's cosmetic tidy — the shared behaviour is
+ * already guaranteed by the shared rule.
+ * ═════════════════════════════════════════════════════════════════════════ */
 
-.fs-markets {
-  display: flex;
-  gap: var(--fs-space-2);
-  margin-top: var(--fs-space-3);
-}
-
-.fs-market {
+.fs-market,
+.fs-seg__opt {
   flex: 1;
   display: flex;
   flex-direction: column;
+  /* BOTH AXES. `align-items` centres across the column (horizontal) and
+   * `justify-content` centres along it (vertical). The second one is the fix. */
   align-items: center;
-  gap: 1px;
-  min-height: 40px;
-  padding: var(--fs-space-2) 0;
-  background: var(--tile);
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--fs-c-touch);
+  padding: var(--fs-space-2) var(--fs-space-1);
+  min-width: 0;
+  background: var(--fs-c-surface-inset);
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--fs-c-radius-cell);
   font-family: inherit;
   cursor: pointer;
 }
 
-.fs-market__label {
-  font-size: 8px;
-  letter-spacing: .1em;
-  color: var(--g1);
-}
-
-.fs-market__value {
-  font-family: var(--fs-font-money);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-size-fine);
+/* THE LABEL — the name of the choice. One line, centred.
+ *
+ * AT THE CARD-SECONDARY STEP, NOT THE METADATA ONE, and that is a governed
+ * classification rather than a preference. Rev 4.3 SS5.1 puts a market label in
+ * card secondary text (14–15px) and WP3C's certification asserts the floor
+ * directly — `market labels are at least 14px`. The Play card already honoured
+ * it; the composer's segment label was still at the Rev 4.2 fine step of 11px.
+ * So the primitive raises the SMALLER of the two to the governed size rather
+ * than lowering the larger to meet it. */
+.fs-market__label,
+.fs-seg__label {
+  max-width: 100%;
+  font-size: var(--fs-c-size-body-sub);
   font-weight: var(--fs-weight-strong);
-  color: var(--bone);
+  letter-spacing: var(--fs-c-track-label);
+  line-height: 1.15;
+  text-align: center;
+  color: var(--fs-c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* THE VALUE — the line being offered. Absent on a label-only cell, which is
+ * why the cell centres rather than stacking from the top.
+ *
+ * ONE STEP BELOW THE LABEL, which keeps WP3C's hierarchy on the Play card and
+ * imposes it on the composer, where the two had been the other way round. The
+ * face is the canonical tabular monospace either way: this is a number, and it
+ * is drawn as one wherever it appears. */
+.fs-market__value,
+.fs-seg__value {
+  max-width: 100%;
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-c-size-fine);
+  font-weight: var(--fs-c-weight-number);
+  letter-spacing: var(--fs-c-track-number);
+  line-height: 1.15;
+  text-align: center;
+  color: var(--fs-c-text);
+  white-space: nowrap;
+}
+
+/* SELECTED IS ONE TREATMENT. Gold border, gold tint, gold label — identical on
+ * a Play market cell, a composer market cell, a terms cell and an over/under
+ * cell. Rev 4.2 gave the market cell a border-and-fill and the segment cell a
+ * border-fill-and-colour; they are the same state and now say so. */
+.fs-market.is-selected,
+.fs-seg__opt.is-selected {
+  background: var(--fs-c-gold-fill);
+  border-color: var(--fs-c-gold);
+  color: var(--fs-c-gold);
+}
+
+.fs-market.is-selected .fs-market__label,
+.fs-seg__opt.is-selected .fs-seg__label { color: var(--fs-c-gold); }
+
+.fs-market:focus-visible,
+.fs-seg__opt:focus-visible {
+  outline: 1px solid var(--fs-c-gold);
+  outline-offset: 1px;
+}
+
+/* ── Three-cell market row ─────────────────────────────────────────────────*/
+
+.fs-markets {
+  display: flex;
+  gap: var(--fs-c-gap-cell);
+  margin-top: var(--fs-space-3);
+}
+
+/* Market tone is the one thing a market cell carries that a terms cell does
+ * not: whether the line favours this GM. It rides the VALUE only, so it can
+ * never be confused with the selected state, which rides the cell. */
 .fs-market.is-fav .fs-market__value { color: var(--green2); }
-.fs-market.is-dog .fs-market__value { color: var(--gold); }
-.fs-market.is-neu .fs-market__value { color: var(--bone); }
-.fs-market.is-selected { border-color: var(--gold); background: var(--goldbg); }
-.fs-market:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+.fs-market.is-dog .fs-market__value { color: var(--fs-c-gold); }
+.fs-market.is-neu .fs-market__value { color: var(--fs-c-text); }
 
 /* ── Figures ───────────────────────────────────────────────────────────────*/
 
@@ -210,43 +301,13 @@
   color: var(--g1);
 }
 
-.fs-seg { display: flex; gap: var(--fs-space-2); }
-
-.fs-seg__opt {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-height: 44px;
-  padding: var(--fs-space-2) 0;
-  background: var(--tile);
-  border: 1px solid transparent;
-  border-radius: var(--fs-radius-cell);
-  font-family: inherit;
-  color: var(--g1);
-  cursor: pointer;
-}
-
-.fs-seg__opt.is-selected {
-  background: var(--goldbg);
-  border-color: var(--gold);
-  color: var(--gold);
-}
-
-.fs-seg__opt:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
-
-.fs-seg__label {
-  font-size: var(--fs-size-fine);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: .08em;
-}
-
-.fs-seg__value {
-  font-family: var(--fs-font-money);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-size-micro);
-}
+/* The segmented ROW. Its cells are the shared choice cell defined at the top of
+ * this sheet — `.fs-seg__opt`, `.fs-seg__label` and `.fs-seg__value` are styled
+ * there, alongside `.fs-market`, because they are the same control. The block
+ * that stood here restated all three at slightly different values and, being
+ * later in the sheet, quietly won; deleting it is what makes the primitive
+ * actually apply. */
+.fs-seg { display: flex; gap: var(--fs-c-gap-cell); }
 
 .fs-preview-open {
   margin-top: 0;

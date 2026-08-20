@@ -164,11 +164,16 @@ export function buildActionPanel() {
     id: 'fs-strip-action',
     label: 'Action summary',
     cells: [
-      { label: 'Season Bet Record', text: seasonRecordLabel(),
+      // UIRECON WAVE 1 — one line at 320px, measured. `Season Bet Record`
+      // was 108.8px against a 68px cell and `Bet this week` 77.4px; both
+      // wrapped and stretched the whole strip. The scope each label lost to
+      // the rewrite is already carried by the strip's own accessible name
+      // (`Action summary`) and by the tab it sits on.
+      { label: 'Bet Record', text: seasonRecordLabel(),
         pending: unresolved },
-      { label: 'Bet this week', cents: betThisWeek ?? 0,
+      { label: 'Staked', cents: betThisWeek ?? 0,
         pending: unresolved && betThisWeek === null },
-      { label: 'Upside left', cents: upsideLeftCents(), signed: true,
+      { label: 'Upside Left', cents: upsideLeftCents(), signed: true,
         pending: unresolved },
       { label: 'Settled', cents: settledCents(), signed: true, anchor: true,
         pending: unresolved },

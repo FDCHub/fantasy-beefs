@@ -124,22 +124,28 @@
   outline-offset: 2px;
 }
 
-/* ── Market cells ─────────────────────────────────────────────────────────── */
-
-.fs-markets .fs-market {
-  min-height: var(--fs-r43-touch);
-}
-
-.fs-markets .fs-market__label {
-  font-size: var(--fs-r43-card-secondary);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: .02em;
-}
-
-.fs-markets .fs-market__value {
-  font-size: var(--fs-r43-meta);
-  color: var(--fs-r43-secondary);
-}
+/* ── Market cells ─────────────────────────────────────────────────────────
+ *
+ * RETIRED INTO THE CHOICE-CELL PRIMITIVE — UIRECON Wave 1. The three rules that
+ * stood here raised the Play card's market cell to the Rev 4.3 scale, which was
+ * right, and did it on a screen-specific selector, which is how the drift this
+ * wave closes was made: `.fs-markets .fs-market__*` (specificity 0,2,0) beat
+ * anything `wager.css` said about the same control, so the Play card and the
+ * composer sized the SAME cell from two different sheets.
+ *
+ * AND THEY HAD INVERTED. Measured before this wave:
+ *
+ *                     Play card          composer
+ *     label            14px strong        13px strong
+ *     value            13px muted         14px number
+ *
+ * On the Play card the market's NAME was louder than the line it was offering,
+ * and in the composer it was the other way round. Neither is a screen's call to
+ * make: the value is the number being chosen and the label names it, so the
+ * primitive in `wager.css` sets label = fine/muted and value = body-sub/number
+ * for both, and the touch floor it already carries makes the `min-height` here
+ * redundant as well. Net height change on the Play card: nil — one step down on
+ * the label, one step up on the value. */
 
 /* ── Play · Pool cards ────────────────────────────────────────────────────── */
 
@@ -232,10 +238,35 @@
  * gives way, not the type size the POR fixed. */
 .fs-zone .fs-heading,
 .fs-railsec .fs-heading,
+.fs-wkmod .fs-heading,
 #panel-league .fs-heading,
 #panel-action .fs-heading,
 #panel-week .fs-heading {
-  margin: var(--fs-space-1) var(--fs-space-1) 0;
+  /* ── THE HEADING GAP IS A TOKEN NOW — UIRECON Wave 1 ────────────────────
+   *
+   * This bottom margin was `0`, on Play, Status and Wrap Up together, so every
+   * section title in the product sat flush against its own content. The
+   * comment above says why it was taken: at the SS5.1 section step the Rev 4.2
+   * margins made a 52px block, and on Play that came straight out of the card
+   * zones. It was the right call with the information available then, and it
+   * is the wrong shape — a spacing decision spent as a height budget.
+   *
+   * WHAT PAYS FOR IT NOW. The metric strip. Measured at 375x667 before this
+   * wave, two of Play's four strip labels wrapped to a second line and stretched
+   * every cell in the grid from 59.78px to 75.38px. Holding the labels to one
+   * line returns 15.6px to the panel; the two headings on Play spend 6px of it
+   * (5px of gap each, less the 2px of top margin they no longer take). Play
+   * ends this wave with MORE room below the strip than it started with, and
+   * the gap is real rather than borrowed.
+   *
+   * ONE TOKEN, EVERY CONSUMER. `--fs-c-gap-heading` is what the later waves
+   * bind FantasyStakes Matchups, Prop Pools and the three Wrap Up result
+   * carousels to, so "same heading-to-content spacing" is a fact about one
+   * declaration instead of a promise repeated in five places. `.fs-wkmod` is
+   * added to the selector list for the same reason — Wrap Up's modules matched
+   * this treatment by coincidence of the `#panel-week` selector, and now match
+   * it by name. */
+  margin: 0 var(--fs-space-1) var(--fs-c-gap-heading);
   align-items: center;
   /* The block's own leading, set explicitly for the same reason the span's is:
    * neither was declared, and at the section step the inherited value made the

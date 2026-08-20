@@ -443,7 +443,7 @@ const league = buildLeaguePanel();
 // what a component suite is — there is nobody to discover, so the rail draws
 // its intentional empty state and the eleven-card count is gone with the
 // eleven invented cards. The heading also loses its `↕` (§12).
-check('the Versus rail heading carries no directional arrow',
+check('the Matchups rail heading carries no directional arrow',
   !league.includes('↕'), 'SWIPE ↕ removed');
 check('unbound discovery draws an intentional state, never invented opponents',
   league.includes('data-versus-state')
@@ -452,9 +452,13 @@ check('unbound discovery draws an intentional state, never invented opponents',
 // step the whole string wrapped to two lines at 375px, and on Play that height
 // came straight out of the card zone beneath it. The vocabulary is unchanged;
 // what changed is which of `sectionHeading`'s two slots each half sits in.
-check('Pools heading is the locked wording',
-  league.includes('FANTASYSTAKES POOLS') && league.includes('4 THIS WEEK'));
-check('League presents four Pools', (league.match(/data-pool="/g) || []).length === 4);
+// UIRECON WAVE 1 — the locked public term is FantasyStakes Prop Pools on first
+// reference. The heading is the first reference on this tab.
+check('Prop Pools heading is the locked wording',
+  league.includes('FANTASYSTAKES PROP POOLS') && league.includes('4 THIS WEEK'));
+check('Play uses the locked Matchups term and no public Versus',
+  league.includes('FANTASYSTAKES MATCHUPS') && !league.includes('FANTASYSTAKES VERSUS'));
+check('League presents four Prop Pools', (league.match(/data-pool="/g) || []).length === 4);
 check('League carries the disclaimer once', countDisclaimers(league) === 1);
 check('League keeps the four strip figures',
   ['+$126', '$55', '$10', '$65'].every((v) => league.includes(v)));

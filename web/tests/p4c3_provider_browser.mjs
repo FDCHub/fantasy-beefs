@@ -90,8 +90,9 @@ await withPage({ port: 9381, settleMs: 1700 }, async ({ evaluate }) => {
 
   /* ── The League strip ─────────────────────────────────────────────────── */
 
-  const netWinnings = league.cells.find((c) => c.label === 'Net Winnings');
-  report.check('Net Winnings is unresolved — it has no posted source',
+  // UIRECON WAVE 1 — the cell is labelled `Net Won`; same cell, same source.
+  const netWinnings = league.cells.find((c) => c.label === 'Net Won');
+  report.check('Net Won is unresolved — it has no posted source',
     netWinnings && netWinnings.value === '—',
     netWinnings ? netWinnings.value : 'cell missing');
   report.check('and carries no exact cents behind it',

@@ -350,7 +350,7 @@ _assert("the Rules title is the locked wording",
 # WP3C — Rev 4.3 §11 removed the redundant directional arrow from every swipe
 # heading. Wording otherwise unchanged and still pinned exactly.
 _assert("The Week's bets heading is the locked viewport treatment",
-        APP.get("betsHeading") == "FANTASYSTAKES BETS · 4 SHOWN · SWIPE")
+        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE")
 _assert("no rendered heading carries a directional arrow (§11)",
         "↕" not in ALL_PANELS, "↕ found")
 _assert("the legal line is exact and lives on Rules & Settings only",

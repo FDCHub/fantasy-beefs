@@ -70,12 +70,12 @@ export const ECONOMY_STOP = Object.freeze({
   source: 'League economy configuration',
 });
 
-/** Commissioner-set weekly Pool entry, bounded to $1–$5 by the schema. */
+/** Commissioner-set weekly Prop Pool entry, bounded to $1–$5 by the schema. */
 export const POOL_ENTRY = Object.freeze({
   cents: 100,                  // $1
   minCents: 100,
   maxCents: 500,
-  source: 'League Pool settings',
+  source: 'League Prop Pool settings',
 });
 
 /**
@@ -147,7 +147,7 @@ export const SETTINGS = Object.freeze([
     value: formatCredits(POOL_ENTRY.cents),
     exactCents: POOL_ENTRY.cents,
     detail:
-      'The weekly entry for each of the week’s four Pools, set by the ' +
+      'The weekly entry for each of the week’s four Prop Pools, set by the ' +
       `commissioner and bounded to ${formatCredits(POOL_ENTRY.minCents)}–` +
       `${formatCredits(POOL_ENTRY.maxCents)}. It freezes for the season once the first ` +
       'week is built.',
@@ -436,32 +436,33 @@ export const RULE_GROUPS = Object.freeze([
   Object.freeze({
     id: 'big-money',
     title: 'Big Money',
-    blurb: 'Pools and the championship.',
+    blurb: 'Prop Pools and the championship.',
     rules: Object.freeze([
       Object.freeze({
-        heading: `Exactly ${POOLS_PER_WEEK} Pools run every fantasy week`,
+        heading: `Exactly ${POOLS_PER_WEEK} FantasyStakes Prop Pools run every fantasy week`,
         body:
           'Not three, not a variable count. Each is a governed definition from ' +
-          'the Pool catalog with its own settling rule, and each is scoped to ' +
+          'the Prop Pool catalog with its own settling rule, and each is scoped to ' +
           'either one league team or one scheduled matchup.',
-        source: 'Pool rules',
+        source: 'Prop Pool rules',
       }),
       Object.freeze({
-        heading: 'A Pool that finds no qualifier carries its pot forward',
+        heading: 'A Prop Pool that finds no qualifier carries its pot forward',
         body:
-          'Rolling over is a modifier on a Pool, never a different kind of Pool. ' +
+          'Rolling over is a modifier on a Prop Pool, never a different kind of ' +
+          'Prop Pool. ' +
           'A continuation occupies one of the week’s four slots and carries its ' +
           'accumulated pot into it.',
-        source: 'Pool rules',
+        source: 'Prop Pool rules',
       }),
       Object.freeze({
-        heading: 'Pool entry is set by the commissioner and then frozen',
+        heading: 'Prop Pool entry is set by the commissioner and then frozen',
         body:
           `Between ${formatCredits(POOL_ENTRY.minCents)} and ${formatCredits(POOL_ENTRY.maxCents)} a week, ` +
-          'fixed for the season once the first week is built. Entering a Pool ' +
+          'fixed for the season once the first week is built. Entering a Prop Pool ' +
           'genuinely reduces your Current Settle: the contribution has left you ' +
           'and funds an outcome that is not yet yours.',
-        source: 'Pool entry rules',
+        source: 'Prop Pool entry rules',
       }),
       Object.freeze({
         heading: `The championship pot pays ${CHAMPIONSHIP_SPLIT.split.join(' / ')} by place`,
@@ -487,13 +488,14 @@ export const RULE_GROUPS = Object.freeze([
       Object.freeze({
         heading: 'Who can play in the postseason',
         body:
-          'Versus is limited to teams still alive on the championship track, ' +
-          'plus the official third-place participants during championship week. ' +
-          'A team playing a consolation or placement game is not a Versus ' +
-          'subject, however many matchups it has left. Pools are different: ' +
-          'every league member keeps entering them after their own team is ' +
-          'eliminated, subject to the ordinary Pool rules.',
-        source: 'Pool rules',
+          'FantasyStakes Matchups are limited to teams still alive on the ' +
+          'championship track, plus the official third-place participants ' +
+          'during championship week. A team playing a consolation or placement ' +
+          'game is not a Matchup subject, however many fixtures it has left. ' +
+          'Prop Pools are different: every league member keeps entering them ' +
+          'after their own team is eliminated, subject to the ordinary Prop ' +
+          'Pool rules.',
+        source: 'Prop Pool rules',
       }),
     ]),
   }),
@@ -509,7 +511,7 @@ export const RULE_GROUPS = Object.freeze([
           'Every wager is one of the three. They persist as straight, spread and ' +
           'over_under respectively — ML is the display label for straight, not a ' +
           'fourth kind of bet.',
-        source: 'Versus wager rules',
+        source: 'Matchup wager rules',
       }),
       Object.freeze({
         heading: `The minimum stake is ${formatCredits(MIN_STAKE_CENTS)}`,
@@ -539,7 +541,7 @@ export const RULE_GROUPS = Object.freeze([
           'terms, the participants or the week — and the issuer keeps the Anchor ' +
           'role. Once countered, the issuer accepts or declines; there is no ' +
           're-counter.',
-        source: 'Versus lifecycle rules',
+        source: 'Matchup lifecycle rules',
       }),
       Object.freeze({
         heading: 'An offer holds your Credits without spending them',
@@ -547,7 +549,7 @@ export const RULE_GROUPS = Object.freeze([
           'A pending offer reduces what you can spend while it is outstanding. ' +
           'It is not counted again in Current Settle until a proposal is ' +
           'accepted and the funds become escrow.',
-        source: 'Versus funding rules',
+        source: 'Matchup funding rules',
       }),
     ]),
   }),

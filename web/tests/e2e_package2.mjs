@@ -85,15 +85,21 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   // session's league decides how many opponents and how many Pools there are.
   // What is still pinned exactly is the vocabulary and the absence of the
   // directional arrow (§11).
-  check('the Versus heading renders, with no directional arrow', await evaluate(`
+  // UIRECON WAVE 1 — the locked public vocabulary. `FANTASYSTAKES MATCHUPS`
+  // and `FANTASYSTAKES PROP POOLS` on first reference; no public-facing Versus
+  // anywhere on the surface.
+  check('the Matchups heading renders, with no directional arrow', await evaluate(`
     const headings = [...document.querySelectorAll('#panel-league .fs-heading__text')]
       .map(el => el.textContent);
-    return headings.some(t => /^FANTASYSTAKES VERSUS/.test(t))
+    return headings.some(t => /^FANTASYSTAKES MATCHUPS/.test(t))
       && headings.every(t => !t.includes('↕'));
   `));
-  check('the Pools heading renders', await evaluate(`
+  check('the Prop Pools heading renders', await evaluate(`
     return [...document.querySelectorAll('#panel-league .fs-heading__text')]
-      .some(el => /^FANTASYSTAKES POOLS/.test(el.textContent));
+      .some(el => /^FANTASYSTAKES PROP POOLS/.test(el.textContent));
+  `));
+  check('Play shows no public-facing Versus', await evaluate(`
+    return !/versus/i.test(document.getElementById('panel-league').innerText);
   `));
   // WP5: the heading is the BOUND league's name. It was the fixture's
   // `CULV APPRECIATION SOCIETY` until S8-P4B-2 bound `leagueName()`; asserting

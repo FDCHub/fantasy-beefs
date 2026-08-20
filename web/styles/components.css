@@ -47,43 +47,114 @@
 .fs-strip {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--fs-space-2);
+  /* FOUR EQUAL COLUMNS, AND `minmax(0,1fr)` RATHER THAN `1fr`.
+   *
+   * A grid track defaults to `min-width: auto`, so a `1fr` column refuses to
+   * shrink below its content's minimum. With the labels held to one line
+   * (below) that minimum is the label's full width, and the widest label would
+   * then set its own column wider than the other three — four cells that are
+   * only equal while their contents happen to be. `minmax(0, 1fr)` makes the
+   * equality structural. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--fs-c-gap-cell);
   margin: 0 var(--fs-gutter) var(--fs-space-4);
 }
 
+/* ── The metric cell — UIRECON Wave 1 ───────────────────────────────────────
+ *
+ * ONE CONSTRUCTION, EVERY CONSUMER. Play, Status and Account's two strips all
+ * render through `summaryStrip()`, so they were already one component in the
+ * markup; they were not one component on screen, because the cell was a plain
+ * block with a left-aligned label over a centred value and no height of its
+ * own. Three things followed from that and all three are fixed here rather
+ * than per screen:
+ *
+ *   THE LABEL AND THE VALUE WERE ON DIFFERENT AXES. `text-align: left` on the
+ *   label and `text-align: center` on the value, in a cell 84px wide.
+ *
+ *   THE VALUE WAS NOT VERTICALLY CENTRED. It was simply the second box in a
+ *   block, so it sat directly under the label with the cell's slack below it.
+ *
+ *   A WRAPPED LABEL RESIZED THE WHOLE STRIP. Measured at 375x667 before this
+ *   wave: `Net Winnings` and `Weekly Min Left` each took two lines, and because
+ *   grid rows stretch to the tallest cell every cell in the strip became
+ *   75.38px instead of 59.78px — 15.6px taken from the panel below by two
+ *   labels nobody could read on one line anyway.
+ *
+ * THE CELL IS NOW A COLUMN: a label row that cannot wrap, and a value row that
+ * takes the rest and centres its content on both axes. There is no per-screen
+ * override of any of this, and there is no place left for one to be needed. */
 .fs-strip__cell {
-  background: var(--tile);
+  display: flex;
+  flex-direction: column;
+  background: var(--fs-c-surface-inset);
   border: 1px solid transparent;
-  border-radius: var(--fs-radius-cell);
-  padding: 8px var(--fs-space-3);
+  border-radius: var(--fs-c-radius-cell);
+  padding: 8px var(--fs-c-pad-cell);
+  /* The cell owns no width of its own; the grid track does. `min-width: 0`
+   * lets the flex column shrink inside it so an over-long value ellipsizes
+   * instead of pushing the cell wider than its column. */
+  min-width: 0;
 }
 
 /* One cell per strip may carry the anchor/gold treatment (POR §1.4). */
 .fs-strip__cell.is-anchor { border-color: var(--edge); }
 .fs-strip__cell.is-gold   { border-color: var(--edge); }
 
+/* THE LABEL: top row, centred, one line, always.
+ *
+ * `flex: 0 0 auto` keeps it the fixed row of the column. The three properties
+ * after it are the no-wrap contract — a label that outgrows its cell
+ * ellipsizes rather than taking a second line and resizing the strip. Every
+ * label in the product is reworded to fit; the ellipsis is the guard that
+ * stops a future one from silently costing 15.6px of panel. */
 .fs-strip__label {
-  min-height: 22px;
+  flex: 0 0 auto;
+  /* THE LABEL TAKES THE CELL'S FULL WIDTH, PADDING INCLUDED.
+   *
+   * The cell's horizontal padding exists to keep the VALUE off the border; a
+   * centred single line of 13px text needs no such protection, and at 320px
+   * the two 7px insets were 14px of a 68px cell — a fifth of the budget, spent
+   * on nothing. Reclaiming it is what lets `Bet Record` and `Upside left` stay
+   * whole words at the smallest certified width instead of being abbreviated
+   * to fit a margin. */
+  margin-left: calc(-1 * var(--fs-c-pad-cell));
+  margin-right: calc(-1 * var(--fs-c-pad-cell));
   margin-bottom: 3px;
-  font-size: var(--fs-size-eyebrow);
+  font-size: var(--fs-c-size-label);
+  letter-spacing: var(--fs-c-track-label);
   line-height: 1.2;
-  text-align: left;
-  color: var(--g1);
+  text-align: center;
+  color: var(--fs-c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.fs-strip__cell.is-gold .fs-strip__label { color: var(--gold); }
+.fs-strip__cell.is-gold .fs-strip__label { color: var(--fs-c-gold); }
 
-/* Rev4.2: stronger value typography. Money never reflows on update, so the
- * value is tabular monospace at a fixed weight. */
+/* THE VALUE: takes the rest of the cell and centres itself in it, on both axes.
+ *
+ * `display: flex` with both centres is what makes the vertical centring real —
+ * `text-align` can only do the horizontal half, and the vertical half is the
+ * one the POR's "truly centered" is about. A cell whose neighbour is taller
+ * now centres its figure in the same box rather than hanging from the label.
+ *
+ * Money and odds are tabular monospace and never reflow on update. */
 .fs-strip__value {
-  font-family: var(--fs-font-money);
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  font-family: var(--fs-c-font-number);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-size-value);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: -.02em;
+  font-size: var(--fs-c-size-metric);
+  font-weight: var(--fs-c-weight-number);
+  letter-spacing: var(--fs-c-track-number);
+  line-height: 1.1;
   text-align: center;
-  color: var(--bone);
+  color: var(--fs-c-text);
 }
 
 .fs-strip__cell.is-gold   .fs-strip__value,
@@ -94,12 +165,20 @@
 .fs-strip__value.is-pending  { color: var(--amber); }
 
 /* Rank/context reads as context, not as a second figure — secondary grey,
- * including its separator (POR §2.3). */
+ * including its separator (POR §2.3).
+ *
+ * `white-space: pre` IS LOad-BEARING NOW. `stripCell()` emits this span with a
+ * leading space before the middot, and the value became a flex container in
+ * this wave so the span is a flex ITEM — leading whitespace at the start of a
+ * flex item collapses away, and the figure and its context would run together.
+ * Preserving it here keeps the rendered string character-for-character what it
+ * was, without the component having to know how the cell is laid out. */
 .fs-strip__context {
   font-family: var(--fs-font-ui);
   font-size: var(--fs-size-micro);
   font-weight: var(--fs-weight-regular);
-  color: var(--g1);
+  color: var(--fs-c-text-muted);
+  white-space: pre;
 }
 
 /* ── Credits disclaimer ────────────────────────────────────────────────────

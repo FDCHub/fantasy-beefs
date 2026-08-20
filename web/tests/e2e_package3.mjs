@@ -132,7 +132,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('the Yahoo module names official Yahoo matchups',
     modules[0].heading === 'YAHOO LEAGUE MATCHUPS · SWIPE', modules[0].heading);
   check('the Bets module states its derived count',
-    modules[1].heading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', modules[1].heading);
+    modules[1].heading === 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE', modules[1].heading);
   check('no rail heading carries a directional arrow',
     modules.every((m) => !m.heading.includes('↕')),
     modules.map((m) => m.heading).join(' | '));
@@ -144,8 +144,8 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // without a count. The four-slot contract is certified against a DRAWN slate
   // in test_s8_p4b3_settings_pool.py.
   check('the Pools module names itself, with a count only when drawn',
-    modules[2].heading === 'FANTASYSTAKES POOLS'
-    || modules[2].heading === 'FANTASYSTAKES POOLS · 4 THIS WEEK',
+    modules[2].heading === 'FANTASYSTAKES PROP POOLS'
+    || modules[2].heading === 'FANTASYSTAKES PROP POOLS · 4 THIS WEEK',
     modules[2].heading);
   check('no module clips its own content', modules.every(m => !m.clipped));
 
@@ -406,7 +406,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // not a count of records, and a week holding three settled wagers still shows
   // three rather than gaining a fabricated fourth.
   check('the locked bets heading is unchanged on a past week',
-    past.betsHeading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', past.betsHeading);
+    past.betsHeading === 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE', past.betsHeading);
   // The claim in the heading comment above, asserted rather than restated: a
   // week draws the wagers it really has and never gains a fabricated one.
   check('the past week draws only the wagers it really has',
@@ -540,7 +540,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // PRODUCTION build against the P4B-1 authoritative fixture, so these are
   // posted ledger figures rather than prototype constants.
   //
-  //   Available $65, In Play $28, Weekly Min Left $10 — KEEP EXACT. Unchanged,
+  //   Available $65, In Play $28, Min Left $10 — KEEP EXACT. Unchanged,
   //   and now proven end-to-end from economy/current_settle.py.
   //
   //   Held $25 -> $0 — REVISE EXACT. P4B-0 established that the reachable
@@ -572,7 +572,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     ['Available', ledger.available_cents],
     ['In Play', ledger.in_play_cents],
     ['Held', ledger.held_open_challenges_cents],
-    ['Weekly Min Left', ledger.weekly_min_live_cents],
+    ['Min Left', ledger.weekly_min_live_cents],
   ];
   for (const [i, [label, cents]] of weekExpected.entries()) {
     check(`week strip cell ${i + 1} is ${label}, as the Ledger served it`,
@@ -586,17 +586,19 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
 
   // GOVERNED REVISION, S8-P4B-2R — two cells.
   //
-  //   Awards / Adj. +$32 -> unresolved. P3 proved season winnings has no
+  //   Season Adj +$32 -> unresolved. P3 proved season winnings has no
   //   authoritative source. Two of the cell's three components ARE sourced,
   //   which is the trap: printing +$8 would put a partial subtotal under a
   //   label meaning the whole, and $0 would assert a zero nobody measured.
   //
-  //   Current Settle −$45 -> −$69. Moves by exactly the unsourced +$24 that is
+  //   Settle −$45 -> −$69. Moves by exactly the unsourced +$24 that is
   //   no longer invented. Asserted exactly, not loosely.
   //
-  //   Bet Record and Versus + Pools are P4C-owned domains, untouched.
-  const seasonExpected = [['Bet Record', '14–7'], ['Versus + Pools', '+$126'],
-    ['Awards / Adj.', '—'], ['Current Settle', '−$69']];
+  //   Bet Record and Play Net are P4C-owned domains, untouched.
+  // UIRECON WAVE 1 — the labels are held to one line at 320px and carry the
+  // locked vocabulary. The FIGURES are unchanged and are still the claim.
+  const seasonExpected = [['Bet Record', '14–7'], ['Play Net', '+$126'],
+    ['Season Adj', '—'], ['Settle', '−$69']];
   for (const [i, [label, value]] of seasonExpected.entries()) {
     check(`My Season cell ${i + 1} is ${label} ${value}`,
       strips.season[i].label === label && strips.season[i].value === value,
@@ -683,11 +685,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     }
     return out;
   `);
-  const versus = groups['VERSUS ACTIVITY'];
+  const versus = groups['MATCHUP ACTIVITY'];
   check('184 − 78 reconciles to 106 on screen',
     versus[0].cents + versus[1].cents === versus[2].cents,
     `${versus[0].cents} + ${versus[1].cents} = ${versus[2].cents}`);
-  const poolGroup = groups['POOL ACTIVITY'];
+  const poolGroup = groups['PROP POOL ACTIVITY'];
   check('45 − 25 reconciles to 20 on screen',
     poolGroup[0].cents + poolGroup[1].cents === poolGroup[2].cents,
     `${poolGroup[0].cents} + ${poolGroup[1].cents} = ${poolGroup[2].cents}`);

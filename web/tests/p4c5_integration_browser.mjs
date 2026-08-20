@@ -151,8 +151,9 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
     leagueAvailable && leagueAvailable.exact === String(served.ledger.available_cents),
     `${leagueAvailable ? leagueAvailable.exact : 'missing'} vs ${served.ledger.available_cents}`);
 
-  const leagueMin = cell(money.leagueCells, 'Weekly Min Left');
-  report.check('League Weekly Min Left equals the served figure',
+  // UIRECON WAVE 1 — the cell is labelled `Min Left`; same cell, same source.
+  const leagueMin = cell(money.leagueCells, 'Min Left');
+  report.check('League Min Left equals the served figure',
     leagueMin && leagueMin.exact === String(served.ledger.weekly_min_live_cents),
     `${leagueMin ? leagueMin.exact : 'missing'} vs ${served.ledger.weekly_min_live_cents}`);
 
@@ -187,7 +188,8 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
     `${money.settleExact} vs ${served.ledger.current_settle_cents}`);
 
   // ACTION — Bet this week, scoped to the authoritative week.
-  const betThisWeek = cell(money.actionCells, 'Bet this week');
+  // UIRECON WAVE 1 — `Bet this week` is labelled `Staked`; same cell, same source.
+  const betThisWeek = cell(money.actionCells, 'Staked');
   const committed = Object.values(served.action.sections || {}).flat()
     .filter((c) => c.week === WEEK && !c.settled
       && ['offered', 'countered', 'accepted'].includes(c.protocol_state))

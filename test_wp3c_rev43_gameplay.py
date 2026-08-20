@@ -146,11 +146,15 @@ _assert("an unbound Versus model returns an empty list, never a fixture",
         "if (MODE !== VERSUS_MODE_AUTHORITATIVE) return [];" in VERSUS_JS)
 _assert("Play's Pools read the governed slate, gated on demo mode",
         "slateMode() === SLATE_MODE_DEMO ? POOLS : slateRows()" in LEAGUE_JS)
-# THE IDENTIFIER, NOT THE WORD. `FANTASYSTAKES POOLS` is a heading and says
+# THE IDENTIFIER, NOT THE WORD. `FANTASYSTAKES PROP POOLS` is a heading and says
 # nothing about the constant; counting bare occurrences would count it twice.
+#
+# UIRECON WAVE 1 renamed the heading to the locked public term, which is why the
+# string removed here is the new one. The claim is untouched: the demo `POOLS`
+# constant is reachable only through the `slateMode()` gate above.
 _POOLS_IDENT = re.findall(r"(?<![A-Z_'\"])POOLS(?![A-Z_])",
                           _strip_comments(LEAGUE_JS)
-                          .replace("FANTASYSTAKES POOLS", ""))
+                          .replace("FANTASYSTAKES PROP POOLS", ""))
 _assert("and the demo Pool constant is reachable ONLY through that gate",
         len(_POOLS_IDENT) == 2, f"{len(_POOLS_IDENT)} references")
 

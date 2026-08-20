@@ -71,7 +71,10 @@ export const WEEK_SUBTITLE = 'Yahoo matchups + FantasyStakes action';
  */
 // Rev 4.3 §11 — the word SWIPE carries the affordance; the redundant
 // directional arrow is removed and not replaced with another glyph.
-export const BETS_HEADING = 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE';
+// UIRECON WAVE 1 — the locked public term. `BETS_HEADING` keeps its internal
+// name: it is imported by name in three suites and by `week.js` itself, and
+// the constant is not the copy.
+export const BETS_HEADING = 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE';
 
 /** The viewport cap the heading states. */
 export const BETS_SHOWN = 4;
@@ -450,13 +453,13 @@ function poolsModule() {
 
   if (mode === SLATE_MODE_UNDRAWN || mode === 'unavailable') {
     const reason = mode === SLATE_MODE_UNDRAWN
-      ? 'No Pool slate has been drawn for this week yet. Four definitions must '
+      ? 'No Prop Pool slate has been drawn for this week yet. Four definitions must '
         + 'pass both catalog gates before a week can be drawn, and the '
         + 'league’s provider source readiness is not yet confirmed.'
-      : 'This week’s Pool slate could not be read for this session.';
+      : 'This week’s Prop Pool slate could not be read for this session.';
     return (
       `<section class="fs-wkmod" data-module="pools" data-state="${escapeHtml(mode)}">` +
-      sectionHeading('FANTASYSTAKES POOLS') +
+      sectionHeading('FANTASYSTAKES PROP POOLS') +
       '<div class="fs-poolrows" id="fs-week-pools"></div>' +
       note(reason, { pending: true }) +
       '</section>'
@@ -465,7 +468,7 @@ function poolsModule() {
 
   return (
     `<section class="fs-wkmod" data-module="pools" data-state="${escapeHtml(mode)}">` +
-    sectionHeading(`FANTASYSTAKES POOLS · ${pools.length} THIS WEEK`) +
+    sectionHeading(`FANTASYSTAKES PROP POOLS · ${pools.length} THIS WEEK`) +
     `<div class="fs-poolrows" id="fs-week-pools">${pools.map(poolRow).join('')}</div>` +
     '</section>'
   );

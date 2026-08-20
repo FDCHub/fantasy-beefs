@@ -189,9 +189,11 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
     check('this league has no drawn Pool slate — Pool geometry not exercised',
       true, 'reported, not passed over');
   }
+  // UIRECON WAVE 1 — the locked public terms. The claim is unchanged: at the
+  // narrowest width both of Play's section labels are still drawn.
   check('the section labels survive',
-    tiny.labels.some((l) => /VERSUS/.test(l))
-    && tiny.labels.some((l) => /POOLS/.test(l)), tiny.labels.join(' | '));
+    tiny.labels.some((l) => /MATCHUPS/.test(l))
+    && tiny.labels.some((l) => /PROP POOLS/.test(l)), tiny.labels.join(' | '));
   check('vertical scrolling is intentional, on the rail',
     tiny.railScrolls === true);
   check('the attribution is present and above the navigation',

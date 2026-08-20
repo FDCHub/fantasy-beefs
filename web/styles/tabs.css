@@ -146,9 +146,17 @@
   padding: 0 var(--fs-gutter) var(--fs-space-4);
 }
 
-.fs-railsec + .fs-railsec { margin-top: var(--fs-space-2); }
-
-.fs-railsec .fs-heading { margin-top: var(--fs-space-4); }
+/* SECTION-TO-SECTION SEPARATION RIDES THE SECTION — UIRECON Wave 1.
+ *
+ * A `.fs-railsec .fs-heading { margin-top: var(--fs-space-4) }` rule stood
+ * below this one and had been dead since WP3C: `gameplay.css` loads later and
+ * sets the same property on the same selector at the same specificity, so the
+ * heading's top margin was whatever gameplay.css said and never this. Wave 1
+ * gives the heading's margins to the heading-gap primitive outright, which
+ * would have left Status's four sections separated only by the 5px below —
+ * so the separation this rule was reaching for is stated once, here, on the
+ * thing that is actually being separated. */
+.fs-railsec + .fs-railsec { margin-top: var(--fs-space-4); }
 
 .fs-railsec .fs-rail > .fs-rail__item {
   width: 216px;
@@ -170,7 +178,18 @@
   /* The teaser is the card's most expendable line. */
   .fs-carousel .fs-wcard__copy { display: none; }
 
-  .fs-carousel .fs-market { min-height: 34px; padding: 2px 0; }
+  /* THE PADDING GIVES WAY; THE TOUCH TARGET DOES NOT — UIRECON Wave 1.
+   *
+   * This rule read `min-height: 34px; padding: 2px 0`, and the 34px was both
+   * below the Rev 4.3 SS5.1/SS31 tappable floor and already dead — `gameplay.css`
+   * loads later and set the same property on the same specificity, so the cell
+   * measured 44px on a short phone regardless. Removing the number costs no
+   * height (the primitive's own floor is the 44px that was already applying)
+   * and stops the sheet from asserting a geometry the product does not use.
+   *
+   * The horizontal padding is restated because the primitive gives the cell
+   * 2px of it; only the vertical inset is what a short phone can spare. */
+  .fs-carousel .fs-market { padding: 2px var(--fs-space-1); }
 
   .fs-pool { padding: var(--fs-space-2) var(--fs-space-3); }
 

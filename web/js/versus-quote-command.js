@@ -113,7 +113,10 @@ export function explainQuoteRefusal(error) {
     return 'The postseason field is not settled for this week yet.';
   }
   if (code === 'postseason_ineligible') {
-    return 'Postseason Versus is limited to teams still on the championship '
+    // UIRECON WAVE 1 — the locked public term. This is a refusal a GM reads in
+    // the composer, so it is copy; the `postseason_ineligible` reason code it
+    // is mapped from is the server's and is untouched.
+    return 'Postseason Matchups are limited to teams still on the championship '
       + 'track.';
   }
   if (code === 'stake_below_minimum') {

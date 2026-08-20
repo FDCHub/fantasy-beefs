@@ -259,7 +259,7 @@ _assert("the activity nets are non-zero, so omitting them is a real choice",
 _assert("adding them again would change the figure — so the figure does not include them",
         R.get("currentSettleCents", 0) + act.get("netVersusCents", 0)
         + act.get("netPoolsCents", 0) != R.get("currentSettleCents"))
-_assert("My Season's Versus + Pools cell is the two nets, drawn once",
+_assert("My Season's Play Net cell is the two nets, drawn once",
         R.get("versusPlusPoolsCents") == act.get("netVersusCents", 0) + act.get("netPoolsCents", 0)
         == 12600)
 _assert("the model states the no-double-counting rule as a boundary",

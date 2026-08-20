@@ -199,8 +199,12 @@ check('the heading is the locked Rev 4.2 wording',
 // WP3C — Rev 4.3 §11 removed the redundant directional arrow. The claim is
 // otherwise unchanged: the heading states the VIEWPORT treatment (how many are
 // shown) rather than a record count, and the word SWIPE carries the affordance.
+// UIRECON WAVE 1 — the locked public term. The claim is unchanged: the
+// heading states the VIEWPORT treatment rather than a record count.
 check('the locked heading states the viewport treatment, not a record count',
-  BETS_HEADING === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE', BETS_HEADING);
+check('and it carries no public-facing Versus',
+  !BETS_HEADING.includes('VERSUS'), BETS_HEADING);
 check('and it carries no directional arrow', !BETS_HEADING.includes('↕'));
 check('the current week shows live, not settled, wagers',
   currentBets.every((c) => !c.settled));
@@ -340,7 +344,7 @@ const weekCells = [
   ['Available', 6500, '$65'],
   ['In Play', 2800, '$28'],
   ['Held', 2500, '$25'],
-  ['Weekly Min Left', 1000, '$10'],
+  ['Min Left', 1000, '$10'],
 ];
 for (const [label, cents, drawn] of weekCells) {
   check(`the week strip carries ${label} at ${drawn}`,
@@ -356,15 +360,15 @@ check('there are exactly two strips',
 
 const seasonCells = [
   ['Bet Record', '14–7'],
-  ['Versus + Pools', '+$126'],
-  ['Awards / Adj.', '+$32'],
-  ['Current Settle', '−$45'],
+  ['Play Net', '+$126'],
+  ['Season Adj', '+$32'],
+  ['Settle', '−$45'],
 ];
 for (const [label, drawn] of seasonCells) {
   check(`My Season carries ${label} at ${drawn}`,
     ledger.includes(`>${label}</div>`) && ledger.includes(drawn), drawn);
 }
-check('Current Settle is the gold cell of the My Season strip',
+check('the Settle cell is the gold cell of the My Season strip',
   /id="fs-strip-season"[\s\S]*?is-gold/.test(ledger));
 
 /* ── Ledger · section 1 ─────────────────────────────────────────────────── */
@@ -483,7 +487,7 @@ check('Net Pools is not one of them',
   !CURRENT_SETTLE_TERMS.includes('netPoolsCents'));
 check('adding the activity nets again would change the figure — so it is not done',
   r.currentSettleCents + act.netVersusCents + act.netPoolsCents !== r.currentSettleCents);
-check('My Season’s Versus + Pools is the two nets, and is not re-added',
+check('My Season’s Play Net is the two nets, and is not re-added',
   r.versusPlusPoolsCents === act.netVersusCents + act.netPoolsCents
   && r.versusPlusPoolsCents === 12600);
 

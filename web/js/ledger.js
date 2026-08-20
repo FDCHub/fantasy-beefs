@@ -246,7 +246,7 @@ function wageringSection(r) {
   const pos = r.position;
 
   const versus =
-    '<div class="fs-lgroup"><div class="fs-lgroup__head">VERSUS ACTIVITY</div>' +
+    '<div class="fs-lgroup"><div class="fs-lgroup__head">MATCHUP ACTIVITY</div>' +
     expandableRow({
       label: 'Settled wins', cents: act.settledWinsCents,
       items: VERSUS_WINS_SUPPORT, key: 'versus-wins',
@@ -255,20 +255,20 @@ function wageringSection(r) {
       label: 'Settled losses', cents: act.settledLossesCents,
       items: VERSUS_LOSSES_SUPPORT, key: 'versus-losses',
     }) +
-    ledgerRow({ label: 'Net Versus', cents: act.netVersusCents, signed: true, total: true }) +
+    ledgerRow({ label: 'Net Matchups', cents: act.netVersusCents, signed: true, total: true }) +
     '</div>';
 
   const pools =
-    '<div class="fs-lgroup"><div class="fs-lgroup__head">POOL ACTIVITY</div>' +
+    '<div class="fs-lgroup"><div class="fs-lgroup__head">PROP POOL ACTIVITY</div>' +
     expandableRow({
-      label: 'Pool payouts', cents: act.poolPayoutsCents,
+      label: 'Prop Pool payouts', cents: act.poolPayoutsCents,
       items: POOL_PAYOUTS_SUPPORT, key: 'pool-payouts',
     }) +
     expandableRow({
-      label: 'Pool entries', cents: act.poolEntriesCents,
+      label: 'Prop Pool entries', cents: act.poolEntriesCents,
       items: POOL_ENTRIES_SUPPORT, key: 'pool-entries',
     }) +
-    ledgerRow({ label: 'Net Pools', cents: act.netPoolsCents, signed: true, total: true }) +
+    ledgerRow({ label: 'Net Prop Pools', cents: act.netPoolsCents, signed: true, total: true }) +
     '</div>';
 
   const positionGroup =
@@ -314,7 +314,7 @@ function adjustmentsSection(r) {
   return ledgerSection({
     number: '3',
     title: 'SEASON ADJUSTMENTS + WINNINGS',
-    sub: 'Amounts outside ordinary Versus and Pool wagering.',
+    sub: 'Amounts outside ordinary Matchup and Prop Pool wagering.',
     body:
       ledgerRow({ label: 'Weekly Min · out of circulation', cents: adj.weeklyMinOutOfCirculationCents, signed: true }) +
       ledgerRow({ label: 'Skunk Fees', cents: adj.skunkFeesCents }) +
@@ -431,7 +431,9 @@ export function buildLedgerPanel() {
       { label: 'In Play', cents: r.position.acceptedEscrowCents,
         pending: unresolved },
       { label: 'Held', cents: heldCents, pending: unresolved },
-      { label: 'Weekly Min Left', cents: weeklyMinLeftCents(),
+      // UIRECON WAVE 1 — `Weekly Min Left` measured 93.8px against a 68px
+      // cell and wrapped, stretching every cell on both of this tab's strips.
+      { label: 'Min Left', cents: weeklyMinLeftCents(),
         pending: unresolved },
     ],
   });
@@ -446,7 +448,10 @@ export function buildLedgerPanel() {
     label: 'My season',
     cells: [
       { label: 'Bet Record', text: BET_RECORD },
-      { label: 'Versus + Pools', cents: r.versusPlusPoolsCents, signed: true },
+      // `Versus + Pools` failed both the terminology lock and the one-line
+      // budget (85.5px). `Play Net` is the net of everything played — the
+      // Matchup and Prop Pool totals this figure already sums.
+      { label: 'Play Net', cents: r.versusPlusPoolsCents, signed: true },
       // AWARDS / ADJ. IS UNRESOLVED WHENEVER THE FIGURES ARE REAL.
       //
       // The cell means expired minimum + Skunk + season winnings. P3 proved
@@ -458,9 +463,12 @@ export function buildLedgerPanel() {
       // authoritative zero nobody measured. The approved unresolved treatment
       // draws it as —, and the expandable detail below still carries the two
       // components that ARE sourced.
-      { label: 'Awards / Adj.', cents: r.adjustments.netAdjustmentsCents,
+      { label: 'Season Adj', cents: r.adjustments.netAdjustmentsCents,
         signed: true, pending: unresolved || !seasonWinningsResolved() },
-      { label: 'Current Settle', cents: r.currentSettleCents, signed: true,
+      // `Current Settle` is 80.9px and fits at 375 and 390 but not at the
+      // 320px cell. The concept keeps its full name on the card below, which
+      // is where the figure is actually derived; the cell carries the noun.
+      { label: 'Settle', cents: r.currentSettleCents, signed: true,
         gold: true, pending: unresolved },
     ],
   });

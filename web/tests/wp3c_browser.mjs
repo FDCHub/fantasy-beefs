@@ -103,7 +103,7 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
   check('no heading carries a directional arrow',
     play.headings.every((h) => !h.includes('↕')), play.headings.join(' | '));
   check('the four-cell strip is retained with its locked labels',
-    ['Net Winnings', 'Wallet', 'Weekly Min Left', 'Available']
+    ['Net Won', 'Wallet', 'Min Left', 'Available']
       .every((l) => play.stripLabels.includes(l)),
     play.stripLabels.join(' | '));
   check('the Credits disclaimer appears once', play.disclaimers === 1);
@@ -335,8 +335,10 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
     };
   `);
 
+  // UIRECON WAVE 1 — `Weekly Min Left` is labelled `Min Left`; same cell, same
+  // source. The four questions the strip answers are unchanged.
   check('the top-level strips answer what I have and what is in play',
-    ['Available', 'In Play', 'Held', 'Weekly Min Left']
+    ['Available', 'In Play', 'Held', 'Min Left']
       .every((l) => account.stripLabels.includes(l)),
     account.stripLabels.join(' | '));
   check('Current Settle is visible without expanding anything (§20)',
