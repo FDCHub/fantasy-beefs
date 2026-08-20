@@ -360,11 +360,19 @@ await withBrowser(async ({ cdp, origin }) => {
         String(Math.round(hero.ctaWidth)));
     }
 
-    /* The two compete cards sit side by side from 700px up, and both of the
-       things that make them read as a matched pair are width-dependent: the
-       three chips staying on one row, and the closing line staying on one
-       line. Line boxes are counted with a Range, because a <p> reports a
-       single client rect whether it wrapped or not. */
+    /* PARALLEL CONSTRUCTION OF THE TWO COMPETE CARDS.
+     *
+     * From 700px up the cards sit side by side, and every property that makes
+     * them read as one template is width-dependent and invisible in a diff:
+     * equal height, chip rows on one line AND on the same line as each other,
+     * closing lines on one line and on the same baseline, and identical
+     * computed type in both. The cards' copy wraps differently, so all of this
+     * is held by the card grid rather than by sentence length - which is
+     * exactly why it needs measuring rather than reading.
+     *
+     * Line boxes are counted with a Range: a <p> reports one client rect
+     * whether it wrapped or not, so `getClientRects().length` on the element
+     * would always say 1 and prove nothing. */
     if (vp.width >= 700) {
       const cards = await evaluate(cdp, `
         function lineCount(el) {
@@ -372,23 +380,42 @@ await withBrowser(async ({ cdp, origin }) => {
           range.selectNodeContents(el);
           return range.getClientRects().length;
         }
+        function type(el) {
+          if (!el) return null;
+          var s = getComputedStyle(el);
+          return [s.fontFamily, s.fontSize, s.fontWeight, s.fontStyle,
+                  s.lineHeight, s.color].join(' | ');
+        }
+        function round(n) { return Math.round(n * 100) / 100; }
         var out = [];
         var articles = document.querySelectorAll('#two-ways .card');
         for (var i = 0; i < articles.length; i += 1) {
-          var chips = articles[i].querySelectorAll('.chip');
+          var card = articles[i];
+          var chips = card.querySelectorAll('.chip');
           var top = chips.length ? chips[0].getBoundingClientRect().top : 0;
           var oneRow = chips.length > 0;
           for (var j = 1; j < chips.length; j += 1) {
             if (Math.abs(chips[j].getBoundingClientRect().top - top) > 1) oneRow = false;
           }
-          var note = articles[i].querySelector('.card__note');
+          var note = card.querySelector('.card__note');
+          var body = card.querySelector('p:not([class])');
+          var odds = card.querySelector('.odds');
+          var box = card.getBoundingClientRect();
           out.push({
-            pill: (articles[i].querySelector('.pill') || {}).textContent || '',
+            pill: (card.querySelector('.pill') || {}).textContent || '',
+            pillType: type(card.querySelector('.pill')),
+            headingType: type(card.querySelector('h3')),
             chips: chips.length,
             chipsOnOneRow: oneRow,
+            chipType: type(chips[0]),
+            chipRowTop: odds ? round(odds.getBoundingClientRect().top) : null,
             note: note ? note.textContent.trim() : null,
             noteLines: note ? lineCount(note) : 0,
-            width: articles[i].getBoundingClientRect().width
+            noteTop: note ? round(note.getBoundingClientRect().top) : null,
+            noteType: type(note),
+            bodyType: type(body),
+            height: round(box.height),
+            width: round(box.width)
           });
         }
         return out;
@@ -406,12 +433,67 @@ await withBrowser(async ({ cdp, origin }) => {
           `${card.noteLines} lines for "${card.note}" in ${Math.round(card.width)}px`,
         );
       }
-      check(
-        cards.length === 2 && cards[0].width === cards[1].width,
-        'the two cards are the same width',
-        cards.map((c) => Math.round(c.width)).join(' vs '),
-      );
+
+      if (cards.length === 2) {
+        const [a, b] = cards;
+        /* Geometry. Each of these was measurably wrong before the card grid:
+           the chip rows and closing lines sat 32px apart at all three widths. */
+        check(a.width === b.width, 'the two cards are the same width',
+          `${a.width} vs ${b.width}`);
+        check(a.height === b.height, 'the two cards are the same height',
+          `${a.height} vs ${b.height}`);
+        check(a.chipRowTop === b.chipRowTop,
+          'both chip rows sit on the same line',
+          `${a.chipRowTop} vs ${b.chipRowTop}`);
+        check(a.noteTop === b.noteTop,
+          'both closing lines sit on the same baseline',
+          `${a.noteTop} vs ${b.noteTop}`);
+
+        /* Typography. Same template means the same computed type and colour,
+           not merely the same class names in the markup. */
+        for (const [what, left, right] of [
+          ['pill', a.pillType, b.pillType],
+          ['heading', a.headingType, b.headingType],
+          ['body copy', a.bodyType, b.bodyType],
+          ['chips', a.chipType, b.chipType],
+          ['closing line', a.noteType, b.noteType],
+        ]) {
+          check(left !== null && left === right,
+            `both cards render ${what} with identical type and colour`,
+            `${left} VS ${right}`);
+        }
+      }
     }
+
+    /* THE CLOSING TAGLINE IS CENTRED ON THE SECTION, not on its own box.
+       Measured with a Range over the text, because the element box can be
+       centred while the words inside it are not - and it can equally be
+       off-centre while `text-align: center` makes it look composed. This was
+       92px left of centre at every desktop width before the fix. */
+    const tagline = await evaluate(cdp, `
+      var close = document.querySelector('.close');
+      var wrap = close.querySelector('.wrap');
+      var tag = close.querySelector('.tagline');
+      var range = document.createRange();
+      range.selectNodeContents(tag);
+      var text = range.getBoundingClientRect();
+      var column = wrap.getBoundingClientRect();
+      return {
+        offset: ((text.left + text.right) / 2) - ((column.left + column.right) / 2),
+        text: tag.textContent.trim(),
+        lines: range.getClientRects().length
+      };
+    `);
+    check(
+      Math.abs(tagline.offset) <= 1,
+      'the closing tagline is centred on the section',
+      `${Math.round(tagline.offset)}px off centre`,
+    );
+    check(
+      tagline.text === 'Real odds. Sportsbook action. More ways to win.',
+      'the closing tagline is the locked line',
+      tagline.text,
+    );
 
     /* Anchor scrolling has to land the heading clear of the sticky topbar. */
     const anchored = await evaluate(cdp, `
@@ -432,6 +514,67 @@ await withBrowser(async ({ cdp, origin }) => {
     const shot = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(join(OUT, `home-${vp.label}.png`), Buffer.from(shot.data, 'base64'));
   }
+
+  /* ── The footer is navigation and the contractual line ───────────────── */
+  console.log('\nFooter');
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1024, height: 800, deviceScaleFactor: 1, mobile: false,
+  });
+  await goto(cdp, `${origin}/`, 500);
+  const footer = await evaluate(cdp, `
+    var f = document.querySelector('.footer');
+    var close = document.querySelector('.close');
+    var links = f.querySelectorAll('.footer__links a');
+    var labels = [];
+    for (var i = 0; i < links.length; i += 1) labels.push(links[i].textContent.trim());
+    var bottom = f.querySelector('.footer__bottom');
+    var rows = bottom ? bottom.querySelectorAll('p') : [];
+    return {
+      height: Math.round(f.getBoundingClientRect().height),
+      closeHeight: Math.round(close.getBoundingClientRect().height),
+      labels: labels,
+      bottomRows: rows.length,
+      attributionHref: (f.querySelector('.attribution a') || {}).href || '',
+      paragraphs: f.querySelectorAll('p').length,
+      text: f.textContent
+    };
+  `);
+  /* Whitespace is collapsed HERE, not in the page. `\s` inside a template
+     literal is not a recognised escape, so it reaches the browser as a bare
+     `s` and the regex quietly deletes every letter s in the footer. */
+  footer.text = footer.text.replace(/\s+/g, ' ').trim();
+
+  check(
+    footer.labels.join(' | ') === 'How to Play | FAQ | Terms | Privacy | Contact',
+    'the footer nav is the locked five, in order',
+    footer.labels.join(' | '),
+  );
+  check(footer.paragraphs === 2,
+    'the footer carries two lines: the attribution and the copyright',
+    String(footer.paragraphs));
+  check(footer.bottomRows === 2, 'the bottom row has both halves', String(footer.bottomRows));
+  check(
+    footer.attributionHref === 'https://football.fantasysports.yahoo.com/',
+    'the Yahoo attribution is still a link to Yahoo Fantasy',
+    footer.attributionHref,
+  );
+  check(footer.text.includes('Fantasy data provided by Yahoo Fantasy'),
+    'the contractual attribution string is intact');
+  check(footer.text.includes('\u00a9 2026 FantasyStakes'),
+    'the copyright line is intact');
+  /* Everything the final visual lock took out. */
+  for (const retired of [
+    'FANTASYSTAKES',
+    'Fantasy Stakes for Fantasy Leagues',
+    'No house. No vig. No cash. Only FantasyStakes.',
+    'Credits have no cash value',
+  ]) {
+    check(!footer.text.includes(retired), `the footer no longer restates "${retired}"`);
+  }
+  check(!/rights reserved/i.test(footer.text), 'the footer does not say All Rights Reserved');
+  check(footer.height < footer.closeHeight / 4,
+    'the footer is subordinate to the closing call to action',
+    `footer ${footer.height} vs close ${footer.closeHeight}`);
 
   /* ── Reduced motion is honoured ───────────────────────────────────────── */
   console.log('\nPreferences');

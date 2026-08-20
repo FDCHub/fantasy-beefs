@@ -307,6 +307,28 @@ a { color: inherit; text-underline-offset: 3px; }
   border: 1px solid var(--card-line);
   border-radius: var(--radius);
   padding: 22px;
+
+  /* PARALLEL CONSTRUCTION, HELD STRUCTURALLY RATHER THAN BY COPY LENGTH.
+   *
+   * The two cards carry a heading and a paragraph of different lengths - one
+   * wraps to two lines where the other takes one - so in normal flow their
+   * chip rows and their closing lines landed 32px apart at every desktop
+   * width. Matching them by trimming a sentence would hold only until the next
+   * copy edit.
+   *
+   * The five parts are grid rows and the BODY COPY IS THE ONLY ONE ALLOWED TO
+   * GROW, so it absorbs the difference: the chip row and the closing line are
+   * then a fixed distance from the bottom of the card, and `.card-grid`
+   * already stretches both cards to a single height. Rows are auto-placed in
+   * source order - pill, heading, body, chips, closing line - which is what
+   * `test_the_two_cards_are_structurally_parallel` pins.
+   *
+   * Margins are left on the children rather than replaced by `row-gap`: grid
+   * items do not collapse margins, but every adjacent pair here already has a
+   * zero on one side, so the POR's spacing rhythm survives the change exactly.
+   */
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
 }
 .card h3 { margin: 0; color: var(--ivory); font-size: var(--t-card-title); }
 .card p  { margin-top: 10px; font-size: var(--t-card); color: var(--ink-card); }
@@ -325,6 +347,9 @@ a { color: inherit; text-underline-offset: 3px; }
   font-weight: 850; font-size: var(--t-eyebrow); line-height: 1.2;
   letter-spacing: .02em;
   margin: 0 0 14px;
+  /* Grid blockifies its items, turning this `inline-flex` into `flex` - which
+     would stretch a shrink-to-fit label the full width of the card. */
+  justify-self: start;
 }
 
 /* The line that closes BOTH cards - the claim the chips above it illustrate.
@@ -402,7 +427,13 @@ a { color: inherit; text-underline-offset: 3px; }
 .close h2 { font-size: var(--t-close); line-height: 1.04; letter-spacing: -.025em; }
 .close p { max-width: 520px; margin-left: auto; margin-right: auto; }
 .close .tagline {
-  margin: 22px 0 0;
+  /* `auto` SIDE MARGINS, NOT `0`. `.close p` above gives the closing copy a
+     520px measure and centres it with auto margins; this rule is more specific
+     and its shorthand was resetting those margins to zero, which left a 520px
+     box pinned to the left of a 704px column. `text-align: center` then centred
+     the words inside that box rather than inside the section - 92px left of
+     true centre at every desktop width, close enough to look intentional. */
+  margin: 22px auto 0;
   font-size: var(--t-lede); font-weight: 800; color: var(--gold2);
 }
 
@@ -412,6 +443,10 @@ a { color: inherit; text-underline-offset: 3px; }
  * stays the only saturated gold shape on the page. Each block is labelled
  * `role="img"` so a screen reader is told what the illustration shows instead
  * of reading a column of stray numbers. */
+/* ONE CHIP TREATMENT, BOTH CARDS. The markets and the pool names used to be
+   drawn differently - gold against a quiet grey - which read as two different
+   kinds of thing sitting in the same template. The `.chip--quiet` modifier
+   went with the difference; nothing selects it any more. */
 .odds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .chip {
   display: inline-flex; align-items: center; justify-content: center;
@@ -422,7 +457,6 @@ a { color: inherit; text-underline-offset: 3px; }
   font-family: var(--font-num); font-size: .8125rem; font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.chip--quiet { color: var(--ink-card); border-color: var(--hairline-2); background: rgba(255, 255, 255, .02); }
 
 .ledger { margin-top: 20px; }
 .ledger__row {
@@ -448,25 +482,30 @@ a { color: inherit; text-underline-offset: 3px; }
 }
 .figure__n { font-size: var(--t-fine); color: var(--ink-fine); }
 
-/* -- Footer (POR) -------------------------------------------------------- */
+/* -- Footer -------------------------------------------------------------- *
+ * UTILITY ONLY. Two rows: the five destinations, and the contractual line
+ * beside the copyright. The brand restatement, the descriptor, the claim and
+ * the credit disclaimer that used to sit between them were the reason a legal
+ * block read as one more content section directly under the closing call to
+ * action - and every one of them says something the page has already said.
+ *
+ * WHAT MAY NEVER LEAVE THIS BLOCK is the Yahoo attribution: the string is
+ * fixed by the Yahoo API Access and Use Agreement and is asserted character
+ * for character on every page. The virtual-credit disclaimer moved rather than
+ * vanished - it is the first paragraph of the Virtual credits section and an
+ * FAQ answer on the homepage, and its own clause in the Terms. */
 .footer {
-  padding: 28px 0 38px;
+  padding: 18px 0 22px;
   color: var(--ink-fine); font-size: var(--t-fine);
   border-top: 1px solid var(--hairline);
 }
-.footer__links { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 14px; }
-.footer__links a { text-decoration: none; color: var(--ink-link); font-weight: 700; }
+.footer__links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; }
+.footer__links a { text-decoration: none; color: var(--ink-link); font-weight: 700; font-size: var(--t-fine); }
 .footer__links a:hover, .footer__links a:focus-visible { color: var(--ivory); text-decoration: underline; }
-.footer__word { font-size: 1.375rem; font-weight: 900; letter-spacing: .02em; text-transform: uppercase; }
-.footer__word .fantasy { color: var(--ivory); }
-.footer__word .stakes  { color: var(--gold); }
-.footer__descriptor { margin-top: 4px; color: var(--muted); font-size: var(--t-card); font-weight: 650; }
-.footer__claim { margin-top: 16px; color: var(--ivory); font-weight: 800; font-size: var(--t-card); }
-.footer__fine { margin-top: 10px; max-width: 52ch; }
 .footer__bottom {
-  margin-top: 20px; padding-top: 16px;
+  margin-top: 0; padding-top: 12px;
   border-top: 1px solid var(--hairline);
-  display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between;
+  display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between;
 }
 /* The Yahoo attribution is a contractual string. It states a data source and
    nothing else - no mark, no logo, no endorsement language. */

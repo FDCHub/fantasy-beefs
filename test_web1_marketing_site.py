@@ -176,9 +176,13 @@ LOCKED_COPY = [
     # 15 Final CTA
     "Your league already has the rivalries. FantasyStakes gives you more ways "
     "to settle them.",
-    # 16 Footer
+    # 14 Footer - the descriptor is the hero lockup's, which the footer no
+    # longer restates. "No house. No vig. No cash. Only FantasyStakes." left
+    # the site with the footer claim; the FAQ still answers the house question
+    # directly, which is where a reader looks for it.
     "Fantasy Stakes for Fantasy Leagues",
-    "No house. No vig. No cash. Only FantasyStakes.",
+    "Fantasy data provided by Yahoo Fantasy",
+    "© 2026 FantasyStakes",
 ]
 
 #: The seven locked FAQ entries, question then answer, both verbatim.
@@ -575,9 +579,12 @@ def test_the_two_cards_are_structurally_parallel():
     shapes = []
     for card in cards:
         found = re.findall(
-            r'<p class="(pill|card__note)"|<(h3)>|<div class="(odds)"', card)
+            r'<p class="(pill|card__note)"|<(h3)>|<(p)>|<div class="(odds)"', card)
         shapes.append([next(part for part in match if part) for match in found])
-    assert shapes[0] == shapes[1] == ["pill", "h3", "odds", "card__note"], shapes
+    # Five parts, in this order, in both cards. The order is what the card grid
+    # places against `grid-template-rows`, so a reordering here is a silent
+    # alignment defect rather than a cosmetic one.
+    assert shapes[0] == shapes[1] == ["pill", "h3", "p", "odds", "card__note"], shapes
     for card in cards:
         assert card.count("<h3>") == 1
         assert card.count('<div class="odds"') == 1
@@ -590,9 +597,170 @@ def test_the_two_cards_are_structurally_parallel():
     )
 
 
-def test_the_retired_pool_legend_is_gone_from_the_stylesheet_too():
-    """A rule nobody selects is a rule the next reader has to rule out."""
-    assert ".card__key" not in read("styles/site.css")
+@pytest.mark.parametrize("retired", [".card__key", ".chip--quiet"])
+def test_retired_card_rules_are_gone_from_the_stylesheet_too(retired):
+    """A rule nobody selects is a rule the next reader has to rule out.
+
+    `.card__key` styled the pool legend that the branded names replaced.
+    `.chip--quiet` drew the pool chips differently from the market chips, and
+    that difference is what the parallel-construction pass removed - the two
+    cards now share one chip treatment.
+
+    COMMENTS ARE STRIPPED BEFORE THE CHECK. A note explaining why a rule was
+    removed is worth keeping, and naming the selector is how that note is
+    useful; only a live RULE is a defect here.
+    """
+    stylesheet = re.sub(r"/\*.*?\*/", "", read("styles/site.css"), flags=re.S)
+    assert retired not in stylesheet
+
+
+def test_the_cards_hold_their_alignment_structurally_not_by_copy_length():
+    """The parallel construction is a layout rule, not a lucky sentence length.
+
+    Before this, the two cards' chip rows and closing lines sat 32px apart at
+    every desktop width, because one card's heading and paragraph wrap where
+    the other's do not. Trimming copy until they matched would have held only
+    until the next edit. The card is a five-row grid whose THIRD row - the body
+    copy - is the only one that grows, so the difference is absorbed there and
+    the chips and the closing line stay pinned to the bottom of both cards.
+
+    `preview_check.mjs` measures the outcome in a real browser at 768, 1024 and
+    1440. This asserts the mechanism is still the one producing it.
+    """
+    css = read("styles/site.css")
+    card = re.search(r"\n\.card \{(.*?)\n\}", css, re.S)
+    assert card, "the .card rule is missing"
+    block = card.group(1)
+    assert "display: grid" in block, "the card is no longer a grid"
+    assert "grid-template-rows: auto auto 1fr auto auto" in block, (
+        "the card's growing body row is gone; the chip rows will drift apart "
+        "again the moment the two cards' copy wraps differently"
+    )
+    # Grid blockifies its items, so the shrink-to-fit pill needs saying.
+    pill = re.search(r"\n\.pill,\n\.card \.pill \{(.*?)\n\}", css, re.S)
+    assert pill and "justify-self: start" in pill.group(1), (
+        "the gold pill will stretch the full width of the card"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 2b. The footer is utility and legal, not another content section
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("rel", PAGES)
+def test_the_copyright_line_is_exact(rel, parsed):
+    """The one form of the notice, on every page."""
+    assert "© 2026 FantasyStakes" in parsed[rel].text, (
+        f"{rel} does not carry the copyright line"
+    )
+
+
+@pytest.mark.parametrize("rel", PAGES)
+def test_no_all_rights_reserved(rel):
+    """Deliberately absent. It is legally inert boilerplate and it is not ours.
+
+    Checked against the raw source rather than the extracted text so a copy
+    hiding in a comment or an attribute is caught too.
+    """
+    assert "rights reserved" not in read(rel).lower(), (
+        f"{rel} carries 'All Rights Reserved'"
+    )
+
+
+#: The five footer destinations, in order. The set is exact: a sixth link is a
+#: navigation decision and a missing one is a dead end from every page.
+FOOTER_NAV = ["How to Play", "FAQ", "Terms", "Privacy", "Contact"]
+
+#: Everything the final visual lock took OUT of the footer. None of it may come
+#: back there - each line is said better somewhere else on the page, or, in the
+#: case of the claim, is answered directly by the FAQ.
+RETIRED_FOOTER_COPY = [
+    "footer__word",
+    "footer__descriptor",
+    "footer__claim",
+    "footer__fine",
+    "No house. No vig. No cash. Only FantasyStakes.",
+]
+
+
+def _footer(rel: str) -> str:
+    match = re.search(r'<footer class="footer">.*?</footer>', read(rel), re.S)
+    assert match, f"{rel} has no footer"
+    return match.group(0)
+
+
+@pytest.mark.parametrize("rel", PAGES)
+def test_the_footer_nav_is_the_locked_five(rel):
+    """Same five destinations, same order, on every page."""
+    nav = re.search(r'<nav class="footer__links".*?</nav>', _footer(rel), re.S)
+    assert nav, f"{rel} has no footer navigation"
+    links = re.findall(r"<a href=\"([^\"]+)\">(.*?)</a>", nav.group(0))
+    assert [label for _, label in links] == FOOTER_NAV, links
+    # From a subdirectory the two in-page destinations must be absolute.
+    prefix = "" if rel == "index.html" else "/"
+    assert links[0][0] == f"{prefix}#how-to-play", links[0]
+    assert links[1][0] == f"{prefix}#faq", links[1]
+
+
+@pytest.mark.parametrize("rel", PAGES)
+def test_the_footer_is_navigation_and_the_contractual_line_and_nothing_else(rel):
+    """Two rows. The destinations, then the attribution beside the copyright."""
+    block = _footer(rel)
+    collector = Collector()
+    collector.feed(block)
+    text = collector.text
+
+    for required in FOOTER_NAV + [YAHOO_ATTRIBUTION, "© 2026 FantasyStakes"]:
+        assert required in text, f"{rel} footer lost {required!r}"
+
+    # The Yahoo link itself, not just the words.
+    assert ('<a href="https://football.fantasysports.yahoo.com/" '
+            'rel="noopener nofollow">Yahoo Fantasy</a>') in block, (
+        f"{rel} footer no longer links the attribution"
+    )
+    assert block.count("<p") == 2, (
+        f"{rel} footer carries {block.count('<p')} paragraphs; expected the "
+        f"attribution and the copyright and nothing else"
+    )
+
+
+@pytest.mark.parametrize("retired", RETIRED_FOOTER_COPY)
+@pytest.mark.parametrize("rel", PAGES)
+def test_the_retired_footer_content_stays_out(rel, retired):
+    """What the final visual lock removed does not creep back in."""
+    assert retired not in _footer(rel), f"{rel} footer carries {retired!r} again"
+
+
+@pytest.mark.parametrize("retired", ["footer__word", "footer__descriptor",
+                                     "footer__claim", "footer__fine"])
+def test_the_retired_footer_rules_are_gone_from_the_stylesheet_too(retired):
+    """No markup selects them any more, so no rule should define them."""
+    stylesheet = re.sub(r"/\*.*?\*/", "", read("styles/site.css"), flags=re.S)
+    assert retired not in stylesheet
+
+
+def test_the_closing_tagline_is_centred_on_the_section_not_on_its_own_box():
+    """The tagline's auto side margins, which a shorthand had been resetting.
+
+    `.close p` gives the closing copy a 520px measure and centres it with auto
+    margins. `.close .tagline` is more specific, and its `margin` shorthand set
+    the side margins to zero while the 520px measure still applied - so a 520px
+    box sat hard against the left of a 704px column and `text-align: center`
+    centred the words inside THAT. The result was 92px left of true centre at
+    every desktop width: wrong, but symmetrical enough to read as deliberate.
+
+    `preview_check.mjs` measures the rendered offset at 768, 1024 and 1440.
+    """
+    css = read("styles/site.css")
+    rule = re.search(r"\.close \.tagline \{(.*?)\n\}", css, re.S)
+    assert rule, "the closing tagline rule is missing"
+    block = rule.group(1)
+    assert re.search(r"margin:\s*22px auto 0", block), (
+        "the tagline's side margins are not auto; it will sit off-centre"
+    )
+    assert not re.search(r"margin:\s*\d+px 0 ", block), (
+        "the tagline margin shorthand zeroes the side margins again"
+    )
 
 
 @pytest.mark.parametrize("placeholder", [
@@ -709,12 +877,35 @@ def test_no_real_money_claims(rel):
         assert phrase not in body, f"{rel} makes a forbidden claim: {phrase!r}"
 
 
-def test_the_virtual_credit_disclaimer_is_on_every_footer_page(parsed):
-    disclaimer = ("FantasyStakes is played entirely with virtual credits. "
-                  "Credits have no cash value and cannot be purchased, "
-                  "deposited, withdrawn or redeemed.")
-    for rel in FOOTER_PAGES:
-        assert disclaimer in parsed[rel].text, f"{rel} is missing the credit disclaimer"
+#: The disclaimer, verbatim. It used to sit in the footer of every page; the
+#: final visual lock reduced the footer to navigation and the contractual line,
+#: so this now has to be asserted where it actually lives.
+CREDIT_DISCLAIMER = ("FantasyStakes is played entirely with virtual credits. "
+                     "Credits have no cash value and cannot be purchased, "
+                     "deposited, withdrawn or redeemed.")
+
+
+def test_the_virtual_credit_disclaimer_is_stated_where_the_product_is_described(parsed):
+    """The disclaimer moved out of the footer. It did not leave the site.
+
+    THE TWO PAGES THAT MAKE CLAIMS ABOUT THE PRODUCT ARE THE TWO THAT MUST
+    CARRY IT. The homepage states it as the first paragraph of the Virtual
+    credits section - above the fold of that section rather than in fine print
+    under everything - and the Terms state it in their own Virtual credits
+    clause. `privacy/`, `contact/` and `404` describe no product and make no
+    claim about credits, which is why a footer repetition on them was never
+    what made this true.
+    """
+    assert CREDIT_DISCLAIMER in parsed["index.html"].text, (
+        "the homepage no longer states the virtual-credit disclaimer"
+    )
+    assert CREDIT_DISCLAIMER in parsed["terms/index.html"].text, (
+        "the Terms no longer state the virtual-credit disclaimer"
+    )
+    # And the homepage says it a second time, in the reader's own words.
+    assert ("Virtual credits are how FantasyStakes keeps score. They track "
+            "competition results and have no cash value. They cannot be "
+            "purchased, deposited, withdrawn or redeemed.") in parsed["index.html"].text
 
 
 # ---------------------------------------------------------------------------
