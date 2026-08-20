@@ -53,3 +53,8 @@ step6b_run.txt
 # decision, matching the exact-name convention on lines 28-30. See vol. II 23.2.
 /spec/FantasyBeefs_Findings_Register_Delta_2026-07-30.md
 /spec/FantasyBeefs_Findings_Register_Delta_2026-07-31.md
+
+# Cloudflare Wrangler local state (WEB-2a). Created by `wrangler dev` and
+# `wrangler deploy --dry-run`; it is a local cache and build scratch area,
+# never deployment input.
+.wrangler/

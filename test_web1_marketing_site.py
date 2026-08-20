@@ -864,6 +864,93 @@ def test_there_is_no_cookie_banner_because_there_are_no_cookies():
 
 
 # ---------------------------------------------------------------------------
+# 9b. The Cloudflare Workers Static Assets deployment configuration (WEB-2a)
+# ---------------------------------------------------------------------------
+
+WRANGLER = REPO / "wrangler.jsonc"
+
+
+def _wrangler_config() -> dict:
+    """Parse wrangler.jsonc.
+
+    JSONC is JSON plus comments. The file uses only whole-line `//` comments, so
+    stripping those is enough and avoids taking a dependency on a JSONC parser
+    to read a nine-line config.
+    """
+    import json
+    lines = []
+    for line in WRANGLER.read_text(encoding="utf-8").splitlines():
+        if line.lstrip().startswith("//"):
+            continue
+        lines.append(line)
+    return json.loads("\n".join(lines))
+
+
+def test_the_worker_config_exists_and_parses():
+    assert WRANGLER.is_file(), "wrangler.jsonc is missing"
+    assert isinstance(_wrangler_config(), dict)
+
+
+def test_the_worker_serves_the_publish_root():
+    config = _wrangler_config()
+    assert config["name"] == "fantasystakes-marketing"
+    assert config["assets"]["directory"] == "./site"
+    # The declared directory must actually be the publish root, not a path that
+    # merely looks right.
+    resolved = (REPO / config["assets"]["directory"].lstrip("./")).resolve()
+    assert resolved == SITE.resolve(), f"assets.directory resolves to {resolved}"
+    assert (resolved / "index.html").is_file()
+
+
+def test_the_compatibility_date_is_sane():
+    """A real, past ISO date. A future one is rejected by the Workers runtime."""
+    import datetime
+    value = _wrangler_config()["compatibility_date"]
+    parsed = datetime.date.fromisoformat(value)
+    assert parsed <= datetime.date.today(), f"compatibility_date {value} is in the future"
+    assert parsed.year >= 2024, f"compatibility_date {value} is implausibly old"
+
+
+def test_the_worker_config_stays_assets_only():
+    """No script, so no binding, and none of the superseded models.
+
+    `main` would name a Worker entrypoint that does not exist and fail the
+    build; `assets.binding` is only meaningful alongside `main`;
+    `pages_build_output_dir` is Pages-only; `site`/`bucket` is the deprecated
+    Workers Sites model that `assets` replaced.
+    """
+    config = _wrangler_config()
+    for key in ("main", "pages_build_output_dir", "site", "bucket", "routes", "route"):
+        assert key not in config, f"wrangler.jsonc should not set {key!r}"
+    assert "binding" not in config["assets"], (
+        "assets.binding requires a Worker script; this deployment has none"
+    )
+
+
+def test_the_worker_config_carries_no_credentials_or_local_paths():
+    """Nothing account-identifying, nothing machine-specific, ever committed."""
+    raw = WRANGLER.read_text(encoding="utf-8")
+    config = _wrangler_config()
+    for key in ("account_id", "api_token", "vars", "secrets"):
+        assert key not in config, f"wrangler.jsonc must not carry {key!r}"
+    for needle in ("C:\\", "C:/", "/Users/", "Downloads", "file://", "CLOUDFLARE_", "\\\\"):
+        assert needle not in raw, f"wrangler.jsonc contains {needle!r}"
+
+
+def test_no_custom_domain_is_attached_by_configuration():
+    """WEB-2a is preview only: the apex must not be claimed from the repo."""
+    raw = WRANGLER.read_text(encoding="utf-8").lower()
+    config = _wrangler_config()
+    assert "routes" not in config and "route" not in config
+    for line in raw.splitlines():
+        if line.lstrip().startswith("//"):
+            continue
+        assert "fantasystakesapp.com" not in line, (
+            "a custom domain is referenced outside a comment"
+        )
+
+
+# ---------------------------------------------------------------------------
 # 10. Fidelity to the approved visual POR (WEB-1a)
 # ---------------------------------------------------------------------------
 

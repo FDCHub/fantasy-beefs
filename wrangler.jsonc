@@ -1,0 +1,40 @@
+// ============================================================================
+// FantasyStakes marketing site - Cloudflare Workers Static Assets
+//
+// WHAT THIS DEPLOYS. The static marketing site in ./site, and nothing else.
+// There is no Worker script: an assets-only Worker serves the directory
+// directly from Cloudflare's edge, which is what a site with no backend, no
+// build step and no dependencies actually needs.
+//
+// WHY THIS FILE EXISTS AT ALL. Cloudflare's current dashboard exposes the
+// Worker Git deployment flow rather than the Pages project flow, and that flow
+// reads its configuration from the repository instead of from dashboard fields.
+// The three keys below are the whole configuration.
+//
+// DELIBERATELY ABSENT, each one a thing that would be wrong here:
+//
+//   main            no Worker script exists; naming one would fail the build
+//   assets.binding  only meaningful when a Worker script needs to fetch assets
+//                   programmatically, which requires `main`
+//   pages_build_output_dir
+//                   Pages-only, and this is a Worker
+//   site / bucket   the deprecated Workers Sites model, superseded by `assets`
+//   account_id      an account identifier is a credential-adjacent value and
+//                   belongs in the dashboard or the environment, never in a
+//                   committed file
+//   routes / custom domains
+//                   WEB-2a is preview only. fantasystakesapp.com is NOT
+//                   attached here, and no DNS is touched.
+//
+// `_headers` and `_redirects` live inside ./site and are read by Workers Static
+// Assets from the assets directory; they are applied as configuration rather
+// than served as files, so the security headers and the www rule certified in
+// WEB-1 carry over unchanged.
+// ============================================================================
+{
+  "name": "fantasystakes-marketing",
+  "compatibility_date": "2026-08-19",
+  "assets": {
+    "directory": "./site"
+  }
+}
