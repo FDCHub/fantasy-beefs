@@ -247,24 +247,17 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
     `));
 
     if (composer.opened) {
-      report.check('the composer offers an authoritative opponent selector',
-        composer.options.length > 0, JSON.stringify(composer.options));
+      // NO SECOND OPPONENT PICKER. A Versus card represents ONE opponent and
+      // carries that opponent's served team id into the composer, so the target
+      // is settled before the sheet is drawn. `beginSession` honours the id
+      // only if it appears in the served list, which is the property S8-P4C-2R
+      // exists to protect — and `wp3c1_browser.mjs` certifies at the write
+      // boundary that this same id is what arrives as `challenged_team_id`.
+      // Asking again here would offer a way to answer a settled question a
+      // second time, which is the defect rather than the safeguard.
+      report.check('the composer does not ask for an opponent the card already named',
+        composer.options.length === 0, JSON.stringify(composer.options));
 
-      // EVERY OPTION IS A SERVED TEAM ID. Compared against the read model's own
-      // `opponents`, so an option sourced from the fixture would show up here
-      // as an id the server never named.
-      const servedIds = served.opponents.map((o) => o.team_id).sort();
-      const offeredIds = composer.options.map((o) => o.teamId).sort();
-      report.check('every option is a team the SERVER named',
-        JSON.stringify(offeredIds) === JSON.stringify(servedIds),
-        `offered ${JSON.stringify(offeredIds)} vs served ${JSON.stringify(servedIds)}`);
-      // WP3C — OPENING FROM A DISCOVERY CARD ALREADY NAMES THE TARGET, so the
-      // outstanding reason is now the stake rather than the opponent. Play
-      // discovers the SERVED opponent list (§4), so a card carries a real
-      // `team_id` and `beginSession` honours it — still only if it appears in
-      // that list, which is the property §3 exists to protect and which the
-      // `every option is a team the SERVER named` check above still asserts.
-      //
       // Send is STILL refused, and that is the claim: a composer with a target
       // but no stake cannot send either.
       report.check('and Send is refused until the wager is complete',
@@ -275,21 +268,35 @@ await withPage({ port: 9371, settleMs: 1600 }, async ({ evaluate }) => {
         + 'card already named one',
         !/choose who/i.test(composer.why), composer.why);
 
-      // SPOOFING THE DISPLAY TEXT CHANGES NOTHING. The fixture's opponent name
-      // is rewritten in the DOM and the selector's ids are re-read: if any
-      // authority still flowed through display text, the target would move.
+      // SPOOFING THE DISPLAY TEXT CHANGES NOTHING, and that claim survives the
+      // selector's removal because it never depended on it. The card identity
+      // and the sheet title are rewritten in the DOM, then the composer is made
+      // to REDRAW FROM ITS OWN STATE by touching a market. The target lives in
+      // that state as a served team id, so the redraw restores the name the
+      // SERVER gave and the injected text survives nowhere. If any authority
+      // still flowed through display text, the spoof would be read back.
       const spoofed = await evaluate(asyncProbe(`
         document.querySelectorAll('.fs-wcard__identity').forEach((el) => {
           el.textContent = 'TOTALLY DIFFERENT TEAM';
         });
         const title = document.querySelector('.fs-sheet__title');
         if (title) title.textContent = 'TOTALLY DIFFERENT TEAM';
-        return [...document.querySelectorAll('[data-composer-opponent]')]
-          .map((b) => Number(b.dataset.composerOpponent)).sort();
+        const market = document.querySelector('#fs-sheet [data-composer-market]');
+        if (market) market.click();
+        await new Promise((r) => setTimeout(r, 250));
+        const redrawn = document.querySelector('.fs-sheet__title');
+        return {
+          title: redrawn ? redrawn.textContent.trim() : '',
+          options: document.querySelectorAll('[data-composer-opponent]').length,
+        };
       `));
+      const servedNames = served.opponents.map((o) => o.team_name);
       report.check('renaming the displayed identity cannot move the target',
-        JSON.stringify(spoofed) === JSON.stringify(servedIds),
-        `after spoof ${JSON.stringify(spoofed)}`);
+        !/TOTALLY DIFFERENT TEAM/.test(spoofed.title)
+        && servedNames.some((n) => spoofed.title.includes(n)),
+        `after spoof "${spoofed.title}" vs served ${JSON.stringify(servedNames)}`);
+      report.check('and no opponent picker appears for a spoof to steer',
+        spoofed.options === 0, String(spoofed.options));
     } else {
       // The League tap did not open a composer in this build. Reported rather
       // than skipped silently — an unopened composer proves nothing either way,

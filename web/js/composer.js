@@ -495,13 +495,18 @@ export function composerSheet() {
  * renders nothing and the locked Rev 4.2 composer is unchanged: the fixture
  * opens against one matchup and stays that way.
  *
- * IN PRODUCTION IT IS REQUIRED. The League card that opened this composer is
- * still illustrative until P4C-3, so it carries no authority to hand over — and
- * rather than let its display name stand in for one, the composer asks. `Send`
- * stays disabled until a real team is chosen.
+ * IN PRODUCTION THIS IS A FALLBACK ONLY. A Versus card carries the opponent's
+ * authoritative team ID into the composer, so the normal card flow stays bound
+ * to that opponent and does not ask again. This selector renders only if no
+ * authoritative opponent was handed in.
  */
 function opponentSelector(state) {
   if (!session.opponents.length) return '';
+  // THE CARD ALREADY NAMED THE OPPONENT, so there is nothing left to ask.
+  // `beginSession` sets `teamId` ONLY from the served list, so its presence is
+  // itself the authoritative target — this returns nothing rather than offering
+  // a second, re-steerable answer to a question already settled.
+  if (state.opponent.teamId !== null && state.opponent.teamId !== undefined) return '';
   const chosen = state.opponent.teamId;
   return (
     '<div class="fs-oppsel" data-opponent-block>' +

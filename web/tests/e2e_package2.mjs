@@ -395,17 +395,20 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
 
   section('Stake entry drives economics and the send control');
 
-  // WP5 — THE TARGET IS CHOSEN FIRST, AND THAT IS A PRODUCT REQUIREMENT, NOT A
-  // TEST CONVENIENCE. S8-P4C-2R removed the name bridge that used to carry the
+  // THE TARGET IS ALREADY BOUND, AND THAT IS A PRODUCT REQUIREMENT, NOT A TEST
+  // CONVENIENCE. S8-P4C-2R removed the name bridge that used to carry the
   // illustrative card's DISPLAY NAME into a real Credits command: two teams
   // sharing a name, or a fixture that had drifted, would have addressed the
-  // wrong GM's money with nothing on screen looking wrong. The composer now
-  // asks, and Send stays disabled until it is answered.
+  // wrong GM's money with nothing on screen looking wrong.
   //
-  // So this suite answers it. Sprint 7 never had to, which is why the stake
-  // assertions below reported "Choose who you are challenging." instead of the
-  // stake reasons — the composer was refusing for the right reason and the
-  // suite was reading it as a stake failure.
+  // The repair for that is not a second question. A Versus card represents ONE
+  // opponent and carries that opponent's authoritative team id into the
+  // composer, and `beginSession` honours the id ONLY if the server named it —
+  // which is the rule S8-P4C-2R was protecting, enforced without asking the GM
+  // to answer a question the card already answered.
+  //
+  // So this suite reads the target rather than choosing one. The probe still
+  // looks for a picker, because the claim now is that there ISN'T one.
   const targeting = await evaluate(`
     const sheet = document.getElementById('fs-sheet');
     const before = sheet.querySelector('[data-send-why]').textContent;
@@ -425,12 +428,15 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   //
   // THE REQUIREMENT IS UNCHANGED AND IS STILL ASSERTED: a composer with no
   // target refuses to send. What changed is that arriving from a discovery card
-  // is no longer a composer with no target.
+  // is no longer a composer with no target -- so the composer does not offer a
+  // second picker over the top of an answer the card already gave. The
+  // fallback selector still renders for a composer handed no authoritative id,
+  // which is a different situation and not this one.
   check('a composer opened from a discovery card already has its target',
     !/Choose who you are challenging/.test(targeting.before), targeting.before);
-  check('and the target selector is still offered, so it can be changed',
-    targeting.offered === true);
-  check('choosing an opponent leaves no targeting requirement outstanding',
+  check('and offers no second picker over a target the card already bound',
+    targeting.offered === false, String(targeting.offered));
+  check('so no targeting requirement is outstanding at any point',
     !/Choose who you are challenging/.test(targeting.after), targeting.after);
 
   // WP3C.2 -- THE STAKE WALK MOVES TO MONEYLINE FIRST.
