@@ -49,6 +49,11 @@ FOOTER_PAGES = ["index.html", "terms/index.html", "privacy/index.html",
 #: test_wp3d_provider_attribution.py; this is the site's copy of that guarantee.
 YAHOO_ATTRIBUTION = "Fantasy data provided by Yahoo Fantasy"
 
+#: The live demo destination, cut over in WEB-2b. The application root, which
+#: answers 303 to its own entry point - never an internal path, never Railway's
+#: generated hostname.
+LIVE_DEMO_URL = "https://app.fantasystakesapp.com"
+
 #: The hero headline, locked by WEB-1a. The wordmark is the visual centrepiece
 #: of the POR hero; this sentence is the page heading.
 LOCKED_HERO = "Add a Vegas-style sportsbook game to your existing fantasy league."
@@ -564,31 +569,79 @@ def test_demo_url_is_configured_in_exactly_one_file():
     assert owners == ["js/config.js"], f"demoUrl is assigned in {owners}"
 
 
-def test_config_declares_a_demo_url():
+def test_config_declares_the_live_demo_url():
+    """WEB-2b cut the demo over to the live application root, exactly.
+
+    THE ROOT, not `/app/index.html`. The root answers 303 to the application's
+    own entry point, so linking to the redirect target instead would pin this
+    site to an internal path the application is free to change.
+    """
     config = read("js/config.js")
-    assert re.search(r"demoUrl:\s*'[^']+'", config), "config.js has no demoUrl"
+    match = re.search(r"demoUrl:\s*'([^']+)'", config)
+    assert match, "config.js has no demoUrl"
+    assert match.group(1) == LIVE_DEMO_URL, (
+        f"demoUrl is {match.group(1)!r}, expected {LIVE_DEMO_URL!r}"
+    )
 
 
-def test_every_demo_control_ships_the_same_safe_fallback(parsed):
-    """With JavaScript off the fallback must still resolve, on every page."""
+def test_the_demo_url_is_no_longer_a_placeholder():
+    """The pre-cutover placeholder and the POST-only route are both rejected.
+
+    `#demo` was correct while the application had no reachable demo; shipping it
+    as the live destination now would silently strand every reader on this page.
+    `/demo/enter` answers POST only - a GET returns 405 - so it can never be the
+    target of a link, however plausible it looks.
+    """
+    demo_url = re.search(r"demoUrl:\s*'([^']+)'", read("js/config.js")).group(1)
+    assert demo_url != "#demo", "the demo destination is still the placeholder"
+    assert not demo_url.startswith("#"), "the demo destination is an on-page anchor"
+    assert "/demo/enter" not in demo_url, "/demo/enter answers POST only"
+    assert demo_url.startswith("https://"), "the demo destination is not https"
+    assert not demo_url.endswith("/"), "trailing slash - keep the value exact"
+
+
+def test_every_demo_control_routes_through_the_single_config_point(parsed):
+    """The markup names no URL; it ships a fallback that always resolves.
+
+    `site.js` rewrites these to `demoUrl` on load. The markup deliberately keeps
+    `#demo` rather than the live URL: hard-coding it would create four more
+    places to change at the next cutover, which is the exact failure the single
+    configuration point exists to prevent. Without JavaScript a reader lands on
+    the demo section of this page - degraded, never a dead link.
+    """
     for rel in PAGES:
         hrefs = [attrs.get("href") for tag, attrs in parsed[rel].tags
                  if tag == "a" and "data-fs-demo-link" in attrs]
         if rel == "index.html":
-            assert len(hrefs) >= 4, f"{rel} has only {len(hrefs)} demo controls"
+            assert len(hrefs) == 4, f"{rel} has {len(hrefs)} demo controls, expected 4"
         for href in hrefs:
             assert href in ("#demo", "/#demo"), f"{rel} demo fallback is {href!r}"
+            assert LIVE_DEMO_URL not in href, (
+                f"{rel} hard-codes the demo URL in markup; it belongs in config.js"
+            )
 
 
-def test_no_application_hostname_is_hardcoded():
-    """The application deployment is another work stream; nothing here guesses it."""
+def test_no_railway_hostname_appears_anywhere_in_the_site():
+    """Railway's generated host is deployment plumbing and changes without notice.
+
+    Forbidden in EVERY published file, `config.js` included - there is no file
+    for which naming it would be correct.
+    """
     for path in SITE.rglob("*"):
         if not path.is_file() or path.suffix not in {".html", ".js", ".css", ".xml", ".txt"}:
             continue
         body = path.read_text(encoding="utf-8").lower()
-        for host in ("railway.app", "up.railway", "app.fantasystakesapp.com"):
-            if host in body and path.name != "config.js":
-                pytest.fail(f"{path.relative_to(SITE)} hardcodes {host}")
+        for host in ("railway.app", "up.railway", "railway.internal"):
+            assert host not in body, f"{path.relative_to(SITE)} names {host}"
+
+
+def test_the_application_hostname_lives_only_in_the_config():
+    """Exactly one published file may name the application domain."""
+    named = [p.relative_to(SITE).as_posix()
+             for p in SITE.rglob("*")
+             if p.is_file() and p.suffix in {".html", ".js", ".css"}
+             and "app.fantasystakesapp.com" in p.read_text(encoding="utf-8")]
+    assert named == ["js/config.js"], f"the application domain is named in {named}"
 
 
 # ---------------------------------------------------------------------------
@@ -909,6 +962,21 @@ def test_the_compatibility_date_is_sane():
     parsed = datetime.date.fromisoformat(value)
     assert parsed <= datetime.date.today(), f"compatibility_date {value} is in the future"
     assert parsed.year >= 2024, f"compatibility_date {value} is implausibly old"
+
+
+def test_unknown_paths_get_the_styled_404_page():
+    """WEB-2b. Without this key the runtime returns a bare, empty 404.
+
+    WEB-2a proved that against the real Workers Static Assets runtime: with
+    `not_found_handling` at its default of "none", an unknown path falls through
+    to the generated no-op Worker and answers with zero bytes and no
+    content-type, discarding the styled page WEB-1 certified.
+    """
+    assets = _wrangler_config()["assets"]
+    assert assets.get("not_found_handling") == "404-page", (
+        "unknown paths would return a blank 404 instead of site/404.html"
+    )
+    assert (SITE / "404.html").is_file(), "the page the setting points at is missing"
 
 
 def test_the_worker_config_stays_assets_only():

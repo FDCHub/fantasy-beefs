@@ -44,6 +44,9 @@ const VIEWPORTS = [
 
 const PAGES = ['/', '/terms/', '/privacy/', '/contact/'];
 
+/** The live demo destination, cut over in WEB-2b. Must match site/js/config.js. */
+const LIVE_DEMO_URL = 'https://app.fantasystakesapp.com';
+
 /** The section ids the locked homepage order requires, in order. */
 const REQUIRED_SECTIONS = [
   'top', 'what-is', 'more-action', 'two-ways', 'commissioners', 'players',
@@ -137,6 +140,24 @@ await withBrowser(async ({ cdp, origin }) => {
   `);
   check(demoLinks.length >= 4, 'at least four Try the Demo controls', `found ${demoLinks.length}`);
   check(new Set(demoLinks).size === 1, 'every demo control shares one destination', demoLinks.join(' | '));
+
+  /* WEB-2b. These hrefs are read AFTER site.js has run, so this is the value a
+     reader actually clicks - not the fallback the markup shipped. */
+  check(
+    demoLinks.every((href) => href === LIVE_DEMO_URL),
+    'every demo control resolves to the live demo root',
+    demoLinks.join(' | '),
+  );
+  check(
+    demoLinks.every((href) => !href.startsWith('#')),
+    'no demo control is left on the on-page placeholder',
+    demoLinks.join(' | '),
+  );
+  check(
+    demoLinks.every((href) => !/railway/i.test(href)),
+    'no demo control names the hosting platform host',
+    demoLinks.join(' | '),
+  );
 
   const faq = await evaluate(cdp, `
     var items = document.querySelectorAll('.faq details');

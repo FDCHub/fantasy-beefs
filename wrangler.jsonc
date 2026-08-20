@@ -35,6 +35,12 @@
   "name": "fantasystakes-marketing",
   "compatibility_date": "2026-08-19",
   "assets": {
-    "directory": "./site"
+    "directory": "./site",
+    // WEB-2b. Left at its default of "none", an unknown path falls through to
+    // the generated no-op Worker and returns a bare, empty 404 - WEB-2a proved
+    // this against the real runtime. "404-page" serves ./site/404.html with a
+    // 404 status instead, which is the behaviour WEB-1 certified and the reason
+    // that page exists.
+    "not_found_handling": "404-page"
   }
 }
