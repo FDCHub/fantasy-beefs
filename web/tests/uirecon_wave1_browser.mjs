@@ -248,6 +248,24 @@ await withPage({ port: 9411 }, async ({ evaluate, setViewport }) => {
         return { bg: s.backgroundColor, border: s.borderTopColor };
       };
       out.selectedMode = sel(document.querySelector('.fs-seg--mode .fs-seg__opt.is-selected'));
+
+      // ── THE SHEET CLAUSE, measured while a sheet is actually open ───────
+      // The POR permits a sheet to scroll INTERNALLY. What it must not do is
+      // make the document or the shell scroll, and it must not widen either.
+      const doc = document.documentElement;
+      const app = document.querySelector('.fs-app');
+      out.sheet = {
+        internalScroll: Boolean(sheet)
+          && /auto|scroll/.test(getComputedStyle(sheet).overflowY),
+        sheetHOverflow: sheet ? sheet.scrollWidth - sheet.clientWidth : null,
+        docHOverflow: doc.scrollWidth - doc.clientWidth,
+        docVOverflow: doc.scrollHeight - doc.clientHeight,
+        appHOverflow: app.scrollWidth - app.clientWidth,
+        withinViewport: sheet
+          ? sheet.getBoundingClientRect().right <= window.innerWidth + 1
+          : null,
+      };
+
       const overlay = document.getElementById('fs-overlay');
       const close = overlay ? overlay.querySelector('[data-fs-close]') : null;
       if (close) close.click();
@@ -255,6 +273,18 @@ await withPage({ port: 9411 }, async ({ evaluate, setViewport }) => {
     `);
 
     check(`the composer opens from a Play card — ${at}`, choice.opened === true);
+
+    // ── Sheets scroll internally and contain themselves ─────────────────
+    check(`an open sheet scrolls internally rather than the page — ${at}`,
+      choice.sheet.internalScroll === true
+      && choice.sheet.docVOverflow <= 0,
+      `internal ${choice.sheet.internalScroll}, doc v ${choice.sheet.docVOverflow}`);
+    check(`an open sheet never scrolls the document sideways — ${at}`,
+      choice.sheet.docHOverflow <= 0 && choice.sheet.appHOverflow <= 0
+      && choice.sheet.sheetHOverflow <= 1,
+      `doc ${choice.sheet.docHOverflow} app ${choice.sheet.appHOverflow} sheet ${choice.sheet.sheetHOverflow}`);
+    check(`and stays inside the viewport width — ${at}`,
+      choice.sheet.withinViewport === true);
 
     const peers = [choice.playMarket, choice.composerMarket, choice.composerMode]
       .filter(Boolean);
@@ -387,39 +417,200 @@ await withPage({ port: 9411 }, async ({ evaluate, setViewport }) => {
 
     /* ── 4 · No regression in fit ────────────────────────────────────────── */
 
-    section(`Fit and clipping — ${at}`);
+    /* ── 4 · The locked app-shell viewport POR ───────────────────────────────
+     *
+     * The addendum to Wave 1 fixes what the shell may and may not do, and it
+     * is a per-TAB contract rather than a per-page one: every clause below is
+     * measured on each of the five primary panels, because a primitive that
+     * fits on Play and overflows on Wrap Up has still broken it.
+     *
+     *   no tab-level horizontal scrolling
+     *   no new tab-level vertical overflow
+     *   the bottom navigation stays visible AND reachable
+     *   a carousel scrolls inside its own bounded viewport, and the overflow
+     *     does not propagate to the tab or the page
+     *   sheets and modals may scroll internally
+     *
+     * WHY REACHABILITY IS MEASURED WITH `elementFromPoint`. A navigation bar
+     * can satisfy every rectangle assertion and still be unusable — covered by
+     * an overlay, or pushed under a notch inset. Hit-testing the centre of each
+     * tab asks the browser the question a thumb asks. */
 
-    const fit = await evaluate(`
-      const out = {};
-      out.hOverflow = document.documentElement.scrollWidth
-        - document.documentElement.clientWidth;
-      const tabbar = document.querySelector('.fs-tabbar');
+    section(`App-shell viewport POR — ${at}`);
+
+    const shell = await evaluate(`
+      const PANELS = ['standings', 'league', 'action', 'week', 'ledger'];
+      const out = { panels: [] };
+
+      // ── page and shell level ───────────────────────────────────────────
+      const doc = document.documentElement;
+      out.docHOverflow = doc.scrollWidth - doc.clientWidth;
+      out.docVOverflow = doc.scrollHeight - doc.clientHeight;
       const app = document.querySelector('.fs-app');
-      out.tabbarVisible = Boolean(tabbar)
-        && tabbar.getBoundingClientRect().bottom
-           <= app.getBoundingClientRect().bottom + 1;
-      // A card may be taller than its rail — the rail scrolls, which is the
-      // certified carousel behaviour. What may NOT happen is a card clipping
-      // its OWN content, which is the 375x667 regression this wave had to
-      // avoid recreating.
-      const clipped = [];
-      ${GO('league')}
-      for (const el of document.querySelectorAll('#panel-league .fs-wcard')) {
-        if (el.scrollHeight > el.clientHeight + 1) clipped.push('play:' + el.className);
+      const ar = app.getBoundingClientRect();
+      out.appHOverflow = app.scrollWidth - app.clientWidth;
+      out.appVOverflow = app.scrollHeight - app.clientHeight;
+      out.appWithinViewport = ar.right <= window.innerWidth + 1 && ar.left >= -1;
+
+      // ── the bottom navigation ──────────────────────────────────────────
+      const bar = document.querySelector('.fs-tabbar');
+      const br = bar.getBoundingClientRect();
+      out.nav = {
+        height: Math.round(br.height * 10) / 10,
+        top: Math.round(br.top * 10) / 10,
+        bottom: Math.round(br.bottom * 10) / 10,
+        viewportH: window.innerHeight,
+        // Inside the viewport on both edges, and not zero-height.
+        withinViewport: br.height > 0 && br.top >= -1
+          && br.bottom <= window.innerHeight + 1,
+        // Inside the shell it belongs to.
+        withinShell: br.bottom <= ar.bottom + 1,
+        display: getComputedStyle(bar).display,
+        visibility: getComputedStyle(bar).visibility,
+      };
+      // REACHABLE, not merely present: hit-test the centre of every tab.
+      const unreachable = [];
+      for (const item of bar.querySelectorAll('.fs-tabbar__item')) {
+        const r = item.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+        if (!hit || !bar.contains(hit)) {
+          unreachable.push(item.dataset.destination + '->' +
+            (hit ? (hit.className || hit.tagName) : 'null'));
+        }
       }
-      ${GO('action')}
-      for (const el of document.querySelectorAll('#panel-action .fs-wcard')) {
-        if (el.scrollHeight > el.clientHeight + 1) clipped.push('status:' + el.className);
+      out.nav.unreachable = unreachable;
+
+      // ── per-panel ──────────────────────────────────────────────────────
+      // A SCROLL REGION IS DECLARED, NOT DISCOVERED. These are the containers
+      // the POR permits to scroll; anything else that overflows is a defect
+      // rather than a design.
+      const SCROLLERS = ['.fs-carousel', '.fs-vcar', '.fs-rail', '.fs-rails',
+                         '.fs-wkscroll', '.fs-lscroll', '.fs-st__scroll',
+                         '.fs-scroll', '.fs-pools', '.fs-poolrows'];
+      for (const id of PANELS) {
+        { const tab = document.querySelector(
+            '.fs-tabbar__item[data-destination="' + id + '"]');
+          if (tab) tab.click(); }
+        const panel = document.getElementById('panel-' + id);
+        const pr = panel.getBoundingClientRect();
+        const cs = getComputedStyle(panel);
+
+        // WHAT THE POR FORBIDS IS A SCROLL CONTAINER NOBODY DECLARED.
+        //
+        // Not "any element whose scrollWidth exceeds its clientWidth" — that
+        // is true of ordinary things the POR has no quarrel with: a table cell
+        // reports it as a matter of table layout, a line-clamped Pool name
+        // reports it BECAUSE it is clamped, and a text box reports a stray
+        // pixel or two from its own descenders. None of those scroll, none of
+        // them reach the tab, and an assertion that counted them would fail on
+        // correct layout and teach the next reader to ignore it.
+        //
+        // A container that is overflow:auto or overflow:scroll AND actually
+        // overflows is
+        // a different thing: it is a region the user can scroll. Every one of
+        // those must be a region the POR named.
+        const scrollers = [];
+        for (const el of panel.querySelectorAll('*')) {
+          const hOver = el.scrollWidth - el.clientWidth;
+          const vOver = el.scrollHeight - el.clientHeight;
+          if (hOver <= 1 && vOver <= 1) continue;
+          const style = getComputedStyle(el);
+          if (!/auto|scroll/.test(style.overflowX + style.overflowY)) continue;
+          scrollers.push({
+            cls: (el.className || el.tagName).toString().slice(0, 48),
+            h: hOver, v: vOver,
+            declared: SCROLLERS.some((s) => el.matches(s)),
+          });
+        }
+
+        out.panels.push({
+          id,
+          hOverflow: panel.scrollWidth - panel.clientWidth,
+          vOverflow: panel.scrollHeight - panel.clientHeight,
+          overflowX: cs.overflowX,
+          overflowY: cs.overflowY,
+          // The panel must sit entirely above the navigation bar.
+          bottom: Math.round(pr.bottom * 10) / 10,
+          navTop: Math.round(br.top * 10) / 10,
+          clearsNav: pr.bottom <= br.top + 1,
+          right: Math.round(pr.right * 10) / 10,
+          withinWidth: pr.right <= window.innerWidth + 1 && pr.left >= -1,
+          // Scroll regions this panel actually has, and any the POR did not name.
+          scrollers,
+          undeclared: scrollers.filter((s) => !s.declared),
+        });
+      }
+
+      // ── a card may not clip its own content ────────────────────────────
+      const clipped = [];
+      for (const id of ['league', 'action', 'week']) {
+        { const tab = document.querySelector(
+            '.fs-tabbar__item[data-destination="' + id + '"]');
+          if (tab) tab.click(); }
+        for (const el of document.querySelectorAll('#panel-' + id + ' .fs-wcard')) {
+          if (el.scrollHeight > el.clientHeight + 1) clipped.push(id + ':wcard');
+        }
       }
       out.clipped = clipped;
       return out;
     `);
 
-    check(`the page never scrolls sideways — ${at}`, fit.hOverflow <= 0,
-      String(fit.hOverflow));
-    check(`the bottom navigation is not pushed off — ${at}`, fit.tabbarVisible);
-    check(`no wager card clips its own content — ${at}`, fit.clipped.length === 0,
-      fit.clipped.join(', ') || 'none');
+    // ── page and shell ──────────────────────────────────────────────────
+    check(`the document never scrolls sideways — ${at}`,
+      shell.docHOverflow <= 0, String(shell.docHOverflow));
+    check(`the app shell never scrolls sideways — ${at}`,
+      shell.appHOverflow <= 0, String(shell.appHOverflow));
+    check(`the app shell is not itself a scroll container — ${at}`,
+      shell.appVOverflow <= 1, String(shell.appVOverflow));
+    check(`the app shell stays inside the viewport width — ${at}`,
+      shell.appWithinViewport === true);
+
+    // ── the bottom navigation ───────────────────────────────────────────
+    check(`the bottom navigation is drawn — ${at}`,
+      shell.nav.height > 0 && shell.nav.display !== 'none'
+      && shell.nav.visibility !== 'hidden',
+      `${shell.nav.height}px ${shell.nav.display}`);
+    check(`it sits wholly inside the viewport — ${at}`,
+      shell.nav.withinViewport === true,
+      `top ${shell.nav.top} bottom ${shell.nav.bottom} of ${shell.nav.viewportH}`);
+    check(`and inside the app shell — ${at}`, shell.nav.withinShell === true);
+    check(`every tab is hit-testable, not merely present — ${at}`,
+      shell.nav.unreachable.length === 0,
+      shell.nav.unreachable.join(', ') || 'all five reachable');
+
+    // ── per-tab ─────────────────────────────────────────────────────────
+    check(`no tab scrolls horizontally — ${at}`,
+      shell.panels.every((p) => p.hOverflow <= 1),
+      shell.panels.map((p) => `${p.id}:${p.hOverflow}`).join(' '));
+    check(`no tab overflows vertically past its own box — ${at}`,
+      shell.panels.every((p) => p.vOverflow <= 1),
+      shell.panels.map((p) => `${p.id}:${p.vOverflow}`).join(' '));
+    check(`every tab clears the bottom navigation — ${at}`,
+      shell.panels.every((p) => p.clearsNav),
+      shell.panels.map((p) => `${p.id}:${p.bottom}/${p.navTop}`).join(' '));
+    check(`every tab stays inside the viewport width — ${at}`,
+      shell.panels.every((p) => p.withinWidth));
+
+    // ── carousels contain their own overflow ────────────────────────────
+    //
+    // The containment clause has two halves and both are needed. Every scroll
+    // region must be one the POR named — that is this assertion. And a region
+    // that scrolls must not make its TAB scroll — that is the two panel-level
+    // assertions above, which are what "rather than propagating to the
+    // tab/page" actually means, measured on the tab.
+    check(`every scrollable region is a declared one — ${at}`,
+      shell.panels.every((p) => p.undeclared.length === 0),
+      shell.panels.flatMap((p) => p.undeclared
+        .map((o) => `${p.id}:${o.cls} h${o.h} v${o.v}`)).join(' | ') || 'none');
+    check(`a scrolling region never makes its tab scroll — ${at}`,
+      shell.panels.every((p) => p.scrollers.length === 0
+        || (p.hOverflow <= 1 && p.vOverflow <= 1)),
+      shell.panels.map((p) => `${p.id}:${p.scrollers.length}r/${p.hOverflow}h/${p.vOverflow}v`)
+        .join(' '));
+
+    check(`no wager card clips its own content — ${at}`,
+      shell.clipped.length === 0, shell.clipped.join(', ') || 'none');
   }
 
   /* ── 5 · Terminology, on the rendered surfaces ──────────────────────────── */

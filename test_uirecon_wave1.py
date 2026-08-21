@@ -30,6 +30,25 @@ It did four things, and each of them is a claim this suite has to keep true:
   5. THE CANONICAL TOKEN LAYER. `--fs-c-*` aliases so a shared primitive names
      ONE answer instead of choosing between the Rev 4.2 and Rev 4.3 scales.
 
+AND IT IS HELD TO THE LOCKED APP-SHELL VIEWPORT POR.
+
+Every one of those primitives is a plausible way to break the shell: a strip
+whose labels wrap is a taller strip, a choice cell that will not shrink is a
+wider row, and a heading gap is height taken from the panel below it. The
+addendum fixes what the shell may and may not do, and each clause is certified
+here rather than assumed:
+
+  - no tab-level horizontal scrolling
+  - no new tab-level vertical overflow
+  - the bottom navigation stays visible AND hit-testable in the normal shell
+  - a carousel scrolls inside its own bounded viewport and that overflow does
+    not propagate to the tab or the page
+  - a sheet may scroll internally, and only internally
+  - the mobile shell at 375x667 and 390x844 is preserved
+
+Measured on all five primary tabs at every viewport, not on the page as a whole:
+a primitive that fits on Play and overflows on Wrap Up has still broken it.
+
 THREE TIERS, AND THEY MAKE DIFFERENT KINDS OF CLAIM.
 
   STRUCTURAL (here, Python).   That the source says what it should: the tokens
@@ -422,6 +441,67 @@ _assert("the virtual-credits disclaimer is untouched",
 # by a UI copy pass — renaming it would be a protocol change in copy's clothing.
 _assert("the governed Standard Pool Bet name is not reworded",
         "'Standard Pool Bet'" in _js_files["js/data/rules-data.js"])
+
+
+# ── 5b · The locked app-shell viewport POR ───────────────────────────────────
+
+_section("5b · The app-shell viewport contract the primitives must not break")
+
+# THE ADDENDUM, AS STRUCTURE. The browser tier measures the outcome at five
+# viewports; this tier asserts the RULES that make the outcome possible, because
+# a measurement that passes by luck reads exactly like one that passes by
+# construction. Four declarations carry the whole contract:
+#
+#   the shell is a fixed-height flex column that does not scroll
+#   the panel region may shrink (`min-height: 0`) so the nav is never pushed out
+#   a panel hides its own overflow, so a tab can never become a scroll container
+#   the nav is `flex: 0 0 auto` in NORMAL FLOW — it reserves its own height
+#     rather than floating over the panel, which is what "persistent … in the
+#     normal app shell" means and what makes it reachable without a z-index race
+SHELL = _read("styles", "shell.css")
+
+_app = _rule(SHELL, ".fs-app")
+_assert("the app shell is a flex column of fixed viewport height",
+        "flex-direction: column" in _app and "100dvh" in _app)
+_assert("and does not scroll itself", "overflow: hidden" in _app)
+
+_panels = _rule(SHELL, ".fs-panels")
+_assert("the panel region may shrink so the navigation is never pushed off",
+        "min-height: 0" in _panels and "flex: 1 1 auto" in _panels)
+_assert("and the panel region hides its own overflow",
+        "overflow: hidden" in _panels)
+
+_panel = _rule(SHELL, ".fs-panel")
+_assert("a tab cannot become a scroll container",
+        "overflow: hidden" in _panel and "min-height: 0" in _panel)
+
+_tabbar = _rule(SHELL, ".fs-tabbar")
+_assert("the bottom navigation reserves its own height in normal flow",
+        "flex: 0 0 auto" in _tabbar)
+_assert("and is not positioned over the panel",
+        "position: fixed" not in _tabbar and "position: absolute" not in _tabbar)
+_assert("it clears the home indicator rather than sitting under it",
+        "--fs-safe-bottom" in _tabbar)
+
+# THE WAVE 1 PRIMITIVES, CHECKED AGAINST THE SAME CONTRACT. Each of the three
+# is a plausible way to push the navigation out of the shell, and each is
+# structurally prevented rather than merely measured.
+_assert("the metric strip is a fixed row that cannot grow the panel",
+        "flex: 0 0 auto" in _strip)
+_assert("its columns cannot be widened by their own content",
+        "minmax(0, 1fr)" in _strip)
+_assert("its cells cannot be widened by their own content",
+        "min-width: 0" in _cell)
+_assert("a metric label overflows into an ellipsis, never onto a second line",
+        "white-space: nowrap" in _label and "overflow: hidden" in _label)
+_assert("a choice cell cannot be widened by its own content",
+        "min-width: 0" in _base)
+_assert("a choice-cell label cannot wrap the cell onto a second line",
+        "white-space: nowrap" in (_shared_label.group(1) if _shared_label else ""))
+# The heading gap is the one Wave 1 change that ADDS height, so the token it
+# spends must be a small one; the browser tier proves the panel still fits.
+_assert("the heading gap spends one small spacing step",
+        _alias("--fs-c-gap-heading", "--fs-space-2"))
 
 
 # ── 6 · No behaviour, no backend ─────────────────────────────────────────────

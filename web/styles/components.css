@@ -147,6 +147,18 @@
   align-items: center;
   justify-content: center;
   min-width: 0;
+  /* THE SAME WIDTH BUDGET AS THE LABEL, and for the same reason.
+   *
+   * Measured at 320x568: the cell is 68px, and with 7px of padding either side
+   * the value had 54px to draw in. `+$126` at the SS5.1 metric step needs 58px
+   * of tabular monospace, so it overflowed its own box by 4px — inside the
+   * cell, but only because the padding happened to absorb it, and a longer
+   * figure would not have been so lucky. The label already reclaims this
+   * padding; a centred single line of figures has exactly as little use for it,
+   * and having the two rows share one budget is what makes them one column
+   * rather than two boxes that agree by coincidence. */
+  margin-left: calc(-1 * var(--fs-c-pad-cell));
+  margin-right: calc(-1 * var(--fs-c-pad-cell));
   font-family: var(--fs-c-font-number);
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-c-size-metric);
