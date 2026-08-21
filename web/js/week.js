@@ -712,6 +712,22 @@ export function bindWeek(panel, api) {
  * fills the viewport by construction and `scroll-snap-stop: always` parks on
  * the next one. The viewport's height is then the card's, so the three sections
  * take the space their content needs and share the tab between them.
+ *
+ * ── WHAT REV 1.4 FINISHED ───────────────────────────────────────────────────
+ *
+ * Wave 4B made the three sections one construction and stopped at the item
+ * wrapper. Inside it, the Pools section still drew `.fs-poolrow` with an outer
+ * box of its own — a smaller corner, a thinner left edge — so three rails that
+ * measured identically held two visibly different components. The shell is a
+ * single stylesheet rule now (`ledger.css`, `.fs-rescar__item > .fs-wcard,
+ * .fs-rescar__item > .fs-poolrow`), which is why THIS file still hands the rail
+ * whichever presentation the row deserves and does not have to choose one:
+ * outer geometry is no longer a property of which presentation was chosen.
+ *
+ * The gold left edge a finished wager carried came off with it. On Play it
+ * says "this one has stopped moving", which distinguishes a card from its
+ * neighbours; on Wrap Up every card has stopped moving, so it distinguished
+ * nothing and read as decoration beside a badge already saying WON.
  */
 
 /**

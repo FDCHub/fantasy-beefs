@@ -1,7 +1,7 @@
 """
 Weekly Pool slate selector — build_week_slate. Step 7.
 
-Product authority : spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_1.md §4, §11
+Product authority : spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_4.md §4, §4.2, §11
 Implementation    : spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_1.md §E
 
 PURE. No Session, no ORM, no I/O, no randomness, no clock. Given the same
@@ -66,6 +66,60 @@ for both would make a routine boundary indistinguishable from a defect.
 MID-SEASON ELIGIBILITY IS THE CALLER'S DECISION. This function ranks exactly the
 eligible set it is handed. Whether that set was snapshotted at season open or
 queried live is unresolved product policy and is deliberately not baked in here.
+
+================================================================================
+SCOPE COMPOSITION — POR Rev 1.4 §4.2, ADOPTED 2026-08-21
+================================================================================
+The normal four-Pool REGULAR-phase weekly slate is **3 TEAM + 1 MATCHUP**.
+
+Before Rev 1.4 the selector imposed no composition at all: it ranked the whole
+eligible set and took the top four, and because 29 of the 64 runtime-eligible
+definitions are MATCHUP-scoped, an unconstrained digest ordering produced weeks
+that were mostly matchup-vs-matchup contests. That was an accident of the hash,
+not a product decision, and the owner ruled the mix explicitly.
+
+THE COMPOSITION DECIDES MEMBERSHIP. THE RANKING STILL DECIDES ORDER.
+Nothing in the ORDERING COMPATIBILITY CONTRACT above changes: the digest
+serialization, the raw-bytes comparison, the catalog_number / definition_key
+tie-breakers and the carried-key subtraction are all untouched, and every
+historical cycle ordering remains reproducible. What Rev 1.4 adds is a quota on
+how many fresh slots each scope receives; WHICH definitions fill those slots is
+still the same ranking over the same candidate set, and the slots themselves are
+still laid out in global rank order so a slate reads exactly as it always did.
+
+DEFICITS, NOT A FIXED CUT. Continuations are placed first and are never
+displaced — each holds a live pot — so the quota is expressed against what the
+carries have ALREADY contributed:
+
+    deficit(scope) = max(0, target(scope) - carried(scope))
+
+and fresh slots are handed out in the mix's declared order, which is why
+`DEFAULT_SCOPE_MIX` is an ordered tuple rather than a mapping. Because the
+targets sum to the slot count, the deficits sum to at least the fresh-slot count
+in every carry configuration, so the allocation is total and the order only ever
+decides which deficit gets TRIMMED when carries have over-filled the other
+scope. That trim is deterministic, which is the whole point of pinning it.
+
+CROSS-SCOPE FALLBACK, because "exactly 4 active Pools per fantasy week" (POR §4)
+is the stronger invariant. A scope that cannot fill its share from its own
+unused candidates does not shorten the slate and does not force a cycle reset:
+the shortfall is taken from the other scope's remaining candidates through the
+SAME ranking. A reset is still signalled only when the TOTAL unused eligible set
+cannot fill the total fresh slots — the composition is a preference about shape,
+never a second exhaustion condition.
+
+THE REGULAR PHASE ONLY, AND ONLY AT THE GOVERNED SLOT COUNT. The postseason
+subset is fixed and the championship round is themed (WP1B §12); imposing a
+scope quota there would fight the theme. And a caller asking for a slot count the
+mix was not written for gets the pre-Rev-1.4 pure ranking rather than a silently
+rescaled quota nobody ruled on.
+
+THE MIX IS CATALOG DATA. `spec/pool_catalog_rev1_4.json` carries
+`weekly_slate_composition`, and `betting.pool_catalog.load_catalog` refuses any
+catalog whose block disagrees with `DEFAULT_SCOPE_MIX` below. The constant lives
+here so the pure selector stays pure — no I/O, no catalog read — and the load-
+time check is what stops the artifact and the code from drifting apart.
+================================================================================
 """
 
 from __future__ import annotations
@@ -80,11 +134,32 @@ PHASE_POSTSEASON = "POSTSEASON"
 
 DEFAULT_SLOT_COUNT = 4
 
+SCOPE_TEAM = "TEAM"
+SCOPE_MATCHUP = "MATCHUP"
+
+#: POR Rev 1.4 §4.2 — the governed scope composition of the normal weekly
+#: slate, as an ORDERED tuple. The order is the priority in which fresh-slot
+#: deficits are satisfied (see the module contract), so it is part of the rule
+#: and not an incidental way of writing a mapping down.
+#: `spec/pool_catalog_rev1_4.json::weekly_slate_composition` carries the same
+#: figures and `betting.pool_catalog.load_catalog` refuses a catalog that
+#: disagrees with this constant.
+DEFAULT_SCOPE_MIX: tuple[tuple[str, int], ...] = (
+    (SCOPE_TEAM, 3),
+    (SCOPE_MATCHUP, 1),
+)
+
 REASON_TOO_MANY_CONTINUATIONS = "TOO_MANY_CONTINUATIONS"
 REASON_DUPLICATE_CONTINUATION = "DUPLICATE_CONTINUATION"
 REASON_DUPLICATE_ELIGIBLE = "DUPLICATE_ELIGIBLE"
 REASON_UNKNOWN_PHASE = "UNKNOWN_PHASE"
 REASON_INVALID_SLOT_COUNT = "INVALID_SLOT_COUNT"
+#: A candidate reached a composed draw carrying no scope. Not a product state —
+#: `pool_gates.selectable_definitions` reads `pool_definition.scope` for every
+#: row it returns — so it is refused rather than defaulted, because defaulting
+#: would silently file every unscoped definition under one scope and quietly
+#: change the mix.
+REASON_MISSING_SCOPE = "MISSING_SCOPE"
 
 
 class PoolRotationError(ValueError):
@@ -99,20 +174,35 @@ class PoolRotationError(ValueError):
 class EligibleDefinition:
     """A definition the CALLER has already decided is eligible. The selector
     makes no eligibility decision of its own — it neither reads
-    dependency_state nor filters blocked definitions."""
+    dependency_state nor filters blocked definitions.
+
+    `scope` is the catalog's own TEAM/MATCHUP value and is what POR Rev 1.4
+    §4.2's composition is computed over. It defaults to None so that a caller
+    who wants the pre-Rev-1.4 pure ranking — every unit test of the ORDERING
+    CONTRACT itself, for one — can keep constructing candidates without it; a
+    COMPOSED draw refuses a None scope rather than guessing (REASON_MISSING_SCOPE).
+    """
 
     definition_key: str
     catalog_number: int
+    scope: str | None = None
 
 
 @dataclass(frozen=True)
 class Continuation:
     """A rollover carried into this week. prior_slot is explicit rather than
     inferred from list position, because POR §4 places continuations first and
-    their relative order must be reproducible from persisted data alone."""
+    their relative order must be reproducible from persisted data alone.
+
+    `scope` is carried for the same reason it is carried on
+    `EligibleDefinition`: POR Rev 1.4 §4.2 computes each scope's fresh quota as
+    a DEFICIT against what the continuations already occupy, so a composed draw
+    cannot be made without knowing what a carry is. None is refused in a
+    composed draw rather than defaulted (REASON_MISSING_SCOPE)."""
 
     definition_key: str
     prior_slot: int
+    scope: str | None = None
 
 
 @dataclass(frozen=True)
@@ -182,12 +272,86 @@ def rank_definitions(candidates: Iterable[EligibleDefinition], *, league_id: int
     ))
 
 
+def fresh_allocation(scope_mix: Sequence[tuple[str, int]],
+                     carried_scopes: Sequence[str],
+                     fresh_slots: int) -> tuple[tuple[str, int], ...]:
+    """How many FRESH slots each scope receives — POR Rev 1.4 §4.2.
+
+    Public because the allocation is the whole of the new rule and a test that
+    could only observe it through a finished slate would be testing the ranking
+    at the same time. Given the mix, the scopes the continuations already
+    occupy, and the number of fresh slots left, this returns the per-scope
+    fresh quota in the mix's declared order.
+
+    THE DEFICIT, NOT THE TARGET. A continuation is not displaceable, so a week
+    carrying two MATCHUP pots has already overshot a target of one and the
+    MATCHUP deficit is zero — the mix describes the SLATE, not the draw.
+
+    IT IS TOTAL WHENEVER THE TARGETS SUM TO THE SLOT COUNT, which the caller
+    has already checked. sum(max(0, t - c)) >= sum(t - c) = slot_count -
+    carried = fresh_slots, so the quotas always cover the fresh slots and the
+    declared order only decides which deficit is trimmed when a carry has
+    over-filled another scope.
+    """
+    remaining = int(fresh_slots)
+    allocation: list[tuple[str, int]] = []
+    for scope, target in scope_mix:
+        if remaining <= 0:
+            allocation.append((scope, 0))
+            continue
+        deficit = max(0, int(target) - carried_scopes.count(scope))
+        take = min(deficit, remaining)
+        allocation.append((scope, take))
+        remaining -= take
+    return tuple(allocation)
+
+
+def _compose(ranked: Sequence[EligibleDefinition],
+             allocation: Sequence[tuple[str, int]],
+             fresh_slots: int) -> tuple[EligibleDefinition, ...]:
+    """Pick the fresh draws for one week under a scope allocation.
+
+    MEMBERSHIP HERE, ORDER AT THE END. Each scope takes its quota off the top
+    of its own slice of the SAME global ranking; any quota a scope cannot fill
+    falls through to whatever the ranking offers next, whatever its scope,
+    because a short slate is the worse outcome (POR §4). The result is then
+    re-sorted into global rank order, so the composition changes WHICH four
+    definitions a week draws and never the order in which they occupy slots.
+    """
+    order = {d.definition_key: i for i, d in enumerate(ranked)}
+    by_scope: dict[str, list[EligibleDefinition]] = {}
+    for d in ranked:
+        by_scope.setdefault(d.scope, []).append(d)
+
+    picked: list[EligibleDefinition] = []
+    for scope, quota in allocation:
+        picked.extend(by_scope.get(scope, ())[:quota])
+
+    if len(picked) < fresh_slots:
+        # CROSS-SCOPE FALLBACK. One or both scopes ran out of unused
+        # candidates. The slate is still filled to its governed size from the
+        # remaining ranking, in rank order, which keeps the fallback as
+        # deterministic as the draw it is standing in for.
+        taken = {d.definition_key for d in picked}
+        for d in ranked:
+            if len(picked) >= fresh_slots:
+                break
+            if d.definition_key not in taken:
+                picked.append(d)
+                taken.add(d.definition_key)
+
+    return tuple(sorted(picked[:fresh_slots],
+                        key=lambda d: order[d.definition_key]))
+
+
 def build_week_slate(*, league_id: int, season: int, week: int,
                      rotation_cycle: int, phase: str,
                      eligible: Sequence[EligibleDefinition],
                      continuations: Sequence[Continuation] = (),
                      used_fresh_keys: Iterable[str] = (),
-                     slot_count: int = DEFAULT_SLOT_COUNT) -> SlateResult:
+                     slot_count: int = DEFAULT_SLOT_COUNT,
+                     scope_mix: Sequence[tuple[str, int]] | None
+                     = DEFAULT_SCOPE_MIX) -> SlateResult:
     """Build one week's slate — §E lines 148-165.
 
     `week` is carried into the output for labelling ONLY; it is never part of
@@ -196,6 +360,12 @@ def build_week_slate(*, league_id: int, season: int, week: int,
     `used_fresh_keys` is the set of definition keys already consumed as FRESH
     draws in this rotation_cycle. A continuation is not a fresh use (POR §4
     line 116), so the caller must not include carried keys here.
+
+    `scope_mix` is POR Rev 1.4 §4.2's governed composition and defaults to it:
+    a caller who does nothing gets the ruled 3 TEAM + 1 MATCHUP slate, and
+    opting OUT is the thing that has to be written down. Pass None for the
+    pre-Rev-1.4 pure ranking — which is what the ORDERING CONTRACT's own unit
+    tests want, since a composition would confound the property they measure.
     """
     if phase not in (PHASE_REGULAR, PHASE_POSTSEASON):
         raise PoolRotationError(
@@ -284,6 +454,31 @@ def build_week_slate(*, league_id: int, season: int, week: int,
     # 4 — rank, then consume in rank order.
     ranked = rank_definitions(candidates, league_id=league_id, season=season,
                               rotation_cycle=rotation_cycle)
+
+    # 4a — POR Rev 1.4 §4.2 composition, when it applies. It governs the
+    #      REGULAR phase at the governed slot count and nothing else: the
+    #      postseason subset is fixed and themed, and a slot count the mix was
+    #      not written for gets the pre-Rev-1.4 ranking rather than a rescaled
+    #      quota no owner ruled on.
+    composed = (scope_mix is not None
+                and phase == PHASE_REGULAR
+                and sum(int(n) for _, n in scope_mix) == slot_count)
+    if composed:
+        unscoped = [d.definition_key for d in ranked if not d.scope]
+        unscoped += [c.definition_key for c in ordered_carries if not c.scope]
+        if unscoped:
+            raise PoolRotationError(
+                REASON_MISSING_SCOPE,
+                f"a composed draw needs every candidate's catalog scope; "
+                f"{len(unscoped)} carry none: {sorted(unscoped)[:5]}. "
+                f"POR Rev 1.4 §4.2 — the quota is computed per scope, so an "
+                f"unscoped definition cannot be placed without inventing one.",
+            )
+        allocation = fresh_allocation(scope_mix,
+                                      [c.scope for c in ordered_carries],
+                                      fresh_slots)
+        ranked = _compose(ranked, allocation, fresh_slots)
+
     for offset, d in enumerate(ranked[:fresh_slots]):
         slate.append(SlateEntry(slot=len(ordered_carries) + 1 + offset,
                                 definition_key=d.definition_key,

@@ -286,8 +286,15 @@ try:
     section("4 · A database with no migration record FAILS CLOSED")
 
     unstamped = run_scenario("unstamped", "unstamped")
+    # COUNTED FROM THE MANIFEST, NOT PINNED TO A LITERAL. The claim under test
+    # is "an unstamped database reports EVERY migration as pending", and a
+    # hardcoded 6 turned that into "the manifest has six entries" — a fact this
+    # section has no interest in, and one that goes stale the next time a
+    # release adds a migration. Registering one must not fail a readiness suite.
+    from migrations.manifest import ACTIVE as _MANIFEST
     check("every manifest migration reads as pending",
-          len(unstamped["pending"]) == 6, str(len(unstamped["pending"])))
+          len(unstamped["pending"]) == len(_MANIFEST),
+          f"{len(unstamped['pending'])} of {len(_MANIFEST)}")
     check("/ready answers 503", unstamped["status"] == 503,
           str(unstamped["status"]))
     check("  · not ready", unstamped["ready"] is False)

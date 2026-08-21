@@ -4,8 +4,9 @@
  *
  * WHAT THIS HOLDS. Everything the Matchup Preview explains from, exactly as
  * `/league/{id}/versus/preview` served it: both projected starting lineups, the
- * projections behind them, and the board the pricing engine produced for the
- * pairing.
+ * projections behind them, the board the pricing engine produced for the
+ * pairing, and — since Rev 1.4 Lane C — the provider's own statement of what
+ * each starter and each team HAS scored so far this week.
  *
  * WHAT IT DOES NOT DO — AND THE LIST IS THE POINT. It does not simulate. It
  * does not price. It does not sum a lineup, round a line, decide a sign, or
@@ -80,14 +81,24 @@ export function lineupFor(side) {
 }
 
 /**
- * One side's identity and its SERVER-COMPUTED projected total.
+ * One side's identity and its two SERVER-COMPUTED totals.
+ *
+ * `liveTotal` IS NULL UNTIL A STARTER HAS BEEN MEASURED, and the null is
+ * forwarded rather than coerced. Rev 1.4 §L2: a team whose starters have not
+ * kicked off has not scored 0.0, and the difference between "no figure" and
+ * "zero" has to survive every hop between the provider and the pixel.
  *
  * @param {'acting'|'opponent'} side
- * @returns {{teamId: number|null, teamName: string, projectedTotal: number|null}}
+ * @returns {{teamId: number|null, teamName: string, projectedTotal: number|null,
+ *            liveTotal: number|null, liveMeasuredCount: number|null,
+ *            starterCount: number|null}}
  */
 export function sideFor(side) {
   if (MODE !== PREVIEW_MODE_AUTHORITATIVE || !SERVED) {
-    return { teamId: null, teamName: '', projectedTotal: null };
+    return {
+      teamId: null, teamName: '', projectedTotal: null, liveTotal: null,
+      liveMeasuredCount: null, starterCount: null,
+    };
   }
   const view = SERVED[side] || {};
   return {
@@ -95,7 +106,41 @@ export function sideFor(side) {
     teamName: view.team_name || '',
     projectedTotal: typeof view.projected_total === 'number'
       ? view.projected_total : null,
+    liveTotal: typeof view.live_total === 'number' ? view.live_total : null,
+    liveMeasuredCount: typeof view.live_measured_count === 'number'
+      ? view.live_measured_count : null,
+    starterCount: typeof view.starter_count === 'number'
+      ? view.starter_count : null,
   };
+}
+
+/**
+ * Whether the provider ANSWERED about current scoring for this week.
+ *
+ * NOT "ARE THERE FIGURES". A healthy pre-kickoff read is available and carries
+ * none, and the surface must be able to tell that apart from a provider it
+ * could not reach — the two look identical on screen and mean entirely
+ * different things. `previewLiveReason()` carries which.
+ *
+ * @returns {boolean}
+ */
+export function previewLiveAvailable() {
+  if (MODE !== PREVIEW_MODE_AUTHORITATIVE || !SERVED) return false;
+  return SERVED.live_available === true;
+}
+
+/**
+ * The server's own reason code for an absent live figure, or null.
+ *
+ * One of `providers.live_scoring`'s governed codes. Reported, never authored
+ * here: a sentence the surface invented for a state the server did not describe
+ * is a claim about a provider nobody asked.
+ *
+ * @returns {string|null}
+ */
+export function previewLiveReason() {
+  if (MODE !== PREVIEW_MODE_AUTHORITATIVE || !SERVED) return null;
+  return typeof SERVED.live_reason === 'string' ? SERVED.live_reason : null;
 }
 
 /**

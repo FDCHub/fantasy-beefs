@@ -163,51 +163,232 @@ function identitySection(m, served) {
   );
 }
 
-/** A per-slot figure, or the unresolved mark where none is retained. */
+/** A per-slot PROJECTION, or the unresolved mark where none is retained. */
 function figure(row) {
   return typeof row.projection === 'number' ? row.projection.toFixed(1) : '—';
 }
 
 /**
- * One team's projected starting lineup.
+ * The LIVE figure for one starter, or the em dash.
  *
- * BOTH TEAMS USE THIS FUNCTION. That is the whole of the parallel-construction
- * requirement for LINEUPS: the acting GM's column and the opponent's are not
- * "styled the same", they are the same call with different data. There is no
- * emphasis on either side beyond the team name each carries.
+ * THE EM DASH IS THE ONLY THING AN UNMEASURED STARTER MAY SHOW — Rev 1.4 §L2.
+ * The server sends `live_measured: false` with `live_points: null` for a player
+ * its provider has said nothing about, which before the week's first kickoff is
+ * every starter on both rosters. Drawing that as `0.0` would tell a GM the
+ * player had taken the field and busted.
  *
- * @param {{name: string, rows: Array<object>, total: number|null}} spec
+ * A MEASURED ZERO IS A DIFFERENT FACT and reaches here as `live_measured: true`
+ * with `live_points: 0`. It prints `0.0`. That is why the flag is consulted and
+ * the value is never merely tested for truthiness.
+ */
+function liveFigure(row) {
+  return row.liveMeasured && typeof row.live === 'number'
+    ? row.live.toFixed(1) : '—';
+}
+
+/**
+ * A labelled figure. One markup shape wherever LIVE sits above PROJ.
+ *
+ * @param {string} label
+ * @param {string} value
+ * @param {string} [modifier] an `is-*` class naming the figure's role
  * @returns {string}
  */
-function lineupTable(spec) {
-  const rows = spec.rows.map((row) => (
-    '<div class="fs-lineup__row">' +
-    `<span class="fs-lineup__pos">${escapeHtml(row.position || '—')}</span>` +
-    `<span class="fs-lineup__name">${escapeHtml(row.player || '—')}</span>` +
-    `<span class="fs-lineup__proj">${escapeHtml(figure(row))}</span>` +
-    '</div>'
-  )).join('');
+function figurePair(label, value, modifier = '') {
+  return (
+    `<span class="fs-cmp__fig${modifier ? ` ${modifier}` : ''}">` +
+    `<span class="fs-cmp__figlabel">${escapeHtml(label)}</span>` +
+    `<span class="fs-cmp__fignum">${escapeHtml(value)}</span>` +
+    '</span>'
+  );
+}
 
-  const total = typeof spec.total === 'number'
-    ? spec.total.toFixed(1) : '—';
+/**
+ * ONE team's half of ONE comparison row.
+ *
+ * BOTH TEAMS USE THIS FUNCTION, and that is the whole of Rev 1.4's parallel-
+ * construction requirement. Wave 4A drew two independent `lineupTable()` calls
+ * stacked one above the other: parallel in construction, and not a comparison.
+ * The quarterback a GM was weighing sat nine rows above the quarterback it was
+ * being weighed against, and on a 320px phone the two were never on screen
+ * together — so the panel a GM opens before spending Credits made the one
+ * judgement it exists for the hardest thing on it.
+ *
+ * The acting GM's cell and the opponent's are now the same call, in the same
+ * row, differing only in the data handed to them. Neither can carry a figure
+ * the other cannot, and neither carries emphasis the other does not.
+ *
+ * A SIDE WITH NO STARTER IN THIS SLOT DRAWS AN EMPTY CELL, never a shifted row.
+ * Pulling the opponent's next player up to close the gap would pair two
+ * starters the lineups do not pair — a comparison no server ever served.
+ *
+ * @param {{row: object|null, side: string}} spec
+ * @returns {string}
+ */
+function teamCell(spec) {
+  const row = spec.row;
+  const name = row ? (row.player || '—') : '—';
+  const empty = row ? '' : ' is-empty';
+  return (
+    `<div class="fs-cmp__cell${empty}" role="cell" ` +
+    `data-cmp-side="${escapeHtml(spec.side)}">` +
+    `<span class="fs-cmp__player">${escapeHtml(name)}</span>` +
+    '<span class="fs-cmp__figs">' +
+    figurePair('LIVE', row ? liveFigure(row) : '—', 'is-live') +
+    figurePair('PROJ', row ? figure(row) : '—') +
+    '</span>' +
+    '</div>'
+  );
+}
+
+/**
+ * The row's POSITION key — the thing the two cells beside it are keyed by.
+ *
+ * THE LINEUPS ARE PAIRED BY LINEUP ORDINAL, which is what the engine's own
+ * ordering means: `_fetch_starters_for_odds` takes the first `N_START` roster
+ * rows by id, so a player's position in that list IS its lineup slot. Where
+ * both sides fill the slot with the same roster position — which every seeded
+ * roster in this product does — the key is that position.
+ *
+ * WHERE THEY DIFFER, BOTH ARE NAMED. Labelling the row with one team's position
+ * alone would assert a pairing the other team's roster does not support, and a
+ * GM reading `RB` would believe it was comparing two running backs.
+ *
+ * @param {object|null} a
+ * @param {object|null} b
+ * @returns {string}
+ */
+function positionKey(a, b) {
+  const left = (a && a.position) || '';
+  const right = (b && b.position) || '';
+  if (left && right && left !== right) return `${left}/${right}`;
+  return left || right || '—';
+}
+
+/**
+ * A team's footer figures — the two totals the SERVER computed.
+ *
+ * NEITHER TOTAL IS ADDED UP HERE. `projected_total` and `live_total` are the
+ * read model's own sums; recomputing them in the browser would give the surface
+ * a second opinion about its own figures, and the two would agree right up
+ * until the day one of them was corrected. Rev 4.3 §28.
+ *
+ * `live_total` IS NULL UNTIL SOMETHING HAS BEEN MEASURED, and null draws the em
+ * dash. A team whose starters have not kicked off has not scored 0.0.
+ *
+ * @param {{liveTotal: number|null, projectedTotal: number|null, side: string}} spec
+ * @returns {string}
+ */
+function totalCell(spec) {
+  const live = typeof spec.liveTotal === 'number'
+    ? spec.liveTotal.toFixed(1) : '—';
+  const projected = typeof spec.projectedTotal === 'number'
+    ? spec.projectedTotal.toFixed(1) : '—';
+  return (
+    `<div class="fs-cmp__cell" role="cell" ` +
+    `data-cmp-side="${escapeHtml(spec.side)}">` +
+    '<span class="fs-cmp__figs">' +
+    figurePair('LIVE TOTAL', live, 'is-live') +
+    figurePair('PROJECTED', projected) +
+    '</span>' +
+    '</div>'
+  );
+}
+
+/**
+ * The comparison matrix — both starting lineups, paired row by row.
+ *
+ * ONE TABLE, NOT TWO TABLES SIDE BY SIDE. Two full-width lineup cards jammed
+ * next to each other is what a 320px viewport cannot carry; a matrix keyed by
+ * roster position down the left edge, with one narrow column per team, is what
+ * it can. The two teams therefore stay horizontally adjacent at every certified
+ * viewport, and the wider presentations widen this same grid rather than
+ * re-laying it out — which is what preserves the row-to-row matchup
+ * relationship the phone build states.
+ *
+ * @param {{teams: Array<{name: string, rows: Array<object>,
+ *          projectedTotal: number|null, liveTotal: number|null}>}} spec
+ * @returns {string}
+ */
+function comparisonMatrix(spec) {
+  const [left, right] = spec.teams;
+  const depth = Math.max(left.rows.length, right.rows.length);
+
+  const rows = [];
+  for (let i = 0; i < depth; i += 1) {
+    const a = left.rows[i] || null;
+    const b = right.rows[i] || null;
+    rows.push(
+      '<div class="fs-cmp__row" role="row">' +
+      `<span class="fs-cmp__pos" role="rowheader">${escapeHtml(positionKey(a, b))}</span>` +
+      teamCell({ row: a, side: 'acting' }) +
+      teamCell({ row: b, side: 'opponent' }) +
+      '</div>');
+  }
 
   return (
-    '<div class="fs-lineup">' +
-    `<div class="fs-lineup__team">${escapeHtml(spec.name)}</div>` +
-    '<div class="fs-lineup__head">' +
-    '<span class="fs-lineup__pos">POS</span>' +
-    '<span class="fs-lineup__name">PLAYER</span>' +
-    '<span class="fs-lineup__proj">PROJ</span>' +
+    '<div class="fs-cmp" role="table">' +
+    '<div class="fs-cmp__head" role="row">' +
+    '<span class="fs-cmp__pos" role="columnheader">POS</span>' +
+    `<span class="fs-cmp__team" role="columnheader" data-cmp-side="acting">${escapeHtml(left.name)}</span>` +
+    `<span class="fs-cmp__team" role="columnheader" data-cmp-side="opponent">${escapeHtml(right.name)}</span>` +
     '</div>' +
-    rows +
-    '<div class="fs-lineup__row is-total">' +
-    '<span class="fs-lineup__pos"></span>' +
-    '<span class="fs-lineup__name">Projected total</span>' +
-    `<span class="fs-lineup__proj">${escapeHtml(total)}</span>` +
+    rows.join('') +
+    '<div class="fs-cmp__row is-total" role="row">' +
+    '<span class="fs-cmp__pos" role="rowheader"></span>' +
+    totalCell({ side: 'acting', liveTotal: left.liveTotal,
+      projectedTotal: left.projectedTotal }) +
+    totalCell({ side: 'opponent', liveTotal: right.liveTotal,
+      projectedTotal: right.projectedTotal }) +
     '</div>' +
     '</div>'
   );
 }
+
+/**
+ * What the two figures under each player MEAN, in the state they are in.
+ *
+ * THREE STATES, AND THE SURFACE SAYS A DIFFERENT THING FOR EACH. Rev 1.4 §L2
+ * forbids one sentence covering all three, because "no starter has been scored
+ * yet" and "we could not read this league's provider" look identical on screen
+ * — both are em dashes — and mean entirely different things to the GM
+ * looking at them. The server distinguishes them with `live_available` and its
+ * governed `live_reason`; this reads that distinction rather than guessing at
+ * it from whether any figure happens to be present.
+ *
+ * PROJECTIONS ARE DESCRIBED IN EVERY BRANCH. A live read that failed must cost
+ * a GM the LIVE column and nothing else, so no branch below implies the
+ * projections are degraded, stale or absent.
+ *
+ * @param {object} served the MatchupPreviewOut
+ * @returns {string}
+ */
+function liveNote(served) {
+  const scored = [served.acting, served.opponent]
+    .some((side) => side && typeof side.live_total === 'number');
+
+  if (scored) {
+    return '<div class="fs-note">LIVE is what this league\u2019s provider '
+      + 'reports these starters have scored so far this week. PROJ is the '
+      + 'pregame projection FantasyStakes simulated the market above from \u2014 '
+      + 'the two are different measurements and neither replaces the other. A '
+      + 'starter its provider has not scored yet reads \u2014.</div>';
+  }
+
+  if (served.live_available) {
+    return '<div class="fs-note">No starter has been scored yet this week, so '
+      + 'every LIVE figure reads \u2014. PROJ is the pregame projection '
+      + 'FantasyStakes simulated the market above from, and it is unaffected.'
+      + '</div>';
+  }
+
+  return '<div class="fs-note">Current scoring is not available from this '
+    + 'league\u2019s provider right now, so every LIVE figure reads \u2014. '
+    + 'Showing a number there would mean inventing one. PROJ is the pregame '
+    + 'projection FantasyStakes simulated the market above from, and it is '
+    + 'unaffected.</div>';
+}
+
 
 /**
  * LINEUPS — the projections the price rests on.
@@ -225,10 +406,16 @@ function lineupsSection(m, served) {
   if (served) {
     const acting = served.acting || {};
     const opponent = served.opponent || {};
+    // A STRAIGHT RENAME OF SERVED FIELDS AND NOTHING ELSE. No figure is
+    // rounded, summed or defaulted on the way through: `live` stays null where
+    // the server sent null, and `liveMeasured` carries the server's own
+    // affirmative flag so a measured 0.0 survives the hop.
     const map = (row) => ({
       position: row.position,
       player: row.player_name,
       projection: row.projected_points,
+      live: typeof row.live_points === 'number' ? row.live_points : null,
+      liveMeasured: row.live_measured === true,
     });
     const actingRows = (acting.lineup || []).map(map);
     const opponentRows = (opponent.lineup || []).map(map);
@@ -240,15 +427,21 @@ function lineupsSection(m, served) {
     }
 
     return collapsible('LINEUPS',
-      '<div class="fs-lineups">'
-      + lineupTable({ name: acting.team_name || m.you.name,
-        rows: actingRows, total: acting.projected_total })
-      + lineupTable({ name: opponent.team_name || m.name,
-        rows: opponentRows, total: opponent.projected_total })
-      + '</div>'
-      + '<div class="fs-note">These are the projected starters and projections '
-      + 'FantasyStakes simulated to produce the market above. Projections '
-      + 'refresh until the week’s first kickoff.</div>');
+      comparisonMatrix({
+        teams: [
+          { name: acting.team_name || m.you.name, rows: actingRows,
+            projectedTotal: typeof acting.projected_total === 'number'
+              ? acting.projected_total : null,
+            liveTotal: typeof acting.live_total === 'number'
+              ? acting.live_total : null },
+          { name: opponent.team_name || m.name, rows: opponentRows,
+            projectedTotal: typeof opponent.projected_total === 'number'
+              ? opponent.projected_total : null,
+            liveTotal: typeof opponent.live_total === 'number'
+              ? opponent.live_total : null },
+        ],
+      })
+      + liveNote(served));
   }
 
   // ── UNBOUND. Unchanged from WP3C, and it has to be: with no served preview

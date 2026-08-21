@@ -108,6 +108,38 @@ def _open_cycle(db, *, league_id: int, season: int, rotation_cycle: int,
     db.flush()
 
 
+def weekly_scope_mix() -> tuple[tuple[str, int], ...] | None:
+    """The governed weekly scope composition — POR Rev 1.4 §4.2.
+
+    READ FROM THE CATALOG ARTIFACT, not from a constant here, because the mix
+    is a product ruling and the catalog is where product rulings are data.
+    `load_catalog` has already refused any artifact whose block disagrees with
+    `pool_rotation.DEFAULT_SCOPE_MIX`, so this cannot return a mix the pure
+    selector was not written for.
+
+    Returns None if the artifact declares no composition — which no Rev 1.4 or
+    later catalog does, and which a Rev 1.3 artifact loaded for historical
+    comparison legitimately does. None means "rank without a quota", the
+    pre-Rev-1.4 behaviour, rather than a guess at what the mix would have been.
+    """
+    from betting.pool_catalog import load_catalog
+
+    return load_catalog().weekly_scope_mix
+
+
+def _definition_scopes(db, keys) -> dict[str, str]:
+    """`definition_key -> scope` for the keys given. Empty in, empty out."""
+    from db.schema import PoolDefinition
+
+    keys = list(keys)
+    if not keys:
+        return {}
+    rows = (db.query(PoolDefinition.key, PoolDefinition.scope)
+            .filter(PoolDefinition.key.in_(keys))
+            .all())
+    return {k: s for k, s in rows}
+
+
 def pending_continuations(db, *, league_id: int, season: int, week: int):
     """Instances from earlier weeks still holding a live carry.
 
@@ -250,8 +282,15 @@ def build_and_persist_slate(db, *, league, season: int, week: int, phase: str,
 
     carries = pending_continuations(db, league_id=league_id, season=season,
                                     week=week)
+    # POR Rev 1.4 §4.2 — a carry occupies a slot, so its SCOPE is what the
+    # week's fresh quota is computed against. It is read from
+    # `pool_definition` rather than stored a second time on the instance,
+    # because a definition's scope is definition metadata and duplicating it
+    # onto every occurrence is how the two come to disagree.
+    scope_by_key = _definition_scopes(db, [c.definition_key for c in carries])
     continuations = tuple(
-        Continuation(definition_key=c.definition_key, prior_slot=c.slot)
+        Continuation(definition_key=c.definition_key, prior_slot=c.slot,
+                     scope=scope_by_key.get(c.definition_key))
         for c in carries
     )
 
@@ -272,11 +311,12 @@ def build_and_persist_slate(db, *, league, season: int, week: int, phase: str,
             needed=max(0, slot_count - len(continuations)))
         used = set()
 
+    scope_mix = weekly_scope_mix()
     result = build_week_slate(
         league_id=league_id, season=season, week=week,
         rotation_cycle=rotation_cycle, phase=phase,
         eligible=eligible, continuations=continuations,
-        used_fresh_keys=used, slot_count=slot_count,
+        used_fresh_keys=used, slot_count=slot_count, scope_mix=scope_mix,
     )
 
     reset_performed = False
@@ -295,7 +335,7 @@ def build_and_persist_slate(db, *, league, season: int, week: int, phase: str,
             eligible=eligible, continuations=continuations,
             # A fresh cycle has consumed nothing. Carrying `used` across the
             # boundary would leave the new cycle born exhausted.
-            used_fresh_keys=(), slot_count=slot_count,
+            used_fresh_keys=(), slot_count=slot_count, scope_mix=scope_mix,
         )
         if result.reset_required:
             # Two resets for one draw means the eligible set genuinely cannot

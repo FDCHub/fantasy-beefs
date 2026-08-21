@@ -148,8 +148,25 @@ check('their headings are the locked ones, in order',
     // distinctions.
     === 'OVERALL | MATCHUP STANDINGS | PROP POOL STANDINGS',
   STANDINGS_TABLES.map((t) => t.heading).join(' | '));
-check('Overall carries RK | TEAM | MATCHUPS | PROP POOLS | NET',
-  STANDINGS_TABLES[0].columns.join(' | ') === 'RK | TEAM | MATCHUPS | PROP POOLS | NET',
+// UIRECON REV 1.4 PART 8 — `PROP POOLS` BECOMES `POOLS`, IN THE COLUMN HEAD
+// ONLY.
+//
+// Two two-word headers sat side by side over the two narrowest numeric columns
+// in the product, and at 320px they collided: `MATCHUPS` and `PROP POOLS` each
+// wrapped to two lines and the header row grew into the first data row. The
+// fix is the shorter word, not a smaller font — the brief is explicit that
+// responsive widths are preferred over shrinking text to illegibility.
+//
+// `POOLS` IS UNAMBIGUOUS HERE because the table directly beneath it is still
+// headed `PROP POOL STANDINGS`, which is the surface's first reference and is
+// asserted unchanged above. The product term is untouched; this is a column
+// abbreviation in a table that has already named the thing.
+//
+// `MATCHUPS` IS NOT ABBREVIATED. `Matches` was considered and refused: Matchups
+// is the established product term and a standings column is exactly where a
+// reader would take a different word to mean a different thing.
+check('Overall carries RK | TEAM | MATCHUPS | POOLS | NET',
+  STANDINGS_TABLES[0].columns.join(' | ') === 'RK | TEAM | MATCHUPS | POOLS | NET',
   STANDINGS_TABLES[0].columns.join(' | '));
 check('Versus carries RK | TEAM | W-L | NET',
   STANDINGS_TABLES[1].columns.join(' | ') === 'RK | TEAM | W-L | NET',

@@ -21,7 +21,21 @@ export const STANDINGS_TABLES = Object.freeze([
   Object.freeze({
     key: 'overall',
     heading: 'OVERALL',
-    columns: Object.freeze(['RK', 'TEAM', 'MATCHUPS', 'PROP POOLS', 'NET']),
+    // UIRECON REV 1.4 — `POOLS`, not `PROP POOLS`.
+    //
+    // Two words could not be drawn on one line in a figure column at any
+    // certified phone width: `PROP POOLS` measured 82px against a 60px cell,
+    // took a second line, and stood the whole header row at 45px while the two
+    // tables below it stood at 28px. The table it heads is already `PROP POOL
+    // STANDINGS` and the column below it already holds Prop Pool Credits, so
+    // the word `PROP` was carrying no information this header did not have.
+    //
+    // `MATCHUPS` IS NOT ABBREVIATED and is not `MATCHES`. It is the product's
+    // term for the contest, it is the term the two tables below use, and a
+    // column that names a different thing than the table it sits in would cost
+    // more than the pixels it saved. The width it needs is bought in
+    // `standings.css` instead — see the column-width contract there.
+    columns: Object.freeze(['RK', 'TEAM', 'MATCHUPS', 'POOLS', 'NET']),
   }),
   Object.freeze({
     key: 'versus',

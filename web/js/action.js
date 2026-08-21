@@ -2,14 +2,34 @@
  * FantasyStakes — UI/UX Rev 4.2 · Action
  * Sprint 7 Package 2
  *
- * Four single-row horizontal rails — ACTION REQUIRED, WAITING, LIVE,
- * COMPLETED — over the same wager-card grammar League uses. Because each rail
- * is one row, a card can afford to be taller and say more; it does not become
- * a different card.
+ * Four horizontal carousels — ACTION REQUIRED, WAITING, LIVE, COMPLETED — over
+ * the same wager-card grammar League uses. Because each rail is one row, a card
+ * can afford to say more; it does not become a different card.
  *
  * A COMPLETED card is the LIVE card that preceded it, showing later figures.
  * Same identity, same market row, same stakes — plus the final score and the
  * net. Nothing here re-skins a settled wager as a transaction row.
+ *
+ * ── REV 1.4 · THE RAILS BECAME CAROUSELS ────────────────────────────────────
+ *
+ * A rail whose items were a fixed 216px wide showed one and a half cards on a
+ * phone, and the half card was the defect: it reads as a rendering accident
+ * rather than as an invitation to swipe, and it costs the visible card a third
+ * of the width it needs to say what it is. Four of those stacked to 929px of
+ * content inside a 534px viewport at 390x844, so a GM meeting Status for the
+ * first time saw two lifecycle states and had to discover the other two.
+ *
+ * The fix is the geometry Wrap Up's result carousels already use: each item is
+ * exactly 100% of its rail's width, so ONE card fills the viewport by
+ * construction — at any card height, at any viewport width — and
+ * `scroll-snap-stop: always` parks on the next one. There is no pixel constant
+ * here to go stale and no arrangement in which a second card is partly visible.
+ *
+ * WHAT THIS FILE DOES NOT DO ABOUT IT. It sets no width, no height and no
+ * padding: the geometry and the density both live in `tabs.css`, because a
+ * carousel that expressed its own width in JavaScript would be a second opinion
+ * about a layout the stylesheet already owns. What changed here is the heading
+ * grammar (see `railHeading`) and one class name on the rail.
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
@@ -198,10 +218,18 @@ export function buildActionPanel() {
       // role is dropped in exactly the case where there is nothing to list, and
       // the note is then an ordinary paragraph, which is what it is.
       const isList = body.includes('role="listitem"');
+      // REV 1.4 — `data-rail-count` IS THE HEADING'S NUMBER, MACHINE-READABLE.
+      // The count in the heading is a rendered string, and a suite that reads
+      // it back out of the string is asserting against its own parse. The
+      // attribute carries the same `sectionCount` call, so a certification can
+      // compare the surface against `/league/{id}/action/me` without either
+      // side going through a regular expression.
       return (
-        `<section class="fs-railsec" data-rail="${rail}">` +
+        `<section class="fs-railsec" data-rail="${rail}"` +
+        ` data-rail-count="${sectionCount(rail)}">` +
         sectionHeading(railHeading(rail)) +
-        `<div class="fs-rail is-stretch"${isList ? ' role="list"' : ''}>` +
+        `<div class="fs-rail is-stretch fs-rail--carousel"` +
+        `${isList ? ' role="list"' : ''}>` +
         body +
         '</div></section>'
       );
@@ -218,40 +246,48 @@ export function buildActionPanel() {
   return composer.toHTML();
 }
 
+/** The locked rail words. One spelling, one place, four rails. */
+const RAIL_WORDS = Object.freeze({
+  action: 'ACTION REQUIRED',
+  waiting: 'WAITING',
+  live: 'LIVE',
+  completed: 'COMPLETED',
+});
+
 /**
- * The heading for one rail, counting BOUND state.
+ * The heading for one rail — `LABEL: N`, and nothing else.
  *
- * The illustrative `2 / 2 / 4` are the fixture's counts and are correct only
- * for the fixture. In production the count comes from the server's own tally —
- * see `sectionCount`.
+ * ── WHY THE FOUR HEADINGS NOW READ THE SAME WAY (Rev 1.4) ───────────────────
+ *
+ * Each rail is a CAROUSEL showing one card at a time, so the heading is the
+ * only place a GM can learn how many cards are behind the one they are looking
+ * at. That makes the count load-bearing rather than decorative, and a count a
+ * reader has to hunt for in three different heading grammars is not one they
+ * will trust. `LABEL: N` is the same sentence four times.
+ *
+ * WHAT THE COUNT IS. `sectionCount` and nothing else: in production the
+ * server's own tally from `/league/{id}/action/me`, in demo the fixture's own
+ * length. This module has never counted cards itself and still does not — if
+ * the rendered rail and the served tally ever disagreed, the server is right
+ * and the discrepancy is worth seeing.
+ *
+ * WHAT THE COMPLETED HEADING GAVE UP, AND WHY THAT IS NOT A LOSS. It used to
+ * read `COMPLETED · 14–7 SEASON` in demo — a locked Rev 4.2 string whose season
+ * record has been UNRESOLVED for signed-in GMs since S8-P4C-2, which is why
+ * production already dropped it. Carrying it in demo alone meant the one rail
+ * whose count a visitor most wants (seven settled Matchups) was the one rail
+ * that did not state it, and it made the demo's heading grammar differ from the
+ * product's. The record itself has not gone: `seasonRecordLabel()` still draws
+ * it in the summary strip's Bet Record cell, which is a figure's slot rather
+ * than a heading's.
  *
  * @param {string} rail
  * @returns {string}
  */
 export function railHeading(rail) {
-  switch (rail) {
-    case 'action': return `ACTION REQUIRED ${sectionCount('action')}`;
-    case 'waiting': return `WAITING ${sectionCount('waiting')}`;
-    case 'live': return `LIVE ${sectionCount('live')}`;
-    // COMPLETED CARRIES THE SEASON RECORD ONLY IN DEMO.
-    //
-    // The locked Rev 4.2 heading is `COMPLETED · 14–7 SEASON`, and 14–7 is a
-    // fixture constant with no authoritative source — S8-P4C-2 classified it
-    // UNRESOLVED and then went on rendering it to signed-in GMs, which is the
-    // seam this repair closes. A GM reading their own Action tab would have
-    // seen someone else's season record presented as theirs.
-    //
-    // In production the heading keeps its place in the hierarchy and drops the
-    // claim. NOT `0–0`, which asserts a real record of no games; not a card
-    // count relabelled as a record, which would be a different figure wearing
-    // this one's name. P4C-3 may restore a real record if a provider or history
-    // source turns out to supply one.
-    case 'completed':
-      return actionMode() === 'demo'
-        ? `COMPLETED · ${seasonRecordLabel()} SEASON`
-        : 'COMPLETED';
-    default: throw new Error(`unknown rail "${rail}"`);
-  }
+  const word = RAIL_WORDS[rail];
+  if (!word) throw new Error(`unknown rail "${rail}"`);
+  return `${word}: ${sectionCount(rail)}`;
 }
 
 /**

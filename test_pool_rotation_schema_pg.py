@@ -154,6 +154,9 @@ def main(tdb) -> None:
     from db.migrations.migrate_s4_common_pool_engine import (
         upgrade as s4_upgrade,
     )
+    from migrations.add_pool_definition_public_question import (
+        upgrade as _rev14_upgrade,
+    )
 
     PUBLIC_COUNT = ("SELECT count(*) FROM information_schema.tables "
                     "WHERE table_schema = 'public'")
@@ -362,6 +365,15 @@ def main(tdb) -> None:
         # which is the two-disagreeing-schema-sources defect this file exists
         # to catch.
         s4_upgrade(engine)
+        # POR REV 1.4 §3 — AND PRODUCTION NOW APPLIES A THIRD.
+        # `0008_pool_definition_public_question` adds the nullable
+        # `public_question` column the Rev 1.4 catalog seeds. The ORM carries it,
+        # so a migration path that stopped at S4-P1 would rebuild a table the ORM
+        # cannot INSERT into — which is precisely the two-disagreeing-schema-
+        # sources defect this file exists to catch, and it is caught here rather
+        # than argued about. Running it also certifies the migration itself
+        # against real PostgreSQL DDL rather than against SQLite's ALTER.
+        _rev14_upgrade(engine)
 
         with SessionLocal() as db:
             db.add(PoolDefinition(**_rev13_definition_row(DKEY)))

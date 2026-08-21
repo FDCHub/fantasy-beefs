@@ -21,17 +21,64 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from betting.pool_rotation import (  # noqa: E402
     Continuation, EligibleDefinition, PoolRotationError,
     PHASE_POSTSEASON, PHASE_REGULAR,
-    REASON_TOO_MANY_CONTINUATIONS,
-    build_week_slate, digest_for, rank_definitions,
+    DEFAULT_SCOPE_MIX, SCOPE_MATCHUP, SCOPE_TEAM,
+    REASON_MISSING_SCOPE, REASON_TOO_MANY_CONTINUATIONS,
+    build_week_slate as _selector, digest_for, fresh_allocation,
+    rank_definitions,
 )
 
 LEAGUE_ID, SEASON, CYCLE = 7, 2026, 3
 
 
+def build_week_slate(**kwargs):
+    """The selector with POR Rev 1.4 §4.2's scope composition OFF by default.
+
+    S1-S12 below measure the ORDERING COMPATIBILITY CONTRACT — the digest
+    serialization, the tie-breakers, carried-key subtraction, caller-order
+    independence, reset signalling. A scope quota is a second, independent rule
+    layered on top of that ordering, and leaving it on would mean every one of
+    those assertions was measuring two things at once: a failure could be the
+    ranking OR the composition, and the suite could not say which.
+
+    So the ordering sections opt out explicitly, exactly as the selector's own
+    signature invites (`scope_mix=None` is "rank without a quota"), and the
+    composition gets its own section — S13 — which calls the real selector with
+    its real default and asserts the mix. Nothing here weakens the default: a
+    caller who passes nothing still gets 3 TEAM + 1 MATCHUP, and S13 proves it.
+    """
+    kwargs.setdefault("scope_mix", None)
+    return _selector(**kwargs)
+
+
 def _defs(n, start=1):
-    """n eligible definitions with stable keys and catalog numbers."""
+    """n eligible definitions with stable keys and catalog numbers.
+
+    UNSCOPED, deliberately. These feed the ordering sections, which run with the
+    composition off; a scope they never consult would be a fact the fixture
+    asserts and nothing reads. S13 builds its own scoped fixture.
+    """
     return [EligibleDefinition(definition_key=f"def_{i:03d}", catalog_number=i)
             for i in range(start, start + n)]
+
+
+def _scoped(team, matchup):
+    """`team` TEAM definitions then `matchup` MATCHUP ones, distinct keys.
+
+    Catalog numbers are contiguous across both blocks so the scope cannot be
+    inferred from the number — a composition that accidentally worked by
+    ordering rather than by scope would still fail here.
+    """
+    rows = [EligibleDefinition(f"t_{i:03d}", i, SCOPE_TEAM)
+            for i in range(1, team + 1)]
+    rows += [EligibleDefinition(f"m_{i:03d}", team + i, SCOPE_MATCHUP)
+             for i in range(1, matchup + 1)]
+    return rows
+
+
+def _scopes(res):
+    """The slate's scopes, recovered from the fixture's key prefix."""
+    return [SCOPE_TEAM if e.definition_key.startswith("t_") else SCOPE_MATCHUP
+            for e in res.slate]
 
 
 # ── child mode: emit one slate as JSON, for the S1 subprocess probe ──────────
@@ -371,6 +418,205 @@ def main() -> None:
             digest_for("k", LEAGUE_ID, SEASON, CYCLE)
             == digest_for("k", LEAGUE_ID, SEASON, CYCLE),
             detail="digest_for takes no week argument by construction")
+
+    # ── S13 · POR Rev 1.4 §4.2 — the weekly scope composition ─────────────
+    #
+    # THIS SECTION CALLS THE REAL SELECTOR, not the suite's `scope_mix=None`
+    # wrapper. Everything above measures the ordering contract with the
+    # composition deliberately off; this measures the composition, and it does
+    # so through `_selector` with NO scope_mix argument at all — so it is also
+    # the assertion that the governed mix is what a caller who passes nothing
+    # actually gets.
+    print("\n-- S13: scope composition, POR Rev 1.4 §4.2 --")
+
+    _assert("25: the governed mix is 3 TEAM + 1 MATCHUP, in that priority order",
+            DEFAULT_SCOPE_MIX == ((SCOPE_TEAM, 3), (SCOPE_MATCHUP, 1)),
+            detail=str(DEFAULT_SCOPE_MIX))
+
+    # The real Gate-1 shape: 35 TEAM, 29 MATCHUP.
+    catalog_shaped = _scoped(35, 29)
+
+    composed = _selector(league_id=LEAGUE_ID, season=SEASON, week=5,
+                         rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                         eligible=catalog_shaped, used_fresh_keys=())
+
+    # MEASURED ACROSS MANY LEAGUES AND CYCLES, not on one fixture. A single
+    # draw proves nothing either way: an unconstrained ranking lands on 3/1 by
+    # chance often enough that one sample could pass with the composition
+    # switched off. So both halves are swept over the same 60 (league, cycle)
+    # pairs — the composition must hold on EVERY one, and the unconstrained
+    # ranking must fail on SOME, which is the defect §4.2 exists to correct.
+    _sweep = [(lg, cyc) for lg in range(1, 21) for cyc in range(1, 4)]
+
+    def _shape(lg, cyc, **kw):
+        return _scopes(_selector(
+            league_id=lg, season=SEASON, week=5, rotation_cycle=cyc,
+            phase=PHASE_REGULAR, eligible=catalog_shaped,
+            used_fresh_keys=(), **kw))
+
+    _off_mix = [(lg, cyc, m.count(SCOPE_TEAM), m.count(SCOPE_MATCHUP))
+                for lg, cyc in _sweep
+                for m in [_shape(lg, cyc)]
+                if (m.count(SCOPE_TEAM), m.count(SCOPE_MATCHUP)) != (3, 1)]
+    _assert("26: EVERY default four-slot REGULAR draw is 3 TEAM + 1 MATCHUP, "
+            f"across {len(_sweep)} league/cycle pairs",
+            not _off_mix,
+            detail=str(_off_mix[:3]) if _off_mix
+                   else f"{len(_sweep)}/{len(_sweep)} drew 3 TEAM + 1 MATCHUP")
+
+    # THE CONTROL, and the measurement the ruling was made on.
+    _uncomposed = [(_shape(lg, cyc, scope_mix=None).count(SCOPE_TEAM))
+                   for lg, cyc in _sweep]
+    _uncomposed_31 = sum(1 for t in _uncomposed if t == 3)
+    _assert("27: the unconstrained ranking does NOT hold the mix, so #26 is "
+            "the composition and not the fixture",
+            _uncomposed_31 < len(_sweep),
+            detail=f"unconstrained held 3 TEAM on {_uncomposed_31}/"
+                   f"{len(_sweep)} pairs; most common shape was "
+                   f"{max(set(_uncomposed), key=_uncomposed.count)} TEAM")
+
+    _assert("28: a composed draw is still deterministic — same inputs, same "
+            "slate",
+            _keys(_selector(league_id=LEAGUE_ID, season=SEASON, week=5,
+                            rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                            eligible=catalog_shaped, used_fresh_keys=()))
+            == _keys(composed))
+
+    _assert("29: caller order cannot influence a composed draw either",
+            _keys(_selector(league_id=LEAGUE_ID, season=SEASON, week=5,
+                            rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                            eligible=list(reversed(catalog_shaped)),
+                            used_fresh_keys=())) == _keys(composed))
+
+    _assert("30: slots are still laid out in GLOBAL rank order — the "
+            "composition chooses membership, not order",
+            [e.definition_key for e in composed.slate]
+            == [d.definition_key for d in rank_definitions(
+                [d for d in catalog_shaped
+                 if d.definition_key in set(_keys(composed))],
+                league_id=LEAGUE_ID, season=SEASON, rotation_cycle=CYCLE)],
+            detail=str(_keys(composed)))
+
+    _assert("31: no definition appears twice in a composed slate",
+            len(set(_keys(composed))) == 4, detail=str(_keys(composed)))
+
+    # ── the deficit table of §4.2.1, carry configuration by carry
+    #    configuration. `fresh_allocation` is public precisely so this can be
+    #    read directly rather than inferred from four finished slates.
+    _allocations = {
+        (): ((SCOPE_TEAM, 3), (SCOPE_MATCHUP, 1)),
+        (SCOPE_TEAM,): ((SCOPE_TEAM, 2), (SCOPE_MATCHUP, 1)),
+        (SCOPE_MATCHUP,): ((SCOPE_TEAM, 3), (SCOPE_MATCHUP, 0)),
+        (SCOPE_MATCHUP, SCOPE_MATCHUP): ((SCOPE_TEAM, 2), (SCOPE_MATCHUP, 0)),
+        (SCOPE_TEAM, SCOPE_TEAM, SCOPE_TEAM): ((SCOPE_TEAM, 0),
+                                               (SCOPE_MATCHUP, 1)),
+        (SCOPE_TEAM,) * 4: ((SCOPE_TEAM, 0), (SCOPE_MATCHUP, 0)),
+    }
+    _bad = [
+        (carried, fresh_allocation(DEFAULT_SCOPE_MIX, list(carried),
+                                   4 - len(carried)), expected)
+        for carried, expected in _allocations.items()
+        if fresh_allocation(DEFAULT_SCOPE_MIX, list(carried),
+                            4 - len(carried)) != expected
+    ]
+    _assert("32: the §4.2.1 deficit table holds in every carry configuration",
+            not _bad, detail=str(_bad) if _bad else "6 configurations checked")
+
+    # A carry is not displaced, and the fresh draws fill the deficit around it.
+    carried_matchup = _scoped(35, 29)
+    carry_key = "m_001"
+    with_carry = _selector(
+        league_id=LEAGUE_ID, season=SEASON, week=6, rotation_cycle=CYCLE,
+        phase=PHASE_REGULAR,
+        eligible=[d for d in carried_matchup if d.definition_key != carry_key],
+        continuations=[Continuation(carry_key, 1, SCOPE_MATCHUP)],
+        used_fresh_keys=())
+    carry_mix = _scopes(with_carry)
+    _assert("33: a carried MATCHUP takes the MATCHUP slot and the three fresh "
+            "draws are all TEAM",
+            with_carry.slate[0].definition_key == carry_key
+            and with_carry.slate[0].is_continuation
+            and carry_mix.count(SCOPE_TEAM) == 3
+            and carry_mix.count(SCOPE_MATCHUP) == 1,
+            detail=f"{_keys(with_carry)} -> {carry_mix.count(SCOPE_TEAM)} TEAM")
+
+    # §4.2.3 — the slate is filled to four even when a scope is exhausted.
+    starved = _selector(league_id=LEAGUE_ID, season=SEASON, week=7,
+                        rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                        eligible=_scoped(1, 9), used_fresh_keys=())
+    starved_mix = _scopes(starved)
+    _assert("34: a scope that cannot fill its share falls through to the other "
+            "rather than shortening the slate (§4.2.3)",
+            len(starved.slate) == 4 and starved.reset_required is False
+            and starved_mix.count(SCOPE_TEAM) == 1,
+            detail=f"{starved_mix.count(SCOPE_TEAM)} TEAM / "
+                   f"{starved_mix.count(SCOPE_MATCHUP)} MATCHUP, "
+                   f"{len(starved.slate)} slots")
+
+    _assert("35: cross-scope fallback is deterministic too",
+            _keys(_selector(league_id=LEAGUE_ID, season=SEASON, week=7,
+                            rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                            eligible=_scoped(1, 9), used_fresh_keys=()))
+            == _keys(starved))
+
+    # §4.2.3 — exhaustion is still TOTAL, never per scope. Three candidates
+    # cannot fill four fresh slots whatever their scopes are.
+    exhausted = _selector(league_id=LEAGUE_ID, season=SEASON, week=8,
+                          rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                          eligible=_scoped(2, 1), used_fresh_keys=())
+    _assert("36: a reset is signalled on TOTAL exhaustion, not on a scope "
+            "running dry",
+            exhausted.reset_required is True
+            and starved.reset_required is False,
+            detail=f"3 candidates -> reset={exhausted.reset_required}; "
+                   f"10 candidates, 1 TEAM -> reset={starved.reset_required}")
+
+    # §4.2.5 — the postseason is excluded, and so is a slot count the mix was
+    # not written for.
+    post = _selector(league_id=LEAGUE_ID, season=SEASON, week=16,
+                     rotation_cycle=CYCLE, phase=PHASE_POSTSEASON,
+                     eligible=_scoped(35, 29), used_fresh_keys=())
+    _assert("37: POSTSEASON is not composed — it ranks as it always did "
+            "(§4.2.5)",
+            _keys(post) == _keys(_selector(
+                league_id=LEAGUE_ID, season=SEASON, week=16,
+                rotation_cycle=CYCLE, phase=PHASE_POSTSEASON,
+                eligible=_scoped(35, 29), used_fresh_keys=(), scope_mix=None)))
+
+    _assert("38: a slot count the mix was not written for is NOT rescaled — it "
+            "gets the pre-Rev-1.4 ranking (§4.2.5)",
+            _keys(_selector(league_id=LEAGUE_ID, season=SEASON, week=5,
+                            rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                            eligible=_scoped(35, 29), used_fresh_keys=(),
+                            slot_count=6))
+            == _keys(_selector(league_id=LEAGUE_ID, season=SEASON, week=5,
+                               rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                               eligible=_scoped(35, 29), used_fresh_keys=(),
+                               slot_count=6, scope_mix=None)))
+
+    # An unscoped candidate in a composed draw is REFUSED, never defaulted —
+    # defaulting would file every unscoped definition under one scope and
+    # quietly change the mix.
+    raised = None
+    try:
+        _selector(league_id=LEAGUE_ID, season=SEASON, week=5,
+                  rotation_cycle=CYCLE, phase=PHASE_REGULAR,
+                  eligible=_defs(12), used_fresh_keys=())
+    except PoolRotationError as exc:
+        raised = exc
+    _assert("39: a composed draw refuses an unscoped candidate rather than "
+            "guessing its scope",
+            raised is not None and raised.reason == REASON_MISSING_SCOPE,
+            detail=str(raised)[:90] if raised else "did not raise")
+
+    # ── the artifact and the constant may not drift ────────────────────────
+    from betting.pool_catalog import load_catalog
+    _cat = load_catalog()
+    _assert("40: the governed catalog's weekly_slate_composition IS "
+            "DEFAULT_SCOPE_MIX (load_catalog refuses any other)",
+            _cat.weekly_scope_mix == DEFAULT_SCOPE_MIX,
+            detail=f"catalog rev {_cat.revision} carries "
+                   f"{_cat.weekly_scope_mix}")
 
     # Purity of the selector module: code only, comments and docstrings stripped.
     import io

@@ -2,7 +2,7 @@
  * FantasyStakes — weekly Pool slate read-model
  * Sprint 8 Package 4B-3
  *
- * WHICH POOLS A WEEK HAS IS NOT A FRONTEND QUESTION. The Rev1.3 catalog holds
+ * WHICH POOLS A WEEK HAS IS NOT A FRONTEND QUESTION. The Rev1.4 catalog holds
  * 80 active definitions, 64 of them Gate-1 runtime-eligible, and the governed
  * selector in `betting/pool_slate.py` draws four of them per week through a
  * rotation cycle. The four cards Rev 4.2 shows are that week's DRAW — not a
@@ -110,6 +110,14 @@ export function slateRows() {
     catalogNumber: slot.catalog_number,
     definitionKey: slot.definition_key,
     name: slot.display_name || slot.definition_key,
+    // ── REV 1.4 · the pick prompt, SERVED not composed ─────────────────────
+    //
+    // POR Rev 1.4 §3. The surface used to build this sentence from `scope`
+    // alone, which produced the identical prompt on all sixty-four drawable
+    // definitions. It is catalog content now and arrives with the slot; null
+    // when the catalog carries none, which the renderer treats as "fall back
+    // to the definition's own governed prose", never as "invent one".
+    question: slot.public_question || null,
     scope: slot.scope,
     category: slot.category,
     // Presentation fields the locked Pool card and detail sheet expect. Each

@@ -133,6 +133,10 @@ const READ_STATUS = `
             const b = node.getBoundingClientRect();
             return { top: +(b.top - r.top).toFixed(1),
                      left: +(b.left - r.left).toFixed(1),
+                     // UIRECON Rev 1.4 — a right-aligned row agrees on its
+                     // RIGHT edge, so both are carried and each assertion below
+                     // measures the edge its own row is actually aligned to.
+                     right: +(r.right - b.right).toFixed(1),
                      h: +b.height.toFixed(1) };
           };
           return {
@@ -367,9 +371,24 @@ await withPage({ port: 9432, origin: process.env.FS_TEST_ORIGIN },
     check('the figure row sits at the same left edge on every card',
       everyCard.every((c) => c.figBox && near(c.figBox.left, first.figBox.left)),
       [...new Set(everyCard.map((c) => c.figBox && c.figBox.left))].join(','));
-    check('the footer sits at the same left edge on every card',
-      everyCard.every((c) => c.footBox && near(c.footBox.left, first.footBox.left)),
-      [...new Set(everyCard.map((c) => c.footBox && c.footBox.left))].join(','));
+    // UIRECON REV 1.4 PART 11 — THE FOOT IS RIGHT-ALIGNED NOW, SO ITS RIGHT
+    // EDGE IS THE ONE THAT HAS TO AGREE.
+    //
+    // Wave 5's lifecycle card stacked five full-width rows. Rev 1.4 makes every
+    // Status rail a one-card-at-a-time carousel and had to buy the vertical
+    // room for four of them, so the card became a two-column grid: the figures
+    // keep column 1 and the foot moves up beside them into column 2, right
+    // aligned. Column 2 is sized to its own content, which is why the foot's
+    // LEFT edge now differs from card to card — a longer label starts further
+    // left. That is the layout working, not drifting.
+    //
+    // THE PARALLEL-CONSTRUCTION CLAIM IS UNCHANGED and is asserted on both
+    // sides of the row: the figures still start at one shared left edge (the
+    // check directly above, untouched), and the foot still ends at one shared
+    // right edge. A card whose foot wandered would still fail.
+    check('the footer ends at the same right edge on every card',
+      everyCard.every((c) => c.footBox && near(c.footBox.right, first.footBox.right)),
+      [...new Set(everyCard.map((c) => c.footBox && c.footBox.right))].join(','));
     check('no card clips its own content',
       everyCard.every((c) => !c.clipped),
       everyCard.filter((c) => c.clipped).length + ' clipped');

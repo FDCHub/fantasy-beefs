@@ -62,6 +62,24 @@ import {
 /** Rev 4.3 §11 — the word SWIPE, and no directional arrow. */
 export const SWIPE_WORD = 'SWIPE';
 
+/* ── Section headings — Rev 1.4 Part 3 ──────────────────────────────────────
+ *
+ * SHORT FORMS, BECAUSE THE TAB IS ALREADY INSIDE FANTASYSTAKES. Both headings
+ * used to open with the brand — `FANTASYSTAKES MATCHUPS`, `FANTASYSTAKES PROP
+ * POOLS` — which spent the widest line of each section restating the one word
+ * a GM on this tab cannot be in any doubt about, and pushed the count and the
+ * swipe affordance into the helper slot's remaining space.
+ *
+ * THE PRODUCT TERMS ARE UNCHANGED. `Matchups` and `Prop Pools` are still the
+ * public nouns everywhere they are introduced — Wrap Up, Rules, Standings and
+ * the Account ledger all still say FantasyStakes Matchups, because those
+ * surfaces mix FantasyStakes results with the Yahoo league's own. This is a
+ * shortening inside one tab's headings, not a renaming. Nothing reintroduces
+ * the public-facing `Versus`, which remains an internal module name only.
+ */
+export const MATCHUPS_HEADING = 'MATCHUPS';
+export const POOLS_HEADING = 'PROP POOLS';
+
 /**
  * @returns {string}
  */
@@ -353,7 +371,7 @@ function versusZone() {
   if (state !== VERSUS_STATE_READY) {
     const copy = VERSUS_COPY[state] || VERSUS_COPY[VERSUS_STATE_NO_DATA];
     return (
-      sectionHeading('FANTASYSTAKES MATCHUPS')
+      sectionHeading(MATCHUPS_HEADING)
       + `<div class="fs-emptyzone" data-versus-state="${escapeHtml(state)}">`
       + `<div class="fs-emptyzone__head">${escapeHtml(copy.heading)}</div>`
       + `<p class="fs-emptyzone__body">${escapeHtml(copy.body)}</p>`
@@ -375,7 +393,7 @@ function versusZone() {
   // metadata step beside it, which is what it is for and what §5's "fewer
   // readable facts" asks for.
   return (
-    sectionHeading('FANTASYSTAKES MATCHUPS',
+    sectionHeading(MATCHUPS_HEADING,
       `${count} OPPONENT${count === 1 ? '' : 'S'} · ${SWIPE_WORD}`)
     + `<div class="fs-carousel" id="fs-bets-carousel" role="list">${cards}</div>`
   );
@@ -397,13 +415,30 @@ function poolRows() {
 }
 
 /**
- * One compact Pool card.
+ * One Pool card, sized for the carousel — Rev 1.4 Part 4.
  *
- * ESSENTIAL INFORMATION ONLY — Rev 4.3 §8.5. The Rev 4.2 card carried the
- * definition's full settle condition as a line of microcopy under the name,
- * which at 2×2 on a phone was three lines of 8px text nobody could read. Type,
- * name, entry and pot/entries stay; the explanation moves to the detail sheet,
- * which is where §8.5 puts it and where it is already rendered in full.
+ * WHY THE 2×2 GRID WENT. Four Pools shared one zone as quarter-tiles, and the
+ * consequence was structural rather than aesthetic: a quarter of a phone holds
+ * a two-line clamped name and nothing else, which is why Rev 4.3 §8.5 had to
+ * move the definition's settle condition off the card and into the sheet. The
+ * card could show WHICH Pool but never WHAT it asks, so the only way to learn
+ * what a contest measured was to open it — four times.
+ *
+ * Rev 1.4 gives the catalog a `public_question`, and a question needs a line to
+ * sit on. One card at a time is what buys that line.
+ *
+ * THE SAME CAROUSEL AS THE MATCHUPS ABOVE, LITERALLY. The card is placed in
+ * `.fs-carousel__item` inside `.fs-carousel` — the identical elements the
+ * Matchups rail uses, not a parallel implementation that agrees today. So the
+ * outer width, the horizontal inset, the gutter, the vertical snap, the
+ * gesture, the hidden scrollbar and the "never half a card" guarantee are the
+ * same rules and cannot drift apart. Only the card's INSIDE is Pool-specific,
+ * which is what §4 asks for.
+ *
+ * WHAT THE CARD STILL CARRIES. The TEAM/MATCHUP badge and the ROLLOVER
+ * modifier on it — a rolling Pool is not a different kind of Pool — the entry,
+ * the entered count and the pot, with the carried pot still marked. Nothing was
+ * dropped to make room; the room came from the layout.
  *
  * @param {object} pool
  * @returns {string}
@@ -415,10 +450,17 @@ function poolCard(pool) {
     ? `${pool.entered} in` : PENDING_FIGURE;
 
   return (
-    `<button type="button" class="fs-pool" data-pool="${escapeHtml(String(pool.catalogNumber))}">`
+    `<button type="button" class="fs-pool fs-pool--card" `
+    + `data-pool="${escapeHtml(String(pool.catalogNumber))}">`
+    + '<span class="fs-pool__head">'
     + `<span class="fs-pool__badge ${badgeClass}${pool.continuation ? ' is-rollover' : ''}">`
     + `${escapeHtml(badge)}</span>`
+    + '</span>'
     + `<span class="fs-pool__name">${escapeHtml(pool.name)}</span>`
+    // THE QUESTION IS THE CARD'S SUBTITLE, and it is the server's sentence.
+    // `poolQuestion` prefers the catalog's `public_question` and falls back to
+    // the scope-derived prompt only where the catalog carries none.
+    + `<span class="fs-pool__question">${escapeHtml(poolQuestion(pool))}</span>`
     + '<span class="fs-pool__foot">'
     + `<span class="fs-pool__entry">${escapeHtml(formatCredits(pool.entryCents))}`
     + ` · ${escapeHtml(entered)}</span>`
@@ -439,7 +481,7 @@ function poolsZone() {
     // the grid.
     const undrawn = slateMode() === 'undrawn';
     return (
-      sectionHeading('FANTASYSTAKES PROP POOLS')
+      sectionHeading(POOLS_HEADING)
       + `<div class="fs-emptyzone" data-pools-state="${escapeHtml(slateMode())}">`
       + `<div class="fs-emptyzone__head">${
         undrawn ? 'No Pools drawn yet' : 'Pools unavailable'}</div>`
@@ -451,9 +493,17 @@ function poolsZone() {
     );
   }
 
+  // THE COUNT IS THE SERVED ONE. `poolRows()` is the drawn slate in production
+  // and the illustrative fixture in demo; either way it is what the surface is
+  // about to render, so the heading cannot claim a week has four Pools while
+  // showing three.
+  const cards = rows
+    .map((p) => `<div class="fs-carousel__item" role="listitem">${poolCard(p)}</div>`)
+    .join('');
+
   return (
-    sectionHeading('FANTASYSTAKES PROP POOLS', `${rows.length} THIS WEEK`)
-    + `<div class="fs-pools" id="fs-pools-grid">${rows.map(poolCard).join('')}</div>`
+    sectionHeading(POOLS_HEADING, `${rows.length} THIS WEEK · ${SWIPE_WORD}`)
+    + `<div class="fs-carousel" id="fs-play-pools" role="list">${cards}</div>`
   );
 }
 
@@ -722,20 +772,30 @@ function poolPickControl(pool) {
 }
 
 /**
- * What this Prop Pool is asking, composed from what the server served.
+ * What this Prop Pool is asking — the CATALOG'S sentence.
  *
- * DERIVED, NOT AUTHORED, AND DELIBERATELY SO. The catalog carries a display
- * name and a settle condition; it does not carry a written question, and Wave 3
- * is explicit that no catalog field may be added to invent one. So the sentence
- * is built from the served SCOPE — the same value that decides which subjects
- * the census admits — and the settle condition is shown in full on its own row
- * directly beneath. A GM reads what they are picking and what decides it,
- * without this file claiming to know anything the catalog did not say.
+ * WAVE 3 DERIVED IT FROM SCOPE, AND SAID SO. That was the correct call at the
+ * time and it carried its own limit in its comment: the catalog held a name and
+ * a settle condition and no written question, and no field was to be invented
+ * here to supply one. The consequence was that all sixty-four drawable
+ * definitions were introduced with one of two sentences, neither of which said
+ * anything about the contest.
+ *
+ * POR REV 1.4 §3 ADDS THE FIELD, so the derivation retires. `public_question`
+ * is governed catalog content, written against each definition's actual
+ * mechanic, and it reaches the browser on the slot beside `display_name`.
+ *
+ * THE SCOPE FALLBACK SURVIVES, AND ONLY AS A FALLBACK. It answers exactly two
+ * cases: the demo fixture rows, and any definition the catalog left without a
+ * question — §7 leaves the 16 non-drawable ones without one on purpose. It is
+ * NEVER a preference over a served question, and nothing here composes a
+ * sentence out of a display name, a key or a settle condition.
  *
  * @param {object} pool a row from `slateRows()`
  * @returns {string}
  */
 function poolQuestion(pool) {
+  if (pool.question) return pool.question;
   return pool.scope === 'MATCHUP'
     ? 'Which matchup do you think takes this Prop Pool?'
     : 'Which team do you think takes this Prop Pool?';

@@ -377,9 +377,20 @@ export function buildIdentityBlock() {
   // the masthead, competing with the wordmark for width — and the least-used
   // control in the product held a permanent 44px target in the app's chrome.
   //
-  // It is one button now: who you are, and a chevron saying there is more. The
-  // rest — the full identity, the commissioner state and signing out — lives in
-  // the sheet it opens.
+  // It is one button now: who you are. The rest — the full identity, the
+  // commissioner state and signing out — lives in the sheet it opens.
+  //
+  // UIRECON REV 1.4 — THE CARET IS GONE AND NOTHING REPLACES IT.
+  //
+  // A 9px `▾` sat between the team name and the Settings gear: two glyphs of
+  // ornament wedged into the narrowest column of the masthead, close enough to
+  // the gear to read as part of it and small enough to read as grit on the
+  // screen. It said "this opens something", which the button already says in
+  // the only register that is load-bearing — `aria-haspopup="dialog"`,
+  // `aria-expanded`, and an accessible name that begins with the word Account.
+  // Those three are untouched, so nothing that was ANNOUNCED was removed; only
+  // the decoration was. No second icon takes its place, because the answer to
+  // an ornament that does not earn its width is not a different ornament.
   //
   // `fs-ident__who` AND `fs-ident__badge` KEEP THEIR NAMES. They are still
   // exactly what they were: the acting team's name and the commissioner label.
@@ -392,7 +403,6 @@ export function buildIdentityBlock() {
     + `aria-label="Account — ${escapeHtml(who)}">`
     + `<span class="fs-ident__who">${escapeHtml(who)}</span>`
     + badge
-    + '<span class="fs-acct__chev" aria-hidden="true">▾</span>'
     + '</button>'
   );
 }

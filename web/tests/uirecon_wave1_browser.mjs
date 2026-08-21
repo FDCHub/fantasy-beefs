@@ -652,11 +652,35 @@ await withPage({ port: 9411 }, async ({ evaluate, setViewport }) => {
     surfaces.every(([, t]) => !/versus/i.test(t)),
     surfaces.filter(([, t]) => /versus/i.test(t)).map(([k]) => k).join(', ') || 'none');
 
-  check('Play names FantasyStakes Matchups on first reference',
-    /FANTASYSTAKES MATCHUPS/.test(copy.league), '');
+  // UIRECON REV 1.4 PART 3 — Play's two headings drop the brand prefix; every
+  // other surface keeps the full term (see the Wrap Up check directly below,
+  // which is unchanged). Asserted in BOTH directions so a regression that
+  // restored the long form is caught as surely as one that shortened the wrong
+  // surface.
+  // READ FROM THE HEADING ELEMENTS, NOT FROM THE PANEL'S FLATTENED TEXT.
+  // `copy.league` is `textContent`, which concatenates across element
+  // boundaries with no separator — the sweep above needs that, because a term
+  // hiding inside a collapsed disclosure must still be found. It means the
+  // Play panel reads `...NO CASH VALUEMATCHUPS1 OPPONENT...`, where a bare
+  // `MATCHUPS` has no word boundary on either side. The long form only matched
+  // before because its own internal space supplied one.
+  //
+  // The claim is about two HEADINGS, so it is asserted against the headings.
+  const playHeadings = await evaluate(`
+    document.querySelector('.fs-tabbar__item[data-destination="league"]').click();
+    return [...document.querySelectorAll('#panel-league .fs-heading__text')]
+      .map((el) => el.textContent.trim());
+  `);
 
-  check('Play names FantasyStakes Prop Pools on first reference',
-    /FANTASYSTAKES PROP POOLS/.test(copy.league), '');
+  check('Play uses the Rev 1.4 short Matchups heading',
+    playHeadings.includes('MATCHUPS')
+    && !playHeadings.some((t) => t.startsWith('FANTASYSTAKES')),
+    playHeadings.join(' | '));
+
+  check('Play uses the Rev 1.4 short Prop Pools heading',
+    playHeadings.includes('PROP POOLS')
+    && !copy.league.includes('FANTASYSTAKES PROP POOLS'),
+    playHeadings.join(' | '));
 
   check('Wrap Up names both FantasyStakes surfaces with the locked terms',
     /FANTASYSTAKES MATCHUPS/.test(copy.week)

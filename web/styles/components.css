@@ -415,3 +415,27 @@
 }
 
 .fs-note--pending { color: var(--amber); }
+/* ── UIRECON Rev 1.4 · Account — the gold left edge, removed ────────────────
+ *
+ * WHAT WENT. `WAGERING SUMMARY` carried a 2px gold rule down its left edge —
+ * `box-shadow: inset 2px 0 0 var(--gold)` on `.fs-lsec.is-elevated` — on top
+ * of a lifted fill and a gold-tinted border. Three markers for one fact. The
+ * edge was the one that read as ornament rather than as hierarchy: it is the
+ * same rule the acting GM's own row uses in Standings to mean "this one is
+ * yours", so on the Account tab it made a section look selected.
+ *
+ * WHAT STAYS. The lifted ground and the edge border, which are the section's
+ * normal border hierarchy and are what actually mark it as the statement the
+ * other three explain into. NOTHING replaces the rule on the other three
+ * sides; a removed ornament is not a brief for a new one.
+ *
+ * WHY THE OVERRIDE LIVES HERE. The declaration is in `ledger.css`, which this
+ * pass does not own. Specificity, not source order, is what carries it —
+ * `components.css` is linked BEFORE `ledger.css`, so the ancestor is
+ * load-bearing rather than decorative. RECONCILE by deleting the `box-shadow`
+ * line from `.fs-lsec.is-elevated` in `ledger.css` and this block with it.
+ *
+ * SCOPED TO THE ACCOUNT SURFACE ON PURPOSE. `.fs-lscroll` is the Account tab's
+ * own scroll region. The Wrap Up result card is a different surface with its
+ * own rule and is not this lane's to change. */
+.fs-lscroll .fs-lsec.is-elevated { box-shadow: none; }

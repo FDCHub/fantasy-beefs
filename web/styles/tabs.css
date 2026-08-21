@@ -135,8 +135,8 @@
 }
 
 /* ── Action ────────────────────────────────────────────────────────────────
- * Four single-row horizontal rails. The column scrolls; each rail does not
- * wrap, so a lifecycle stays one row and its cards can afford to be taller. */
+ * Four horizontal lifecycle carousels. The column scrolls; each rail does not
+ * wrap, so a lifecycle stays one row and one card at a time. */
 
 .fs-rails {
   flex: 1 1 auto;
@@ -158,9 +158,187 @@
  * thing that is actually being separated. */
 .fs-railsec + .fs-railsec { margin-top: var(--fs-space-4); }
 
-.fs-railsec .fs-rail > .fs-rail__item {
-  width: 216px;
-  min-height: 132px;
+/* ══ STATUS · THE FOUR LIFECYCLE CAROUSELS — Rev 1.4 ═══════════════════════
+ *
+ * WHAT WAS WRONG. Each rail item was a fixed 216px, so on a 390px phone a rail
+ * showed one card and half of the next. The half card is the defect: it is not
+ * an invitation to swipe — it reads as a rendering fault — and it spent a third
+ * of the rail's width on a card nobody can read. Four sections built that way
+ * stacked to 929px of content inside a 534px viewport, so ACTION REQUIRED and
+ * WAITING were the only two lifecycle states a GM ever saw without scrolling.
+ *
+ * THE RULE, NOT A NUMBER. `flex: 0 0 100%` is the whole geometry: an item is
+ * exactly one rail wide, so it cannot shrink to let a neighbour peek in and
+ * cannot grow past the viewport — at any card height, at any viewport width,
+ * forever. `scroll-snap-stop: always` parks the swipe on the next card rather
+ * than letting momentum carry past it. This is the same mechanism Wrap Up's
+ * result carousels use (`.fs-rescar`, ledger.css); it is repeated here rather
+ * than shared because the two live on different primitives and merging them is
+ * a refactor, not a fix.
+ *
+ * THE 216px THAT WAS HERE IS GONE, and the `min-height: 132px` with it. A
+ * one-card carousel takes its height from its tallest card, and a floor tuned
+ * against Rev 4.2 card sizes is exactly the kind of constant that made the
+ * peek grow into half a card in the first place.
+ *
+ * CONTAINED. `overflow-x: auto` lives on the rail and the items are exactly one
+ * rail wide, so the horizontal scroll never reaches the tab or the document.
+ * `min-width: 0` is what stops a wide card from widening the flex column the
+ * rail sits in, which is how a carousel leaks overflow onto the page. */
+
+.fs-railsec .fs-rail--carousel {
+  min-width: 0;
+  align-items: stretch;
+  /* The rail's own inset costs the same height on all four sections, so it is
+   * taken down to the hairline a focus ring needs and no more. */
+  padding: 1px 0;
+}
+
+.fs-railsec .fs-rail--carousel > .fs-rail__item,
+.fs-railsec .fs-rail--carousel > .fs-rail__note {
+  flex: 0 0 100%;
+  width: auto;
+  min-width: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+/* THE EMPTY STATE IS A PAGE, NOT A SHRUNK PARAGRAPH. A bare `<p>` inside a
+ * flex row is a shrinkable flex item: it would render narrower than the cards
+ * its peer rails show, so four sections would present two widths on the one
+ * week where one of them is empty. It takes a full page above and says its one
+ * true sentence here — no card is drawn, because there is nothing to draw. */
+.fs-railsec .fs-rail--carousel > .fs-rail__note {
+  margin: 0;
+  padding: var(--fs-space-3) var(--fs-space-4);
+  border: var(--fs-border);
+  border-left: 3px solid var(--line2);
+  border-radius: var(--fs-radius-card);
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.35;
+  color: var(--fs-r43-secondary);
+}
+
+/* ── The vertical budget ───────────────────────────────────────────────────
+ *
+ * THE TARGET IS A SENTENCE, NOT A PIXEL COUNT: all four lifecycle sections
+ * fit inside the Status tab's own scroll viewport at 390x844, above the
+ * persistent bottom navigation, with nothing clipped. That viewport is 534px
+ * and a section costs `heading + rail padding + card`, so a card has roughly
+ * 100px to work in once the three inter-section gaps are paid for.
+ *
+ * WHERE THE HEIGHT COMES FROM. Not the type scale. Rev 4.3 §5.1 fixes the
+ * section step at 18–20px and card primary at 16–17px, and shrinking those to
+ * make room would trade a defect a GM can see for one they cannot read. What
+ * gives way is LEADING, PADDING AND ROW COUNT — the card's five stacked rows
+ * become four, with the foot moved beside the figures where there is already
+ * horizontal room, and every gap between rows spent down to the smallest that
+ * still reads as a separate row.
+ *
+ * `#panel-action` IS DELIBERATE ON EVERY SELECTOR BELOW. `gameplay.css` loads
+ * after this sheet and sets the same properties on `.fs-railsec ...` at
+ * (0,2,0); the id raises these to (1,2,0) so they win on specificity rather
+ * than on load order, which is the seam UIRECON Wave 1 found two dead rules
+ * behind. */
+
+#panel-action .fs-railsec + .fs-railsec { margin-top: var(--fs-space-2); }
+
+/* FOUR ROWS, NOT FIVE. The card's own DOM order is head, context, figures,
+ * copy, foot; the grid keeps that reading order and moves the foot up beside
+ * the figures, which is the one row with width to spare. The foot's rule and
+ * its top padding go with it — a divider above a row that is no longer below
+ * anything is just a line. */
+#panel-action .fs-wcard--lifecycle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-content: start;
+  gap: 1px var(--fs-space-4);
+  padding: 3px var(--fs-space-3);
+}
+
+#panel-action .fs-wcard--lifecycle > .fs-wcard__head,
+#panel-action .fs-wcard--lifecycle > .fs-wcard__context,
+#panel-action .fs-wcard--lifecycle > .fs-wcard__copy {
+  grid-column: 1 / -1;
+}
+
+#panel-action .fs-wcard--lifecycle > .fs-wcard__figures {
+  grid-column: 1;
+  grid-row: 3;
+  margin-top: 0;
+  gap: var(--fs-space-4);
+}
+
+#panel-action .fs-wcard--lifecycle > .fs-wcard__foot {
+  grid-column: 2;
+  grid-row: 3;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+  text-align: right;
+}
+
+#panel-action .fs-wcard--lifecycle > .fs-wcard__copy { margin-top: 0; }
+
+/* THE BADGE SET THE HEAD ROW'S HEIGHT, not the identity beside it: its own
+ * padding plus an undeclared leading made a 13px word 21px tall, three pixels
+ * more than the 16px name it sits next to. It keeps its size and its contrast
+ * and gives up the slack around it. */
+#panel-action .fs-railsec .fs-wcard__badge {
+  padding: 1px var(--fs-space-2);
+  line-height: 1.15;
+}
+
+/* One line each, and the leading is what pays. The identity keeps the §5.1
+ * card-primary step; only the space around it is spent. */
+#panel-action .fs-railsec .fs-wcard__identity { line-height: 1.15; }
+
+#panel-action .fs-railsec .fs-wcard__context {
+  margin-top: 0;
+  font-size: var(--fs-r43-meta);
+  line-height: 1.25;
+}
+
+#panel-action .fs-railsec .fs-wcard__copy {
+  font-size: var(--fs-r43-meta);
+  line-height: 1.25;
+  color: var(--fs-r43-secondary);
+}
+
+#panel-action .fs-railsec .fs-wcard__figure { gap: 0; }
+
+/* The label is a micro all-caps word above a number, and 12px is the floor
+ * Rev 4.3 §5.1 sets for metadata — it is spent to exactly there and no lower.
+ * The VALUE keeps the §5.1 card-secondary step, because the value is what a GM
+ * is reading the row for. */
+#panel-action .fs-railsec .fs-wcard__figlabel {
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+#panel-action .fs-railsec .fs-wcard__figvalue {
+  font-size: var(--fs-r43-card-secondary);
+  line-height: 1.2;
+}
+
+#panel-action .fs-railsec .fs-wcard__footlabel,
+#panel-action .fs-railsec .fs-wcard__footvalue {
+  font-size: var(--fs-r43-meta);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* THE WHOLE CARD IS THE ACTION on every rail, and on ACTION REQUIRED that
+ * action is the one that matters — it opens the Response Card. The tappable
+ * floor is restated here because the padding above it is now small enough that
+ * a one-line card could otherwise fall under it. */
+#panel-action .fs-railsec .fs-wcard.is-tappable {
+  min-height: var(--fs-r43-touch);
 }
 
 /* ── Short phones ──────────────────────────────────────────────────────────

@@ -1802,7 +1802,7 @@ class PoolBetPick(Base):
 
 class PoolDefinition(Base):
     """One row per catalog definition — §C1. 80 active rows seeded from
-    spec/pool_catalog_rev1_3.json by betting.pool_catalog.seed_definitions.
+    spec/pool_catalog_rev1_4.json by betting.pool_catalog.seed_definitions.
 
     metric_expression and threshold_condition are stored as opaque nullable
     strings. Storability is independent of executability: a null
@@ -1956,6 +1956,26 @@ class PoolDefinition(Base):
     # carrier is PoolLeagueActivation below.
     definition_runtime_eligible       = Column(Boolean, nullable=False)
     definition_block_reason           = Column(String,  nullable=True)
+    # ── Revision 1.4 (POR Rev 1.4 §3) ─────────────────────────────────────────
+    #
+    # The plain-English question a GM is answering when they pick. A GOVERNED
+    # PEER of display_name, seeded from the same catalog artifact by the same
+    # seeder, and the ONLY authority for that sentence — the app previously
+    # derived its prompt from `scope` alone, which said the identical thing on
+    # all sixty-four drawable definitions.
+    #
+    # NULLABLE, AND THAT IS THE PRODUCT RULE, NOT A MIGRATION CONVENIENCE. POR
+    # Rev 1.4 §7 deliberately leaves the 16 definitions no league can currently
+    # draw — three BLOCKED, thirteen source-mapping incomplete — without one.
+    # Branding a contest nobody can play would put a sentence into the register
+    # that has never appeared on a surface. A reader must therefore handle NULL,
+    # and the surface falls back to the definition's own governed prose rather
+    # than inventing a question.
+    #
+    # IT CARRIES NO SETTLEMENT AUTHORITY (§3.2). Where it and `predicate`,
+    # `metric_expression` or `threshold_condition` could be read as disagreeing,
+    # the governed field wins and the question is the defect.
+    public_question                   = Column(String,  nullable=True)
 
 
 class PoolLeagueActivation(Base):
@@ -3428,6 +3448,152 @@ class ProviderConflict(Base):
     @property
     def is_open(self) -> bool:
         return self.resolved_at is None
+
+
+# ── UIRECON Rev 1.4 · the shared informational odds refresh ───────────────
+
+class ChallengeOddsRefresh(Base):
+    """Rev 9 §5 — one NONBINDING informational re-simulation of a Dynamic wager.
+
+    WHY A ROW EXISTS AT ALL FOR SOMETHING THAT MOVES NO MONEY. Rev 9 §5 permits
+    a "display-only re-sim" between Handshake and Final Lock and requires only
+    that it write nothing to the LEDGER. It says nothing about where the shown
+    number lives, and the obvious reading — compute it per request and return it
+    — fails the one product requirement that matters here: two GMs looking at
+    the same Matchup must see the SAME line. Projections move between two
+    requests, so two independently computed refreshes are two different answers
+    to one question, and a wager whose displayed odds depend on who asked is a
+    wager neither GM can talk to the other about. This row is the shared answer.
+
+    IT IS THE AUDIT TRAIL, AND IT IS DELIBERATELY NOT A `ProtocolEvent`.
+    `ProtocolEvent` is documented as "the single authoritative idempotency
+    identity for a governed MONEY operation"; an informational refresh is
+    definitionally not one, and minting an event for it would file a nonbinding
+    read alongside Handshakes, settlements and Final Locks in the record
+    operators read to reconstruct where Credits went. Append-only rows carrying
+    the actor, the moment, the frozen model identity and every figure displayed
+    are the honest trail for a read: they prove what was shown and to whom
+    without claiming anything was transacted.
+
+    APPEND-ONLY, NEVER UPDATED. The latest row for a challenge is what both GMs
+    read; the earlier ones are the history of what the line did between
+    Handshake and Final Lock. Overwriting a single row per challenge would save
+    nothing worth having and would destroy exactly that history.
+
+    NOTHING HERE IS AUTHORITATIVE FOR SETTLEMENT OR FOR FINAL LOCK.
+    `indicative_derived_cents` is an INDICATION of what the opponent's Derived
+    Stake would be if Final Lock ran now; the opponent's actual stake is set
+    once, at Final Lock, into `ChallengeFinalLock`. The column is named
+    `indicative_` rather than `derived_` for that reason — a name that read like
+    the frozen field would eventually be used as one.
+
+    NO UNIQUE CONSTRAINT ON `challenge_id`. `ChallengeFinalLock` has one because
+    exactly one Final Lock may ever exist; refreshes are unbounded by
+    construction, and a uniqueness constraint here would silently convert the
+    history into a single mutable cell.
+    """
+
+    __tablename__ = "challenge_odds_refresh"
+    __table_args__ = (
+        # Rev 7 §2 invariant 1 restated where the data lands: a refresh that did
+        # not describe ONE market is not a refresh worth showing anybody.
+        CheckConstraint(
+            "issuer_probability > 0 AND issuer_probability < 1 "
+            "AND opponent_probability > 0 AND opponent_probability < 1",
+            name="ck_challenge_odds_refresh_probabilities",
+        ),
+        # The ceiling is the no-increase guard (MS-SIM-11). What is DISPLAYED
+        # may therefore never exceed it, whatever the raw derivation asked for.
+        CheckConstraint(
+            "indicative_derived_cents >= 0 "
+            "AND opponent_ceiling_cents >= 0 "
+            "AND indicative_derived_cents <= opponent_ceiling_cents",
+            name="ck_challenge_odds_refresh_ceiling",
+        ),
+        # The read is always "the latest refresh for this challenge".
+        Index("ix_challenge_odds_refresh_challenge",
+              "challenge_id", "refreshed_at"),
+    )
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    challenge_id = Column(Integer,
+                          ForeignKey("beef_challenges.id",
+                                     name="fk_challenge_odds_refresh_challenge"),
+                          nullable=False)
+
+    #: The moment the shared figures below were produced. This is what the card
+    #: renders as `Updated 10:42 AM`, and it is the refresh's identity — a GM
+    #: asking "how old is this line" is asking about exactly this column.
+    refreshed_at = Column(DateTime, nullable=False,
+                          default=lambda: datetime.now(timezone.utc))
+
+    #: WHO ASKED. Recorded for the audit trail only. It is deliberately NOT an
+    #: input to any figure in this row: a refresh requested by the opponent must
+    #: produce byte-identical numbers to one requested by the issuer, and the
+    #: cheapest way to guarantee that is for the computation never to see this.
+    requested_by_team_id = Column(Integer,
+                                  ForeignKey("teams.id",
+                                             name="fk_challenge_odds_refresh_team"),
+                                  nullable=True)
+
+    # ── Model provenance — the HANDSHAKE-FROZEN identity, re-verified ──
+    # MODEL-A: "the refresh and Final Lock both resolve
+    # `challenge.dynamic_model_version_id`, never ACTIVE_MODEL_VERSION_ID". These
+    # are written from the config the refresh actually resolved and verified, so
+    # a row whose version disagrees with its challenge is self-evidently wrong.
+    model_version_id  = Column(String,  nullable=False)
+    model_config_hash = Column(String,  nullable=False)
+    simulations       = Column(Integer, nullable=False, default=0)
+
+    #: The LIVE projection dataset this refresh read, kept separate from the
+    #: frozen model identity for the same reason `ChallengeFinalLock` keeps them
+    #: apart: the model is frozen and the projections are the thing that moved.
+    projection_source_id       = Column(String,   nullable=True)
+    projection_dataset_version = Column(String,   nullable=True)
+
+    # ── The figures, anchored on the ISSUER — identical for both GMs ──
+    # Anchoring on the challenge's own issuer rather than on the caller is what
+    # makes "both GMs see the same line" true by construction rather than by
+    # coincidence. A viewer-relative orientation is a presentation concern and
+    # is applied by the reader, never stored.
+    # NAMED FOR THE CONTRACT, NOT FOR THE PRICER. `odds/dynamic_pricing.py`
+    # calls these `p_issuer_final` and `p_opponent_final` and is right to; this
+    # table records what was SHOWN to two GMs, and `api.main` reads it back onto
+    # a response model of the same name. Borrowing the pricer's locals here
+    # would put them in `api/main.py`, which `test_s8_p4c2_action.py §4`
+    # forbids precisely so that no layer above the pricer can look like it is
+    # reproducing the pricing.
+    issuer_probability   = Column(Float, nullable=False)
+    opponent_probability = Column(Float, nullable=False)
+    #: American, via the certified Rev 7 §2 `p2o` conversion — the same chain
+    #: `ChallengeFinalLock.issuer_moneyline` is written through, so a refresh and
+    #: the Final Lock that follows it cannot express one price two ways.
+    issuer_moneyline   = Column(Integer, nullable=False)
+    opponent_moneyline = Column(Integer, nullable=False)
+    #: Decimal, the representation `Bet.odds` uses. Carried alongside rather than
+    #: derived by a reader, so no surface has to own a conversion.
+    issuer_decimal_odds   = Column(Float, nullable=False)
+    opponent_decimal_odds = Column(Float, nullable=False)
+
+    # ── Money, INTEGER CENTS, all of it INDICATIVE ──
+    #: Echoed from the challenge row unchanged. The Anchor never reprices on
+    #: odds (Rev 7 spine); it is here so a reader can show both sides of the
+    #: indicative pot without a second query, not because a refresh could move it.
+    anchor_cents             = Column(Integer, nullable=False)
+    #: `floor(fairPot * p_opponent)` capped at the ceiling — what the opponent
+    #: WOULD stake if Final Lock ran at these probabilities.
+    indicative_derived_cents = Column(Integer, nullable=False)
+    opponent_ceiling_cents   = Column(Integer, nullable=False)
+    #: True when the raw derivation exceeded the ceiling and the cap held it
+    #: down. Recorded because it is the evidence the cap did work — a reader
+    #: that sees only the capped figure cannot tell a working cap from a
+    #: derivation that never needed one.
+    ceiling_applied          = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+
+    challenge = relationship("BeefChallenge", foreign_keys=[challenge_id])
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

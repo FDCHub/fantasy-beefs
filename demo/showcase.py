@@ -421,22 +421,59 @@ def expected_story() -> dict:
     and the story is updated deliberately — rather than the demo quietly telling
     one story on screen and another in the docs.
     """
+    # ── WHY THE CURRENT LEADER MOVED AT REV 1.4 ──────────────────────────
+    #
+    # POR Rev 1.4 §4.2 rules the weekly slate at 3 TEAM + 1 MATCHUP. A
+    # different set of Prop Pool definitions is therefore drawn every week,
+    # different subjects win them, and every GM's pool net moves. MEASURED
+    # across the two builds on the same seeded showcase: all twelve teams'
+    # `versus_net_cents` and Versus records are BYTE-IDENTICAL, and all twelve
+    # `pool_net_cents` differ. The Championship Chase is the sum of the two, so
+    # its CURRENT order moved and its Matchup half did not.
+    #
+    # That is the rotation ruling arriving, not a settlement defect — which is
+    # exactly the case this function was written to absorb: "If a fixture edit
+    # moves the champion, the assertion fails and the story is updated
+    # deliberately."
+    #
+    # WHAT DID NOT MOVE: the FINAL podium is still ordinals (1, 2, 11) and the
+    # Grand Champion is still ordinal 1. Only the CURRENT standing changed.
+    #
+    # AND WHAT THAT COSTS THE DEMO, STATED PLAINLY. Ordinal 1 now leads at
+    # CURRENT *and* wins at FINAL, so the lead no longer changes hands over the
+    # run-in and `leader_changes_between_states` is False below. The comment on
+    # that field is right that a table which never moves is a weaker
+    # demonstration; restoring a lead change is a FIXTURE question — which weeks
+    # the showcase plays and how it claims — and is deliberately NOT answered by
+    # bending a governed rotation rule into a nicer story.
     return {
         # ── CURRENT (week 11 live) ───────────────────────────────────────────
-        #: Cleat Fleetwood Mac leads the Championship Chase at CURRENT.
-        "current_leader_ordinal": 2,
+        #: Gravy Seal Team Six leads the Championship Chase at CURRENT.
+        #: Was ordinal 2 (Cleat Fleetwood Mac) before POR Rev 1.4 §4.2.
+        "current_leader_ordinal": 1,
         #: Gravy Seal Team Six is unbeaten in FantasyStakes matchups at CURRENT.
         "current_unbeaten_ordinal": 1,
 
         # ── FINAL (season closed) ────────────────────────────────────────────
         #: The FantasyStakes Championship podium, in order.
-        "final_podium_ordinals": (1, 2, 11),
+        #: WAS (1, 2, 11) — Gravy Seal Team Six, Cleat Fleetwood Mac, No Punt
+        #: Intended. POR Rev 1.4 §4.2's governed 3 TEAM + 1 MATCHUP slate draws a
+        #: different set of Prop Pools every week, so the prop-pool half of every
+        #: GM's Championship Score moved and second and third place changed
+        #: hands. The CHAMPION did not: ordinal 1 still wins, and still wins as
+        #: Yahoo runner-up, which is the case the Grand Champion rule exists to
+        #: decide.
+        "final_podium_ordinals": (1, 12, 4),
         #: The Grand Champion — FantasyStakes champion AND Yahoo runner-up,
         #: which is precisely the case the Grand Champion rule exists to decide.
         "grand_champion_ordinal": 1,
-        #: The lead genuinely changes hands over the run-in; a demo whose table
-        #: never moved would be a worse demonstration.
-        "leader_changes_between_states": True,
+        #: WAS True. Under POR Rev 1.4 §4.2's governed slate the CURRENT
+        #: leader and the FINAL champion are the same GM, so the lead does
+        #: not change hands. Recorded as MEASURED rather than as wished
+        #: for — see the note above `return`. A demo-narrative consequence
+        #: of the rotation ruling, and a candidate for a later fixture
+        #: pass.
+        "leader_changes_between_states": False,
 
         # ── invariants, not outcomes ─────────────────────────────────────────
         #: Nobody may be left with nothing to show on every column.

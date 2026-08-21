@@ -75,9 +75,9 @@ print("=" * 78)
 
 # ══ §4 · the catalog is what it was accepted as ═════════════════════════════
 
-_section("§4 · Rev1.3 catalog counts (read, never adjusted)")
+_section("§4 · Rev1.4 catalog counts (read, never adjusted)")
 
-CATALOG_PATH = os.path.join(ROOT, "spec", "pool_catalog_rev1_3.json")
+CATALOG_PATH = os.path.join(ROOT, "spec", "pool_catalog_rev1_4.json")
 CATALOG = json.load(open(CATALOG_PATH, encoding="utf-8"))
 COUNTS = CATALOG["counts"]
 DEFS = CATALOG["definitions"]
@@ -258,10 +258,15 @@ _section("§6/§7 · rotation reachability and starvation")
 
 # THE REAL SELECTOR AND THE REAL BUILDER, week after week. Definitions are never
 # instantiated directly — §6 forbids calling that reachability.
+# POR Rev 1.4 §4.2 — the scope is carried because the composition is computed
+# over it. `selectable_definitions` already returns it; taking it from there
+# rather than re-reading `pool_definition` is what keeps this the REAL eligible
+# set the builder would have been handed.
 with SessionLocal() as db:
     eligible = tuple(
         EligibleDefinition(definition_key=d.definition_key,
-                           catalog_number=d.catalog_number)
+                           catalog_number=d.catalog_number,
+                           scope=d.scope)
         for d in selectable_definitions(db, league_id=LEAGUE_ID,
                                         provider=PROVIDER, phase=PHASE))
 
@@ -350,11 +355,18 @@ _assert("§8: slots are 1-4 only",
         str(sorted(e.slot for e in _probe.slate)))
 
 # A CONTINUATION CONSUMES A SLOT — it never adds a fifth card.
+#
+# POR Rev 1.4 §4.2 — a carry carries its SCOPE, because the week's fresh quota
+# is a deficit against what the carries already occupy. It is looked up in the
+# eligible set rather than restated, so this fixture cannot claim a scope the
+# catalog does not give the definition.
+_SCOPE_OF = {d.definition_key: d.scope for d in eligible}
 _carried = _probe.slate[0].definition_key
 _with_carry = build_week_slate(
     league_id=LEAGUE_ID, season=SEASON, week=2, rotation_cycle=1, phase=PHASE,
     eligible=eligible,
-    continuations=(Continuation(definition_key=_carried, prior_slot=1),),
+    continuations=(Continuation(definition_key=_carried, prior_slot=1,
+                                scope=_SCOPE_OF[_carried]),),
     used_fresh_keys={e.definition_key for e in _probe.slate},
     slot_count=DEFAULT_SLOT_COUNT)
 _assert("§8: a week with a continuation still has exactly four entries",
@@ -370,10 +382,12 @@ _assert("§8: the carried key is not redrawn as fresh",
 
 # MORE CARRIES THAN SLOTS IS AN UPSTREAM INVARIANT VIOLATION, refused rather
 # than truncated — truncating would strand a live pot.
-_too_many = [Continuation(definition_key=e.definition_key, prior_slot=i)
+_too_many = [Continuation(definition_key=e.definition_key, prior_slot=i,
+                          scope=_SCOPE_OF[e.definition_key])
              for i, e in enumerate(_probe.slate, start=1)]
-_too_many.append(Continuation(definition_key=_ranked_all[-1].definition_key,
-                              prior_slot=5))
+_too_many.append(Continuation(
+    definition_key=_ranked_all[-1].definition_key, prior_slot=5,
+    scope=_SCOPE_OF[_ranked_all[-1].definition_key]))
 _refused = False
 try:
     build_week_slate(league_id=LEAGUE_ID, season=SEASON, week=3,

@@ -10,9 +10,9 @@
  *   · The tables are `<table>` elements in normal flow. Nothing positions,
  *     hides, collapses or transforms one, so there is no mechanism by which a
  *     table could be off screen while its siblings are on it.
- *   · Column widths are fixed by the RANK and TEAM columns; every figure column
- *     takes an equal share of what is left. A long team name truncates rather
- *     than pushing the NET column off the right edge.
+ *   · Column widths are fixed by the RANK and the FIGURE columns; TEAM takes
+ *     whatever is left. A long team name truncates rather than pushing the NET
+ *     column off the right edge.
  * ========================================================================== */
 
 .fs-st__scroll {
@@ -46,6 +46,42 @@
    * other. Without it each table sizes to its own content and the NET columns
    * land at three different x positions down the page. */
   table-layout: fixed;
+
+  /* ── THE COLUMN-WIDTH CONTRACT — UIRECON Rev 1.4 ──────────────────────────
+   *
+   * WHAT WAS WRONG. Every figure column was one width (`4.6em` ≈ 60px) and the
+   * OVERALL header did not fit in it: `MATCHUPS` measured 72px and `PROP
+   * POOLS` 82px against 50px of usable cell, so both headers wrapped, the
+   * header row stood at 45px against the 28px of the two tables below it, and
+   * the two wrapped labels sat one under the other with nothing between them.
+   *
+   * WIDTHS, NOT SMALLER TYPE. The headers stay at the §5.1 metadata size and
+   * the money stays at the §5.1 secondary size. What changes is how much width
+   * each column is given, and each of the three numbers below is set by
+   * something real rather than chosen:
+   *
+   *   --fs-st-rank  two rank digits and the tie marker that rides them.
+   *   --fs-st-fig   THE MONEY SETS THIS FLOOR, not the header. A four-digit
+   *                 signed figure — `+$1,250` — is ~54px in the 14px money
+   *                 face, and money may not be the thing that truncates.
+   *   --fs-st-wide  the ONE column whose header is wider than its figures:
+   *                 OVERALL's MATCHUPS. Nothing else in any of the three
+   *                 tables needs it, so nothing else is given it.
+   *
+   * EACH IS CAPPED BY A SHARE OF THE VIEWPORT. `min()` is what makes the
+   * contract hold below the narrowest certified width as well as at it: the
+   * figure columns give way before the table can be wider than the page. At
+   * 320px the caps are not the binding term and the rem values are; the caps
+   * exist so that a narrower window degrades rather than overflows — which is
+   * the same promise `overflow-x: hidden` above makes structurally.
+   *
+   * WHAT THIS COSTS AND WHY IT IS WORTH IT. The width MATCHUPS needs comes out
+   * of TEAM, which at 320px is ~64px rather than ~85px — one or two characters
+   * of a truncated name. It buys a header row that is one line at every
+   * certified width, and 17px of vertical height back on the tallest table. */
+  --fs-st-rank: min(2rem,    10vw);
+  --fs-st-fig:  min(3.75rem, 19vw);
+  --fs-st-wide: min(5rem,    25vw);
 }
 
 .fs-st__table th {
@@ -56,7 +92,23 @@
   text-align: right;
   padding: var(--fs-space-2) var(--fs-space-2);
   border-bottom: var(--fs-border);
+  /* ONE LINE, STRUCTURALLY — Rev 1.4. The widths above are sized so that no
+   * header has to be clipped; this is the guard that decides what happens if a
+   * future column label outgrows them anyway. A clipped label is a legible
+   * mistake somebody fixes. A wrapped one silently restands the whole header
+   * row and pushes the first table's rows down the page, which is how the two
+   * OVERALL headers collided in the first place. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+/* A FIGURE HEADER PAYS NO LEFT INSET. The label is right-aligned, so the left
+ * padding protects nothing and is 5px the column cannot spare at 320px — the
+ * same reclaim `.fs-strip__label` makes, for the same reason. The RIGHT inset
+ * is kept and is exactly the cell's, because that is what puts the header and
+ * the figures below it on one right edge. */
+.fs-st__table th.fs-st__num { padding-left: 0; }
 
 .fs-st__table td {
   font-size: var(--fs-r43-card);
@@ -71,7 +123,7 @@
 .fs-st__row { min-height: var(--fs-r43-touch); }
 
 .fs-st__rank {
-  width: 2.4em;
+  width: var(--fs-st-rank);
   text-align: left;
   color: var(--fs-r43-secondary);
   font-variant-numeric: tabular-nums;
@@ -88,10 +140,37 @@
   white-space: nowrap;
 }
 
+/* THE NAME PAYS NO RIGHT INSET, because the column to its right supplies one
+ * for free: those figures are right-aligned, so the gap between a truncated
+ * name and the nearest digit is that column's whole left half. Every pixel
+ * reclaimed here is a pixel of team name, and at 320px there are 5 of them.
+ *
+ * SCOPED THROUGH THE TABLE so it outranks the `.fs-st__table td` shorthand
+ * above — a bare `.fs-st__team` loses to it on specificity and the reclaim
+ * silently does not happen. */
+.fs-st__table .fs-st__team { padding-right: 0; }
+
 .fs-st__num {
-  width: 4.6em;
+  width: var(--fs-st-fig);
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* THE ONE COLUMN WHOSE HEADER IS WIDER THAN ITS CONTENT. `MATCHUPS` is the
+ * third column of OVERALL and of nothing else; MATCHUP STANDINGS and PROP POOL
+ * STANDINGS head their middle column `W-L` and `WINS`, which fit the figure
+ * width with room to spare. Widening every figure column to suit one header
+ * would have taken 40px off TEAM in all three tables to solve a problem that
+ * exists in one cell.
+ *
+ * NET IS STILL COLUMN-ALIGNED ACROSS THE THREE TABLES, which is the alignment
+ * the fixed layout above exists for: it is the last column of each, it is the
+ * same width in each, and each table is the same width — so the three NET
+ * columns share one right edge and one left edge whatever happens in front of
+ * them. */
+[data-standings-table="overall"] .fs-st__table th:nth-child(3),
+[data-standings-table="overall"] .fs-st__table td:nth-child(3) {
+  width: var(--fs-st-wide);
 }
 
 /* Money keeps the tabular monospace grammar the POR fixes for it. */

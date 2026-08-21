@@ -424,10 +424,32 @@ _assert("the served API field names are untouched",
         and "opponent_team_id" in _js_files["js/market-model.js"])
 
 # The locked first references, in the source that renders them.
-_assert("Play names FantasyStakes Matchups",
-        "'FANTASYSTAKES MATCHUPS'" in _js_files["js/league.js"])
-_assert("Play names FantasyStakes Prop Pools",
-        "'FANTASYSTAKES PROP POOLS'" in _js_files["js/league.js"])
+#
+# ── UIRECON REV 1.4 PART 3 — PLAY IS THE ONE EXCEPTION, AND IT IS NARROW ────
+#
+# Wave 1 locked `FANTASYSTAKES MATCHUPS` and `FANTASYSTAKES PROP POOLS` as the
+# first-reference wording on every surface that names them. Rev 1.4 shortens
+# BOTH headings ON THE PLAY TAB ONLY, to `MATCHUPS` and `PROP POOLS`, because a
+# GM reading a heading there is already inside FantasyStakes: the brand was
+# spending the widest line of each section restating the one word that cannot be
+# in doubt, and pushing the count and the swipe affordance into whatever the
+# helper slot had left.
+#
+# EVERY OTHER SURFACE KEEPS THE FULL TERM, and the ones below are unchanged.
+# Wrap Up above all: it mixes FantasyStakes results with the YAHOO LEAGUE's own
+# matchups in three adjacent rails, so `FANTASYSTAKES MATCHUPS` there is a
+# distinction a GM needs rather than a repetition. Account and Standings the
+# same. This is a shortening inside one tab, not a renaming of the product term.
+# ASSERTED ON THE HEADING CONSTANTS AND THE RENDER CALL, not on the file's raw
+# text. The superseded strings are still IN this file, in the paragraph that
+# records why they went — which is exactly the comment a reader needs and
+# exactly what a substring search over the whole module would trip on.
+_assert("Play uses the Rev 1.4 short headings and drops the brand prefix",
+        "export const MATCHUPS_HEADING = 'MATCHUPS';"
+        in _js_files["js/league.js"]
+        and "export const POOLS_HEADING = 'PROP POOLS';"
+        in _js_files["js/league.js"]
+        and "sectionHeading('FANTASYSTAKES" not in _js_files["js/league.js"])
 _assert("Wrap Up names FantasyStakes Matchups",
         "FANTASYSTAKES MATCHUPS" in _js_files["js/week.js"])
 _assert("Wrap Up names FantasyStakes Prop Pools",

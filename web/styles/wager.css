@@ -807,3 +807,81 @@
   font-weight: var(--fs-c-weight-number);
   color: var(--fs-c-gold);
 }
+
+/* ══ `↻ REFRESH ODDS` — UIRECON Rev 1.4 ════════════════════════════════════
+ *
+ * THE VISUAL WEIGHT IS THE ARGUMENT. This control re-reads a line; it does not
+ * decide anything about the wager. So it is drawn quieter than the response
+ * buttons a GM uses to accept, counter or decline — no fill, no gold, a hairline
+ * edge — while still meeting the governed touch floor, because a control small
+ * enough to look harmless but too small to hit is a worse outcome than either.
+ *
+ * THE STAMP SITS BESIDE THE CONTROL, NOT UNDER IT. `Updated 10:42 AM` answers
+ * the question the button raises — how old is what I am looking at — so the two
+ * read as one statement rather than as a control and an unrelated caption.
+ *
+ * THE NOTE IS BELOW BOTH AND STAYS COLLAPSED WHILE EMPTY. A card that reserved
+ * two lines of space for a confirmation nobody has asked for yet would shift
+ * every card beneath it the moment one arrived, and the shared grammar's whole
+ * claim is that a Matchup keeps one shape as it moves. */
+
+.fs-wcard__aside {
+  margin-top: var(--fs-space-3);
+}
+
+.fs-refresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fs-space-2);
+}
+
+.fs-refresh__btn {
+  min-height: var(--fs-c-touch);
+  padding: var(--fs-space-1) var(--fs-space-3);
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: var(--fs-c-radius-cell);
+  color: var(--g1);
+  font-size: var(--fs-c-size-body-sub);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: var(--fs-c-track-label);
+  cursor: pointer;
+}
+
+.fs-refresh__btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* THE TIMESTAMP IS A NUMBER AND IS DRAWN AS ONE — the canonical tabular
+ * monospace, so a stamp that ticks from 10:09 to 10:42 does not change width
+ * and nudge the control beside it. */
+.fs-refresh__stamp {
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-micro);
+  color: var(--g1);
+  white-space: nowrap;
+}
+
+.fs-refresh__note {
+  flex-basis: 100%;
+  font-size: var(--fs-size-micro);
+  color: var(--g1);
+}
+
+.fs-refresh__note:empty { display: none; }
+
+.fs-refresh__line { display: block; }
+
+/* `Wager unchanged` is the line that has to survive a skim, and it is drawn
+ * quieter than the line above it deliberately: it is a reassurance, not a
+ * result, and a reassurance that shouts reads as an apology for something.
+ *
+ * `--fs-c-text-faint` AND NOT `--g2`. Rev 4.3 §5.2 measured `--g2` at about
+ * 2.3:1 on the app background, which is under WCAG AA and is exactly the
+ * "extremely low-contrast text" the section was written to remove. The faint
+ * token is the governed tertiary and sits near 4.6:1, so the line reads as
+ * subordinate without becoming the defect. */
+.fs-refresh__line.is-quiet { color: var(--fs-c-text-faint); }

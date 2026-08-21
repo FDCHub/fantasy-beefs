@@ -335,7 +335,7 @@ _assert("the unspecified per-award split is disclosed rather than fabricated",
 
 print("\nThe Week's Pools are still the governing catalog's definitions")
 
-CATALOG = json.loads(_read_root("spec", "pool_catalog_rev1_3.json"))
+CATALOG = json.loads(_read_root("spec", "pool_catalog_rev1_4.json"))
 BY_NUMBER = {d["catalog_number"]: d for d in CATALOG["definitions"]}
 POOLS = APP.get("pools", [])
 

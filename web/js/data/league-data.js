@@ -147,10 +147,23 @@ export function opponentLineup(teamProjection) {
 
 /* ── Pools ──────────────────────────────────────────────────────────────────
  * Exactly four active Pools per fantasy week (POR §4.1). Each row below is a
- * real definition from spec/pool_catalog_rev1_3.json — catalog number, display
- * name, subject scope and rule text are reproduced from that file, not
- * paraphrased. `test_s7_p2_league_action.py` reads the catalog and fails if any
- * of these four drifts from it.
+ * real definition from spec/pool_catalog_rev1_4.json — catalog number, display
+ * name, subject scope, rule text and public question are reproduced from that
+ * file, not paraphrased. `test_s7_p2_league_action.py` reads the catalog and
+ * fails if any of these four drifts from it.
+ *
+ * REV 1.4 · THE SET NOW ILLUSTRATES THE GOVERNED MIX. POR Rev 1.4 §4.2 rules
+ * the normal weekly slate at 3 TEAM + 1 MATCHUP; this fixture was 2 and 2, which
+ * is a shape the selector no longer draws. #56 Air Show (MATCHUP) is replaced by
+ * #20 Air Raid (TEAM) so the illustrative week shows the week the product
+ * actually builds. Nothing else about the four moved: the continuation is still
+ * the continuation, the qualifier is still the qualifier, and the pots and
+ * entered counts are unchanged.
+ *
+ * `question` is the catalog's `public_question` (§3), carried here for the same
+ * reason the name is: the demo surface must show the governed sentence, not a
+ * scope-derived stand-in. `web/js/league.js::poolQuestion` prefers it and falls
+ * back only where a definition carries none.
  *
  * Rollover is a MODIFIER on a subject type, never a third type. A continuation
  * is a Pool that carried its pot forward and occupies one normal slate slot
@@ -164,7 +177,8 @@ export const POOL_ENTRY_CENTS = 100;
 export const POOLS = Object.freeze([
   Object.freeze({
     catalogNumber: 2,
-    name: 'Passing-Rushing-Receiving TD Trifecta',
+    name: 'Triple Threat',
+    question: 'Which team scores a passing, a rushing and a receiving touchdown?',
     scope: 'TEAM',
     rule: 'team recorded a passing, rushing and receiving TD',
     subject: 'One league team',
@@ -177,7 +191,8 @@ export const POOLS = Object.freeze([
   }),
   Object.freeze({
     catalogNumber: 13,
-    name: 'Most Total Touchdowns',
+    name: 'Touchdown Machine',
+    question: 'Which team scores the most touchdowns?',
     scope: 'TEAM',
     rule: 'sum(total_touchdowns)',
     subject: 'One league team',
@@ -188,11 +203,12 @@ export const POOLS = Object.freeze([
     potCents: 1100,
   }),
   Object.freeze({
-    catalogNumber: 56,
-    name: 'Highest Combined Passing Yards',
-    scope: 'MATCHUP',
-    rule: 'sum(both teams passing_yards)',
-    subject: 'One scheduled matchup',
+    catalogNumber: 20,
+    name: 'Air Raid',
+    question: 'Which team throws for the most yards?',
+    scope: 'TEAM',
+    rule: 'sum(passing_yards)',
+    subject: 'One league team',
     rolloverEligible: false,
     continuation: false,
     entryCents: POOL_ENTRY_CENTS,
@@ -201,7 +217,8 @@ export const POOLS = Object.freeze([
   }),
   Object.freeze({
     catalogNumber: 87,
-    name: 'Matchups With Zero Total Turnovers',
+    name: 'Turnover Free',
+    question: 'Which matchup ends with no turnovers by either team?',
     scope: 'MATCHUP',
     rule: 'both teams interceptions_thrown + fumbles_lost == 0',
     subject: 'One scheduled matchup',

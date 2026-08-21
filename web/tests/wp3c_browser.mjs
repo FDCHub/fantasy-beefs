@@ -187,9 +187,20 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
     `);
     check('the preview opens from the discovery card', preview.open === true
       && /Matchup Preview/.test(preview.title));
+    // PRE-EXISTING STALENESS, CORRECTED IN REV 1.4. UIRECON Wave 4A removed the
+    // `MATCHUP` block — it restated the two team names already in the sheet
+    // subtitle, so the sheet named the matchup twice — and left this assertion
+    // pointing at the four-section order. It has been failing since Wave 4
+    // landed; the order below is what `preview.js` has actually built since
+    // then, and its own header states the three modules as peers.
+    //
+    // REV 1.4 CHANGES THE INSIDE OF `LINEUPS`, NOT THE ORDER. The stacked pair
+    // of lineups became a side-by-side comparison matrix carrying live scores
+    // beside projections; it is still one section, still last, still the
+    // projections the two modules above rest on.
     check('the section order is the locked one',
       preview.titles.join(' → ')
-        === 'MATCHUP → WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+        === 'WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
       preview.titles.join(' → '));
     check('it duplicates no betting market',
       preview.hasMarketCells === false

@@ -85,18 +85,21 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   // session's league decides how many opponents and how many Pools there are.
   // What is still pinned exactly is the vocabulary and the absence of the
   // directional arrow (§11).
-  // UIRECON WAVE 1 — the locked public vocabulary. `FANTASYSTAKES MATCHUPS`
-  // and `FANTASYSTAKES PROP POOLS` on first reference; no public-facing Versus
-  // anywhere on the surface.
+  // UIRECON REV 1.4 PART 3 — the short forms. Wave 1's locked wording carried
+  // the brand into both headings on a tab that is already inside FantasyStakes;
+  // Rev 1.4 shortens them to `MATCHUPS` and `PROP POOLS`. The product terms are
+  // unchanged, the directional arrow is still absent (§11), and the
+  // no-public-Versus rule below is untouched.
   check('the Matchups heading renders, with no directional arrow', await evaluate(`
     const headings = [...document.querySelectorAll('#panel-league .fs-heading__text')]
       .map(el => el.textContent);
-    return headings.some(t => /^FANTASYSTAKES MATCHUPS/.test(t))
-      && headings.every(t => !t.includes('↕'));
+    return headings.some(t => /^MATCHUPS$/.test(t.trim()))
+      && headings.every(t => !t.includes('↕'))
+      && headings.every(t => !/^FANTASYSTAKES /.test(t.trim()));
   `));
   check('the Prop Pools heading renders', await evaluate(`
     return [...document.querySelectorAll('#panel-league .fs-heading__text')]
-      .some(el => /^FANTASYSTAKES PROP POOLS/.test(el.textContent));
+      .some(el => /^PROP POOLS$/.test(el.textContent.trim()));
   `));
   check('Play shows no public-facing Versus', await evaluate(`
     return !/versus/i.test(document.getElementById('panel-league').innerText);

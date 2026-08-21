@@ -90,6 +90,18 @@ ACTIVE: tuple = (
         summary="append-only authoritative corrections to eligible regular-season championship results",
         tables=("fantasystakes_championship_correction",),
     ),
+    Migration(
+        identifier="0007_dynamic_odds_refresh",
+        module="migrations.add_dynamic_odds_refresh",
+        summary="append-only shared record of nonbinding Dynamic informational odds refreshes (Rev 9 §5)",
+        tables=("challenge_odds_refresh",),
+    ),
+    Migration(
+        identifier="0008_pool_definition_public_question",
+        module="migrations.add_pool_definition_public_question",
+        summary="Pool Catalog Rev 1.4 §3 — nullable public_question on pool_definition, seeded from the governed catalog",
+        columns=(("pool_definition", "public_question"),),
+    ),
 )
 
 

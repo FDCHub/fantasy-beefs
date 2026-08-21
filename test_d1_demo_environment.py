@@ -604,8 +604,27 @@ visitor = TestClient(entry.app)
 visitor.cookies.set("fs_session", sess or "")
 visitor.cookies.set("fs_csrf", csrf or "")
 visitor.headers.update({"X-FS-CSRF": csrf or ""})
+# THE READ NAMES ITS LEAGUE. `/league/standings` is per-league as of the Rev 1.4
+# isolation fix, and this suite's own database deliberately holds four leagues —
+# the showcase plus the three non-demo leagues §4 proves reset will not touch.
+# An unscoped call used to return all four merged into one table; it now refuses
+# and says why. Naming the league is both the correct product read and a
+# stronger assertion than the old one, because it proves the session reaches a
+# real scoped read rather than a global scan.
+with SessionLocal() as db:
+    _showcase = find_showcase(db)
+    _showcase_id = _showcase.id
+    _showcase_team_ids = {t.id for t in db.query(Team)
+                          .filter(Team.league_id == _showcase_id).all()}
+_standings = visitor.get(f"/league/standings?league_id={_showcase_id}")
 check("  · and it authenticates real product reads",
-      visitor.get("/league/standings").status_code == 200,
+      _standings.status_code == 200, str(_standings.status_code))
+check("  · scoped to the league it named, and no other",
+      _standings.status_code != 200
+      or {r["team_id"] for r in _standings.json()} <= _showcase_team_ids,
+      "standings returned a team from another league")
+check("  · an unscoped read refuses rather than merging four leagues",
+      visitor.get("/league/standings").status_code == 400,
       str(visitor.get("/league/standings").status_code))
 
 with SessionLocal() as db:

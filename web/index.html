@@ -73,6 +73,13 @@
 </div>
 
 <script type="module" src="./js/shell.js"></script>
+<!-- UIRECON Rev 1.4 — the `↻ REFRESH ODDS` affordance on live Dynamic Matchup
+     cards. Loaded beside the shell rather than from it because it DECORATES the
+     Status rails instead of rendering them: it adds one control to cards the
+     shared card grammar already drew, and the surface that drew them does not
+     need to know it exists. It moves no Credits, touches no escrow and changes
+     no agreed term — see web/js/refresh-odds.js. -->
+<script type="module" src="./js/refresh-odds-mount.js"></script>
 <!-- WP3E — the service worker exists for INSTALLABILITY and nothing else; it
      caches the static shell network-first and never touches the API. Its own
      header states the rules it keeps. Registration is deliberately late, after

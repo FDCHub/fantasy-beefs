@@ -146,8 +146,8 @@ export const VERSUS_LOSSES_SUPPORT = Object.freeze([
 ]);
 
 export const POOL_PAYOUTS_SUPPORT = Object.freeze([
-  Object.freeze({ label: 'Wk 3 · Most Total Touchdowns · won', cents: 1200 }),
-  Object.freeze({ label: 'Wk 2 · Highest Combined Passing Yards · won', cents: 900 }),
+  Object.freeze({ label: 'Wk 3 · Touchdown Machine · won', cents: 1200 }),
+  Object.freeze({ label: 'Wk 2 · Air Show · won', cents: 900 }),
 ]);
 
 export const POOL_ENTRIES_SUPPORT = Object.freeze([

@@ -184,6 +184,10 @@ INDEX = _read("index.html")
 TABS_CSS = _read("styles", "tabs.css")
 WAGER_CSS = _read("styles", "wager.css")
 COMPONENTS_CSS = _read("styles", "components.css")
+# UIRECON Rev 1.4 — Play's Pool carousel is markup in `league.js` and geometry
+# in `gameplay.css`, so both are read here.
+GAMEPLAY_CSS = _read("styles", "gameplay.css")
+LEAGUE_JS = _read("js", "league.js")
 COMPOSER_JS = _read("js", "composer.js")
 SHELL_JS = _read("js", "shell.js")
 
@@ -308,12 +312,13 @@ _assert("the Dynamic explanation states the ceiling that bounds it",
 
 print("\nThe four Pools are read from the governing catalog, not paraphrased")
 
-CATALOG = json.loads(_read_root("spec", "pool_catalog_rev1_3.json"))
+CATALOG = json.loads(_read_root("spec", "pool_catalog_rev1_4.json"))
 BY_NUMBER = {d["catalog_number"]: d for d in CATALOG["definitions"]}
 POOLS = APP.get("pools", [])
 
-_assert("the catalog of record is Rev 1.3, Product of Record",
-        CATALOG.get("revision") == "1.3" and CATALOG.get("status") == "Product of Record")
+_assert("the catalog of record is Rev 1.4, Product of Record",
+        CATALOG.get("revision") == "1.4"
+        and CATALOG.get("status") == "Product of Record")
 _assert("exactly four Pools run in a fantasy week", len(POOLS) == 4, str(len(POOLS)))
 
 for pool in POOLS:
@@ -324,6 +329,11 @@ for pool in POOLS:
         continue
     _assert(f"Pool #{number} uses the catalog's display name",
             pool["name"] == definition["display_name"], pool["name"])
+    # REV 1.4 §3 — the question is catalog content, so the fixture may not
+    # paraphrase it any more than it may paraphrase the name.
+    _assert(f"Pool #{number} uses the catalog's public question",
+            pool.get("question") == definition.get("public_question"),
+            str(pool.get("question")))
     _assert(f"Pool #{number} uses the catalog's subject scope",
             pool["scope"] == definition["scope"], pool["scope"])
     # A QUALIFIER settles on its threshold condition; a RANK_EXTREMUM on its
@@ -419,11 +429,37 @@ _assert("one complete card fills the carousel at a time", "height: 100%" in item
 _assert("every scroll settles on a card boundary",
         "scroll-snap-align: start" in item and "scroll-snap-stop: always" in item)
 
-pools = _rule(TABS_CSS, ".fs-pools")
-_assert("all four Pools sit in a 2x2 grid",
-        "grid-template-columns: 1fr 1fr" in pools and "grid-template-rows: 1fr 1fr" in pools)
-_assert("the Pools zone never scrolls — all four are visible together",
-        "overflow" not in pools)
+# UIRECON REV 1.4 PART 4 — THE 2x2 GRID IS SUPERSEDED, AND BY A PRODUCT
+# RULING RATHER THAN A PREFERENCE.
+#
+# Rev 4.2 put four Pools in one zone as quarter-tiles. That shape carried its
+# own cost in `tabs.css`'s own words — "the card compresses and clips instead" —
+# and Rev 4.3 §K2 already had to invert half of it. What a quarter-tile could
+# never hold is a LINE OF PROSE, which is why Rev 4.3 §8.5 moved the settle
+# condition off the card: it could say WHICH Pool, never WHAT it asked.
+#
+# POR Rev 1.4 §3 gives every drawable definition a `public_question`, and §4 of
+# the reconciliation package rules that Play's Pools become a one-card-at-a-time
+# carousel so the question has a line to sit on.
+#
+# SO THE ASSERTION MOVES TO THE THING THAT IS NOW TRUE: Play's Pools use the
+# SAME two elements as the Matchups carousel directly above them, which is the
+# only way the two rails cannot drift apart. The carousel rules asserted just
+# above — vertical, `y mandatory`, `overflow-x: hidden`, `height: 100%`,
+# `scroll-snap-stop: always` — are therefore the Pool rail's rules too, and are
+# not restated here.
+_assert("Play's Pools ride the Matchups carousel itself, not a parallel rail",
+        'class="fs-carousel" id="fs-play-pools"' in LEAGUE_JS
+        and '"fs-carousel__item"' in LEAGUE_JS)
+_assert("the Pool card takes the CARD radius the Matchup card takes, not the "
+        "tile radius a grid cell took",
+        "border-radius: var(--fs-radius-card)"
+        in _rule(GAMEPLAY_CSS, ".fs-pool--card"))
+_assert("one card fills its carousel item, so a second can never be half-shown",
+        "height: 100%" in _rule(GAMEPLAY_CSS, ".fs-pool--card"))
+_assert("the card carries the served question, not a scope-derived stand-in",
+        'class="fs-pool__question"' in LEAGUE_JS
+        and "if (pool.question) return pool.question;" in LEAGUE_JS)
 
 print("\nAction's four rails stay single rows")
 

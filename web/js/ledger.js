@@ -462,6 +462,23 @@ export function buildLedgerPanel() {
       // and never subtracted from it again.
       { label: 'In Play', cents: r.position.acceptedEscrowCents,
         pending: unresolved },
+      // UIRECON REV 1.4 CONSIDERED `Escrow` HERE AND REFUSED IT.
+      //
+      // The proposal was that this cell reports wager escrow and should say
+      // so. It does not. `held_open_challenges_cents` is escrow on challenges
+      // still in an OPEN response state — an offer nobody has accepted, which
+      // has placed no Bet — and `reports/ledger_read_model.py` states it is
+      // "a SUBSET of `in_play_cents` rather than an addition to it". The
+      // escrow on unresolved WAGERS is the cell immediately to the left of
+      // this one. Labelling the subset `Escrow` beside the whole of it would
+      // have told a GM the two are different kinds of money and that adding
+      // them means something — the exact double count both read models are
+      // written to prevent.
+      //
+      // `Held` IS ALSO THE POR'S OWN WORD for this figure, not a placeholder:
+      // Rev 4.3 §14.1 retains `Held` as an Account term, and the Rev 3.1
+      // register defines it as "Pending offer holds ... `Held · not In Play`".
+      // It is therefore both the accurate label and the locked one.
       { label: 'Held', cents: heldCents, pending: unresolved },
       // UIRECON WAVE 1 — `Weekly Min Left` measured 93.8px against a 68px
       // cell and wrapped, stretching every cell on both of this tab's strips.

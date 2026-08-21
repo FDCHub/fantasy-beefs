@@ -265,8 +265,14 @@ _assert("the preview sheet takes a served view",
         "previewSheet(m, ctx" in _prev_js)
 _assert("the redundant MATCHUP block is gone",
         "'MATCHUP'" not in _prev_js and '"MATCHUP"' not in _prev_js)
+# SUPERSEDED BY REV 1.4 LANE C, AND THE RULE IS UNCHANGED. Wave 4A's parallel
+# construction was two `lineupTable()` calls stacked one above the other; §L1
+# replaced them with one comparison matrix whose two team cells are drawn by
+# `teamCell()`. The assertion is the same assertion — one function draws both
+# sides, so neither can acquire a figure or an emphasis the other lacks — and it
+# names the function that does it now.
 _assert("both teams are drawn by one function",
-        _prev_js.count("lineupTable(") >= 3)   # one definition, two calls
+        _prev_js.count("teamCell(") >= 3)      # one definition, two calls
 
 # THE BINDER HOLDS WHAT IT WAS SERVED AND NOTHING ELSE. A single rounding call,
 # a Math.* or a reduce() in this file would mean a figure on screen that no

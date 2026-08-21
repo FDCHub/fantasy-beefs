@@ -108,18 +108,51 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
     if (!sheet) return { error: 'no sheet' };
     const sections = [...sheet.querySelectorAll('.fs-prev')];
     const titles = sections.map((s) => s.querySelector('.fs-prev__title').textContent.trim());
-    const lineups = [...sheet.querySelectorAll('.fs-lineup')].map((l) => ({
-      team: l.querySelector('.fs-lineup__team').textContent.trim(),
-      rows: [...l.querySelectorAll('.fs-lineup__row:not(.is-total)')].map((r) => ({
-        pos: r.querySelector('.fs-lineup__pos').textContent.trim(),
-        name: r.querySelector('.fs-lineup__name').textContent.trim(),
-        proj: r.querySelector('.fs-lineup__proj').textContent.trim(),
-        h: Math.round(r.getBoundingClientRect().height),
-      })),
-      total: l.querySelector('.is-total .fs-lineup__proj').textContent.trim(),
-      classes: l.className,
-      w: Math.round(l.getBoundingClientRect().width),
-    }));
+    // ── READ OFF THE REV 1.4 COMPARISON MATRIX ──────────────────────────
+    //
+    // SUPERSEDED STRUCTURE, IDENTICAL CLAIMS. Wave 4A drew two stacked
+    // .fs-lineup tables; Lane C §L1 replaced them with one matrix keyed by
+    // roster position whose two team COLUMNS sit on the same row. Every Wave 4A
+    // assertion below is about a lineup's rows, its projections, its
+    // server-supplied total and its parallelism with the other side — all of
+    // which the matrix still states — so the READER is rewritten into the shape
+    // those assertions already expect and not one of them is weakened. The
+    // matrix's own geometry is certified by uirecon_rev14_preview_browser.mjs.
+    //
+    // NO TEMPLATE LITERALS IN HERE. This whole expression is itself a template
+    // literal in the suite file, so a backtick or a dollar-brace below would be
+    // interpolated by Node before the page ever saw it.
+    const sideSel = (side) =>
+      '.fs-cmp__cell[data-cmp-side="' + side + '"]';
+    const projOf = (cell) => {
+      const fig = [...cell.querySelectorAll('.fs-cmp__fig')].find((f) => {
+        const t = f.querySelector('.fs-cmp__figlabel').textContent.trim();
+        return t === 'PROJ' || t === 'PROJECTED';
+      });
+      return fig ? fig.querySelector('.fs-cmp__fignum').textContent.trim() : '';
+    };
+    const matrix = sheet.querySelector('.fs-cmp');
+    const lineups = !matrix ? [] : ['acting', 'opponent'].map((side) => {
+      const head = matrix.querySelector(
+        '.fs-cmp__team[data-cmp-side="' + side + '"]');
+      const totalCell = matrix.querySelector(
+        '.fs-cmp__row.is-total ' + sideSel(side));
+      const cells = [...matrix.querySelectorAll(
+        '.fs-cmp__row:not(.is-total) ' + sideSel(side))];
+      const first = cells[0];
+      return {
+        team: head ? head.textContent.trim() : '',
+        rows: cells.map((cell) => ({
+          pos: cell.parentElement.querySelector('.fs-cmp__pos').textContent.trim(),
+          name: cell.querySelector('.fs-cmp__player').textContent.trim(),
+          proj: projOf(cell),
+          h: Math.round(cell.getBoundingClientRect().height),
+        })),
+        total: totalCell ? projOf(totalCell) : '',
+        classes: first ? first.className : '',
+        w: first ? Math.round(first.getBoundingClientRect().width) : 0,
+      };
+    });
     const body = (i) => (sections[i]
       ? [...sections[i].querySelectorAll('.fs-prev__p')].map((p) => p.textContent.trim())
       : []);
@@ -167,7 +200,7 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
     !view.identityRows.some((r) => r.includes(teamName)),
     view.identityRows.join(' | '));
 
-  section('4A · §6 LINEUPS carries served rows, not empty columns');
+  section('4A · §6 LINEUPS carries served rows, not empty columns (Rev 1.4: as matrix columns)');
 
   check('both teams draw a lineup', view.lineups.length === 2,
     `${view.lineups.length} lineup(s)`);
@@ -191,7 +224,7 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
       near(sum, parseFloat(l.total), 0.15), `rows=${sum.toFixed(1)} total=${l.total}`);
   }
 
-  section('4A · §6 the two lineups are the SAME construction');
+  section('4A · §6 the two lineups are the SAME construction (Rev 1.4: the two matrix columns)');
 
   const [a, b] = view.lineups;
   if (a && b) {
@@ -556,8 +589,16 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
         if (!s) return { missing: true };
         const scroller = s.querySelector('.fs-sheet__body') || s;
         const r = s.getBoundingClientRect();
-        const lineups = [...s.querySelectorAll('.fs-lineup')]
-          .map((l) => Math.round(l.getBoundingClientRect().width));
+        // Rev 1.4 §L1 — the two lineups are the matrix's two team columns.
+        // The claim this feeds is unchanged: both are drawn, both have real
+        // width, and the two widths agree at every certified size. Written
+        // without template literals for the reason the reader above states.
+        const lineups = ['acting', 'opponent']
+          .map((side) => s.querySelector(
+            '.fs-cmp__row:not(.is-total) .fs-cmp__cell[data-cmp-side="'
+            + side + '"]'))
+          .filter(Boolean)
+          .map((c) => Math.round(c.getBoundingClientRect().width));
         return {
           sheetSW: s.scrollWidth, sheetCW: s.clientWidth,
           bodySW: scroller.scrollWidth, bodyCW: scroller.clientWidth,

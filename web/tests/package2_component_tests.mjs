@@ -431,11 +431,30 @@ check('COMPLETED · 14–7 SEASON', railHeading('completed') === 'COMPLETED · 1
 const { railHeading: uiRailHeading } = await import('../js/action.js');
 const { actionMode } = await import('../js/action-model.js');
 check('the shipped heading is in demo mode by default', actionMode() === 'demo');
-check('and the shipped COMPLETED heading keeps the locked record in demo',
-  uiRailHeading('completed') === 'COMPLETED · 14–7 SEASON',
+// UIRECON REV 1.4 PART 11 — ONE HEADING GRAMMAR ON ALL FOUR RAILS.
+//
+// `COMPLETED · 14–7 SEASON` was a locked Rev 4.2 string, and S8-P4C-2 had
+// already dropped it in production because 14–7 has no authoritative source for
+// a signed-in GM. Keeping it in demo alone meant the one rail whose count a
+// visitor most wants was the one rail that did not state it, and it left the
+// demo's heading grammar different from the product's. Every rail is a
+// one-card-at-a-time carousel now, so the count is the only place a GM can
+// learn how many cards sit behind the one on screen — which makes `LABEL: N`
+// load-bearing rather than decorative.
+//
+// THE RECORD DID NOT GO ANYWHERE. `seasonRecordLabel()` still draws it in the
+// summary strip's Bet Record cell, which is a figure's slot rather than a
+// heading's; that is asserted separately below.
+check('every rail heading is the Rev 1.4 LABEL: N form',
+  ['action', 'waiting', 'live', 'completed']
+    .every((r) => /^[A-Z ]+: \d+$/.test(uiRailHeading(r))),
+  ['action', 'waiting', 'live', 'completed'].map(uiRailHeading).join(' | '));
+check('and the COMPLETED heading states its count rather than a season record',
+  uiRailHeading('completed') === 'COMPLETED: 3'
+  && !uiRailHeading('completed').includes('SEASON'),
   uiRailHeading('completed'));
 check('while ACTION REQUIRED still counts the fixture in demo',
-  uiRailHeading('action') === 'ACTION REQUIRED 2', uiRailHeading('action'));
+  uiRailHeading('action') === 'ACTION REQUIRED: 2', uiRailHeading('action'));
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 
@@ -451,19 +470,48 @@ const league = buildLeaguePanel();
 // eleven invented cards. The heading also loses its `↕` (§12).
 check('the Matchups rail heading carries no directional arrow',
   !league.includes('↕'), 'SWIPE ↕ removed');
+// SCOPED TO THE MATCHUPS RAIL — UIRECON Rev 1.4 Part 4. `fs-carousel__item` is
+// no longer unique to Matchups: Play's Prop Pools ride the SAME carousel now,
+// deliberately, so counting the class across the whole panel would count four
+// Pool cards and call them invented opponents. What this assertion has always
+// been about is the MATCHUPS rail, which is `#fs-bets-carousel`, and unbound it
+// must not exist at all.
 check('unbound discovery draws an intentional state, never invented opponents',
   league.includes('data-versus-state')
-  && (league.match(/fs-carousel__item/g) || []).length === 0);
+  && !league.includes('id="fs-bets-carousel"'));
 // WP3C — the count moved into the heading's HELPER slot. At the §5.1 section
 // step the whole string wrapped to two lines at 375px, and on Play that height
 // came straight out of the card zone beneath it. The vocabulary is unchanged;
 // what changed is which of `sectionHeading`'s two slots each half sits in.
-// UIRECON WAVE 1 — the locked public term is FantasyStakes Prop Pools on first
-// reference. The heading is the first reference on this tab.
-check('Prop Pools heading is the locked wording',
-  league.includes('FANTASYSTAKES PROP POOLS') && league.includes('4 THIS WEEK'));
-check('Play uses the locked Matchups term and no public Versus',
-  league.includes('FANTASYSTAKES MATCHUPS') && !league.includes('FANTASYSTAKES VERSUS'));
+// UIRECON REV 1.4 PART 3 — THE SHORT FORMS, AND WHAT DID NOT CHANGE.
+//
+// Wave 1 locked `FANTASYSTAKES PROP POOLS` and `FANTASYSTAKES MATCHUPS` as the
+// first-reference wording on this tab. Rev 1.4 shortens BOTH headings to
+// `PROP POOLS` and `MATCHUPS`, because a GM reading a heading on the Play tab
+// is already inside FantasyStakes and the brand was spending the widest line of
+// each section restating it — which pushed the count and the swipe affordance
+// into whatever the helper slot had left.
+//
+// THE PRODUCT TERMS ARE UNCHANGED. `Matchups` and `Prop Pools` are still the
+// public nouns, and every surface that MIXES FantasyStakes results with the
+// Yahoo league's own — Wrap Up above all — still says FantasyStakes Matchups on
+// first reference. This is a shortening inside one tab, not a renaming.
+//
+// THE VERSUS HALF IS NOT SUPERSEDED and is asserted more strictly than before:
+// no public-facing `Versus` anywhere in the panel, not merely no
+// `FANTASYSTAKES VERSUS`.
+check('Prop Pools heading is the Rev 1.4 short form, with the served count',
+  league.includes('PROP POOLS') && !league.includes('FANTASYSTAKES PROP POOLS')
+  && league.includes('4 THIS WEEK · SWIPE'));
+// TAGS STRIPPED BEFORE THE VERSUS CHECK. `Versus` survives as an INTERNAL
+// module and state name — `data-versus-state` is the Play rail's own empty-state
+// attribute — and the rule has only ever been about what a GM READS. Testing the
+// raw HTML would fail on a machine-readable attribute nobody sees; testing the
+// text is the same thing the browser tier asserts against `innerText`.
+const leagueText = league.replace(/<[^>]*>/g, ' ');
+check('Play uses the Matchups short form and no public Versus',
+  league.includes('MATCHUPS') && !league.includes('FANTASYSTAKES MATCHUPS')
+  && !/versus/i.test(leagueText));
 check('League presents four Prop Pools', (league.match(/data-pool="/g) || []).length === 4);
 check('League carries the disclaimer once', countDisclaimers(league) === 1);
 check('League keeps the four strip figures',

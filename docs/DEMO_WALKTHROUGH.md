@@ -55,10 +55,10 @@ league uses, so the standings are a consequence rather than a fixture.
 
 | | |
 |---|---|
-| **Cleat Fleetwood Mac** | leads the Championship Chase at week 11 |
-| **Gravy Seal Team Six** | unbeaten in FantasyStakes matchups — and the eventual champion |
+| **Gravy Seal Team Six** | leads the Championship Chase at week 11, unbeaten in FantasyStakes matchups — and the eventual champion |
+| **Special Teams Only** | keeps losing by the widest margin and keeps paying the Skunk — and still finishes runner-up on the Chase |
 | **Pain Sanders** | **the seat you are sitting in** |
-| **Special Teams Only** | keeps losing by the widest margin, and keeps paying the Skunk |
+| **Third and Long Island** | wins the Yahoo league, and takes third on the Chase |
 
 Week 11 is genuinely undecided — three live matchups and four open prop pools —
 which is the point: there is something at stake on screen.
@@ -89,9 +89,10 @@ early, because it is the thing people get wrong:
 > "Championship Score is your **net winnings** from FantasyStakes matchups and
 > prop pools. Your wallet balance does not count."
 
-Point at the top of the table — **Cleat Fleetwood Mac** leads at week 11 — then
-at **Gravy Seal Team Six**, unbeaten in matchups but behind on pools. The lead
-is genuinely contestable with four weeks to play, and it does change hands.
+Point at the top of the table — **Gravy Seal Team Six** leads at week 11, on
+the strength of the prop pools as much as the matchups — then at **Special
+Teams Only**, who is paying the Skunk every week and is still second on the
+Chase. That is the rule landing: the Chase counts net winnings, not wallet.
 
 Then show **Matchup Standings** and **Prop Pool Standings** underneath: the same
 season, split by where the Credits were actually won. Every GM has a real
@@ -117,9 +118,9 @@ Week 11 carries **four open prop pools**, drawn from the governed catalog by the
 same rotation a live league uses. Show an open one and a settled one from week
 10 beside it, so the payout is visible.
 
-Pool wins across the league run from **9 to 15** at week 11 — these are real
+Pool wins across the league run from **8 to 17** at week 11 — these are real
 settled occurrences that credited a wallet, not decoration. By the end of the
-season they reach 14 to 21.
+season they reach 11 to 22.
 
 ### 5 · Status — 30 seconds
 Completed action, live action, and what is still open. This is where "the week
@@ -150,9 +151,9 @@ paid.
 
 | | GM | Championship Score |
 |---|---|---|
-| 1 | Gravy Seal Team Six | 2727 |
-| 2 | Cleat Fleetwood Mac | 2262 |
-| 3 | No Punt Intended | 1886 |
+| 1 | Gravy Seal Team Six | 8241 |
+| 2 | Special Teams Only | 5938 |
+| 3 | Third and Long Island | 1816 |
 
 The pot splits **60 / 30 / 10** across those three.
 
@@ -212,3 +213,21 @@ meeting.
 - **The Yahoo data-retention question is open.** It is a contractual matter, it
   is documented in `ops/yahoo_retention.py`, and the demo does not resolve it or
   depend on it either way.
+
+---
+
+## A note on the figures above
+
+Every name and number on this page is READ FROM `test_d24_complete_lifecycle.py`
+and `test_d1_demo_environment.py`, which assert the seeded showcase against the
+real read models. The suites are the source; this page is written from them.
+
+They were last re-measured on the adoption of **Pool Catalog & Rotation POR
+Revision 1.4**, whose §4.2 rules the weekly slate at 3 TEAM + 1 MATCHUP. That
+draws a different set of Prop Pools each week, so every GM's pool net — and with
+it the Championship Chase — moved. The Matchup half did not: all twelve teams'
+Versus records and Versus nets are byte-identical across the two builds.
+
+The third-place name and the podium scores on this page had ALSO drifted from
+the suites before that adoption, independently of it; they are corrected here to
+what the suites now measure.

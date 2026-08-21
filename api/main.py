@@ -1143,8 +1143,71 @@ class WalletOut(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _compute_standings(db: Session) -> list[dict]:
-    matchups = db.query(Matchup).filter(Matchup.week <= 14).all()
+def _resolve_standings_league(db: Session, league_id: Optional[int]) -> int:
+    """The league a standings read is scoped to — never "all of them".
+
+    ── THE DEFECT THIS EXISTS TO CLOSE ──────────────────────────────────────
+
+    `/league/standings` took no league at all. It read EVERY `matchups` row and
+    EVERY `teams` row in the database and ranked them into one table, so a
+    deployment holding two leagues served one merged table to both — and
+    `?league_id=2` changed nothing, because nothing read the parameter. Two
+    leagues with a team named the same in each produced two rows a reader could
+    not tell apart, in a table neither league's GMs should have been shown.
+
+    THE FIX IS THE SCOPE, NOT A FILTER ON ONE LEAGUE. Nothing here knows about
+    the demo, about league 2, or about any particular deployment; the route is
+    simply per-league now, which is what a standings table has always been.
+
+    ── AND WHY AN OMITTED league_id IS RESOLVED RATHER THAN IGNORED ──────────
+
+    A deployment holding exactly one league has an unambiguous answer, and this
+    route predates the parameter, so answering it is correct and costs nothing.
+    A deployment holding several has no answer — and merging them is precisely
+    the defect — so it REFUSES and names the leagues rather than picking one or
+    silently returning the union. Refusing is the only truthful response to
+    "which league's standings?" when the caller did not say and more than one
+    exists.
+    """
+    from db.schema import League
+
+    if league_id is not None:
+        exists = db.query(League.id).filter(League.id == league_id).first()
+        if exists is None:
+            raise HTTPException(status_code=404, detail={
+                "reason_code": "league_not_found",
+                "message": f"League {league_id} does not exist.",
+            })
+        return int(league_id)
+
+    ids = [row[0] for row in db.query(League.id).order_by(League.id).all()]
+    if len(ids) == 1:
+        return int(ids[0])
+    raise HTTPException(status_code=400, detail={
+        "reason_code": "standings_league_required",
+        "message": (
+            f"This database holds {len(ids)} leagues, so standings cannot be "
+            f"read without naming one. Pass ?league_id=. Standings are "
+            f"per-league; a table spanning several is not a standings table."
+        ),
+        "league_ids": ids,
+    })
+
+
+def _compute_standings(db: Session, *, league_id: int) -> list[dict]:
+    """One league's regular-season record table.
+
+    BOTH SIDES ARE SCOPED, and both are load-bearing. `matchups.league_id`
+    keeps another league's results out of the record; `teams.league_id` keeps
+    another league's roster out of the row set even if a stray matchup row ever
+    referenced a team across the boundary. A row whose team is not in this
+    league is DROPPED rather than rendered from a foreign `Team` — the previous
+    code indexed a global team map and would have raised a KeyError or, worse,
+    printed the other league's name.
+    """
+    matchups = (db.query(Matchup)
+                .filter(Matchup.league_id == league_id, Matchup.week <= 14)
+                .all())
     records: dict[int, dict] = {}
 
     for m in matchups:
@@ -1161,10 +1224,13 @@ def _compute_standings(db: Session) -> list[dict]:
             else:
                 records[team_id]["l"] += 1
 
-    teams = {t.id: t for t in db.query(Team).all()}
+    teams = {t.id: t for t in
+             db.query(Team).filter(Team.league_id == league_id).all()}
     rows = []
     for team_id, rec in records.items():
-        t = teams[team_id]
+        t = teams.get(team_id)
+        if t is None:
+            continue
         rows.append({"team": t, **rec})
 
     return sorted(rows, key=lambda r: (-r["w"], -r["pf"]))
@@ -1345,8 +1411,16 @@ def health(db: Session = Depends(get_db)):
 
 
 @app.get("/league/standings", response_model=list[StandingRow])
-def standings(db: Session = Depends(get_db)):
-    rows = _compute_standings(db)
+def standings(league_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """One league's regular-season record table.
+
+    `league_id` is optional only so a single-league deployment keeps working
+    unchanged; it is not optional in meaning. See `_resolve_standings_league`
+    for what an omitted value resolves to and why a multi-league database
+    refuses instead of merging.
+    """
+    rows = _compute_standings(db, league_id=_resolve_standings_league(
+        db, league_id))
     return [
         StandingRow(
             rank=rank,
@@ -5482,6 +5556,14 @@ class PreviewLineupRowOut(BaseModel):
     position:         str
     projected_points: float
     injury_status:    Optional[str] = None
+    #: Rev 1.4 Lane C — what this starter HAS scored, per the provider's own
+    #: weekly statement. None where the feed has said nothing about the player
+    #: yet, which before kickoff is every starter on both rosters. The surface
+    #: draws None as an em dash and NEVER as a zero.
+    live_points:      Optional[float] = None
+    #: Affirmative measurement. Its own field so a genuine measured 0.0 is not
+    #: indistinguishable from an unmeasured starter on the wire.
+    live_measured:    bool = False
 
 
 class PreviewSideOut(BaseModel):
@@ -5491,6 +5573,12 @@ class PreviewSideOut(BaseModel):
     #: The SUM of the projections above — addition of served inputs, not a
     #: simulation output. Never presented as one.
     projected_total: float
+    #: The SUM of the live figures above, over the starters the feed has
+    #: measured. None where none has been, because a 0.0 would read as "this
+    #: team has scored nothing" about games that have not been played.
+    live_total:          Optional[float] = None
+    live_measured_count: int = 0
+    starter_count:       int = 0
 
 
 class PreviewMarketOut(BaseModel):
@@ -5523,6 +5611,75 @@ class MatchupPreviewOut(BaseModel):
     #: NOT the spread, which is the simulation's median margin and sits on
     #: `market.spread_line`.
     projected_margin: float
+    #: Whether the provider answered about current scoring at all. False is an
+    #: unreadable or unattempted read; True with no figures is a provider that
+    #: answered and has published none yet. `live_reason` carries which.
+    live_available: bool = False
+    live_reason:    Optional[str] = None
+
+
+def _preview_live_scores(db: Session, league, week: int, player_ids):
+    """The provider's CURRENT scoring for these starters, or a named absence.
+
+    ── WHY A ROUTE HELPER AND NOT A READ MODEL (Rev 1.4 Lane C) ─────────────
+
+    Reaching a provider is `_provider_week_snapshot`'s job. It is the single
+    place in this product that branches on a provider name, and everything
+    below it — the Pool stat source, settlement, the postseason determination —
+    consumes a `ProviderWeek` without knowing which provider made it. This
+    helper reuses that boundary rather than adding a second one, so a Demo
+    league reads its deterministic scenario and a Yahoo league reads Yahoo
+    through the certified WP2A gateway, with no branch written here.
+
+    ── IT DEGRADES; IT NEVER FAILS THE PREVIEW ─────────────────────────────
+
+    A preview is an ANALYSIS SURFACE (Rev 4.3 §10) and its projections, board
+    and narrative do not depend on live scoring. A league with no provider
+    binding, a commissioner who has authorized nothing, an expired token or a
+    provider outage must therefore cost a GM the LIVE column and nothing else.
+    Every failure is caught and reported as `REASON_UNREADABLE`, which the
+    surface renders exactly as the pre-kickoff state renders — an em dash — and
+    which an operator can tell apart from it by the reason code.
+
+    ── NOTHING IS PERSISTED, AND NOTHING IS CACHED ─────────────────────────
+
+    `with_rosters=True` costs a roster read per team on the Yahoo path, and the
+    honest alternative would be a store of Yahoo player scoring. There is no
+    such store by design: `providers/yahoo/week_snapshot.py` records why player
+    STATS have no persistence model anywhere in the certified design, and
+    `ops/yahoo_retention.py` would have to answer for one. So this reads and
+    discards, exactly as settlement does.
+
+    ── ONLY THE LEAGUE'S CURRENT WEEK ──────────────────────────────────────
+
+    "Live" means the week being played. Asking a provider for a past week's
+    scoring would return FINAL figures and label them LIVE, which is the
+    specific mislabelling this lane is forbidden from committing; asking for a
+    future week returns nothing at a roster read's price. A league that states
+    no current week gets no live read rather than a guess.
+    """
+    from providers import live_scoring
+
+    current = getattr(league, "provider_current_week", None)
+    if current is None or int(current) != int(week):
+        return live_scoring.no_live_scores(
+            reason=live_scoring.REASON_NOT_REQUESTED, week=week,
+            provider=getattr(league, "provider", None))
+
+    try:
+        snapshot = _provider_week_snapshot(db, league, week, with_rosters=True)
+    except Exception:
+        # DELIBERATELY BROAD, AND DELIBERATELY SILENT TO THE GM. Every way this
+        # can fail — the 409 `_league_provider` raises for an unbound league, a
+        # missing credential, a transport error, a parser refusal — has the same
+        # correct consequence for the preview: no live figures, projections
+        # unchanged, and the reason recorded on the response.
+        return live_scoring.no_live_scores(
+            reason=live_scoring.REASON_UNREADABLE, week=week,
+            provider=getattr(league, "provider", None))
+
+    return live_scoring.live_scores_from_snapshot(db, snapshot,
+                                                  player_ids=player_ids)
 
 
 @app.get("/league/{league_id}/versus/preview", response_model=MatchupPreviewOut)
@@ -5582,15 +5739,31 @@ def versus_matchup_preview(
 
     from reports.matchup_preview_read_model import matchup_preview
 
+    # THE ROSTER, NOT THE STARTING NINE, and that is deliberate. Whose rows are
+    # starters is `_fetch_starters_for_odds`'s rule — the first `N_START` by
+    # roster id — and restating it here to narrow this list would be a second
+    # copy of that rule, free to drift. A superset costs a handful of extra
+    # player ids on a lookup that is already keyed by id.
+    roster_player_ids = [
+        pid for (pid,) in db.query(Roster.player_id)
+        .filter(Roster.team_id.in_((acting_team_id, opponent_team_id))).all()
+    ]
+    league = db.query(League).filter(League.id == league_id).first()
+    live = _preview_live_scores(db, league, week, roster_player_ids)
+
     view = matchup_preview(db, league_id=league_id, week=week,
                            acting_team=acting_team, opponent_team=opponent,
                            board=board, refusal=refusal,
-                           phase=str(phase) if phase is not None else None)
+                           phase=str(phase) if phase is not None else None,
+                           live=live)
 
     def _side(side) -> PreviewSideOut:
         return PreviewSideOut(
             team_id=side.team_id, team_name=side.team_name,
             projected_total=side.projected_total,
+            live_total=side.live_total,
+            live_measured_count=side.live_measured_count,
+            starter_count=side.starter_count,
             lineup=[PreviewLineupRowOut(**row.__dict__) for row in side.lineup],
         )
 
@@ -5599,6 +5772,8 @@ def versus_matchup_preview(
         acting=_side(view.acting), opponent=_side(view.opponent),
         market=PreviewMarketOut(**view.market.__dict__),
         projected_margin=view.projected_margin,
+        live_available=view.live_available,
+        live_reason=view.live_reason,
     )
 
 
@@ -5970,6 +6145,249 @@ def _quote_inputs_are_empty(db: Session, team_a: int, team_b: int,
                      Projection.source == ctx.source)
              .scalar())
     return not total
+
+
+# ── The Dynamic informational odds refresh (UIRECON Rev 1.4) ──────────────
+#
+# WHAT THESE TWO ROUTES ARE FOR. A Dynamic Matchup is the mode whose lineups,
+# projections and odds stay LIVE until Final Lock (Locked-vs-Dynamic ruling §3).
+# Until now nothing surfaced that liveness: a GM watched a wager whose price was
+# moving underneath them and had no way to see where it had moved to. Rev 9 §5
+# already permits the answer — "between Handshake and Final Lock, a display-only
+# re-sim may show GMs where the line sits" — and these routes are that re-sim,
+# nothing more.
+#
+# THE POST IS A WRITE, AND CALLING IT ONE IS THE POINT. It appends a row to
+# `challenge_odds_refresh` and therefore travels through the CSRF-protected
+# write surface, exactly like every other command. The row it writes is
+# INFORMATIONAL — no ledger entry, no escrow movement, no term mutation, no
+# Final Lock, no claim — and `beefs/versus_refresh.py` documents each of those
+# absences against the rule that requires it. A GET would have been the honest
+# verb for the *computation* and a lie about the *record*: two GMs cannot read
+# one shared line unless somebody wrote it down.
+#
+# THE GET EXISTS SO THE SECOND GM READS THE FIRST GM'S REFRESH. That is the
+# whole shared-determinism story: the opponent does not re-simulate, they read
+# the row. Recomputing on their behalf would be defensible arithmetic and the
+# wrong product — projections move, so two independent computations of "the
+# current line" are two different lines, both correct, for one wager.
+#
+# NEITHER ROUTE REPRICES THE WAGER, AND THE CONTRACT SAYS SO IN ITS FIELD NAMES.
+# `indicative_derived_cents` is what the opponent WOULD stake if Final Lock ran
+# at these probabilities; the stake of record is set once, at Final Lock, into
+# `ChallengeFinalLock`. `anchor_cents` is echoed unchanged because the Anchor
+# never reprices on odds (Rev 7 spine). There is deliberately no field on this
+# contract that a client could mistake for a new agreed term.
+
+class DynamicOddsRefreshOut(BaseModel):
+    """One shared informational refresh, as BOTH GMs see it.
+
+    EVERY ECONOMIC FIELD IS ISSUER-ANCHORED, NEVER VIEWER-ANCHORED. Two GMs
+    reading this contract for the same challenge must receive byte-identical
+    numbers, so the orientation is fixed by the wager rather than by the caller.
+    `viewer_is_issuer` is supplied so the card can still label the two sides
+    "You" and "Them" — the LABELS are viewer-relative, the FIGURES are not, and
+    keeping that boundary in the contract is what stops a display convenience
+    from becoming two different prices.
+
+    `refreshed_at` IS THE ANSWER TO "HOW OLD IS THIS". It is the moment the
+    figures were produced, not the moment this response was assembled, so a GET
+    served an hour later reports the hour-old timestamp and the card says so.
+
+    A NULL `refreshed_at` MEANS "NEVER REFRESHED" and every figure is null with
+    it. That is not an error and is not an empty price: the wager's agreed terms
+    are untouched and are read from the Action contract as they always were.
+    """
+
+    league_id:    int
+    challenge_id: int
+    week:         Optional[int] = None
+    mode:         str
+
+    #: Whether the control may be drawn at all, and the governed reason if not.
+    #: Reported rather than inferred, for the same reason `versus_eligible` is:
+    #: a client that decided this for itself would be a second authority on the
+    #: refresh window and would eventually disagree with the one that refuses.
+    refresh_eligible: bool
+    reason_code:      Optional[str] = None
+    unavailable_reason: Optional[str] = None
+
+    refreshed_at:         Optional[datetime] = None
+    refreshed_by_team_id: Optional[int] = None
+    viewer_is_issuer:     Optional[bool] = None
+
+    model_version_id: Optional[str] = None
+
+    issuer_probability:   Optional[float] = None
+    opponent_probability: Optional[float] = None
+    issuer_moneyline:     Optional[int]   = None
+    opponent_moneyline:   Optional[int]   = None
+    issuer_decimal_odds:   Optional[float] = None
+    opponent_decimal_odds: Optional[float] = None
+
+    anchor_cents:             Optional[int]  = None
+    indicative_derived_cents: Optional[int]  = None
+    opponent_ceiling_cents:   Optional[int]  = None
+    ceiling_applied:          Optional[bool] = None
+
+
+def _refresh_challenge_or_refuse(db: Session, league_id: int,
+                                 challenge_id: int, acting_team_id: int):
+    """The challenge, IF it is in this league and this GM is in it.
+
+    ONE ANSWER FOR "NO SUCH CHALLENGE" AND "ANOTHER LEAGUE'S CHALLENGE",
+    deliberately, and for the reason `/versus/quote` gives for collapsing its
+    own two cases: distinguishing them would let a caller enumerate other
+    leagues' wagers one id at a time.
+
+    PARTICIPATION IS A SEPARATE, NAMED REFUSAL. A league member looking at a
+    wager between two other GMs is a legitimate, non-hostile state — the Status
+    surface is full of them — and telling them "that is not yours" is the true
+    and useful answer.
+    """
+    from beefs.versus_refresh import (
+        REASON_NOT_A_PARTICIPANT, REASON_NOT_FOUND, participant_team_ids,
+    )
+
+    challenge = (db.query(BeefChallenge)
+                 .filter(BeefChallenge.id == challenge_id).first())
+    in_league = challenge is not None and (
+        challenge.league_id == league_id
+        or (challenge.league_id is None
+            and db.query(Team)
+                 .filter(Team.id == challenge.challenger_team_id,
+                         Team.league_id == league_id).first() is not None))
+    if not in_league:
+        raise HTTPException(status_code=404, detail={
+            "reason_code": REASON_NOT_FOUND,
+            "message": "That Matchup does not exist.",
+        })
+    if acting_team_id not in participant_team_ids(challenge):
+        raise HTTPException(status_code=403, detail={
+            "reason_code": REASON_NOT_A_PARTICIPANT,
+            "message": "This Matchup is between two other GMs.",
+        })
+    return challenge
+
+
+def _refresh_out(league_id: int, challenge, row, *, acting_team_id: int,
+                 eligibility) -> DynamicOddsRefreshOut:
+    """Project a stored refresh onto the contract. No arithmetic of any kind.
+
+    Every number below is copied. The one derived value is `viewer_is_issuer`,
+    which is a boolean about the READER and touches no figure.
+    """
+    base = dict(
+        league_id=league_id,
+        challenge_id=challenge.id,
+        week=challenge.week,
+        mode=challenge.challenge_mode or "locked",
+        refresh_eligible=eligibility.eligible,
+        reason_code=eligibility.reason_code,
+        unavailable_reason=eligibility.message or None,
+    )
+    if row is None:
+        return DynamicOddsRefreshOut(**base)
+    return DynamicOddsRefreshOut(
+        **base,
+        refreshed_at=row.refreshed_at,
+        refreshed_by_team_id=row.requested_by_team_id,
+        viewer_is_issuer=acting_team_id == challenge.challenger_team_id,
+        model_version_id=row.model_version_id,
+        issuer_probability=row.issuer_probability,
+        opponent_probability=row.opponent_probability,
+        issuer_moneyline=row.issuer_moneyline,
+        opponent_moneyline=row.opponent_moneyline,
+        issuer_decimal_odds=row.issuer_decimal_odds,
+        opponent_decimal_odds=row.opponent_decimal_odds,
+        anchor_cents=row.anchor_cents,
+        indicative_derived_cents=row.indicative_derived_cents,
+        opponent_ceiling_cents=row.opponent_ceiling_cents,
+        ceiling_applied=row.ceiling_applied,
+    )
+
+
+@app.get("/league/{league_id}/challenge/{challenge_id}/odds/refresh",
+         response_model=DynamicOddsRefreshOut)
+def read_dynamic_odds_refresh(
+    league_id:    int,
+    challenge_id: int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """The shared refresh both GMs read — or the fact that there has never been one.
+
+    A PURE READ AND A THIN ONE. It runs no simulation, resolves no model and
+    writes nothing; it selects the latest row and reports eligibility so the
+    card knows whether to draw the control. A Locked Matchup answers here too,
+    with `refresh_eligible: false` and the governed reason, because "no control
+    on this card" is something the UI has to be TOLD rather than infer.
+    """
+    from beefs.versus_refresh import latest_refresh, refresh_eligibility
+
+    acting_team_id = _member_team_id(current_user, league_id, db)
+    if acting_team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    challenge = _refresh_challenge_or_refuse(db, league_id, challenge_id,
+                                             acting_team_id)
+    return _refresh_out(league_id, challenge,
+                        latest_refresh(db, challenge_id),
+                        acting_team_id=acting_team_id,
+                        eligibility=refresh_eligibility(db, challenge))
+
+
+@app.post("/league/{league_id}/challenge/{challenge_id}/odds/refresh",
+          response_model=DynamicOddsRefreshOut)
+def refresh_dynamic_odds_route(
+    league_id:    int,
+    challenge_id: int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_gm),
+):
+    """Re-run the informational simulation for one Dynamic Matchup.
+
+    THE REFUSALS ARE THE GOVERNED ONES AND THEY COME FROM ONE PLACE.
+    `beefs.versus_refresh` owns the window and the vocabulary; this route maps
+    its refusal to HTTP and adds nothing of its own. A LOCKED Matchup is refused
+    with `refresh_not_dynamic` and gets no refresh behaviour at all — not a
+    degraded one, not a read-only one. Its counter/"Refresh & Relock" protocol
+    is a different mechanism entirely, lives in `beefs/proposal_lifecycle.py`,
+    and is untouched by this package.
+
+    NO REQUEST BODY, DELIBERATELY. There is no input a caller could legitimately
+    supply: the wager names the teams, the week, the market, the ceilings and the
+    frozen model, and the projections are read from the league's own source. A
+    body would be a surface for choosing an input to a number both GMs are then
+    shown as authoritative-looking.
+    """
+    from beefs.versus_refresh import (
+        RefreshRefused, refresh_dynamic_odds, refresh_eligibility,
+    )
+
+    acting_team_id = _member_team_id(current_user, league_id, db)
+    if acting_team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    challenge = _refresh_challenge_or_refuse(db, league_id, challenge_id,
+                                             acting_team_id)
+    try:
+        row = refresh_dynamic_odds(db, challenge_id=challenge_id,
+                                   actor_team_id=acting_team_id)
+    except RefreshRefused as refusal:
+        raise HTTPException(status_code=refusal.status, detail={
+            "reason_code": refusal.reason_code,
+            "message": refusal.message,
+        })
+    return _refresh_out(league_id, challenge, row,
+                        acting_team_id=acting_team_id,
+                        eligibility=refresh_eligibility(db, challenge))
 
 
 # ── League settings: authoritative read + the one governed command (S8-P4) ───
@@ -6378,6 +6796,13 @@ class PoolSlotOut(BaseModel):
     definition_key:  str
     catalog_number:  Optional[int]
     display_name:    Optional[str]
+    #: POR Rev 1.4 §3 — the plain-English question a GM is answering, carried
+    #: from the catalog beside the name it belongs to. THE SERVER IS THE ONLY
+    #: AUTHORITY for this sentence: the client used to compose one from `scope`,
+    #: which produced the identical prompt on all sixty-four drawable
+    #: definitions and told a GM nothing about what the contest measures.
+    #: Optional because §7 leaves the 16 non-drawable definitions without one.
+    public_question: Optional[str]
     category:        Optional[str]
     scope:           Optional[str]
     #: The definition's own settle condition, for the Pool detail surface.
@@ -6572,6 +6997,8 @@ def league_pool_slate(
                                        "catalog_number", None),
                 display_name=getattr(definitions.get(r.definition_key),
                                      "display_name", None),
+                public_question=getattr(definitions.get(r.definition_key),
+                                        "public_question", None),
                 category=getattr(definitions.get(r.definition_key),
                                  "category", None),
                 scope=getattr(definitions.get(r.definition_key), "scope", None),

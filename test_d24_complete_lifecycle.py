@@ -709,11 +709,15 @@ section("11 · WALKTHROUGH FIGURES — the exact numbers the document quotes")
 # section, and nothing failed. Anything the walkthrough puts a number on is
 # asserted here, exactly.
 
-WALKTHROUGH_CURRENT_POOL_WINS = (9, 15)
+# RE-MEASURED AT POR REV 1.4. §4.2 rules the weekly slate at 3 TEAM +
+# 1 MATCHUP, which changes which Prop Pools are drawn and therefore how many
+# each GM wins. Every figure below was read from a clean run of this suite and
+# then written into the document — the direction the module docstring requires.
+WALKTHROUGH_CURRENT_POOL_WINS = (8, 17)
 WALKTHROUGH_CURRENT_MONEYLINE = (-186, -112)     # most to least favoured
 WALKTHROUGH_CURRENT_SPREAD = (0.5, 3.5)
 WALKTHROUGH_CURRENT_TOTAL = (177.5, 192.0)
-WALKTHROUGH_FINAL_POOL_WINS = (14, 21)
+WALKTHROUGH_FINAL_POOL_WINS = (11, 22)
 
 check("CURRENT pool-win range is exactly what the walkthrough states",
       CURRENT_POOL_WINS == WALKTHROUGH_CURRENT_POOL_WINS,
@@ -743,12 +747,12 @@ check("the two ranges are genuinely different — a FINAL figure quoted in the "
 # The document also names these; asserted here so every named figure is covered
 # by one section rather than scattered.
 check("the walkthrough's CURRENT leader is the real one",
-      CURRENT_LEADER == "Cleat Fleetwood Mac", CURRENT_LEADER)
+      CURRENT_LEADER == "Gravy Seal Team Six", CURRENT_LEADER)
 check("the walkthrough's FINAL podium is the real one",
-      FINAL_PODIUM == ["Gravy Seal Team Six", "Cleat Fleetwood Mac",
-                       "No Punt Intended"], str(FINAL_PODIUM))
+      FINAL_PODIUM == ["Gravy Seal Team Six", "Special Teams Only",
+                       "Third and Long Island"], str(FINAL_PODIUM))
 check("the walkthrough's Championship Scores are the real ones",
-      [FINAL_SCORES[n] for n in FINAL_PODIUM] == [2727, 2262, 1886],
+      [FINAL_SCORES[n] for n in FINAL_PODIUM] == [8241, 5938, 1816],
       str([FINAL_SCORES[n] for n in FINAL_PODIUM]))
 check("the walkthrough's Grand Champion is the real one",
       FINAL_GC == "Gravy Seal Team Six", FINAL_GC)
