@@ -159,6 +159,12 @@ def _close_live_week(db, league, teams) -> dict:
     from demo import gameplay
 
     week = showcase.CURRENT_WEEK
+    # UIRECON WAVE 5 — THE UNANSWERED CHALLENGES RUN OUT FIRST. CURRENT leaves
+    # two of them offered so Status has an ACTION REQUIRED and a WAITING rail;
+    # they hold real Anchor escrow, and a season cannot close while a challenge
+    # escrow is unresolved. Expiring them is how a real week disposes of an
+    # offer nobody answered, and it returns the escrow by exact reverse legs.
+    gameplay.expire_live_negotiations(db, league=league, week=week)
     finalize_week(db, league, teams, week)
     return gameplay.close_week(db, league=league, teams=teams, week=week)
 

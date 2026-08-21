@@ -44,13 +44,22 @@ WHAT THIS WAVE CHANGED, AND WHAT IT DELIBERATELY DID NOT.
       shortcut it replaces". Action and Standings therefore disagreed about the
       same GM's same wagers. §4 asserts they now agree, against real postings.
 
-WHAT WAS CONSIDERED AND REJECTED. Moving the showcase onto
-`economy.challenge_funding.issue_funded_challenge` would have produced
-proposal-shaped rows — and a different product. The legacy engine stakes both
-GMs equally and varies the odds; the funded lifecycle quotes an odds-derived
-Derived stake. Every GM's exposure, every settlement, the standings and the
-championship would have moved. That is a change to wager economics, which this
-wave was told to preserve.
+WHAT WAS CONSIDERED AND REJECTED — AND A CORRECTION TO WHY.
+
+Moving the whole showcase onto `economy.challenge_funding.issue_funded_challenge`
+was rejected as too large a change to make mid-wave: it would have replaced
+every settled record's shape, its funding legs, its escrow accounts and its
+protocol events, and the demo's fingerprint and D-suite with them.
+
+THE ECONOMIC REASON ORIGINALLY GIVEN HERE WAS WRONG, and Wave 5 found it while
+seeding through that very path. This file said the funded lifecycle "quotes an
+odds-derived Derived stake". It does not, in Locked mode:
+`beefs.versus_quote.proposal_economics` sets `quoted_derived_stake_cents` to the
+issuer's own stake and says why — "BOTH SIDES STAKE THE SAME AMOUNT in locked
+mode ... exactly as the legacy path placed both sides at `effective_amount`".
+Only DYNAMIC leaves the Derived side unpriced until Final Lock. The two paths
+therefore agree on stakes for a Locked wager, and Wave 5 seeds Locked
+negotiations through the funded path for precisely that reason.
 """
 
 from __future__ import annotations
@@ -270,11 +279,25 @@ def _functional() -> None:
         _assert("settled Matchups are reported as COMPLETED",
                 all(c.section == "completed" for c in settled),
                 str({c.section for c in settled}))
-        live = [c for c in state.cards if not c.settled]
+        # SCOPED TO ACCEPTED WAGERS, and that is the claim it always made.
+        # `classify` short-circuits on `settled`, so the defect this catches is
+        # an ACCEPTED wager whose engine-written row leaves `response_status`
+        # NULL and falls through to COMPLETED while it is still being played.
+        # UIRECON Wave 5 added deliberately UNANSWERED challenges to the
+        # showcase, which are also unsettled and correctly sit on ACTION
+        # REQUIRED and WAITING — reading them as a LIVE failure would assert
+        # that an unanswered offer is a live wager.
+        accepted = [c for c in state.cards
+                    if not c.settled and c.protocol_state == "accepted"]
         _assert("an accepted, unsettled Matchup sits on LIVE rather than "
                 "falling through to COMPLETED",
-                all(c.section == "live" for c in live),
-                str([(c.week, c.section) for c in live]))
+                accepted and all(c.section == "live" for c in accepted),
+                str([(c.week, c.section) for c in accepted]))
+        open_offers = [c for c in state.cards
+                       if not c.settled and c.protocol_state == "offered"]
+        _assert("and an unanswered offer sits on a decision rail, never LIVE",
+                all(c.section in ("action", "waiting") for c in open_offers),
+                str([(c.week, c.section) for c in open_offers]))
 
         # 3 · no cross-league leak.
         _assert("no reported Matchup involves a team outside the league",

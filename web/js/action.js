@@ -330,10 +330,11 @@ export function lifecycleCard(card) {
     identity: `vs ${card.opponent}`,
     // Mode is load-bearing on every card: the Locked/Dynamic distinction must
     // be visible before a GM acts, not in fine print (ruling §4).
-    context: `${card.marketLabel} ${card.line} · ${modeLabel(card)}` +
-      (card.week ? ` · ${card.week}` : ''),
+    context: [card.marketLabel, card.line].filter(Boolean).join(' ')
+      + ` · ${modeLabel(card)}`
+      + (card.week ? ` · ${card.week}` : ''),
     figures,
-    copy: card.copy || modeCopy(card),
+    copy: card.copy || cardCopy(card),
     badge: badgeFor(card),
     badgeTone: badgeToneFor(card),
     accent: accentFor(card),
@@ -343,6 +344,94 @@ export function lifecycleCard(card) {
     tapAction: 'wager',
     tapId: card.id,
   });
+}
+
+/**
+ * The card's sentence: what the wager is doing, and — in Dynamic — what is
+ * still going to happen to it.
+ *
+ * THE MODE NOTE IS NOT OPTIONAL IN DYNAMIC, and that is a ruling rather than a
+ * preference. S8-P4C-2R2 requires the Dynamic copy to name Final Lock as the
+ * event and to stay neutral about WHOSE lineup supplies the earliest kickoff,
+ * because the covered player who triggers the lock may be the opponent's — copy
+ * that points at the GM's own players renders perfectly and is false for
+ * exactly the GM whose starters all play late. So a Dynamic card keeps that
+ * sentence and gains the state one; only a LOCKED card trades its mode note
+ * away, and only because "Terms are frozen as offered. Neither side moves." is
+ * the same true, inert sentence on all four rails.
+ *
+ * @param {object} card
+ * @returns {string}
+ */
+function cardCopy(card) {
+  const state = stateCopy(card);
+  return card.mode === 'dynamic' ? `${state} ${modeCopy(card)}` : state;
+}
+
+/**
+ * What this wager is DOING, in one sentence.
+ *
+ * ── WHY THE CARD STOPPED EXPLAINING THE MODE HERE ───────────────────────────
+ *
+ * This slot used to fall back to `modeCopy`, so in production every card on
+ * every rail carried the same sentence — "Terms are frozen as offered. Neither
+ * side moves." — whatever it was actually doing. Four rails exist to answer
+ * four different questions, and a line that reads identically on all of them
+ * answers none of them. The mode has NOT gone quiet: `modeLabel` puts FIXED or
+ * FLOATING in the context line directly above, which is the ruling's
+ * requirement that the distinction be visible before a GM acts, and the
+ * Response Card still carries the full mode note in full.
+ *
+ * BUILT FROM SERVED VALUES, NEVER FROM A TEAM NAME THIS FILE KNOWS. The
+ * opponent, the market and the week all arrive from the Action read model; this
+ * only chooses the sentence frame. `card.copy` still wins where it is supplied,
+ * which is how the illustrative fixture keeps its own per-state wording.
+ *
+ * @param {object} card
+ * @returns {string}
+ */
+function stateCopy(card) {
+  const opponent = card.opponent || 'your opponent';
+  const market = card.marketLabel || 'Matchup';
+
+  if (card.settled) {
+    // The badge already says WON or LOST and the Net figure already says by how
+    // much. This says where the Credits WENT, which neither of them does.
+    if (card.outcome === 'won') {
+      return 'Final. Credits posted to your Wallet.';
+    }
+    if (card.outcome === 'lost') {
+      return 'Final. Your stake went to the pot.';
+    }
+    return 'Final. This Matchup is settled.';
+  }
+
+  if (card.protocolState === 'accepted') {
+    // A Dynamic wager gets the plain sentence and lets `modeCopy` say what
+    // Final Lock will do to it; a Locked one can say so itself, because there
+    // is nothing still to happen to its terms.
+    return card.mode === 'dynamic'
+      ? 'This Matchup is live.'
+      : 'Locked. This Matchup is live.';
+  }
+
+  if (card.protocolState === 'countered') {
+    return card.viewerDecides
+      ? `${opponent} countered. Accept it or decline — no re-counter.`
+      : `You countered. It is with ${opponent} now.`;
+  }
+
+  if (card.protocolState === 'offered') {
+    return card.viewerDecides
+      ? `${opponent} sent you a ${market} Matchup.`
+      : `Waiting for ${opponent} to respond.`;
+  }
+
+  if (card.protocolState === 'declined') return 'Declined. Nothing was staked.';
+  if (card.protocolState === 'expired') {
+    return 'Expired unanswered. Nothing was staked.';
+  }
+  return modeCopy(card);
 }
 
 /**

@@ -113,6 +113,72 @@ def visitor_skips_claim(week: int, slot: int, ordinal: int) -> bool:
             and slot == VISITOR_OPEN_PICK_SLOT
             and ordinal == VISITOR_ORDINAL)
 
+
+# ── THE LIVE WEEK'S OPEN NEGOTIATIONS — UIRECON Wave 5 ───────────────────────
+#
+# WHY THE SHOWCASE NEEDS THEM. The demo played every contest to acceptance, so
+# the visitor's Status tab could only ever show LIVE and COMPLETED: two of its
+# four rails were structurally unreachable, and a GM meeting the product for the
+# first time could not see what "something needs your decision" even looks like.
+# The four rails are the FantasyStakes lifecycle, and a demo that can only
+# demonstrate the back half of it is not demonstrating the lifecycle.
+#
+# A NEGOTIATION IS NOT A WAGER YET, WHICH IS WHAT MAKES THIS SAFE. An offered
+# challenge has no Bet rows, posts nothing under `wager_placed`, and settles
+# nothing. Its Anchor escrow is funded MIN-FIRST, so it is drawn from the
+# issuer's weekly minimum — an allowance that is swept at week close in any case
+# — and never from a wallet. Measured against a pristine showcase, adding these
+# two moves no wallet balance, no standing, no championship score and no Pool
+# figure, and leaves the trial balance at zero. `test_uirecon_wave5.py` asserts
+# each of those rather than trusting this paragraph.
+#
+# THE TWO DIRECTIONS ARE THE POINT. One is issued TO the visitor, so it is
+# genuinely theirs to answer and lands on ACTION REQUIRED with working
+# controls; one is issued BY the visitor, so it is genuinely not theirs to
+# answer and lands on WAITING with none. Seeding only one direction would
+# demonstrate a rail rather than the distinction between two.
+
+@dataclass(frozen=True)
+class OpenNegotiation:
+    """One live-week challenge the showcase deliberately leaves unanswered."""
+
+    #: The GM who issues, and therefore funds the Anchor escrow.
+    issuer_ordinal: int
+    #: The GM whose decision it is.
+    recipient_ordinal: int
+    #: One of `VERSUS_PER_WEEK_MARKETS`.
+    market: str
+
+
+#: The showcase's unanswered live-week challenges, in issue order.
+#:
+#: THE OPPONENTS ARE ORDINARY LEAGUE MEMBERS, chosen so neither collides with
+#: the accepted live-week contest the visitor already has (`versus_card` pairs
+#: ordinal 3 with the visitor in week 11). The two markets differ so the two
+#: cards show a line and a moneyline rather than the same shape twice.
+VISITOR_OPEN_NEGOTIATIONS: tuple = (
+    # Blitz and Pieces asks the visitor for a Spread Matchup — ACTION REQUIRED.
+    OpenNegotiation(8, VISITOR_ORDINAL, "spread"),
+    # The visitor asks Victorious Secret for a Moneyline Matchup — WAITING.
+    OpenNegotiation(VISITOR_ORDINAL, 6, "straight"),
+)
+
+
+def is_open_negotiation(week: int, issuer_ordinal: int,
+                        recipient_ordinal: int) -> bool:
+    """Whether this pairing is one the showcase leaves open.
+
+    ONE PREDICATE, TWO CALLERS — the same discipline `visitor_skips_claim`
+    keeps. `gameplay.open_live_negotiations` issues by it and
+    `reset.restore_in_place` reconciles by it, so a visitor who answers one of
+    these is returned to the state the seeder wrote rather than to a state one
+    of the two modules happened to believe in.
+    """
+    return week == CURRENT_WEEK and any(
+        spec.issuer_ordinal == issuer_ordinal
+        and spec.recipient_ordinal == recipient_ordinal
+        for spec in VISITOR_OPEN_NEGOTIATIONS)
+
 #: The league's own economy, in exact cents.
 #:
 #: WHY 1000 AND NOT ANYTHING ELSE. `activate_season_allocation` resolves its

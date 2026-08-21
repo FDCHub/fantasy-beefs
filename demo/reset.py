@@ -115,34 +115,54 @@ def resolve_open_action(db, league) -> dict:
     NOTHING IS VOIDED OR CLAWED BACK. The week is finalized with its own fixture
     result and settled, so the outgoing league ends in a coherent terminal state
     instead of an abandoned one.
+
+    ── TWO SHAPES OF OPEN ACTION, AND BOTH LEAVE ESCROW (UIRECON Wave 5) ────
+
+    An ACCEPTED contest holds both GMs' stakes in `escrow:{bet}`, which the
+    settlement below resolves. An OFFERED one — which canonical CURRENT now also
+    leaves behind, so Status has an ACTION REQUIRED and a WAITING rail — holds
+    only the issuer's Anchor, in `escrow:challenge:{id}`, and has no Bet at all.
+    The pending-Bet count below is therefore blind to it: a showcase whose only
+    open action was two unanswered offers would report nothing to resolve and
+    strand their escrow globally, which is the exact failure this function was
+    written to stop, arriving by a second door.
     """
     from db.schema import Bet, Team, Wallet
     from betting.settlement_engine import settle_week
 
-    from demo import states
+    from demo import gameplay, states
 
     team_ids = [t.id for t in db.query(Team)
                 .filter(Team.league_id == league.id).all()]
     if not team_ids:
         return {"resolved": 0}
+
+    # THE UNANSWERED OFFERS RUN OUT FIRST, through the system-owned expiry that
+    # returns the Anchor by exact reverse legs. Before the pending-Bet gate,
+    # because they are invisible to it.
+    expired = gameplay.expire_live_negotiations(
+        db, league=league, week=int(league.provider_current_week or 0))
+
     wallet_ids = [w.id for w in db.query(Wallet)
                   .filter(Wallet.team_id.in_(team_ids)).all()]
     pending = (db.query(Bet)
                .filter(Bet.wallet_id.in_(wallet_ids),
                        Bet.status == "pending").count()) if wallet_ids else 0
     if not pending:
-        return {"resolved": 0}
+        return {"resolved": 0, "expired": expired["expired"]}
 
     week = int(league.provider_current_week or 0)
     if week not in showcase.REGULAR_SCHEDULE:
         # Nothing this module can finalize; leave it rather than guess.
-        return {"resolved": 0, "week": week, "skipped": "week not scheduled"}
+        return {"resolved": 0, "week": week, "expired": expired["expired"],
+                "skipped": "week not scheduled"}
 
     teams = states._teams_by_ordinal(db, league.id)
     states.finalize_week(db, league, teams, week)
     settle_week(week, db, league.id)
     db.flush()
-    return {"resolved": pending, "week": week}
+    return {"resolved": pending, "week": week,
+            "expired": expired["expired"]}
 
 
 def retire_showcase(db, league) -> str:
@@ -202,6 +222,7 @@ def canonical_fingerprint(db, league) -> dict:
     `pool_claims`, and advancing to FINAL changes the week, the finalized
     matchups and `season_closed`.
     """
+    from beefs.proposal_lifecycle import OFFERED
     from db.schema import (
         BeefChallenge, Matchup, PoolClaim, PoolInstance, Team,
     )
@@ -216,6 +237,24 @@ def canonical_fingerprint(db, league) -> dict:
         "challenges": (db.query(BeefChallenge)
                        .filter(BeefChallenge.challenger_team_id.in_(team_ids))
                        .count() if team_ids else 0),
+        # UIRECON WAVE 5 — COUNTING CHALLENGES IS NOT ENOUGH ANY MORE.
+        #
+        # The showcase now leaves two live-week challenges UNANSWERED, and a
+        # visitor answering one does not change how many challenges exist — it
+        # changes what state one of them is in. Without this term the two open
+        # rails would empty permanently on the first Accept and the fingerprint
+        # would go on reporting the league as pristine, which is the exact shape
+        # of the Wave 3 defect this file already carries a scar from.
+        #
+        # OFFERED, NOT MERELY OPEN. A COUNTER is still an open negotiation, so a
+        # count over `OPEN_STATES` does not move when a visitor counters — and
+        # the demo would keep a countered version, on the wrong rail, for every
+        # visitor after them. The canonical state is the one the seeder wrote:
+        # offered, at version one.
+        "offered_challenges": (db.query(BeefChallenge)
+                               .filter(BeefChallenge.challenger_team_id.in_(team_ids),
+                                       BeefChallenge.response_status == OFFERED)
+                               .count() if team_ids else 0),
         "pool_claims": (db.query(PoolClaim)
                         .join(PoolInstance,
                               PoolClaim.pool_instance_id == PoolInstance.id)
@@ -270,7 +309,15 @@ def expected_fingerprint() -> dict:
         "current_week": showcase.CURRENT_WEEK,
         "season_closed": False,
         "teams": showcase.TEAM_COUNT,
-        "challenges": len(showcase.VERSUS_PER_WEEK_MARKETS) * played,
+        # UIRECON WAVE 5 — the accepted contests PLUS the live week's open
+        # negotiations. Both terms are read off the fixture tuples that produce
+        # them, so adding or removing a negotiation moves this expectation with
+        # it. Wave 3's scar is directly above: a hand-written count here made
+        # every untouched visit look dirty and replayed a whole season per
+        # request.
+        "challenges": (len(showcase.VERSUS_PER_WEEK_MARKETS) * played
+                       + len(showcase.VISITOR_OPEN_NEGOTIATIONS)),
+        "offered_challenges": len(showcase.VISITOR_OPEN_NEGOTIATIONS),
         "pool_claims": (showcase.POOL_SLOTS_PER_WEEK * showcase.TEAM_COUNT
                         * played) - skipped,
         "pool_instances": showcase.POOL_SLOTS_PER_WEEK * played,
@@ -296,6 +343,17 @@ _CHALLENGE_REFERRERS: tuple = (
     ("feed_events", "challenge_id"),
     ("protocol_events", "challenge_id"),
 )
+#: Everything that points AT a PROPOSAL. A challenge written by the funded
+#: lifecycle owns proposals, and those own rows of their own — so the graph is
+#: two levels deep and clearing only the first level leaves the second holding a
+#: foreign key. `beef_challenges.active_proposal_id` and `accepted_proposal_id`
+#: point back UP at a proposal too, which is why the challenge's own pointers
+#: are released before any of this runs.
+_PROPOSAL_REFERRERS: tuple = (
+    ("beef_proposal_starters", "proposal_id"),
+    ("protocol_events", "proposal_id"),
+)
+
 _BET_REFERRERS: tuple = (
     ("feed_events", "bet_id"),
     ("transactions", "bet_id"),
@@ -378,6 +436,177 @@ def showcase_lock():
             conn.close()
 
 
+def _remove_challenge(db, challenge) -> dict:
+    """Delete one challenge and everything that belongs to it. Commits nothing.
+
+    THE POSTINGS GO WHOLE OR NOT AT ALL. Each escrow leg is deleted with the
+    entire posting it belongs to, so a balanced set leaves together and the
+    trial balance cannot drift. A posting that reaches an account outside this
+    challenge is refused rather than half-removed, and the caller rebuilds.
+
+    BOTH ESCROW SHAPES ARE COVERED. An accepted challenge holds its money in
+    `escrow:{bet_id}`, one account per side; an offered one — which has no Bets
+    at all — holds the issuer's Anchor in `escrow:challenge:{id}`. Handling only
+    the first would leave an unanswered challenge's escrow stranded on the
+    ledger after its row was gone.
+    """
+    from sqlalchemy import text
+    from db.schema import Bet
+
+    bets = db.query(Bet).filter(
+        Bet.beef_challenge_id == challenge.id).all()
+    # The challenge POINTS AT its two bets (`fk_challenger_bet_id`), so the
+    # references have to be released before the bets can go. Clearing them
+    # first — rather than deleting the challenge first — keeps the rows
+    # available for the escrow lookup below.
+    challenge.challenger_bet_id = None
+    challenge.challenged_bet_id = None
+    # THE PROPOSAL POINTERS COME OFF FOR THE SAME REASON THE BET ONES DO. A
+    # funded-lifecycle challenge points AT the version in force, so the
+    # proposals cannot be deleted while the container still names them.
+    challenge.active_proposal_id = None
+    challenge.accepted_proposal_id = None
+    db.add(challenge)
+    db.flush()
+
+    accounts = [f"escrow:{bet.id}" for bet in bets]
+    accounts.append(f"escrow:challenge:{challenge.id}")
+
+    postings = 0
+    for account in accounts:
+        posting_ids = [r[0] for r in db.execute(text(
+            "SELECT DISTINCT posting_id FROM ledger_entries "
+            "WHERE account = :a"), {"a": account}).fetchall()]
+        for pid in posting_ids:
+            legs = db.execute(text(
+                "SELECT account, amount_cents FROM ledger_entries "
+                "WHERE posting_id = :p"), {"p": pid}).fetchall()
+            if sum(int(c) for _a, c in legs) != 0:
+                return {"ok": False, "postings": postings,
+                        "reason": f"posting {pid} is unbalanced"}
+            db.execute(text(
+                "DELETE FROM ledger_entries WHERE posting_id = :p"),
+                {"p": pid})
+            postings += 1
+
+    # ── THE FOREIGN-KEY GRAPH UNDER A CHALLENGE, DELETED LEAF-FIRST ───────
+    #
+    # EVERY REFERRER, ENUMERATED FROM THE GRAPH rather than discovered one
+    # IntegrityError at a time. A row this misses does not corrupt anything —
+    # the delete refuses, `restore_in_place` returns False and the caller
+    # rebuilds — but each one it handles is a rebuild avoided, and a rebuild
+    # changes every number on every screen.
+    #
+    # THREE LEVELS DEEP once a challenge carries proposals and funding:
+    #
+    #   beef_challenges
+    #     ├─ beef_proposals ──┬─ beef_proposal_starters
+    #     │                   └─ protocol_events (proposal_id)
+    #     ├─ protocol_events ─┬─ ledger_posting_batches ─┐
+    #     │                   ├─ challenge_funding_legs ─┘
+    #     │                   └─ challenge_final_lock(_claim)s
+    #     └─ beef_starters · feed_events · bets
+    #
+    # ORDER IS THE WHOLE OF THE CORRECTNESS, so it is spelled out here rather
+    # than left to the order of a tuple that reads as an unordered set. The
+    # tuples above stay as the DECLARATION of the graph; this is the traversal.
+    proposal_ids = [r[0] for r in db.execute(text(
+        "SELECT id FROM beef_proposals WHERE challenge_id = :c"),
+        {"c": challenge.id}).fetchall()]
+
+    def _sql(statement: str, **params) -> None:
+        db.execute(text(statement), params)
+
+    # 1 — funding legs first: they point at a posting batch, at a protocol
+    #     event, and at each other (a reversal names the leg it reverses).
+    _sql("DELETE FROM challenge_funding_legs WHERE challenge_id = :c",
+         c=challenge.id)
+    # 2 — the Final-Lock records, which also name a protocol event.
+    _sql("DELETE FROM challenge_final_lock_claims WHERE challenge_id = :c",
+         c=challenge.id)
+    _sql("DELETE FROM challenge_final_locks WHERE challenge_id = :c",
+         c=challenge.id)
+    # 3 — the posting batches those legs referred to, found through the events
+    #     that caused them. Their ledger entries have already gone above.
+    _sql("DELETE FROM ledger_posting_batches WHERE protocol_event_id IN "
+         "(SELECT id FROM protocol_events WHERE challenge_id = :c)",
+         c=challenge.id)
+    # 4 — proposal-level leaves, before the proposals themselves.
+    for proposal_id in proposal_ids:
+        _sql("DELETE FROM ledger_posting_batches WHERE protocol_event_id IN "
+             "(SELECT id FROM protocol_events WHERE proposal_id = :p)",
+             p=proposal_id)
+        _sql("DELETE FROM beef_proposal_starters WHERE proposal_id = :p",
+             p=proposal_id)
+        _sql("DELETE FROM protocol_events WHERE proposal_id = :p",
+             p=proposal_id)
+    db.flush()
+    # 5 — the events themselves, now unreferenced.
+    _sql("DELETE FROM protocol_events WHERE challenge_id = :c", c=challenge.id)
+    # 6 — and the challenge's own direct children.
+    _sql("DELETE FROM beef_proposals WHERE challenge_id = :c", c=challenge.id)
+    _sql("DELETE FROM beef_starters WHERE beef_challenge_id = :c",
+         c=challenge.id)
+    _sql("DELETE FROM feed_events WHERE challenge_id = :c", c=challenge.id)
+    db.flush()
+
+    for bet in bets:
+        for table, column in _BET_REFERRERS:
+            db.execute(text(f"DELETE FROM {table} WHERE {column} = :b"),
+                       {"b": bet.id})
+    db.flush()
+    for bet in bets:
+        db.delete(bet)
+    db.flush()
+    db.delete(challenge)
+    return {"ok": True, "postings": postings, "reason": None}
+
+
+def _seeded_negotiation_rows(db, league, teams_by_ordinal) -> list:
+    """Every challenge occupying one of the fixture's open-negotiation slots.
+
+    BY SHAPE — week, issuer, recipient — because a re-issued negotiation carries
+    a new id and nothing may depend on the old one.
+    """
+    from db.schema import BeefChallenge
+    from demo import showcase
+
+    ordinal_by_team_id = {t.id: o for o, t in teams_by_ordinal.items()}
+    rows = (db.query(BeefChallenge)
+            .filter(BeefChallenge.week == league.provider_current_week)
+            .order_by(BeefChallenge.id).all())
+    return [c for c in rows
+            if showcase.is_open_negotiation(
+                c.week,
+                ordinal_by_team_id.get(c.challenger_team_id),
+                ordinal_by_team_id.get(c.challenged_team_id))]
+
+
+def _open_negotiations_need_restoring(db, league, teams_by_ordinal) -> bool:
+    """Whether the fixture's unanswered challenges are still unanswered.
+
+    CANONICAL MEANS OFFERED AND UNCOUNTERED. An accepted, declined or expired
+    negotiation is obviously answered; a COUNTERED one is subtler — it is still
+    open, but its terms are a version the seeder never wrote and the decision
+    has changed hands. Both are drift, and both are reconciled the same way.
+    """
+    from db.schema import BeefProposal
+    from beefs.proposal_lifecycle import OFFERED
+    from demo import showcase
+
+    rows = _seeded_negotiation_rows(db, league, teams_by_ordinal)
+    if len(rows) != len(showcase.VISITOR_OPEN_NEGOTIATIONS):
+        return True
+    for challenge in rows:
+        if challenge.response_status != OFFERED:
+            return True
+        versions = (db.query(BeefProposal)
+                    .filter(BeefProposal.challenge_id == challenge.id).count())
+        if versions != 1:
+            return True
+    return False
+
+
 def restore_in_place(db, league) -> dict:
     """Undo a visitor's actions WITHOUT rebuilding the league. Commits nothing.
 
@@ -424,6 +653,13 @@ def restore_in_place(db, league) -> dict:
 
     team_ids = [t.id for t in db.query(Team)
                 .filter(Team.league_id == league.id).all()]
+    # RESOLVED ONCE, USED BY BOTH HALVES. The negotiation reconciliation below
+    # and the Pool re-claim further down both need the fixture's ordinal map.
+    _ordinal_of = {t.team_name: t.ordinal for t in showcase.TEAMS}
+    teams_by_ordinal = {_ordinal_of[t.team_name]: t
+                        for t in db.query(Team)
+                        .filter(Team.league_id == league.id).all()
+                        if t.team_name in _ordinal_of}
     canonical_count = expected_fingerprint()["challenges"]
     challenges = (db.query(BeefChallenge)
                   .filter(BeefChallenge.challenger_team_id.in_(team_ids))
@@ -432,54 +668,46 @@ def restore_in_place(db, league) -> dict:
 
     removed_postings = 0
     for challenge in extra:
-        bets = db.query(Bet).filter(
-            Bet.beef_challenge_id == challenge.id).all()
-        # The challenge POINTS AT its two bets (`fk_challenger_bet_id`), so the
-        # references have to be released before the bets can go. Clearing them
-        # first — rather than deleting the challenge first — keeps the rows
-        # available for the escrow lookup below.
-        challenge.challenger_bet_id = None
-        challenge.challenged_bet_id = None
-        db.add(challenge)
-        db.flush()
-        for bet in bets:
-            # Delete the WHOLE posting each escrow leg belongs to, so a balanced
-            # set leaves together and the trial balance cannot drift. A posting
-            # that also touches an account outside this league would be refused
-            # below rather than half-removed.
-            account = f"escrow:{bet.id}"
-            posting_ids = [r[0] for r in db.execute(text(
-                "SELECT DISTINCT posting_id FROM ledger_entries "
-                "WHERE account = :a"), {"a": account}).fetchall()]
-            for pid in posting_ids:
-                legs = db.execute(text(
-                    "SELECT account, amount_cents FROM ledger_entries "
-                    "WHERE posting_id = :p"), {"p": pid}).fetchall()
-                if sum(int(c) for _a, c in legs) != 0:
-                    return {"restored": False,
-                            "reason": f"posting {pid} is unbalanced"}
-                db.execute(text(
-                    "DELETE FROM ledger_entries WHERE posting_id = :p"),
-                    {"p": pid})
-                removed_postings += 1
-        # EVERY REFERRER, ENUMERATED FROM THE FOREIGN-KEY GRAPH rather than
-        # discovered one IntegrityError at a time. A row this misses does not
-        # corrupt anything — the delete refuses, `restore_in_place` returns
-        # False and the caller rebuilds — but each one it handles is a rebuild
-        # avoided, and a rebuild changes every number on every screen.
-        for table, column in _CHALLENGE_REFERRERS:
-            db.execute(text(f"DELETE FROM {table} WHERE {column} = :c"),
-                       {"c": challenge.id})
-        for bet in bets:
-            for table, column in _BET_REFERRERS:
-                db.execute(text(f"DELETE FROM {table} WHERE {column} = :b"),
-                           {"b": bet.id})
-        db.flush()
-        for bet in bets:
-            db.delete(bet)
-        db.flush()
-        db.delete(challenge)
+        removed = _remove_challenge(db, challenge)
+        if not removed["ok"]:
+            return {"restored": False, "reason": removed["reason"]}
+        removed_postings += removed["postings"]
     db.flush()
+
+    # ── UIRECON WAVE 5 · THE OPEN NEGOTIATIONS, PUT BACK AS THEY WERE ───────
+    #
+    # The showcase leaves two live-week challenges unanswered so Status has an
+    # ACTION REQUIRED and a WAITING rail to show. A visitor can genuinely answer
+    # the incoming one — that is the whole point of seeding it — and answering
+    # it does not create an EXTRA challenge, it changes the state of a canonical
+    # one. The loop above would therefore not have touched it, and the demo
+    # would have lost a rail permanently on the first Accept.
+    #
+    # RECONCILED BY SHAPE, NOT BY ID. A re-issued negotiation gets a new
+    # challenge id, so nothing may identify these by position or number. The
+    # fixture states the pairing and `showcase.is_open_negotiation` is the one
+    # predicate both the seeder and this reconciliation ask.
+    #
+    # REMOVED AND RE-ISSUED RATHER THAN REWOUND. Rewinding an acceptance would
+    # mean un-placing two Bets and reversing an escrow migration by hand — a
+    # second settlement engine living in a reset path. Removing the row and
+    # asking the seeder for a fresh one uses the same governed command the
+    # original came from, which is the only way the replacement is guaranteed
+    # to be the same kind of object.
+    negotiations_restored = 0
+    if _open_negotiations_need_restoring(db, league, teams_by_ordinal):
+        for challenge in _seeded_negotiation_rows(db, league, teams_by_ordinal):
+            removed = _remove_challenge(db, challenge)
+            if not removed["ok"]:
+                return {"restored": False, "reason": removed["reason"]}
+            removed_postings += removed["postings"]
+        db.flush()
+        from demo.gameplay import open_live_negotiations
+        reissued = open_live_negotiations(
+            db, league=league, teams=teams_by_ordinal,
+            week=league.provider_current_week)
+        negotiations_restored = len(reissued["issued"])
+        db.flush()
 
     # Re-apply the canonical Prediction for every open occurrence, in case the
     # visitor changed theirs. `replace=True` keeps it ONE claim per GM.
@@ -492,11 +720,6 @@ def restore_in_place(db, league) -> dict:
                       .filter(PoolInstance.league_id == league.id,
                               PoolInstance.settled.is_(False))
                       .order_by(PoolInstance.slot).all())
-    ordinal_of = {t.team_name: t.ordinal for t in showcase.TEAMS}
-    teams_by_ordinal = {ordinal_of[t.team_name]: t
-                        for t in db.query(Team)
-                        .filter(Team.league_id == league.id).all()
-                        if t.team_name in ordinal_of}
     # UIRECON WAVE 3B — RESTORE MEANS RESTORE, INCLUDING THE EMPTY SLOT.
     #
     # The canonical CURRENT state now has the visitor UNCLAIMED on one live-week
@@ -552,7 +775,8 @@ def restore_in_place(db, league) -> dict:
     db.flush()
     return {"restored": True, "challenges_removed": len(extra),
             "postings_removed": removed_postings, "claims_reapplied": reclaimed,
-            "visitor_claims_withdrawn": withdrawn}
+            "visitor_claims_withdrawn": withdrawn,
+            "negotiations_restored": negotiations_restored}
 
 
 def ensure_canonical() -> dict:

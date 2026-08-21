@@ -32,6 +32,7 @@ behind us.
 """
 from __future__ import annotations
 
+import uuid as _uuid
 from datetime import datetime, timezone
 
 from demo import showcase
@@ -159,6 +160,179 @@ def play_week_versus(db, *, league, teams: dict, week: int) -> dict:
             "line": line, "side": side,
         })
     return {"issued": issued}
+
+
+#: The namespace the showcase's protocol event ids are minted in.
+#:
+#: DETERMINISTIC BY CONSTRUCTION. `issue_funded_challenge` takes an `event_id`
+#: and treats a repeat of one as a REPLAY rather than a second issue, so the id
+#: cannot be random without making the seeder non-repeatable — and D2.4 compares
+#: two independent runs field by field. `uuid5` over a stable key gives the same
+#: id for the same negotiation on every run, on every machine, forever.
+_EVENT_NAMESPACE = _uuid.UUID("6f9619ff-8b86-d011-b42d-00c04fc964ff")
+
+
+def _negotiation_event_id(league_id: int, week: int, spec) -> _uuid.UUID:
+    """The protocol event id for one seeded negotiation."""
+    return _uuid.uuid5(
+        _EVENT_NAMESPACE,
+        f"fantasystakes/demo/open-negotiation/{league_id}/{week}/"
+        f"{spec.issuer_ordinal}/{spec.recipient_ordinal}/{spec.market}")
+
+
+def open_live_negotiations(db, *, league, teams: dict, week: int) -> dict:
+    """Issue the live week's UNANSWERED challenges — Status's two open rails.
+
+    ── WHY THESE GO THROUGH THE FUNDED LIFECYCLE ────────────────────────────
+
+    `play_week_versus` above issues through `beefs.beef_engine`, which is the
+    right path for a contest that is immediately accepted: it prices, it places
+    both Bets, and the week settles them. These two are never accepted, and they
+    exist so a visitor can answer one — so they have to be answerable, which
+    means they have to be the shape the RESPONSE ROUTES understand.
+    `/beef/{id}/accept` is `economy.challenge_funding.accept_funded_challenge`,
+    and it resolves the challenge's active PROPOSAL. An engine-written row has
+    none, so an Accept button on one would be a control that cannot work — the
+    thing §6 of the brief forbids more plainly than anything else in it.
+
+    So these are issued the way the product issues one: the same pricing call
+    `api.main` makes, the same `proposal_economics`, the same
+    `issue_funded_challenge`. A visitor pressing Accept reaches the identical
+    command a signed-in GM reaches, because it IS the identical record.
+
+    ── AND WHY THEY COST NOTHING ────────────────────────────────────────────
+
+    An offered challenge places no Bet and settles nothing. Its Anchor escrow is
+    funded min-first, so it comes out of the issuer's weekly minimum rather than
+    their wallet, and the weekly minimum is swept at week close regardless.
+    Nothing here touches a completed week.
+    """
+    from beefs import proposal_lifecycle as spec1
+    from beefs.beef_engine import _compute_odds, compute_market_board
+    from beefs.versus_quote import proposal_economics
+    from betting.lock_resolver import lock_time_for_league
+    from economy.challenge_funding import issue_funded_challenge
+
+    stake_cents = int(round(VERSUS_STAKE_DOLLARS * 100))
+    # THE RESPONSE DEADLINE IS THE WEEK'S OWN LOCK, not a fixed timestamp. The
+    # showcase's live week resolves to a far-future moment, so the offer reads
+    # as open whenever the demo is visited rather than expiring by the calendar.
+    deadline = lock_time_for_league(league, week)
+
+    issued = []
+    for spec in showcase.VISITOR_OPEN_NEGOTIATIONS:
+        issuer = teams[spec.issuer_ordinal]
+        recipient = teams[spec.recipient_ordinal]
+
+        # THE LINE IS THE MARKET BOARD'S, exactly as the accepted contests take
+        # theirs. A spread needs a threshold and inventing one here would put a
+        # display literal in front of a GM about to stake Credits on it.
+        line = None
+        side = None
+        if spec.market == "spread":
+            board = compute_market_board(issuer, recipient, week, db)
+            line = float(board.spread_line)
+        elif spec.market == "over_under":
+            board = compute_market_board(issuer, recipient, week, db)
+            line = float(getattr(board, "total_line", None)
+                         or getattr(board, "over_under_line"))
+            side = "over"
+
+        dec_a, ml_a, dec_d, ml_d, prob_a, prob_d = _compute_odds(
+            spec.market, issuer, recipient, week, db, line, side, None)
+        economics = proposal_economics(
+            stake_cents=stake_cents, anchor_odds=dec_a, derived_odds=dec_d,
+            dynamic=False)
+
+        result = issue_funded_challenge(
+            event_id=_negotiation_event_id(league.id, week, spec),
+            league_id=league.id,
+            week=week,
+            challenger_team_id=issuer.id,
+            challenged_team_id=recipient.id,
+            wager_type=spec.market,
+            terms=spec1.ProposalTerms(
+                line=line,
+                side=side,
+                player_id=None,
+                anchor_stake_cents=economics.anchor_stake_cents,
+                quoted_derived_stake_cents=economics.quoted_derived_stake_cents,
+                quoted_funded_pot_cents=economics.quoted_funded_pot_cents,
+                quoted_anchor_payout_cents=economics.quoted_anchor_payout_cents,
+                quoted_derived_payout_cents=economics.quoted_derived_payout_cents,
+                anchor_win_probability=prob_a,
+                derived_win_probability=prob_d,
+                anchor_odds=dec_a,
+                derived_odds=dec_d,
+                anchor_moneyline=ml_a,
+                derived_moneyline=ml_d,
+                pricing_model_id=spec1.MODE_LOCKED,
+            ),
+            db=db,
+            challenge_mode=spec1.MODE_LOCKED,
+            proposal_lock_at=deadline,
+        )
+        db.flush()
+        issued.append({
+            "challenge_id": result.challenge_id,
+            "week": week,
+            "market": spec.market,
+            "line": line,
+            "issuer": issuer.team_name,
+            "recipient": recipient.team_name,
+        })
+    return {"issued": issued}
+
+
+def expire_live_negotiations(db, *, league, week: int) -> dict:
+    """Close the week's unanswered challenges the way a real week closes them.
+
+    ── WHY THIS EXISTS AT ALL ───────────────────────────────────────────────
+
+    `open_live_negotiations` leaves two challenges offered so the Status tab has
+    an ACTION REQUIRED and a WAITING rail. An offered challenge holds a real
+    Anchor escrow, and `economy.season_close_orchestrator.verify_preconditions`
+    refuses to close a season while any challenge escrow is unresolved — which
+    is correct, and is the guard that caught this: a season cannot be finished
+    with money still committed to a wager nobody answered.
+
+    A REAL LEAGUE RESOLVES THEM BY LETTING THEM RUN OUT, so the demo does the
+    same. `expire_funded_challenge` is the system-owned expiry: no actor,
+    because expiring is not something a team does, and the issuer's escrow comes
+    back by exact reverse legs. Nothing is abandoned and nothing is deleted.
+
+    THE CLOCK IS THE WEEK'S OWN. These offers were opened with the live week's
+    lock as their deadline — a far-future moment, so the demo reads as open
+    whenever it is visited — and expiry refuses a deadline that has not been
+    reached. Advancing past this week IS that deadline arriving, so the moment
+    passed here is the deadline itself rather than a wall clock that would make
+    the showcase behave differently in different months.
+    """
+    import uuid as _u
+
+    from beefs.proposal_lifecycle import OPEN_STATES
+    from betting.lock_resolver import lock_time_for_league
+    from db.schema import BeefChallenge
+    from economy.challenge_funding import expire_funded_challenge
+
+    deadline = lock_time_for_league(league, week)
+    rows = (db.query(BeefChallenge)
+            .filter(BeefChallenge.league_id == league.id,
+                    BeefChallenge.week == week,
+                    BeefChallenge.response_status.in_(tuple(OPEN_STATES)))
+            .order_by(BeefChallenge.id).all())
+
+    expired = []
+    for challenge in rows:
+        expire_funded_challenge(
+            event_id=_u.uuid5(
+                _EVENT_NAMESPACE,
+                f"fantasystakes/demo/expire-negotiation/{league.id}/"
+                f"{week}/{challenge.id}"),
+            challenge_id=challenge.id, db=db, now=deadline)
+        expired.append(challenge.id)
+    db.flush()
+    return {"expired": expired}
 
 
 # ── the ordered weekly economy ───────────────────────────────────────────────
@@ -428,6 +602,12 @@ def play_season(db, *, league, teams: dict, owner_user_id: int,
                                    week=current_week)
     live_versus = play_week_versus(db, league=league, teams=teams,
                                    week=current_week)
+    # UIRECON WAVE 5 — AND TWO THAT NOBODY HAS ANSWERED YET. Issued last, so the
+    # accepted contests above keep the ids they have always had and a restore
+    # can tell the seeder's negotiations from a visitor's by shape rather than
+    # by position.
+    live_open = open_live_negotiations(db, league=league, teams=teams,
+                                       week=current_week)
 
     return {
         "prepared": prepared,
@@ -437,5 +617,6 @@ def play_season(db, *, league, teams: dict, owner_user_id: int,
         "live_week": {"week": current_week,
                       "pool_entries": live_pools["teams_charged"],
                       "claims": live_claims,
-                      "versus_issued": len(live_versus["issued"])},
+                      "versus_issued": len(live_versus["issued"]),
+                      "negotiations_open": len(live_open["issued"])},
     }

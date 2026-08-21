@@ -376,6 +376,18 @@
   font-size: 13px;
   font-weight: var(--fs-weight-strong);
   cursor: pointer;
+  /* UIRECON WAVE 5 — THE GOVERNED TOUCH FLOOR, STATED ON THE PRIMITIVE.
+   *
+   * Padding alone left this at 41px, three short of the 44px floor the choice
+   * cell, the gear, the account control and the sheet's close button are all
+   * held to. `.fs-send__btn` had already been given 48px individually, which is
+   * how a floor stops being a floor: one control meets it because someone
+   * remembered, and the rest sit under it because nobody measured. The two that
+   * were under it are Accept / Counter / Decline and VIEW MATCHUP PREVIEW —
+   * the controls that answer a real wager.
+   *
+   * A MINIMUM, NOT A HEIGHT. Anything that needs to be taller still is. */
+  min-height: 44px;
 }
 
 .fs-btn--gold  { background: var(--goldbg);  border: 1px solid var(--gold);   color: var(--gold); }

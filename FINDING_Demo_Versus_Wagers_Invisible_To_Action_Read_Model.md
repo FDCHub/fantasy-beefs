@@ -150,17 +150,22 @@ was needed**, exactly as this finding predicted.
 The finding listed four candidate repairs and called (1) and (2) the honest
 ones. **(1) was taken**: the league is derived inside `issue_challenge`.
 
-**(2) — moving the showcase onto `issue_funded_challenge` — was rejected on
-evidence, not preference.** The two paths are economically different products:
+**(2) — moving the showcase onto `issue_funded_challenge` — was rejected** as
+too large a change to make inside a visibility reconciliation: it replaces every
+settled record's shape, its funding legs, its escrow accounts and its protocol
+events, and the demo fingerprint and D-suite with them.
 
-| | legacy engine | funded lifecycle |
-|---|---|---|
-| stakes | both GMs stake the **same** amount, odds differ | Anchor stake fixed, **Derived stake odds-derived** |
-| bet rows | `_place_beef_side` twice at `effective_amount` | `_create_bet` at `anchor_target` / `quoted_derived_stake_cents` |
-
-Switching would have moved every GM's exposure, every settlement, the standings
-and the championship. The reconciliation was told to preserve wager economics,
-so it does.
+> **Correction, added by UIRECON Wave 5.** The economic reason first given here
+> was wrong. This section claimed the funded lifecycle "quotes an odds-derived
+> Derived stake" and would therefore move every GM's exposure. It does not, in
+> **Locked** mode: `beefs/versus_quote.proposal_economics` sets
+> `quoted_derived_stake_cents` to the issuer's own stake, and its comment says
+> so — *"BOTH SIDES STAKE THE SAME AMOUNT in locked mode … exactly as the legacy
+> path placed both sides at `effective_amount`"*. Only **Dynamic** leaves the
+> Derived side unpriced until Final Lock. Wave 5 seeds its open negotiations
+> through the funded path for exactly that reason, and measured a pristine
+> showcase before and after to confirm no wallet, standing, Pool figure or
+> championship score moves.
 
 ## The second half of the fix
 
