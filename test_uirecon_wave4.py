@@ -199,8 +199,25 @@ def _wave4_changed_files() -> list[str]:
     return sorted(files)
 
 
+#: Frozen modules a LATER wave was explicitly authorised to change, and the one
+#: change each was authorised to make. An entry here is not a hole in the guard:
+#: the wave that owns it pins what the change may contain, and this list exists
+#: so the exception has to be WRITTEN DOWN rather than discovered as a silent
+#: pass. Wave 4's own scope is unchanged — nothing below was touched by ad5aca0.
+_AUTHORISED_LATER = {
+    # UIRECON Wave 4 demo matchup visibility reconciliation. `issue_challenge`
+    # never filled `beef_challenges.league_id`, so every matchup the showcase
+    # played was a wager no league owned and the Action read model — which
+    # filters by league, correctly — reported none of them. The authorised
+    # change is the league derivation and the same-league refusal, and
+    # `test_uirecon_wave4_demo_visibility.py` asserts it is ONLY that: no odds,
+    # stake, payout or economic expression may be added to that file.
+    "beefs/beef_engine.py",
+}
+
 try:
-    _breach = sorted(set(_FROZEN) & set(_wave4_changed_files()))
+    _breach = sorted((set(_FROZEN) - _AUTHORISED_LATER)
+                     & set(_wave4_changed_files()))
     _assert("no frozen wagering, settlement or ledger module was touched",
             not _breach, ", ".join(_breach))
 except Exception as _exc:                                  # pragma: no cover

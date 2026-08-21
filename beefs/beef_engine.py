@@ -963,6 +963,38 @@ def issue_challenge(
     if not challenged_team:
         raise ValueError(f"Team {challenged_team_id} not found")
 
+    # ── THE CHALLENGE BELONGS TO A LEAGUE ────────────────────────────────────
+    #
+    # `beef_challenges.league_id` has been on this row since the new model
+    # arrived, and this path never filled it — so every challenge issued here
+    # was a wager that no league owned. `reports.action_read_model` filters a
+    # GM's Action by league, correctly: reporting one GM's wagers across a
+    # league boundary is precisely what it must not do. The consequence was that
+    # a wager issued here could be accepted, could move real Credits through the
+    # ledger and could settle, and would appear on no surface in the product.
+    #
+    # DERIVED, NOT SUPPLIED. Both Team rows are already loaded immediately
+    # above and `teams.league_id` is NOT NULL, so the league is a FACT ABOUT THE
+    # PARTICIPANTS rather than a new argument every caller has to learn and
+    # every caller could get wrong. That keeps this a repair to a column the row
+    # was always meant to carry — not a change to what issuing a challenge
+    # means, and not a new parameter in a signature this product still calls.
+    #
+    # THE TWO TEAMS MUST AGREE ON IT. There is no correct league for a wager
+    # between two leagues' teams, and picking either one would produce exactly
+    # the defect this block closes from the other side: a challenge visible to
+    # one participant's Action and invisible to the other's. The governed
+    # proposal path takes its league from the acting GM's membership and its
+    # route refuses a target outside that league, so refusing here states the
+    # same rule at the one entry point that could not previously state it.
+    if challenger_team.league_id != challenged_team.league_id:
+        raise ValueError(
+            f"Teams {challenger_team_id} and {challenged_team_id} are in "
+            f"different leagues ({challenger_team.league_id} and "
+            f"{challenged_team.league_id}) — a challenge belongs to one league "
+            f"and cannot be issued across two"
+        )
+
     # FR-5.12: both teams must actually be playing this week. Without a Matchup
     # row a team scores nothing, so the beef could never settle. Fail here at
     # issue time rather than deep inside _place_beef_side() during accept.
@@ -1037,6 +1069,7 @@ def issue_challenge(
     now = datetime.now(timezone.utc)
 
     challenge = BeefChallenge(
+        league_id            = challenger_team.league_id,
         challenger_team_id   = challenger_team_id,
         challenged_team_id   = challenged_team_id,
         week                 = week,

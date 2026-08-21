@@ -1,10 +1,25 @@
 # FINDING — the demo showcase's FantasyStakes Matchups are invisible to the Action read model
 
 **Raised:** UIRECON Wave 4B, while wiring the settled-wager result card (§13).
-**Status:** REPORTED, NOT FIXED. Closing it requires changing a wager command or
-the demo's gameplay seeding, both of which Wave 4 §15 places out of scope.
-**Severity:** the demo shows a GM zero FantasyStakes Matchups, on every tab, in
-every week — including the seven weeks in which that GM demonstrably wagered.
+**Status:** **CLOSED** by *UIRECON Wave 4 demo matchup visibility reconciliation*.
+The fix is recorded in the Resolution section at the foot of this file; the
+diagnosis below is preserved as written, including the two places it was wrong.
+**Severity when open:** the demo showed a GM zero FantasyStakes Matchups, on
+every tab, in every week — including the seven weeks in which that GM
+demonstrably wagered.
+
+> **Two corrections to the original diagnosis, found during the fix.**
+>
+> 1. The new-model entry point is named **`issue_proposal_challenge`**
+>    (`beefs/proposal_lifecycle.py:467`), not `open_challenge`. The name used
+>    below does not exist in the repository.
+> 2. The finding treated the legacy engine as the wrong path for the demo to be
+>    on. It is not: `betting/versus_legacy_guard.py` classifies
+>    `beefs.beef_engine` as a **governed** FantasyStakes path — the product it
+>    exists to refuse is the single-GM `POST /bets/place` wager, which has no
+>    `beef_challenge_id`. The engine creates real GM-versus-GM matchups that
+>    fund, settle and post to the ledger. The defect was one unset column, not
+>    the choice of path.
 
 ---
 
@@ -116,3 +131,94 @@ then `demo/gameplay.py` should issue through it, and the legacy `issue_challenge
 path should be reviewed for whether anything still writes production rows
 through it. That work is a wave of its own, with its own fingerprint and
 economics validation.
+
+
+---
+
+# RESOLUTION — *UIRECON Wave 4 demo matchup visibility reconciliation*
+
+## What was actually wrong
+
+One column. `beefs/beef_engine.issue_challenge` built its `BeefChallenge`
+without `league_id`, though both `Team` rows — whose `league_id` is `NOT NULL` —
+were already loaded two lines above the constructor. `beef_challenges.league_id`
+has existed and been nullable since the Spec-1 migration, so **no schema change
+was needed**, exactly as this finding predicted.
+
+## The option chosen, and why
+
+The finding listed four candidate repairs and called (1) and (2) the honest
+ones. **(1) was taken**: the league is derived inside `issue_challenge`.
+
+**(2) — moving the showcase onto `issue_funded_challenge` — was rejected on
+evidence, not preference.** The two paths are economically different products:
+
+| | legacy engine | funded lifecycle |
+|---|---|---|
+| stakes | both GMs stake the **same** amount, odds differ | Anchor stake fixed, **Derived stake odds-derived** |
+| bet rows | `_place_beef_side` twice at `effective_amount` | `_create_bet` at `anchor_target` / `quoted_derived_stake_cents` |
+
+Switching would have moved every GM's exposure, every settlement, the standings
+and the championship. The reconciliation was told to preserve wager economics,
+so it does.
+
+## The second half of the fix
+
+Populating the column made the matchups **visible**; it did not make them
+**right**. Two further defects surfaced immediately, both in the read model and
+both pre-existing:
+
+1. **No terms.** `gm_action_state` read stake, odds, line and moneyline only
+   from a `BeefProposal`. An engine-written matchup has none, so every card
+   reported a **$0 stake** and no odds — while real Credits sat in a settled
+   `Bet`. It now reads the legacy record's own columns and its `Bet` rows, and
+   **only when there is no proposal**, so no proposal-lifecycle wager can move.
+
+2. **The wrong rail.** `classify` tested `response_status`, which an
+   engine-written row leaves NULL, so a **live** matchup fell through to
+   COMPLETED. The legacy `status` vocabulary is now translated one-to-one onto
+   the governed one — `pending→offered`, `countered→countered`,
+   `accepted→accepted`, `declined→declined`, `expired→expired` — again only
+   when the governed column is absent.
+
+## A third defect, found by validating against the ledger
+
+`_settlement` computed a settled wager's net as `stake x odds - stake`. That is
+a payout rule `betting/settlement_engine` **retired**: it credits the winner
+*both* escrow balances — the pot — and its own comment names the change as
+*"the fix itself, not the 2x-amount shortcut it replaces ... never a recomputed
+`bet.amount`"*.
+
+The two read models therefore disagreed about the same GM's same wagers:
+
+```
+Action    (odds formula)  -1,687 cents
+Standings (ledger doors)  -1,500 cents      <- correct
+```
+
+`_settlement` now reads the `wager_settled` posting that closed the bet's
+escrow, exactly as `betting/pool_result_view` reads the winner-distribution
+posting. Action and Standings agree, and both agree with the ledger.
+
+## What did NOT change
+
+- `demo/gameplay.py` — untouched. The showcase still plays through the same
+  calls a GM's clicks reach.
+- Wager economics, settlement, ledger postings, Locked/Dynamic behaviour,
+  quote and Final-Lock behaviour, postseason eligibility, championship scoring,
+  replay/idempotency, existing challenge ids.
+- A fresh showcase seeded before and after the change is **byte-identical** in
+  standings, in all 44 Pool instances with their classifications and
+  distributed/rollover cents, in pool claims, and in trial balance.
+
+## One thing the fix deliberately does not reach
+
+Wrap Up's week switch is a locked two-week control (Rev 4.2), so it offers only
+the authoritative week and the one before it. Under the showcase's contest
+rotation the seated GM has no **settled** wager in either, so the
+FANTASYSTAKES MATCHUPS carousel shows their **live** week-11 matchup rather
+than a settled result card. That is a property of which weeks the fixture gives
+that GM a contest in — not of the read model, which reports all seven of their
+settled matchups correctly on Action. Changing it would mean changing
+`demo/gameplay.versus_card()`, which changes which contests happen, and with
+them the standings and the fingerprint.

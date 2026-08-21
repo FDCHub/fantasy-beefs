@@ -58,7 +58,7 @@ from typing import Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from sqlalchemy import or_
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from beefs.proposal_lifecycle import (
@@ -264,6 +264,48 @@ class ActionState:
 
 # ── Classification ────────────────────────────────────────────────────────────
 
+#: The legacy `beef_challenges.status` vocabulary, in the governed one's terms.
+#:
+#: ONE-TO-ONE, AND A TRANSLATION RATHER THAN AN INTERPRETATION. Both columns
+#: name the same five negotiation states; `status` is what
+#: `beefs.beef_engine` writes and `response_status` is what
+#: `beefs.proposal_lifecycle` writes. Nothing is inferred, widened or
+#: guessed here — each legacy word has exactly one governed word and the
+#: CHECK constraints on the two columns enumerate the same five outcomes.
+_LEGACY_RESPONSE_STATUS = {
+    "pending":   OFFERED,
+    "countered": COUNTERED,
+    "accepted":  ACCEPTED,
+    "declined":  DECLINED,
+    "expired":   EXPIRED,
+}
+
+
+def effective_response_status(challenge: BeefChallenge) -> Optional[str]:
+    """The negotiation state, whichever column this row records it in.
+
+    TWO WRITERS, ONE QUESTION. `economy.challenge_funding` records a matchup's
+    state in `response_status`; `beefs.beef_engine` — which
+    `betting.versus_legacy_guard` classifies as a GOVERNED FantasyStakes path,
+    not the single-GM one it exists to refuse — records it in `status`. Both
+    produce a real GM-versus-GM matchup that funds, settles and posts to the
+    ledger, so both are wagers this read model has to be able to answer about.
+
+    READING ONLY ONE OF THEM WAS THE DEFECT. A challenge written by the engine
+    carries `response_status IS NULL`, so every state test below returned
+    "not open, not accepted" and the wager fell through to COMPLETED whatever
+    it was really doing — including while it was live.
+
+    THE GOVERNED COLUMN ALWAYS WINS. A row that has a `response_status` is a
+    proposal-lifecycle row and is answered from it; the legacy translation is
+    consulted only when there is no governed value to read, so no governed
+    wager's classification can change.
+    """
+    if challenge.response_status is not None:
+        return challenge.response_status
+    return _LEGACY_RESPONSE_STATUS.get(challenge.status)
+
+
 def decision_team_id(challenge: BeefChallenge) -> Optional[int]:
     """Whose decision an open challenge is waiting on.
 
@@ -271,9 +313,10 @@ def decision_team_id(challenge: BeefChallenge) -> Optional[int]:
     waits on the original issuer, because a counter hands the decision back.
     Anything closed has no decision owner at all.
     """
-    if challenge.response_status == OFFERED:
+    state = effective_response_status(challenge)
+    if state == OFFERED:
         return challenge.challenged_team_id
-    if challenge.response_status == COUNTERED:
+    if state == COUNTERED:
         return challenge.challenger_team_id
     return None
 
@@ -289,9 +332,10 @@ def classify(challenge: BeefChallenge, viewer_team_id: int, *,
     """
     if settled:
         return SECTION_COMPLETED
-    if challenge.response_status == ACCEPTED:
+    state = effective_response_status(challenge)
+    if state == ACCEPTED:
         return SECTION_LIVE
-    if challenge.response_status in OPEN_STATES:
+    if state in OPEN_STATES:
         return (SECTION_ACTION_REQUIRED
                 if decision_team_id(challenge) == viewer_team_id
                 else SECTION_WAITING)
@@ -315,6 +359,83 @@ def _active_proposal(db: Session, challenge: BeefChallenge
     return db.query(BeefProposal).filter(BeefProposal.id == proposal_id).first()
 
 
+@dataclass
+class _Terms:
+    """The frozen terms of one matchup, from whichever record holds them."""
+
+    anchor_stake_cents: int = 0
+    derived_stake_cents: Optional[int] = None
+    anchor_odds: Optional[float] = None
+    derived_odds: Optional[float] = None
+    anchor_moneyline: Optional[int] = None
+    derived_moneyline: Optional[int] = None
+    line: Optional[float] = None
+    side: Optional[str] = None
+    player_id: Optional[int] = None
+    version_number: Optional[int] = None
+
+
+def _legacy_terms(db: Session, challenge: BeefChallenge) -> _Terms:
+    """The terms of an engine-written matchup, off its own columns and Bets.
+
+    WHY THIS IS REPORTING AND NOT ACCOMMODATION. `beef_challenges` carries the
+    legacy engine's frozen terms in its OWN columns — `amount`, `line`, `side`,
+    `challenger_odds`, `challenged_odds`, `challenger_moneyline`,
+    `challenged_moneyline` — and the module already reads one of that family,
+    `bet_type`, as the fallback for `wager_type`. This reads the rest of the
+    same family for the same reason: it is where this record shape
+    authoritatively states what was agreed.
+
+    AND THE BET ROWS OUTRANK THE CONTAINER once they exist, on exactly the rule
+    the module docstring already states for Final Lock: an executed record
+    supersedes the quote that preceded it. A countered legacy challenge settles
+    at `countered_amount`, and the Bet rows are what actually carry that — so
+    reading `amount` past acceptance would report a stake the GM did not place.
+
+    NO PRICE IS COMPUTED. Every value below is copied off a persisted row.
+    """
+    anchor_bet = derived_bet = None
+    if challenge.challenger_bet_id or challenge.challenged_bet_id:
+        by_id = {b.id: b for b in _bets_for(db, challenge.id)}
+        anchor_bet = by_id.get(challenge.challenger_bet_id)
+        derived_bet = by_id.get(challenge.challenged_bet_id)
+
+    def _cents(bet, fallback):
+        if bet is not None and bet.amount is not None:
+            return int(round(float(bet.amount) * 100))
+        return int(round(float(fallback) * 100)) if fallback is not None else 0
+
+    return _Terms(
+        anchor_stake_cents=_cents(anchor_bet, challenge.amount),
+        derived_stake_cents=_cents(derived_bet, challenge.amount),
+        anchor_odds=(anchor_bet.odds if anchor_bet is not None
+                     else challenge.challenger_odds),
+        derived_odds=(derived_bet.odds if derived_bet is not None
+                      else challenge.challenged_odds),
+        anchor_moneyline=challenge.challenger_moneyline,
+        derived_moneyline=challenge.challenged_moneyline,
+        line=challenge.line,
+        side=challenge.side,
+        player_id=challenge.player_id,
+    )
+
+
+def _proposal_terms(proposal: BeefProposal) -> _Terms:
+    """The frozen terms of a proposal-lifecycle matchup, unchanged."""
+    return _Terms(
+        anchor_stake_cents=getattr(proposal, "anchor_stake_cents", None) or 0,
+        derived_stake_cents=getattr(proposal, "quoted_derived_stake_cents", None),
+        anchor_odds=getattr(proposal, "anchor_odds", None),
+        derived_odds=getattr(proposal, "derived_odds", None),
+        anchor_moneyline=getattr(proposal, "anchor_moneyline", None),
+        derived_moneyline=getattr(proposal, "derived_moneyline", None),
+        line=getattr(proposal, "line", None),
+        side=getattr(proposal, "side", None),
+        player_id=getattr(proposal, "player_id", None),
+        version_number=getattr(proposal, "version_number", None),
+    )
+
+
 def _bets_for(db: Session, challenge_id: int) -> list[Bet]:
     return (db.query(Bet)
             .filter(Bet.beef_challenge_id == challenge_id)
@@ -331,6 +452,25 @@ def _final_lock(db: Session, challenge_id: int) -> Optional[ChallengeFinalLock]:
     """
     return (db.query(ChallengeFinalLock)
             .filter(ChallengeFinalLock.challenge_id == challenge_id).first())
+
+
+def _settled_credit_cents(db: Session, *, bet_id: int, team_id: int) -> int:
+    """What settlement actually moved into this GM's wallet closing this bet.
+
+    THE POSTING IS THE AUTHORITY, exactly as it is in
+    `betting/pool_result_view`. A beef settles in ONE posting that debits both
+    sides' escrow and credits the winner, so the posting is found by this bet's
+    own escrow account and the answer is this GM's leg of it — zero when they
+    were not credited, which is the honest figure for a loss.
+    """
+    total = db.execute(
+        text("SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+             "WHERE account = :wallet AND posting_id IN ("
+             "  SELECT posting_id FROM ledger_entries "
+             "  WHERE account = :escrow AND door = 'wager_settled')"),
+        {"wallet": f"wallet:{team_id}", "escrow": f"escrow:{bet_id}"},
+    ).scalar()
+    return int(total or 0)
 
 
 def _settlement(db: Session, challenge_id: int, team_id: int
@@ -353,18 +493,28 @@ def _settlement(db: Session, challenge_id: int, team_id: int
         return False, None, None
 
     # THE STATUS IS CARRIED THROUGH VERBATIM. It is the row's own terminal word
-    # and the only authority on what happened; the net below is arithmetic ON
-    # that word, not a substitute for it.
+    # and the only authority on what happened.
+    #
+    # AND THE NET IS THE LEDGER'S, NOT A FORMULA'S. What stood here was
+    # `stake x odds - stake`, which is a payout rule this product retired:
+    # `betting/settlement_engine` credits the winner BOTH escrow balances —
+    # the pot — and its own comment names that as "the fix itself, not the
+    # 2x-amount shortcut it replaces ... never a recomputed bet.amount".
+    # Reproducing an odds payout here therefore reported a number no posting
+    # ever made, and it disagreed with `reports/standings_read_model`, which
+    # reads the same wagers off the ledger doors. One GM's week could read
+    # -1,687 on their Action cards and -1,500 in the Standings.
+    #
+    # So the credit is read from the posting that made it: the `wager_settled`
+    # posting that closed THIS bet's escrow, and the amount it moved into this
+    # GM's wallet. A loss credits nothing and nets the stake; a push returns the
+    # escrow and nets zero; a win nets the pot less the stake. No branch on the
+    # status word is needed for the money, because the ledger already
+    # distinguishes them — which is what "money is reported, never recomputed"
+    # asks of this module.
     stake_cents = int(round(float(bet.amount) * 100))
-    if bet.status == "won":
-        # The payout net of the stake — what the GM is up on the wager.
-        return (True,
-                int(round(stake_cents * float(bet.odds))) - stake_cents,
-                bet.status)
-    if bet.status == "lost":
-        return True, -stake_cents, bet.status
-    # push / void and anything else terminal: no gain, no loss.
-    return True, 0, bet.status
+    credited = _settled_credit_cents(db, bet_id=bet.id, team_id=team_id)
+    return True, credited - stake_cents, bet.status
 
 
 def gm_action_state(db: Session, *, team_id: int, league_id: int,
@@ -411,8 +561,17 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
         owner = decision_team_id(challenge)
         is_anchor = challenge.challenger_team_id == team_id
 
-        anchor_stake = getattr(proposal, "anchor_stake_cents", None) or 0
-        derived_stake = getattr(proposal, "quoted_derived_stake_cents", None)
+        # THE TERMS COME FROM WHICHEVER RECORD THIS MATCHUP KEEPS THEM IN.
+        # A proposal-lifecycle wager keeps them on the accepted proposal; an
+        # engine-written one keeps them on the challenge row and its Bets. Both
+        # are governed GM-versus-GM matchups that fund and settle, so both have
+        # terms to report — and reading only the first told a GM their stake was
+        # zero while their Credits sat in a settled Bet.
+        terms = _proposal_terms(proposal) if proposal is not None \
+            else _legacy_terms(db, challenge)
+
+        anchor_stake = terms.anchor_stake_cents
+        derived_stake = terms.derived_stake_cents
         dynamic = challenge.challenge_mode == MODE_DYNAMIC
 
         # WHOSE STAKE IS WHOSE. The Anchor is always the original issuer, even
@@ -450,10 +609,10 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
             anchor_odds = _anchor_bet.odds if _anchor_bet else None
             derived_odds = _derived_bet.odds if _derived_bet else None
         else:
-            anchor_ml = getattr(proposal, "anchor_moneyline", None)
-            derived_ml = getattr(proposal, "derived_moneyline", None)
-            anchor_odds = getattr(proposal, "anchor_odds", None)
-            derived_odds = getattr(proposal, "derived_odds", None)
+            anchor_ml = terms.anchor_moneyline
+            derived_ml = terms.derived_moneyline
+            anchor_odds = terms.anchor_odds
+            derived_odds = terms.derived_odds
 
         pot = None
         if anchor_stake and derived_stake:
@@ -462,9 +621,9 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
         cards.append(ActionCard(
             challenge_id=challenge.id,
             section=classify(challenge, team_id, settled=settled),
-            status=_STATUS_WORD.get(challenge.response_status,
+            status=_STATUS_WORD.get(effective_response_status(challenge),
                                     STATUS_INCOMING),
-            protocol_state=challenge.response_status,
+            protocol_state=effective_response_status(challenge),
             mode=challenge.challenge_mode or "locked",
             week=challenge.week,
             opponent_team_id=opponent_id,
@@ -473,9 +632,9 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
             decision_team_id=owner,
             viewer_decides=(owner == team_id),
             wager_type=challenge.wager_type or challenge.bet_type,
-            line=getattr(proposal, "line", None),
-            side=getattr(proposal, "side", None),
-            player_id=getattr(proposal, "player_id", None),
+            line=terms.line,
+            side=terms.side,
+            player_id=terms.player_id,
             your_stake_cents=your_stake,
             their_stake_cents=their_stake,
             pot_cents=pot,
@@ -497,7 +656,7 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
                         if challenge.active_response_expires_at
                         else (challenge.expires_at.isoformat()
                               if challenge.expires_at else None)),
-            version_number=getattr(proposal, "version_number", None),
+            version_number=terms.version_number,
         ))
 
     # EVERY OTHER TEAM IN THIS LEAGUE, and no team outside it. The cross-league
