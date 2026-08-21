@@ -640,10 +640,14 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       })),
     }));
   `);
-  check('the Ledger has three numbered sections', sections.length === 3, String(sections.length));
-  check('they are Advances, Wagering Summary and Season Adjustments',
+  // UIRECON WAVE 2 — Current Settle is section 4, built by the same
+  // `ledgerSection()` as the three that explain into it. Four numbered
+  // sections, one construction.
+  check('the Ledger has four numbered sections', sections.length === 4, String(sections.length));
+  check('they are Advances, Wagering Summary, Season Adjustments and Current Settle',
     sections.map(s => s.title).join(' | ')
-      === 'FANTASYSTAKES ADVANCES | WAGERING SUMMARY | SEASON ADJUSTMENTS + WINNINGS',
+      === 'FANTASYSTAKES ADVANCES | WAGERING SUMMARY | SEASON ADJUSTMENTS + WINNINGS'
+        + ' | CURRENT SETTLE',
     sections.map(s => s.title).join(' | '));
   check('the Wagering Summary is the elevated section',
     sections[1].elevated === true && !sections[0].elevated && !sections[2].elevated);
@@ -744,7 +748,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('the card contains no button', settle.isButton === false);
   check('the card carries no tap action', settle.hasAction === false);
   check('the card is not marked tappable', settle.tappable === false);
-  check('the card does not present as clickable', settle.cursor === 'default', settle.cursor);
+  // The BODY is inert. The section header above it is a disclosure toggle
+  // like every other section's, which is the one control Wave 2 added and the
+  // one this block is not about: what must never happen is the reconciliation
+  // itself presenting as a door to somewhere else.
+  check('the card does not present as clickable', settle.cursor !== 'pointer', settle.cursor);
   check('there is no View Full Reconciliation on the card',
     !/View Full Reconciliation/i.test(settle.text));
 

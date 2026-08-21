@@ -142,7 +142,11 @@ check('the model declares exactly three tables',
   STANDINGS_TABLES.length === 3);
 check('their headings are the locked ones, in order',
   STANDINGS_TABLES.map((t) => t.heading).join(' | ')
-    === 'FANTASYSTAKES CHAMPIONSHIP | MATCHUP STANDINGS | PROP POOL STANDINGS',
+    // UIRECON WAVE 2 — the first table is `OVERALL`. The tab title directly
+    // above it already reads FANTASYSTAKES CHAMPIONSHIP, and the table said
+    // it a second time in about forty pixels. Three tables, three
+    // distinctions.
+    === 'OVERALL | MATCHUP STANDINGS | PROP POOL STANDINGS',
   STANDINGS_TABLES.map((t) => t.heading).join(' | '));
 check('Overall carries RK | TEAM | MATCHUPS | PROP POOLS | NET',
   STANDINGS_TABLES[0].columns.join(' | ') === 'RK | TEAM | MATCHUPS | PROP POOLS | NET',

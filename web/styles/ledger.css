@@ -240,7 +240,12 @@
   border-radius: var(--fs-radius-card);
 }
 
-.fs-lsec + .fs-lsec, .fs-lscroll > .fs-settle { margin-top: var(--fs-space-3); }
+/* ONE SPACING RULE FOR FOUR PEERS — UIRECON Wave 2. This read
+ * `.fs-lsec + .fs-lsec, .fs-lscroll > .fs-settle`, because Current Settle was
+ * a different element that had to be named separately to sit the same
+ * distance from its neighbour. It is a `.fs-lsec` now, so the sibling
+ * selector covers it and there is nothing left to keep in step. */
+.fs-lsec + .fs-lsec { margin-top: var(--fs-space-3); }
 
 /* Section 2 is the statement of the page: a gold edge and a lifted fill mark
  * it as the section the others explain into. */
@@ -402,22 +407,19 @@
 /* ── Ledger · Current Settle card ──────────────────────────────────────────
  * Inert by construction: no cursor, no hover, no tap target. */
 
-.fs-settle {
-  padding: var(--fs-space-4);
-  background: var(--goldbg);
-  border: var(--fs-border-edge);
-  border-radius: var(--fs-radius-card);
-  cursor: default;
-}
-
-.fs-settle__head {
-  margin-bottom: var(--fs-space-3);
-  font-size: var(--fs-size-fine);
-  font-weight: var(--fs-weight-heavy);
-  letter-spacing: var(--fs-track-eyebrow);
-  color: var(--gold);
-}
-
+/* ── Current Settle — section 4's rows ─────────────────────────────────────
+ *
+ * THE CARD IS GONE; THE ROWS ARE NOT (UIRECON Wave 2).
+ *
+ * `.fs-settle` was a bespoke card — its own padding, gold fill, edge border and
+ * radius — standing beside three `.fs-lsec` disclosures that shared one
+ * construction. The container is now `ledgerSection()` like its three peers, so
+ * the padding, ground, border and radius come from `.fs-lsec` and the rules
+ * that drew them here are retired along with `.fs-settle__head`, whose job the
+ * section's own numbered header does.
+ *
+ * WHAT REMAINS IS THE RECONCILIATION ITSELF: three input rows, a result row and
+ * the figures in them. That grammar is this block's and is unchanged. */
 .fs-settle__row,
 .fs-settle__result {
   display: flex;

@@ -216,8 +216,13 @@ _assert("the canonical layer introduces no colour of its own",
 # rev43.css hard-coded the strip value to 22px and nothing read the token.
 _assert("the metric value reads the strip-value token, not a literal",
         "var(--fs-c-size-metric)" in _rule(COMPONENTS, ".fs-strip__value"))
-_assert("and rev43's competing hard-coded 22px is gone",
-        "font-size: 22px" not in _without_comments(REV43))
+# SCOPED TO THE STRIP, not to the sheet. This read `"font-size: 22px" not in
+# rev43.css`, which was right about the strip and wrong as a rule: UIRECON
+# Wave 2 legitimately introduced a 22px `.fs-mast__word` step-down, and a
+# whole-file search cannot tell the wordmark from the metric value. What the
+# claim is about is that no rule outside the primitive sizes the strip value.
+_assert("and rev43's competing hard-coded strip value is gone",
+        "font-size" not in _rule(REV43, ".fs-strip__value"))
 
 
 # ── 2 · The metric cell is written once ──────────────────────────────────────

@@ -47,7 +47,20 @@
   --fs-size-body:       12px;   /* rows, card body */
   --fs-size-title:      15px;   /* tab titles, sheet titles */
   --fs-size-value:      18px;   /* four-cell strip value — Rev4.2 stronger */
-  --fs-size-word:       23px;   /* masthead lockup */
+  /* UIRECON WAVE 2 — the wordmark is the loudest thing in the chrome.
+   *
+   * It was 23px, which is exactly the Rev 4.3 page-title step — so the brand
+   * lockup and a tab heading were the same size, and the masthead read as a
+   * label rather than as the top of a product. 28px puts it a clear step
+   * above every other type in the shell, which is what the marketing
+   * hierarchy asks of it.
+   *
+   * IT COSTS MASTHEAD HEIGHT 1:1, because the lockup is the taller of the
+   * masthead's two columns and therefore the one that sets its height. Wave 2
+   * pays for it in the same frame: collapsing the meta column from two rows
+   * to one account cluster took a row out of the other side, and the panel
+   * measurements at 320, 375 and 390 are in the certification. */
+  --fs-size-word:       26px;   /* masthead lockup */
 
   --fs-weight-regular:  400;
   --fs-weight-medium:   500;

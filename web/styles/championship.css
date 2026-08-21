@@ -10,17 +10,32 @@
  * Mobile-first: single column throughout, with no layout that needs width.
  * ========================================================================== */
 
-/* ── Standings: what the number means ───────────────────────────────────── */
-
+/* ── Standings: what the number means ─────────────────────────────────────
+ *
+ * SUPPORTING BODY TEXT, NOT A CARD — UIRECON Wave 2.
+ *
+ * The sentence was already in the right PLACE: directly under
+ * `CHAMPIONSHIP CHASE · WEEK n` and above the tables. What was wrong was its
+ * treatment. It had a gold left rule, a gold-tinted fill and a radius, which
+ * made a one-line explanation read as a peer of the standings it introduces —
+ * a callout competing with the thing it was supposed to be supporting.
+ *
+ * So the box is gone and the words are not. It is the subheading's paragraph
+ * now: the same left edge as the title above it, the muted warm-grey the rest
+ * of the product uses for secondary copy, and nothing drawn around it.
+ *
+ * THE INSET MATCHES THE TAB HEADER, deliberately. `.fs-tabhead` sits at the
+ * 12px gutter, so the explainer at the same inset hangs off the same margin as
+ * `FANTASYSTAKES CHAMPIONSHIP` and `CHAMPIONSHIP CHASE · WEEK n`. A paragraph
+ * that starts anywhere else reads as a separate block however it is styled. */
 .fs-st__explainer {
-  margin: 0 var(--fs-space-5) var(--fs-space-4);
-  padding: var(--fs-space-3) var(--fs-space-4);
-  border-left: 2px solid var(--gold);
-  background: var(--goldbg);
-  border-radius: var(--fs-radius-cell);
-  color: var(--fs-r43-secondary);
-  font-size: var(--fs-r43-meta);
+  margin: 0 var(--fs-gutter) var(--fs-space-4);
+  font-size: var(--fs-c-size-fine);
   line-height: 1.45;
+  color: var(--fs-c-text-muted);
+  /* Comfortable measure. A full-width line of 13px text on a tablet is far
+   * past the readable column the phone layout gives it for free. */
+  max-width: 60ch;
 }
 
 /* The tie marker rides the rank, so a tie reads as a property of the PLACE

@@ -13,9 +13,14 @@ export const STANDINGS_MODE_AUTHORITATIVE = 'authoritative';
 export const STANDINGS_MODE_UNAVAILABLE = 'unavailable';
 
 export const STANDINGS_TABLES = Object.freeze([
+  // UIRECON WAVE 2 — `OVERALL` rather than a second `FANTASYSTAKES
+  // CHAMPIONSHIP`. The tab title directly above this table already names the
+  // competition, and repeating it on the first table said the same thing twice
+  // in about forty pixels while the two tables below carried real distinctions.
+  // The table names WHICH standings it is; the tab names what they are for.
   Object.freeze({
     key: 'overall',
-    heading: 'FANTASYSTAKES CHAMPIONSHIP',
+    heading: 'OVERALL',
     columns: Object.freeze(['RK', 'TEAM', 'MATCHUPS', 'PROP POOLS', 'NET']),
   }),
   Object.freeze({

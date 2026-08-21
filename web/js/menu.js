@@ -28,13 +28,20 @@
 import { escapeHtml } from './components.js';
 import { economyReachable } from './economy.js';
 
-export const MENU_TITLE = 'Menu';
+// UIRECON WAVE 2 — THE GEAR MEANS SETTINGS, AND NOW SAYS SO.
+//
+// It was labelled `Menu`, which named the WIDGET rather than the
+// destination — and beside an account control that opens a sheet of its own,
+// `Menu` stopped distinguishing the two at all. Everything behind it is a
+// setting or a rule; the title and the accessible name say that now. The
+// entries, the routing and the capability gating are untouched.
+export const MENU_TITLE = 'Settings';
 
 /** The gear control that lives in the masthead. */
 export function menuButton() {
   return (
     '<button type="button" class="fs-gear" id="fs-gear" '
-    + 'aria-label="Menu" aria-haspopup="dialog">'
+    + 'aria-label="Settings" aria-haspopup="dialog">'
     + '<svg class="fs-gear__icon" viewBox="0 0 18 18" fill="none" '
     + 'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" '
     + 'stroke-linejoin="round" aria-hidden="true" focusable="false">'

@@ -84,8 +84,12 @@ await withPage({ origin: ORIGIN, path: '/app/index.html', settleMs: 1200 },
     `),
     'a signed-out page must not have rendered a league');
 
+  // UIRECON WAVE 2 — the identity is a single account CONTROL now, not a row
+  // of them, so the marker for "a GM is acting" is `.fs-acct`. The spans
+  // inside it kept their names: they are still the acting team's name and the
+  // commissioner label, which is what the assertions below read.
   report.check('no acting identity is claimed',
-    await evaluate(`return document.querySelectorAll('.fs-ident').length === 0;`));
+    await evaluate(`return document.querySelectorAll('.fs-acct').length === 0;`));
 
   /* ── 2 · Nothing is stored where a script could read it ────────────────── */
 
@@ -209,6 +213,18 @@ await withPage({ origin: ORIGIN, path: '/app/index.html', settleMs: 1200 },
 
   report.section('Signing out ends the session and empties the view');
 
+  // SIGN OUT MOVED INTO THE ACCOUNT SHEET — UIRECON Wave 2. It was a
+  // persistent button in the masthead, which gave the least-used control in
+  // the product a permanent 44px target in the app's chrome. The PATH is what
+  // changed and the suite walks the new one: open the account control, then
+  // sign out from the sheet it opens. Everything asserted after this is
+  // unchanged, because signing out itself is unchanged.
+  await evaluate(`
+    document.getElementById('fs-account').click();
+    return new Promise((ok) => setTimeout(ok, 300));
+  `);
+  report.check('the account control opens a sheet holding Sign out',
+    await evaluate(`return !!document.getElementById('fs-signout');`));
   await evaluate(`
     document.getElementById('fs-signout').click();
     return new Promise((ok) => setTimeout(ok, 700));

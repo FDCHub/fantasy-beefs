@@ -322,12 +322,17 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
         .map((el) => el.textContent),
       settleVisible: settle
         ? settle.getBoundingClientRect().height > 0 : false,
-      settleInsideDisclosure: settle ? Boolean(settle.closest('[data-disclosure]')) : null,
+      // UIRECON WAVE 2 — Current Settle is section 4 rather than a card beside
+      // the sections, so "visible without expanding" is now a question about
+      // its STATE rather than about where it sits in the tree.
+      settleSectionOpen: settle
+        ? Boolean(settle.closest('.fs-lsec.is-open')) : null,
       sectionCount: sections.length,
-      allCollapsed: sections.every((s) =>
-        s.querySelector('.fs-lsec__body').getBoundingClientRect().height === 0),
-      allAriaFalse: sections.every((s) =>
-        s.querySelector('[data-lsec-toggle]').getAttribute('aria-expanded') === 'false'),
+      openStates: sections.map((s) => s.classList.contains('is-open')),
+      bodyHeights: sections.map((s) =>
+        Math.round(s.querySelector('.fs-lsec__body').getBoundingClientRect().height)),
+      ariaStates: sections.map((s) =>
+        s.querySelector('[data-lsec-toggle]').getAttribute('aria-expanded')),
       toggleTargets: sections.map((s) =>
         Math.round(s.querySelector('[data-lsec-toggle]').getBoundingClientRect().height)),
       anchorText: anchor ? anchor.textContent : null,
@@ -341,13 +346,23 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
     ['Available', 'In Play', 'Held', 'Min Left']
       .every((l) => account.stripLabels.includes(l)),
     account.stripLabels.join(' | '));
+  // §20 / §14.2 — the figure the tab exists to derive may not require
+  // expansion. Wave 2 keeps that by STATE: section 4 is drawn open, so it is on
+  // screen the moment the tab is, while carrying the same affordance as its
+  // three siblings.
   check('Current Settle is visible without expanding anything (§20)',
-    account.settleVisible === true
-    && account.settleInsideDisclosure === false);
-  check('the three accounting sections are disclosures',
-    account.sectionCount === 3, String(account.sectionCount));
-  check('and they start collapsed', account.allCollapsed === true);
-  check('with accessible expanded state', account.allAriaFalse === true);
+    account.settleVisible === true && account.settleSectionOpen === true);
+  check('the four accounting sections are disclosures',
+    account.sectionCount === 4, String(account.sectionCount));
+  check('the three detail sections start collapsed',
+    account.bodyHeights.slice(0, 3).every((h) => h === 0)
+    && account.openStates.slice(0, 3).every((o) => o === false),
+    account.bodyHeights.join(','));
+  check('and section 4 starts open', account.openStates[3] === true);
+  check('with accessible expanded state',
+    account.ariaStates.slice(0, 3).every((a) => a === 'false')
+    && account.ariaStates[3] === 'true',
+    account.ariaStates.join(','));
   check('every disclosure toggle meets the 44px target',
     account.toggleTargets.every((h) => h >= 44), account.toggleTargets.join(','));
   check('the trust anchor is exact, and appears once (§19)',

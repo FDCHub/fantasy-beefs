@@ -442,8 +442,22 @@ settle_card = LEDGER_PANEL.split('id="fs-current-settle"')[1].split("</section>"
 _assert("the Current Settle card contains no button", "<button" not in settle_card)
 _assert("the card carries no tap action", "data-card-action" not in settle_card)
 _assert("the card is not marked tappable", "is-tappable" not in settle_card)
-settle_rule = _rule(LEDGER_CSS, ".fs-settle")
-_assert("the card does not present as clickable", "cursor: default" in settle_rule)
+# UIRECON WAVE 2 — Current Settle is section 4 now, so the container that used
+# to carry `cursor: default` is a `.fs-lsec` like its three peers. The claim is
+# unchanged and is asserted where it now lives: nothing inside the
+# reconciliation presents as a door. The three assertions above already prove it
+# holds no button, no tap action and no tappable class; this adds that no rule
+# gives any of its rows a pointer, which is what "presents as clickable" means.
+_assert("the reconciliation does not present as clickable",
+        "cursor: pointer" not in _rule(LEDGER_CSS, ".fs-settle__row")
+        and "cursor: pointer" not in _rule(LEDGER_CSS, ".fs-settle__result")
+        and "cursor" not in settle_card)
+# AND THE BESPOKE CARD IS GONE. Its absence is the Wave 2 deliverable: a
+# `.fs-settle` rule that still drew a card would mean the block had been
+# reparented without being reconciled.
+_assert("the bespoke Current Settle card treatment is retired",
+        _rule(LEDGER_CSS, ".fs-settle").strip() == ""
+        and _rule(LEDGER_CSS, ".fs-settle__head").strip() == "")
 _assert("there is no View Full Reconciliation anywhere on the tab",
         "View Full Reconciliation" not in LEDGER_PANEL)
 _assert("and none in the Ledger source either",

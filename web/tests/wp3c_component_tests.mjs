@@ -383,11 +383,17 @@ check('Current Settle is visible without expanding anything',
     account.slice(account.indexOf('fs-lscroll'),
       account.indexOf('fs-current-settle'))
       .split('</section>').pop()));
-check('the three accounting sections are disclosures',
-  (account.match(/data-disclosure/g) || []).length === 3);
+// UIRECON WAVE 2 — FOUR SECTIONS, ONE CONSTRUCTION. Current Settle stopped
+// being a bespoke card and became section 4, so the count is four and three of
+// them start collapsed. Section 4 opens by default because Rev 4.3 §14.2 says
+// the figure the tab exists to derive may not require expansion — the
+// affordance is identical, only the starting state differs.
+check('the four accounting sections are disclosures',
+  (account.match(/data-disclosure/g) || []).length === 4);
 check('each has a real button with aria-expanded',
-  (account.match(/data-lsec-toggle/g) || []).length === 3
-  && (account.match(/aria-expanded="false"/g) || []).length >= 3);
+  (account.match(/data-lsec-toggle/g) || []).length === 4
+  && (account.match(/aria-expanded="false"/g) || []).length >= 3
+  && (account.match(/aria-expanded="true"/g) || []).length === 1);
 check('no accounting row was deleted — the detail is in the DOM',
   account.includes('Season-Opening FantasyStakes')
   && account.includes('MATCHUP ACTIVITY')

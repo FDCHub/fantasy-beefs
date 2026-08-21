@@ -453,19 +453,21 @@
   padding-bottom: var(--fs-space-3);
 }
 
-/* The Current Settle card is NEVER inside a disclosure — §14.2's "do not make
- * Current Settle or key top-level figures require expansion". This is the
- * styling; the structure is in `ledger.js`, where the card is a sibling of the
- * three sections rather than a child of one. */
+/* §14.2 — "do not make Current Settle or key top-level figures require
+ * expansion" — AND SECTION 4 STILL HONOURS IT (UIRECON Wave 2).
+ *
+ * The rule used to be kept by structure: Current Settle was a card outside the
+ * disclosures, so nothing could collapse it. Wave 2 makes it section 4 so it is
+ * a peer of the three sections it reconciles, and keeps §14.2 by STATE instead
+ * — `ledgerSection()` is called with `open: true`, so the figure is on screen
+ * the moment the tab is. The affordance is identical to its siblings; only the
+ * starting position differs, and it differs for the reason §14.2 gives.
+ *
+ * `.fs-settle__head` is retired with the bespoke card: the section's numbered
+ * header carries the title now, at the size every other section title uses. */
 .fs-settle__total {
   font-size: var(--fs-r43-strip-value);
   font-weight: var(--fs-weight-heavy);
-}
-
-.fs-settle__head {
-  font-size: var(--fs-r43-section);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: .01em;
 }
 
 .fs-settle__label {

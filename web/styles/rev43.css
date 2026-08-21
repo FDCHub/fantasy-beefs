@@ -146,6 +146,24 @@
   height: 20px;
 }
 
+/* ── The account sheet — UIRECON Wave 2 ───────────────────────────────────
+ *
+ * Sign Out lives here now rather than in the masthead. In the chrome it needed
+ * a negative-margin trick to reach its target without growing the column; in a
+ * sheet it can simply be given the room, so it is a full-width control at the
+ * 44px floor like every other primary action in a sheet. */
+.fs-acctsheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-3);
+}
+
+.fs-acctsheet__out {
+  width: 100%;
+  min-height: var(--fs-r43-touch);
+  margin-top: var(--fs-space-2);
+}
+
 /* ── Tab header ───────────────────────────────────────────────────────────── */
 
 .fs-tabhead__title {
@@ -305,10 +323,25 @@
  * reads DEMO, and a screen reader reads it too. Colour is never the signal.
  */
 
-/* ONE ROW FOR THE CHIP AND THE GEAR. Measured: giving the chip a row of its
- * own added 16px to the masthead and clipped both wager cards at 375x667.
- * The chip is shorter than the gear, so sharing its line is free. */
-.fs-mast__metarow {
+/* ── The account cluster — UIRECON Wave 2 ──────────────────────────────────
+ *
+ * ONE ROW: chip, account control, gear. The `.fs-mast__metarow` rule this
+ * replaces held the chip and the gear only, because a third masthead ITEM and
+ * a third meta ROW had both been measured and both cost the panel more than
+ * they were worth — the notes in `shell.js renderMasthead()` record 16px of
+ * masthead and two clipped wager cards.
+ *
+ * WHAT MADE THREE ITEMS AFFORDABLE. The identity row that used to sit under
+ * this one carried a persistent `Sign out` button; moving it into the account
+ * sheet collapsed that row to a single control, so the cluster gains an item
+ * and the column loses a row. Net height: one row less, which is what pays for
+ * the larger wordmark below.
+ *
+ * SHRINK ORDER IS DECLARED, NOT LEFT TO THE BROWSER. The gear never shrinks —
+ * it is a 44px target. The chip gives up its width first, then the account
+ * control; both ellipsize rather than wrap, so the cluster is always exactly
+ * one row high whatever the session puts in it. */
+.fs-mast__cluster {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -316,7 +349,68 @@
   /* The row may not grow the column past what the lockup can spare. */
   max-width: 100%;
   min-width: 0;
+  /* ONE ROW WHEREVER IT FITS, AND THAT IS A MEASUREMENT, NOT A PREFERENCE.
+   *
+   * Three items cannot always share one line at a phone width without something
+   * giving, and both of the things that would give are certified not to: WP3E
+   * requires the provider chip to render untruncated, and the wordmark to fit
+   * its line without clipping. Measured with the cluster forced onto one row at
+   * 375, the longest chip state left the lockup 168px for a wordmark needing
+   * 183 — the brand clipped, and the chip ellipsized, to keep a single row that
+   * nothing in the POR actually asks for.
+   *
+   * Wrapping makes the column as wide as its WIDEST LINE rather than the sum of
+   * its items, which is what hands the lockup its width back. And it costs the
+   * one-row cluster nothing where it fits: with a short chip — `DEMO`, which is
+   * this deployment's state — all three sit on one line exactly as the POR
+   * draws them. It is the long provider states that drop the chip to its own
+   * line, and they are the states that cannot share.
+   *
+   * THE CHIP IS FIRST IN THE DOM, which is what makes the wrap land correctly:
+   * a long chip nearly fills the line by itself, so the account control and the
+   * gear fall together onto the second and stay adjacent. */
+  flex-wrap: wrap;
+  /* THE ROW GAP CLEARS THE GEAR'S HIT BOX, and that is why it is 10px and not
+   * the 2px a visual gap would need.
+   *
+   * The gear reaches its 44px target with a negative margin — the trick two
+   * rules below, which keeps the TOUCH area full size while the optical box
+   * stays 24px so the column does not grow. On one row that costs nothing. On
+   * two, the 44px border box overhangs its own line by 10px at each edge and
+   * lands on top of the chip above it: measured as a real overlap of the two
+   * hit areas at every certified width, which WP3E asserts against because a
+   * control you can press by aiming at another one is a defect however it
+   * looks. Ten pixels is exactly the overhang, so the lines just clear. */
+  row-gap: var(--fs-space-4);
 }
+
+/* THE SHRINK ORDER, DECLARED. A flex item shrinks by default, and with three
+ * items in a capped column the browser will happily take the difference out of
+ * whichever one it reaches — which it did: the gear measured 32–37px instead of
+ * 44px at every phone width the certification covers, quietly losing the
+ * touch target the rule below spends a negative margin to protect.
+ *
+ * So the order is stated rather than left to the layout. The gear is a target
+ * and never shrinks. The chip and the account control both give way, in that
+ * order, and both ellipsize inside whatever they are left with. */
+.fs-mast__cluster > .fs-source { flex: 0 1 auto; min-width: 0; }
+.fs-mast__cluster > .fs-mast__cluster-end { flex: 0 1 auto; min-width: 0; }
+
+/* THE END GROUP NEVER SPLITS. The account control and the gear are one unit —
+ * `nowrap` — so when the cluster wraps they travel together and the chip is the
+ * only thing that can be on a line of its own. Inside the group the account
+ * control is the item that gives way, which is what lets a commissioner's badge
+ * ellipsize instead of pushing the gear onto a third line. */
+.fs-mast__cluster-end {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-space-2);
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.fs-mast__cluster-end > .fs-gear { flex: 0 0 auto; }
+.fs-mast__cluster-end > .fs-acct { flex: 0 1 auto; min-width: 0; }
 
 .fs-source {
   display: flex;
@@ -459,9 +553,22 @@
  * any text. The lockup keeps at least half the row, so the wordmark and its
  * tagline always have room; the meta column takes what is left and its own
  * contents ellipsize inside it. Nothing is removed: the commissioner indicator,
- * the provider chip and the gear all still render. */
+ * the provider chip and the gear all still render.
+ *
+ * UIRECON WAVE 2 CAPS IT TO WHAT ITS WIDEST LINE NEEDS, NOT TO A PERCENTAGE.
+ *
+ * The cluster wraps now, so the column is as wide as its widest LINE rather
+ * than the sum of its items — and its widest line is the provider chip, whose
+ * own `max-width` is 148px at its longest state. A 48% cap therefore reserved
+ * far more than the content could ever use: measured at 375 the column held
+ * 165px for a 104px chip, and the 61px difference came straight off the lockup,
+ * where it was the reason the enlarged wordmark clipped.
+ *
+ * 156px is the chip's 148 plus its own border and padding. Below that the chip
+ * would ellipsize, which WP3E certifies it must not; above it, the lockup pays
+ * for space nothing occupies. */
 .fs-mast__meta {
-  max-width: 48%;
+  max-width: 156px;
   min-width: 0;
 }
 
@@ -470,9 +577,66 @@
   flex: 1 1 auto;
 }
 
-.fs-ident {
+/* ── The account control ───────────────────────────────────────────────────
+ *
+ * A REAL BUTTON, sized to the 44px target the way the gear beside it is: the
+ * hit area is padded out and the padding cancelled with negative margin, so the
+ * TOUCH TARGET is full size while the optical box stays the height of its text
+ * and the cluster does not grow. That trick is the gear's and is reused rather
+ * than reinvented — see `.fs-gear` above.
+ *
+ * IT SHRINKS BEFORE THE GEAR AND AFTER THE CHIP. `min-width: 0` is what lets a
+ * long team name ellipsize instead of pushing the gear off the row. */
+.fs-acct {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fs-space-2);
   min-width: 0;
-  max-width: 100%;
+  flex: 0 1 auto;
+  min-height: var(--fs-r43-touch);
+  padding: 10px 0;
+  margin: -10px 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  color: var(--fs-c-text);
+  cursor: pointer;
+}
+
+/* GOLD ON PRESS, matching the gear. The account control is the other half of
+ * the same cluster and answers to the same touch. */
+.fs-acct:active .fs-ident__who,
+.fs-acct:hover .fs-ident__who,
+.fs-acct:active .fs-acct__chev,
+.fs-acct:hover .fs-acct__chev { color: var(--fs-c-gold); }
+
+.fs-acct:focus-visible {
+  outline: 1px solid var(--fs-c-gold);
+  outline-offset: -6px;
+  border-radius: var(--fs-c-radius-cell);
+}
+
+/* THE NAME IS THE PRIMARY TEXT OF THE CLUSTER, and reads at the primary
+ * weight and colour — off-white, not the muted grey the chip and the tagline
+ * use. It is the answer to "whose session is this", which is the one question
+ * the cluster exists to answer. */
+.fs-acct .fs-ident__who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-c-size-fine);
+  font-weight: var(--fs-weight-strong);
+  color: var(--fs-c-text);
+}
+
+/* The chevron says the control opens something. It never shrinks — it is two
+ * characters wide and losing it would make the name look like a label. */
+.fs-acct__chev {
+  flex: 0 0 auto;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--fs-c-text-muted);
 }
 
 /* THE BADGE SHRINKS BEFORE THE WORDMARK DOES. It is a label, not a control,
@@ -489,18 +653,13 @@
  * THE GEAR ALREADY SOLVED THIS and the note beside it explains how: a 44px hit
  * area achieved with padding and cancelled with negative margin, so the TOUCH
  * TARGET is full size while the OPTICAL box stays 24px and the meta column does
- * not grow. Sign out gets the same treatment rather than a new one.
+ * not grow.
  *
- * MEASURED, before: Sign out 24px, Request Top-Off 32px. */
-.fs-ident__out {
-  min-height: var(--fs-r43-touch);
-  padding-top: 10px;
-  padding-bottom: 10px;
-  margin-top: -10px;
-  margin-bottom: -10px;
-  display: inline-flex;
-  align-items: center;
-}
+ * `.fs-ident__out` — the masthead's persistent `Sign out` — took the same
+ * treatment and is retired by UIRECON Wave 2: the control moved into the
+ * account sheet, where it is an ordinary full-width button and needs no trick
+ * to reach its target. `.fs-acct` above is what now carries the pattern in the
+ * masthead. Request Top-Off, measured at 32px, still does. */
 
 .fs-topoff {
   min-height: var(--fs-r43-touch);
@@ -778,7 +937,12 @@
    * width, so the cap does not either. The identity row, which has three
    * ellipsis-capable items and no natural limit, is held to the same number
    * rather than being allowed to set it. */
-  .fs-mast__meta { max-width: 170px; }
+  /* UIRECON WAVE 2 — the same 156px the base rule uses. The paragraph above
+   * reasoned to 170px from a NON-WRAPPING chip row that also had to hold the
+   * gear; the cluster wraps now, so the column is its widest LINE and that
+   * line is the chip. Holding 14px the chip cannot use was 14px the wordmark
+   * needed: at 320 the lockup was 121px for a brand needing 131. */
+  .fs-mast__meta { max-width: 156px; }
 
   /* And the chip gives up its remaining tracking rather than its last word. */
   .fs-source__label {
@@ -791,9 +955,10 @@
    * clips is worse than one a few points smaller, and this is the last lever
    * after the structural ones above.
    *
-   * 18px IS NOT A READABILITY COMPROMISE. Rev 4.3 §5.1 governs page titles,
-   * section headings, card text and navigation; the brand lockup is none of
-   * those, and 18px is at or above every one of those floors. Nothing else in
-   * the masthead moves. */
-  .fs-mast__word { font-size: 18px; }
+   * UIRECON WAVE 2 raises the step from 18px to 22px, in proportion with the
+   * 23px-to-28px change to the base size. The reasoning below is unchanged and
+   * still applies: Rev 4.3 §5.1 governs page titles, section headings, card
+   * text and navigation, the brand lockup is none of those, and this size is at
+   * or above every one of those floors. Nothing else in the masthead moves. */
+  .fs-mast__word { font-size: 20px; }
 }

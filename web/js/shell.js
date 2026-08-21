@@ -207,24 +207,41 @@ function renderMasthead(root) {
     `<div class="fs-mast__tagline">${tagline}</div>` +
     '</div>' +
     '<div class="fs-mast__meta">' +
-    // THE CHIP SHARES THE GEAR'S ROW, AND THAT IS A MEASURED DECISION.
+    // UIRECON WAVE 2 — ONE ACCOUNT CLUSTER, ONE ROW.
     //
-    // Given its own row it cost 16px of masthead height — 71px to 87px — and
-    // at 375x667 that came straight off the panel: both wager cards clipped
-    // their own content (127px of content in 99px of card). The note above
-    // records the same failure from Sprint 8's attempt at a third masthead
-    // item, and the same rule applies to a third meta ROW.
+    //     DEMO badge │ team/account control │ settings gear
     //
-    // Sharing the gear's line costs nothing vertically, because the chip is
-    // shorter than the gear it sits beside.
-    '<div class="fs-mast__metarow">' +
+    // The meta column carried TWO rows before this wave: the chip and the gear
+    // on one, and a three-item identity row under it — team name, commissioner
+    // badge, and a persistent `Sign out` button. That second row is what made
+    // the column fight the wordmark for width, and the notes above record how
+    // expensive that fight was.
+    //
+    // Sign out moved into the account sheet, which collapses the identity row
+    // to a single control and lets the three cluster items share the gear's
+    // line. The height that buys is spent on the wordmark, which is the one
+    // thing in this masthead that should be unmistakable.
+    //
+    // THE ORDER IS THE POR'S AND IT IS ALSO THE RIGHT ONE: the chip says what
+    // kind of session this is, the account control says whose it is, and the
+    // gear says where to change it. Session, identity, settings.
+    // THE ACCOUNT CONTROL AND THE GEAR ARE ONE GROUP, and that is structural
+    // rather than cosmetic. The cluster wraps when the provider chip is at its
+    // longest — a flex row wraps BEFORE it shrinks — and without this pairing a
+    // commissioner's wider account control pushed the gear onto a third line
+    // and the masthead to 97px. Bound together they shrink instead: the badge
+    // ellipsizes, the gear keeps its target, and the cluster is never more than
+    // two lines whatever the session puts in it.
+    '<div class="fs-mast__cluster" role="group" aria-label="Account">' +
     sourceChip() +
+    '<div class="fs-mast__cluster-end">' +
+    buildIdentityBlock() +
     menuButton() +
     '</div>' +
-    buildIdentityBlock() +
+    '</div>' +
     '</div>';
 
-  bindIdentityBlock(root);
+  bindIdentityBlock(root, { openSheet });
   bindMenu(root, { openSheet });
 }
 

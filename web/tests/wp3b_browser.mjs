@@ -101,7 +101,11 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
   check('a gear control exists', gear.present === true);
   check('it lives in the masthead, not the tab bar',
     gear.insideMasthead === true && gear.inTabbar === false);
-  check('it has an accessible name', gear.label === 'Menu', String(gear.label));
+  // UIRECON WAVE 2 — the gear means Settings and says so. It was `Menu`,
+  // which named the widget rather than the destination, and beside an
+  // account control that also opens a sheet it stopped distinguishing the
+  // two at all.
+  check('it has an accessible name', gear.label === 'Settings', String(gear.label));
   check('it meets the 44px target', gear.w >= 44 && gear.h >= 44,
     `${gear.w}x${gear.h}`);
   check('it opens a menu', gear.opened === true && gear.entries.length > 0,

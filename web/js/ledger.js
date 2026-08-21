@@ -334,23 +334,49 @@ function adjustmentsSection(r) {
 }
 
 /**
- * The Current Settle card.
+ * Section 4 — Current Settle.
  *
- * A plain `div`, deliberately: no button, no tap target, no `data-card-action`.
- * It shows its three inputs and the result, and the three inputs are the three
- * section totals above it — so the card can be checked against the page without
- * going anywhere.
+ * ── IT IS A PEER SECTION NOW, NOT A BESPOKE CARD (UIRECON Wave 2) ──────────
+ *
+ * What stood here was a `<section class="fs-settle">` with its own head, its
+ * own row grammar, its own border and fill, and eighteen dedicated CSS rules —
+ * sitting directly beneath three numbered `ledgerSection()` disclosures that
+ * shared one construction between them. It was the only block on the tab that
+ * was not a peer of its siblings, and it was the most important one.
+ *
+ * It renders through `ledgerSection()` now, so the header height, the number
+ * treatment, the title typography, the chevron, the border, the spacing and the
+ * expand/collapse behaviour are not "the same as" sections 1–3 — they ARE
+ * sections 1–3's, because there is one function producing all four.
+ *
+ * ── WHY IT OPENS AND THEY DO NOT ───────────────────────────────────────────
+ *
+ * Rev 4.3 §14.2 is explicit: do not make Current Settle or key top-level
+ * figures require expansion. Sections 1–3 are detail and open on demand; this
+ * is the figure the whole tab exists to derive, and a GM who has to press
+ * something to see it has been given a worse page than before.
+ *
+ * So the AFFORDANCE is identical — same button, same `aria-expanded`, same
+ * chevron, same toggle through the same `[data-disclosure]` handler, and it
+ * collapses like any other section when a GM chooses to. Only the INITIAL state
+ * differs, and it differs for the one reason the POR names.
+ *
+ * ── WHAT DID NOT CHANGE ────────────────────────────────────────────────────
+ *
+ * Every figure, every `data-exact-cents`, the three input rows, the result row,
+ * the note and the trust anchor. `id="fs-current-settle"` is kept so the
+ * suites that locate this block still locate it. No arithmetic was touched:
+ * the three inputs are still the three section totals above, which is what
+ * lets the card be checked against the page without going anywhere.
  */
-function currentSettleCard(r) {
+function currentSettleSection(r) {
   const rows = [
     { label: 'Total Virtual Stakes', cents: -r.advances.totalVirtualStakesCents },
     { label: 'Wagering Position', cents: r.position.wageringPositionCents },
     { label: 'Net Adjustments + Winnings', cents: r.adjustments.netAdjustmentsCents },
   ];
 
-  return (
-    '<section class="fs-settle" id="fs-current-settle">' +
-    '<div class="fs-settle__head">CURRENT SETTLE</div>' +
+  const body =
     rows.map((item) => (
       '<div class="fs-settle__row">' +
       `<span class="fs-settle__label">${escapeHtml(item.label)}</span>` +
@@ -370,12 +396,18 @@ function currentSettleCard(r) {
     //
     // HERE AND NOWHERE ELSE. §14.1 asks for it "where appropriate" on Account
     // and the POR warns against over-repetition; the foot of the Current Settle
-    // card is the one place on the tab where the claim is being made — this is
-    // the number the whole page exists to derive, and the line says what
+    // section is the one place on the tab where the claim is being made — this
+    // is the number the whole page exists to derive, and the line says what
     // derived it.
-    `<div class="fs-anchor">${escapeHtml(LEDGER_TRUST_ANCHOR)}</div>` +
-    '</section>'
-  );
+    `<div class="fs-anchor">${escapeHtml(LEDGER_TRUST_ANCHOR)}</div>`;
+
+  return ledgerSection({
+    number: '4',
+    title: 'CURRENT SETTLE',
+    sub: 'What you would owe or be owed if the season closed now.',
+    body: `<div id="fs-current-settle">${body}</div>`,
+    open: true,
+  });
 }
 
 /* ── Panel ──────────────────────────────────────────────────────────────────*/
@@ -473,12 +505,15 @@ export function buildLedgerPanel() {
     ],
   });
 
+  // FOUR SECTIONS, ONE CONSTRUCTION. Three of them explain into the fourth,
+  // and since UIRECON Wave 2 all four are built by `ledgerSection()` — so the
+  // page reads as one statement rather than three sections and a card.
   composer.add(
     '<div class="fs-lscroll">' +
     advancesSection(r) +
     wageringSection(r) +
     adjustmentsSection(r) +
-    currentSettleCard(r) +
+    currentSettleSection(r) +
     '</div>',
   );
 
