@@ -234,12 +234,45 @@ def expected_fingerprint() -> dict:
     from demo import showcase
 
     played = showcase.COMPLETED_THROUGH_WEEK + 1        # + the live week
+
+    # ── THE CLAIMS THE SHOWCASE DELIBERATELY DOES NOT MAKE ───────────────────
+    #
+    # `claim_week_pools` and the re-claim loop in `_restore` both skip the
+    # visitor on one live-week slot, so a PRISTINE showcase holds one claim
+    # fewer than a full grid. Counting the full grid here made an untouched
+    # league fail `is_canonical`, which made `ensure_canonical` treat every
+    # single visit as dirty — and when restore-in-place could not reconcile a
+    # difference that was never drift, it fell through to a full REBUILD. A new
+    # league id draws a different Pool rotation, so the slate, the pool winners
+    # and the standings all moved between visitors, and `/demo/enter` replayed
+    # an entire season on every request.
+    #
+    # THE SKIPS ARE COUNTED, NOT ASSUMED. `visitor_skips_claim` is the single
+    # predicate both claim loops consult, so asking it here is asking the same
+    # question the seeder answered rather than restating its answer as a
+    # constant. Change the slot, the seat, or the number of skipped claims and
+    # this expectation follows without being edited — which is the rule the
+    # docstring above states and the rule the original line broke.
+    #
+    # THE RANGES ARE THE FIXTURE'S OWN. Weeks are the `played` window this
+    # function already reasons in; slots are 1..POOL_SLOTS_PER_WEEK, matching
+    # `pool_instance.slot`'s CHECK constraint; ordinals come off `showcase.TEAMS`
+    # itself, which is what both claim loops iterate. No number is invented here.
+    skipped = sum(
+        1
+        for week in range(showcase.START_WEEK, showcase.START_WEEK + played)
+        for slot in range(1, showcase.POOL_SLOTS_PER_WEEK + 1)
+        for spec in showcase.TEAMS
+        if showcase.visitor_skips_claim(week, slot, spec.ordinal)
+    )
+
     return {
         "current_week": showcase.CURRENT_WEEK,
         "season_closed": False,
         "teams": showcase.TEAM_COUNT,
         "challenges": len(showcase.VERSUS_PER_WEEK_MARKETS) * played,
-        "pool_claims": showcase.POOL_SLOTS_PER_WEEK * showcase.TEAM_COUNT * played,
+        "pool_claims": (showcase.POOL_SLOTS_PER_WEEK * showcase.TEAM_COUNT
+                        * played) - skipped,
         "pool_instances": showcase.POOL_SLOTS_PER_WEEK * played,
         "finalized_matchups": (len(showcase.REGULAR_SCHEDULE[1])
                                * showcase.COMPLETED_THROUGH_WEEK),

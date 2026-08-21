@@ -293,6 +293,12 @@ for name, src in (("the seeder", _gameplay), ("the restore", _reset)):
     _assert(f"{name} applies the shared predicate",
             "showcase.visitor_skips_claim(" in src)
 
+# THE ORDINALS ARE THE FIXTURE'S, NOT AN INDEX RANGE. `showcase.TEAMS`
+# numbers its seats 1..12, so `range(len(TEAMS))` scanned 0..11 — it caught
+# the seat that matters by luck and would have missed ordinal 12 entirely.
+# Reading `.ordinal` off the fixture is what both claim loops do.
+_ORDINALS = [t.ordinal for t in _showcase.TEAMS]
+_SLOTS = range(1, _showcase.POOL_SLOTS_PER_WEEK + 1)
 _W = _showcase.CURRENT_WEEK
 _S = _showcase.VISITOR_OPEN_PICK_SLOT
 _O = _showcase.VISITOR_ORDINAL
@@ -301,28 +307,76 @@ _assert("the visitor is skipped on the live week's open slot",
         _showcase.visitor_skips_claim(_W, _S, _O) is True)
 _assert("no other GM is skipped there",
         all(_showcase.visitor_skips_claim(_W, _S, o) is False
-            for o in range(len(_showcase.TEAMS)) if o != _O))
+            for o in _ORDINALS if o != _O))
 _assert("no other slot of the live week is skipped",
         all(_showcase.visitor_skips_claim(_W, s, _O) is False
-            for s in (1, 2, 3, 4) if s != _S))
+            for s in _SLOTS if s != _S))
 _assert("no completed week is skipped, for anyone, on any slot",
         all(_showcase.visitor_skips_claim(w, s, o) is False
             for w in range(1, _W)
-            for s in (1, 2, 3, 4)
-            for o in range(len(_showcase.TEAMS))))
+            for s in _SLOTS
+            for o in _ORDINALS))
 _assert("and no later week is skipped either",
         all(_showcase.visitor_skips_claim(w, s, o) is False
             for w in range(_W + 1, _showcase.SEASON_FINAL_WEEK + 1)
-            for s in (1, 2, 3, 4)
-            for o in range(len(_showcase.TEAMS))))
+            for s in _SLOTS
+            for o in _ORDINALS))
 # EXACTLY ONE (week, slot, GM) TRIPLE IN THE WHOLE SEASON.
 _skipped = [(w, s, o)
             for w in range(1, _showcase.SEASON_FINAL_WEEK + 1)
-            for s in (1, 2, 3, 4)
-            for o in range(len(_showcase.TEAMS))
+            for s in _SLOTS
+            for o in _ORDINALS
             if _showcase.visitor_skips_claim(w, s, o)]
 _assert("exactly one claim in the entire season is skipped",
         _skipped == [(_W, _S, _O)], str(_skipped))
+
+# ── THE CANONICAL FINGERPRINT COUNTS THE SKIP ────────────────────────────────
+#
+# THE DEFECT THIS CLOSES, AND WHY IT WAS EXPENSIVE. `expected_fingerprint()`
+# derived `pool_claims` as the full grid — slots x teams x played weeks — so a
+# PRISTINE showcase read one claim short of its own expectation and
+# `is_canonical()` was False on a league nobody had touched. `ensure_canonical`
+# then treated every visit as dirty, and when restore-in-place could not
+# reconcile a difference that was never drift it fell through to a full REBUILD:
+# a new league id on every `/demo/enter`, a different Pool rotation, different
+# pool winners and a different standings leader between one visitor and the next
+# — on an unauthenticated public route that would have replayed an entire season
+# per request.
+#
+# It was caught by PostgreSQL certification and not by any SQLite tier, because
+# the demo seed needs `SELECT … FOR UPDATE`.
+# NOT `_reset` — that name already holds this module's SOURCE a few lines
+# above, and shadowing it turned a string check into a module check.
+from demo import reset as _reset_mod  # noqa: E402
+
+_exp = _reset_mod.expected_fingerprint()
+_full_grid = (_showcase.POOL_SLOTS_PER_WEEK * _showcase.TEAM_COUNT
+              * (_showcase.COMPLETED_THROUGH_WEEK + 1))
+_assert("the fingerprint expects the grid MINUS the skipped claims",
+        _exp["pool_claims"] == _full_grid - len(_skipped),
+        f'{_exp["pool_claims"]} vs {_full_grid} - {len(_skipped)}')
+_assert("which is one fewer than a full grid",
+        _full_grid - _exp["pool_claims"] == 1,
+        f'{_full_grid} - {_exp["pool_claims"]}')
+# DERIVED, NOT HARD-CODED. A literal `- 1` would pass the two assertions above
+# and silently stop tracking the fixture the moment the skip changed, which is
+# exactly the failure mode the original line had.
+_reset_src = _strip_py_comments(_read_root("demo", "reset.py"))
+_assert("the expectation is derived from the skip predicate",
+        "showcase.visitor_skips_claim(" in _reset_src.split(
+            "def expected_fingerprint")[1].split("\ndef ")[0])
+_assert("and no magic number stands in for it",
+        "- 1" not in _reset_src.split("def expected_fingerprint")[1]
+        .split("\ndef ")[0])
+# THE OTHER FINGERPRINT TERMS ARE UNTOUCHED — this fix moves one field.
+for _field, _want in (("current_week", _showcase.CURRENT_WEEK),
+                      ("season_closed", False),
+                      ("teams", _showcase.TEAM_COUNT),
+                      ("pool_instances",
+                       _showcase.POOL_SLOTS_PER_WEEK
+                       * (_showcase.COMPLETED_THROUGH_WEEK + 1))):
+    _assert(f"the fingerprint's {_field} is unchanged", _exp[_field] == _want,
+            f"{_exp[_field]} vs {_want}")
 
 # RESTORE MEANS RESTORE. `submit_claim(replace=True)` overwrites a claim but
 # never removes one, so a visitor who picked and then reset would keep their
