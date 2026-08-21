@@ -4958,6 +4958,11 @@ class ActionCardOut(BaseModel):
 
     settled:   bool = False
     net_cents: Optional[int] = None
+    #: UIRECON Wave 4B — `bets.status` for THIS GM's side, verbatim: `won`,
+    #: `lost`, `push` or `void`. None while the wager is open. Carried so a Wrap
+    #: result card can say what happened without inferring it from the sign of
+    #: `net_cents`, which cannot tell a push from a void.
+    outcome:   Optional[str] = None
 
     created_at:     Optional[str] = None
     expires_at:     Optional[str] = None
@@ -5458,6 +5463,143 @@ def versus_market_board(
 
     return VersusBoardOut(league_id=league_id, week=week,
                           acting_team_id=acting_team_id, markets=rows)
+
+
+# ── The Matchup Preview read (UIRECON Wave 4A) ────────────────────────────────
+#
+# A PURE READ, AND A THIN ONE. Everything below projects
+# `reports/matchup_preview_read_model.py`, which in turn reads the two callables
+# the wager routes already use: the starter/projection bundle the simulator is
+# handed, and the board `/versus/board` serves. Nothing here simulates, prices,
+# rounds a line, chooses a sign or decides eligibility — the eligibility gate is
+# `_versus_subject_field` and the refusal vocabulary is `_market_board_or_refuse`,
+# both reused verbatim so the preview cannot disagree with the card that opened it.
+
+class PreviewLineupRowOut(BaseModel):
+    slot:             int
+    player_id:        int
+    player_name:      str
+    position:         str
+    projected_points: float
+    injury_status:    Optional[str] = None
+
+
+class PreviewSideOut(BaseModel):
+    team_id:   int
+    team_name: str
+    lineup:    list[PreviewLineupRowOut]
+    #: The SUM of the projections above — addition of served inputs, not a
+    #: simulation output. Never presented as one.
+    projected_total: float
+
+
+class PreviewMarketOut(BaseModel):
+    """The board, reported. Identical fields to `VersusMarketOut` plus the two
+    win probabilities the board already computes and the board route does not
+    happen to publish."""
+
+    available:          bool
+    reason_code:        Optional[str] = None
+    unavailable_reason: Optional[str] = None
+
+    acting_moneyline:         Optional[int]   = None
+    opponent_moneyline:       Optional[int]   = None
+    acting_win_probability:   Optional[float] = None
+    opponent_win_probability: Optional[float] = None
+    spread_line:              Optional[float] = None
+    acting_spread:            Optional[float] = None
+    opponent_spread:          Optional[float] = None
+    total_line:               Optional[float] = None
+
+
+class MatchupPreviewOut(BaseModel):
+    league_id: int
+    week:      int
+    phase:     Optional[str] = None
+    acting:    PreviewSideOut
+    opponent:  PreviewSideOut
+    market:    PreviewMarketOut
+    #: Acting projected lineup total minus the opponent's. Lineup arithmetic —
+    #: NOT the spread, which is the simulation's median margin and sits on
+    #: `market.spread_line`.
+    projected_margin: float
+
+
+@app.get("/league/{league_id}/versus/preview", response_model=MatchupPreviewOut)
+def versus_matchup_preview(
+    league_id:        int,
+    week:             int,
+    opponent_team_id: int,
+    db:               Session = Depends(get_db),
+    current_user:     User    = Depends(get_current_gm),
+):
+    """Everything the Matchup Preview explains from, for one pairing.
+
+    NOTHING IS WRITTEN. The suite proves it by counting every wagering and
+    accounting row around a call, the same way `/versus/board`'s does.
+
+    THE SAME ELIGIBILITY AUTHORITY the board and the quote route use. A preview
+    is an explanation of an offer; explaining one for a subject the write path
+    would refuse is the same defect as offering it.
+    """
+    acting_team_id = _member_team_id(current_user, league_id, db)
+    if acting_team_id is None:
+        raise HTTPException(status_code=403, detail={
+            "reason_code": "not_a_league_member",
+            "message": (f"User {current_user.id} owns no team in league "
+                        f"{league_id}."),
+        })
+    acting_team = db.query(Team).filter(Team.id == acting_team_id).one()
+    opponent = (db.query(Team)
+                .filter(Team.id == opponent_team_id,
+                        Team.league_id == league_id).first())
+    if opponent is None:
+        raise HTTPException(status_code=400, detail={
+            "reason_code": "opponent_not_in_league",
+            "message": "That team is not in this league.",
+        })
+
+    eligible, phase, determinable = _versus_subject_field(db, league_id, week)
+    if eligible is not None and not determinable:
+        raise HTTPException(status_code=409, detail={
+            "reason_code": "postseason_field_unknown",
+            "message": ("The postseason field for this week is not settled "
+                        "yet, so no matchup can be priced."),
+        })
+
+    board = None
+    refusal = None
+    if eligible is not None and (acting_team_id not in eligible
+                                 or opponent_team_id not in eligible):
+        refusal = ("postseason_ineligible",
+                   "Postseason Matchups are limited to teams still on the "
+                   "championship track.")
+    else:
+        try:
+            board = _market_board_or_refuse(db, acting_team, opponent, week)
+        except _MarketUnavailable as unavailable:
+            refusal = (unavailable.reason_code, unavailable.message)
+
+    from reports.matchup_preview_read_model import matchup_preview
+
+    view = matchup_preview(db, league_id=league_id, week=week,
+                           acting_team=acting_team, opponent_team=opponent,
+                           board=board, refusal=refusal,
+                           phase=str(phase) if phase is not None else None)
+
+    def _side(side) -> PreviewSideOut:
+        return PreviewSideOut(
+            team_id=side.team_id, team_name=side.team_name,
+            projected_total=side.projected_total,
+            lineup=[PreviewLineupRowOut(**row.__dict__) for row in side.lineup],
+        )
+
+    return MatchupPreviewOut(
+        league_id=view.league_id, week=view.week, phase=view.phase,
+        acting=_side(view.acting), opponent=_side(view.opponent),
+        market=PreviewMarketOut(**view.market.__dict__),
+        projected_margin=view.projected_margin,
+    )
 
 
 def _authoritative_line(board, bet_type: str) -> float:
@@ -6270,6 +6412,25 @@ class PoolSlotOut(BaseModel):
     #: Whether a submission could be accepted right now. Presentation guidance
     #: only; the engine refuses regardless of what was drawn.
     open_for_claims: bool
+    # ── UIRECON Wave 4B: what a SETTLED occurrence looks like ─────────────────
+    #
+    # All read-only, all projected from `betting/pool_result_view.py`, which
+    # derives the outcome from what settlement WROTE — the winner-distribution
+    # posting and the claims it paid — rather than re-evaluating the pool. Every
+    # field is None or zero on an unsettled occurrence.
+    #:
+    #: The engine's own classification string, verbatim.
+    settlement_classification: Optional[str] = None
+    #: The subjects that won. EMPTY when nobody picked a winner and the pot
+    #: rolled over or was swept — a real outcome, not a missing value.
+    winning_subject_ids:   list[int] = []
+    #: Their labels, from the same `_subject_labels` the pick control uses, so
+    #: the answer is drawn in the same words as the question.
+    winning_subject_labels: list[str] = []
+    #: Cents credited to the VIEWING GM by this occurrence's distribution.
+    my_return_cents: int = 0
+    #: won | lost | no_result | not_entered. None while unsettled.
+    my_result: Optional[str] = None
 
 
 class PoolSlateOut(BaseModel):
@@ -6351,12 +6512,46 @@ def league_pool_slate(
     # never a parameter: `my_subject_id` must not be answerable for a team the
     # caller does not hold. A commissioner with no team in the league reads the
     # slate with no claim of their own, which is correct — they have none.
+    # RESOLVED ONCE. The settled-outcome read below needs the same viewer, and
+    # asking twice would be two chances to ask differently.
+    viewer_team_id = _member_team_id(current_user, league_id, db)
     claim_views = {
         v.pool_instance_id: v for v in week_claim_view(
             db, league_id=league_id, season=league.season, week=week,
-            viewer_team_id=_member_team_id(current_user, league_id, db))
+            viewer_team_id=viewer_team_id)
     }
     _first = next(iter(claim_views.values()), None)
+
+    # ── UIRECON WAVE 4B · THE SETTLED OUTCOME, PER SLOT ──────────────────────
+    #
+    # READ-ONLY AND DERIVED FROM WHAT SETTLEMENT WROTE. `pool_result` reads the
+    # winner-distribution posting and the claims it paid; it does not re-run an
+    # evaluator, and it reports "nobody won" rather than guessing when a pot
+    # rolled over. Labels come from the SAME `_subject_labels` the pick control
+    # uses, so the answer is drawn in the same words as the question.
+    from betting.pool_claim_view import _subject_labels
+    from betting.pool_result_view import pool_result
+
+    _results: dict[int, dict] = {}
+    for _row in rows:
+        if not _row.settled:
+            continue
+        _view = pool_result(db, instance=_row, viewer_team_id=viewer_team_id)
+        _definition = definitions.get(_row.definition_key)
+        _scope = getattr(_definition, "scope", None)
+        _labels: dict[int, str] = {}
+        if _scope and _view.winning_subject_ids:
+            _labels = _subject_labels(db, league_id=league_id, week=_row.week,
+                                      scope=_scope,
+                                      subject_ids=_view.winning_subject_ids)
+        _results[_row.id] = {
+            "settlement_classification": _view.classification,
+            "winning_subject_ids": list(_view.winning_subject_ids),
+            "winning_subject_labels": [
+                _labels.get(sid, "") for sid in _view.winning_subject_ids],
+            "my_return_cents": _view.my_return_cents,
+            "my_result": _view.my_result,
+        }
 
     return PoolSlateOut(
         league_id=league_id,
@@ -6401,6 +6596,11 @@ def league_pool_slate(
                          if r.id in claim_views else 0),
                 open_for_claims=(claim_views[r.id].open_for_claims
                                  if r.id in claim_views else False),
+                # UIRECON Wave 4B — the settled view, from the read model that
+                # derives it out of what settlement wrote. `_results` is built
+                # once above rather than per slot so the ledger is read a
+                # bounded number of times for a four-slot week.
+                **_results.get(r.id, {}),
             )
             for r in rows
         ],

@@ -21,8 +21,10 @@
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
-import { PanelComposer, escapeHtml, note, sectionHeading } from './components.js';
-import { formatCredits } from './credits.js';
+import {
+  PENDING_FIGURE, PanelComposer, escapeHtml, note, sectionHeading,
+} from './components.js';
+import { formatCredits, formatSignedCredits } from './credits.js';
 import { CURRENT_WEEK, PAST_WEEK, WEEKS, weekBets, weekPools, yahooMatchups } from './data/week-data.js';
 import {
   LEAGUE_MODE_DEMO, LEAGUE_MODE_UNAVAILABLE, currentWeek, leagueMode,
@@ -74,7 +76,12 @@ export const WEEK_SUBTITLE = 'Yahoo matchups + FantasyStakes action';
 // UIRECON WAVE 1 — the locked public term. `BETS_HEADING` keeps its internal
 // name: it is imported by name in three suites and by `week.js` itself, and
 // the constant is not the copy.
-export const BETS_HEADING = 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE';
+// UIRECON WAVE 4B — the three result sections carry one heading grammar:
+// NAME · SWIPE. `4 SHOWN` was this section's alone and described a viewport
+// cap that a one-card carousel makes meaningless — a GM swipes to the next
+// card whether there are two or four. The cap itself is unchanged and is
+// still `BETS_SHOWN`; what is gone is a heading that named it.
+export const BETS_HEADING = 'FANTASYSTAKES MATCHUPS · SWIPE';
 
 /** The viewport cap the heading states. */
 export const BETS_SHOWN = 4;
@@ -227,27 +234,21 @@ export function yahooCard(m) {
 function yahooModule() {
   const production = leagueMode() !== LEAGUE_MODE_DEMO;
   const body = production ? providerMatchupBody() : demoMatchupBody();
-
-  // WP5 — `role="list"` ONLY WHEN THE MODULE HOLDS LISTITEMS. An empty or
-  // unavailable module draws an explanatory paragraph instead of cards, and a
-  // `<p>` inside `role="list"` is an ARIA violation — a list may hold only
-  // listitems. Same repair as the Action rails; a bound league reaches this
-  // routinely and the illustrative one never did.
-  const isList = body.includes('role="listitem"');
-
-  return (
-    '<section class="fs-wkmod" data-module="yahoo">' +
-    sectionHeading('YAHOO LEAGUE MATCHUPS · SWIPE') +
-    `<div class="fs-vcar" id="fs-yahoo-carousel"`
-    + `${isList ? ' role="list"' : ''}>${body}</div>` +
-    '</section>'
-  );
+  return resultSection({
+    title: 'YAHOO LEAGUE MATCHUPS · SWIPE',
+    id: 'yahoo',
+    items: body.items,
+    empty: body.empty,
+  });
 }
 
+
+// UIRECON WAVE 4B — CARDS, NOT PRE-WRAPPED MARKUP. Both Yahoo body functions
+// used to wrap each card in their own `.fs-vcar__item`; the shared
+// `resultSection()` owns the item wrapper for all three sections now, so these
+// return the cards and the empty state separately and let it decide.
 function demoMatchupBody() {
-  return yahooMatchups(activeWeek())
-    .map((m) => `<div class="fs-vcar__item" role="listitem">${yahooCard(m)}</div>`)
-    .join('');
+  return { items: yahooMatchups(activeWeek()).map(yahooCard), empty: '' };
 }
 
 /**
@@ -267,26 +268,23 @@ function demoMatchupBody() {
  */
 function providerMatchupBody() {
   if (leagueMode() === LEAGUE_MODE_UNAVAILABLE) {
-    return weekNote('unavailable',
-      'Your league’s matchups could not be loaded.');
+    return { items: [], empty: weekNote('unavailable',
+      'Your league’s matchups could not be loaded.') };
   }
   if (currentWeek() === null) {
-    return weekNote('no-week',
-      'No fantasy week has been published for this league yet.');
+    return { items: [], empty: weekNote('no-week',
+      'No fantasy week has been published for this league yet.') };
   }
   const rows = weekMatchups(activeWeek());
   if (rows === null) {
-    return weekNote('not-read',
-      `Week ${activeWeek()} has not been loaded.`);
+    return { items: [], empty: weekNote('not-read',
+      `Week ${activeWeek()} has not been loaded.`) };
   }
   if (!rows.length) {
-    return weekNote('empty',
-      `No matchups have been published for week ${activeWeek()}.`);
+    return { items: [], empty: weekNote('empty',
+      `No matchups have been published for week ${activeWeek()}.`) };
   }
-  return rows
-    .map((m) => `<div class="fs-vcar__item" role="listitem">`
-      + `${providerMatchupCard(m)}</div>`)
-    .join('');
+  return { items: rows.map(providerMatchupCard), empty: '' };
 }
 
 function weekNote(state, text) {
@@ -350,29 +348,19 @@ function betsModule() {
   // is never made up by inventing a wager that no protocol record supports.
   const production = actionMode() !== 'demo';
   const body = production ? versusBody() : demoBetsBody();
-
-  // WP5 — `role="list"` ONLY WHEN THE MODULE HOLDS LISTITEMS. An empty or
-  // unavailable module draws an explanatory paragraph instead of cards, and a
-  // `<p>` inside `role="list"` is an ARIA violation — a list may hold only
-  // listitems. Same repair as the Action rails; a bound league reaches this
-  // routinely and the illustrative one never did.
-  const isList = body.includes('role="listitem"');
-
-  return (
-    '<section class="fs-wkmod" data-module="bets">' +
-    sectionHeading(BETS_HEADING) +
-    `<div class="fs-vcar is-compact" id="fs-week-bets"`
-    + `${isList ? ' role="list"' : ''}>${body}</div>` +
-    '</section>'
-  );
+  return resultSection({
+    title: BETS_HEADING,
+    id: 'bets',
+    items: body.items,
+    empty: body.empty,
+  });
 }
 
 function demoBetsBody() {
-  return weekBets(activeWeek()).slice(0, BETS_SHOWN)
-    .map((card) => (
-      `<div class="fs-vcar__item is-compact" role="listitem">${lifecycleCard(card)}</div>`
-    ))
-    .join('');
+  return {
+    items: weekBets(activeWeek()).slice(0, BETS_SHOWN).map(lifecycleCard),
+    empty: '',
+  };
 }
 
 /**
@@ -389,7 +377,8 @@ function demoBetsBody() {
  */
 function versusBody() {
   if (actionMode() === ACTION_MODE_UNAVAILABLE) {
-    return weekNote('unavailable', 'Your wagers could not be loaded.');
+    return { items: [],
+      empty: weekNote('unavailable', 'Your wagers could not be loaded.') };
   }
   const rows = SECTIONS
     .flatMap((section) => sectionCards(section))
@@ -397,13 +386,22 @@ function versusBody() {
     .slice(0, BETS_SHOWN);
 
   if (!rows.length) {
-    return weekNote('empty', `No wagers for week ${activeWeek()}.`);
+    return { items: [],
+      empty: weekNote('empty', `No wagers for week ${activeWeek()}.`) };
   }
-  return rows
-    .map((card) => (
-      `<div class="fs-vcar__item is-compact" role="listitem">${lifecycleCard(card)}</div>`
-    ))
-    .join('');
+  // UIRECON WAVE 4B — A SETTLED WAGER IS A RESULT, NOT A LIFECYCLE TILE.
+  //
+  // Wrap Up is where a GM reads what happened, and `lifecycleCard` is built to
+  // report where a wager IS — which rail it sits on, whose decision is
+  // outstanding. For a settled one that is the wrong question, so it gets the
+  // shared result shell instead: opponent, market and line, stake, outcome and
+  // the credits it moved. An unsettled wager showing on a past week keeps the
+  // lifecycle card, because "still open" is genuinely what it has to say.
+  return {
+    items: rows.map((card) => (
+      card.settled ? matchupResultCard(card) : lifecycleCard(card))),
+    empty: '',
+  };
 }
 
 /* ── Module 3 · FantasyStakes Pools ─────────────────────────────────────────*/
@@ -457,21 +455,30 @@ function poolsModule() {
         + 'pass both catalog gates before a week can be drawn, and the '
         + 'league’s provider source readiness is not yet confirmed.'
       : 'This week’s Prop Pool slate could not be read for this session.';
-    return (
-      `<section class="fs-wkmod" data-module="pools" data-state="${escapeHtml(mode)}">` +
-      sectionHeading('FANTASYSTAKES PROP POOLS') +
-      '<div class="fs-poolrows" id="fs-week-pools"></div>' +
-      note(reason, { pending: true }) +
-      '</section>'
-    );
+    return resultSection({
+      title: 'FANTASYSTAKES PROP POOLS · SWIPE',
+      id: 'pools',
+      state: mode,
+      items: [],
+      empty: note(reason, { pending: true }),
+    });
   }
 
-  return (
-    `<section class="fs-wkmod" data-module="pools" data-state="${escapeHtml(mode)}">` +
-    sectionHeading(`FANTASYSTAKES PROP POOLS · ${pools.length} THIS WEEK`) +
-    `<div class="fs-poolrows" id="fs-week-pools">${pools.map(poolRow).join('')}</div>` +
-    '</section>'
-  );
+  // UIRECON WAVE 4B — A CAROUSEL, LIKE ITS TWO PEERS.
+  //
+  // This was a flat column of `.fs-poolrow` buttons while the two sections
+  // above it were carousels — three things a GM reads the same way, built three
+  // ways. A settled Pool draws the shared result card; an unsettled one keeps
+  // the compact row it has always had, because "still open" is a different
+  // statement from "here is what happened".
+  return resultSection({
+    title: 'FANTASYSTAKES PROP POOLS · SWIPE',
+    id: 'pools',
+    state: mode,
+    items: pools.map((pool) => (
+      pool.settled ? poolResultCard(pool) : poolRow(pool))),
+    empty: '',
+  });
 }
 
 /* ── Panel ──────────────────────────────────────────────────────────────────*/
@@ -658,12 +665,244 @@ export function bindWeek(panel, api) {
     });
   });
 
+  // UIRECON WAVE 4B — ONE OPENER FOR BOTH POOL PRESENTATIONS. An open Pool
+  // draws `.fs-poolrow[data-pool]`; a settled one draws the shared result card,
+  // which carries its id in the `data-card-id` every tappable card uses. Both
+  // open the same sheet, so both are bound here rather than one of them being
+  // silently inert.
   const pools = slateMode() === SLATE_MODE_DEMO
     ? weekPools(activeWeek()) : slateRows();
+  const openPool = (id) => {
+    const pool = pools.find((p) => String(p.catalogNumber) === String(id));
+    if (pool) api.openSheet(poolSheet(pool));
+  };
   panel.querySelectorAll('[data-pool]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const pool = pools.find((p) => String(p.catalogNumber) === el.dataset.pool);
-      if (pool) api.openSheet(poolSheet(pool));
+    el.addEventListener('click', () => openPool(el.dataset.pool));
+  });
+  panel.querySelectorAll('[data-card-action="pool"]').forEach((el) => {
+    onActivate(el, () => openPool(el.dataset.cardId));
+  });
+}
+
+/* ══ THE THREE RESULT SECTIONS — UIRECON Wave 4B ═══════════════════════════
+ *
+ * ONE SECTION BUILDER, ONE CARD SHELL, THREE KINDS OF RESULT.
+ *
+ * Wrap Up carried three modules built three ways: Yahoo was a `.fs-vcar`
+ * carousel, FantasyStakes wagers were the same carousel at a different fixed
+ * height, and Prop Pools were not a carousel at all — a flat list of
+ * `.fs-poolrow` buttons. Three headings, three geometries, three viewport
+ * behaviours, for three things a GM reads the same way: what happened.
+ *
+ * `resultSection()` below is the only thing that draws a heading and a viewport
+ * on this tab now, so "same heading treatment, same heading-to-carousel gap,
+ * same carousel width, same swipe behaviour" is a fact about one function
+ * rather than a promise repeated in three places.
+ *
+ * ── WHY THE CAROUSEL TURNED SIDEWAYS ────────────────────────────────────────
+ *
+ * The old one scrolled VERTICALLY inside a fixed `max-height`, with a
+ * deliberate peek at the next card's header — a height tuned against Rev 4.2
+ * card sizes. Rev 4.3 grew the cards and the peek became half a card, which is
+ * the "1.5 cards" defect the POR names.
+ *
+ * Re-tuning the pixel value is how it went stale the first time. A horizontal
+ * scroll-snap rail whose items are each exactly 100% of the viewport cannot
+ * show a partial next card at any card height, at any width, ever: one item
+ * fills the viewport by construction and `scroll-snap-stop: always` parks on
+ * the next one. The viewport's height is then the card's, so the three sections
+ * take the space their content needs and share the tab between them.
+ */
+
+/**
+ * One result section: heading, then a bounded one-card carousel.
+ *
+ * @param {{title: string, id: string, items: string[], empty?: string}} spec
+ * @returns {string}
+ */
+function resultSection(spec) {
+  const { title, id, items, empty = '', state = '' } = spec;
+  const hasItems = Array.isArray(items) && items.length > 0;
+
+  // WP5 — `role="list"` ONLY WHEN THE SECTION HOLDS LISTITEMS. An empty or
+  // unavailable section draws an explanatory paragraph instead of cards, and a
+  // `<p>` inside `role="list"` is an ARIA violation.
+  // AN EMPTY SECTION STILL TAKES THE ITEM WRAPPER. The rail is a flex row, and
+  // a bare paragraph inside it is a shrinkable flex item — it would render
+  // narrower than the cards its peers show, so the three sections would present
+  // three widths on the one week where one of them has nothing. The wrapper
+  // pins it to the same one-viewport width, WITHOUT `role="listitem"`, which
+  // belongs only to actual list entries.
+  const body = hasItems
+    ? items.map((item) => (
+      `<div class="fs-rescar__item" role="listitem">${item}</div>`
+    )).join('')
+    : (empty ? `<div class="fs-rescar__item">${empty}</div>` : '');
+
+  // `data-state` IS THE SECTION'S OWN ANSWER TO "WHY DOES IT LOOK LIKE THIS".
+  // The Pools module has carried it since the slate became authoritative —
+  // drawn, undrawn, unavailable — and it is how a reader (and P4B-3's
+  // acceptance suite) tells "this week has no Pools" apart from "this week's
+  // Pools could not be read". A section with nothing to distinguish states
+  // passes none rather than being given an empty one.
+  return (
+    `<section class="fs-wkmod" data-module="${escapeHtml(id)}"` +
+    `${state ? ` data-state="${escapeHtml(state)}"` : ''}>` +
+    sectionHeading(title) +
+    `<div class="fs-rescar" id="fs-${escapeHtml(id)}-carousel"` +
+    `${hasItems ? ' role="list"' : ''}>${body}</div>` +
+    '</section>'
+  );
+}
+
+/**
+ * The shared result-card shell.
+ *
+ * SAME SHELL, DIFFERENT DATA — which is the whole of §11. Outer box, heading
+ * row, status placement, figure area and footer are this function's; what goes
+ * in each slot is the caller's. A result type that has no footer meta passes
+ * none rather than being given an empty one to fill.
+ *
+ * `figures` IS A LIST, NOT A FIXED SET, because the three result kinds
+ * genuinely carry different counts — a wager has a stake and a credit outcome,
+ * a Prop Pool has a pot and a return, a Yahoo fixture has neither. Forcing a
+ * shape onto a type that does not have it is the failure §11 warns against.
+ *
+ * @param {{identity: string, badge?: string, badgeTone?: string,
+ *          context?: string, figures?: Array<{label: string, value: string,
+ *          tone?: string, exactCents?: number}>, footLabel?: string,
+ *          footValue?: string, accent?: string, tapAction?: string,
+ *          tapId?: string}} spec
+ * @returns {string}
+ */
+function resultCard(spec) {
+  return wagerCard({
+    identity: spec.identity,
+    badge: spec.badge || '',
+    badgeTone: spec.badgeTone || '',
+    context: spec.context || '',
+    figures: spec.figures || [],
+    footLabel: spec.footLabel || '',
+    footValue: spec.footValue || '',
+    accent: spec.accent || '',
+    tapAction: spec.tapAction || '',
+    tapId: spec.tapId || '',
+    className: 'fs-wcard--result',
+  });
+}
+
+/** The five words a settled wager may report, and the tone each carries. */
+const OUTCOME_WORDS = Object.freeze({
+  won: { word: 'WON', tone: 'positive', accent: 'done' },
+  lost: { word: 'LOST', tone: 'negative', accent: 'waiting' },
+  push: { word: 'PUSH', tone: 'neutral', accent: 'waiting' },
+  void: { word: 'VOID', tone: 'neutral', accent: 'waiting' },
+});
+
+/**
+ * One settled FantasyStakes Matchup, from the Action read model.
+ *
+ * NOTHING IS SETTLED HERE. `outcome` is `bets.status` carried through the read
+ * model verbatim, and `netCents` is the net the read model computed from the
+ * same row. The card reports both; it decides neither.
+ *
+ * @param {object} card an action card
+ * @returns {string}
+ */
+function matchupResultCard(card) {
+  const outcome = OUTCOME_WORDS[card.outcome]
+    // A settled wager whose row carries a status this product does not name is
+    // reported as settled without a word put in its mouth.
+    || { word: 'SETTLED', tone: 'neutral', accent: 'done' };
+
+  const figures = [
+    { label: 'Stake', value: formatCredits(card.yourStakeCents),
+      exactCents: card.yourStakeCents },
+  ];
+  if (Number.isInteger(card.netCents)) {
+    figures.push({
+      label: 'Credits',
+      value: formatSignedCredits(card.netCents),
+      exactCents: card.netCents,
+      tone: card.netCents > 0 ? 'positive' : (card.netCents < 0 ? 'negative' : ''),
     });
+  }
+
+  const line = card.line != null && card.line !== '' ? ` ${card.line}` : '';
+  return resultCard({
+    identity: card.opponent,
+    badge: outcome.word,
+    badgeTone: outcome.tone,
+    accent: outcome.accent,
+    context: `${card.marketLabel}${line}${card.mode ? ` · ${modeWord(card)}` : ''}`,
+    figures,
+    footLabel: card.week || '',
+  });
+}
+
+/** LOCKED / DYNAMIC as one word, for the card's context line. */
+function modeWord(card) {
+  return card.mode === 'dynamic' ? 'Dynamic' : 'Locked';
+}
+
+/** What a settled Prop Pool did for this GM, in one word. */
+const POOL_RESULT_WORDS = Object.freeze({
+  won: { word: 'WON', tone: 'positive', accent: 'done' },
+  lost: { word: 'LOST', tone: 'negative', accent: 'waiting' },
+  no_result: { word: 'NO WINNER', tone: 'neutral', accent: 'waiting' },
+  not_entered: { word: 'NOT ENTERED', tone: 'neutral', accent: 'waiting' },
+});
+
+/**
+ * One settled Prop Pool, from the slate's settled view.
+ *
+ * THE WINNING SUBJECT IS THE SERVER'S. `pool_result_view` derives it from the
+ * winner-distribution posting and the claims it paid — the surface neither
+ * evaluates the pool nor divides the pot, and an empty winner list means
+ * nobody picked one, which the card says rather than hides.
+ *
+ * @param {object} pool a slate row
+ * @returns {string}
+ */
+function poolResultCard(pool) {
+  const result = POOL_RESULT_WORDS[pool.myResult]
+    || { word: 'SETTLED', tone: 'neutral', accent: 'done' };
+
+  const figures = [
+    { label: 'Pot', value: formatCredits(pool.potCents),
+      exactCents: pool.potCents },
+    { label: 'Entered', value: pool.entered === undefined
+      ? PENDING_FIGURE : String(pool.entered) },
+  ];
+  if (pool.myResult === 'won' || pool.myReturnCents) {
+    figures.push({
+      label: 'Credits', value: formatSignedCredits(pool.myReturnCents),
+      exactCents: pool.myReturnCents,
+      tone: pool.myReturnCents > 0 ? 'positive' : '',
+    });
+  }
+
+  // THE PICK'S LABEL COMES FROM THE SERVED SUBJECT LIST — the same labels the
+  // pick control offered — so the answer is read back in the words the question
+  // was asked in. A claim whose subject is no longer in the served list falls
+  // back to the unresolved mark rather than to an id a GM cannot read.
+  const picked = (pool.subjects || []).find(
+    (s) => s.subject_id === pool.mySubjectId);
+  const mine = picked ? picked.label : PENDING_FIGURE;
+  const won = pool.winningSubjects && pool.winningSubjects.length
+    ? pool.winningSubjects.join(', ')
+    : 'No entry qualified';
+
+  return resultCard({
+    identity: pool.name,
+    badge: result.word,
+    badgeTone: result.tone,
+    accent: result.accent,
+    context: `Your pick: ${mine}`,
+    figures,
+    footLabel: 'Winner',
+    footValue: won,
+    tapAction: 'pool',
+    tapId: String(pool.catalogNumber),
   });
 }

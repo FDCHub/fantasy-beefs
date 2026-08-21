@@ -127,9 +127,17 @@ await withPage({ port: 9381, settleMs: 1700 }, async ({ evaluate }) => {
     };
     return {
       text: panel.textContent,
-      yahooCards: yahoo ? yahoo.querySelectorAll('.fs-vcar__item').length : -1,
+      // UIRECON WAVE 4B — COUNT LIST ENTRIES, NOT RAIL SLOTS. A section with
+      // nothing to show puts its explanatory note in the same one-viewport-wide
+      // wrapper the cards use, so the note occupies its own width rather than
+      // shrinking to its text; that wrapper deliberately carries no listitem
+      // role, because it is not one. Counting the role is what keeps "no cards
+      // were drawn" distinct from "one slot exists".
+      yahooCards: yahoo
+        ? yahoo.querySelectorAll('.fs-rescar__item[role="listitem"]').length : -1,
       yahooNote: note(yahoo),
-      betCards: bets ? bets.querySelectorAll('.fs-vcar__item').length : -1,
+      betCards: bets
+        ? bets.querySelectorAll('.fs-rescar__item[role="listitem"]').length : -1,
       betNote: note(bets),
     };
   `));

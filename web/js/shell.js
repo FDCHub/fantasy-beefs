@@ -94,7 +94,7 @@ import { bindChampionshipState } from './commissioner.js';
 import { bindRules, buildRulesPanel } from './rules.js';
 import {
   beginSession, composerSheet, endSession, setIssueHook, setMarketHook,
-  setQuoteHook,
+  setPreviewHook, setQuoteHook,
 } from './composer.js';
 import {
   explainQuoteRefusal, requestQuote,
@@ -117,6 +117,12 @@ import {
   explainPoolClaimRefusal, submitPoolClaim,
 } from './pool-claim-command.js';
 import { clearProductionData, loadProductionData, productionData } from './production-data.js';
+// UIRECON Wave 4A — the served Matchup Preview. Bound when the read lands,
+// marked unavailable when it does not, and unbound whenever a preview opens
+// so one matchup's lineups can never be drawn under another's name.
+import {
+  bindPreview, markPreviewUnavailable, servedPreview, unbindPreview,
+} from './preview-model.js';
 // Aliased: `bindLedger` above is the Ledger PANEL's event binder; these are the
 // MODEL's data binders. Two different jobs that wanted the same name.
 import {
@@ -448,15 +454,17 @@ export function openPreview(spec) {
     .find((o) => String(o.team_id) === String(spec.opponentId));
   if (!opponent) return;
 
-  openSheet(() => previewSheet({
+  // THE SHAPE THE SURFACE HAS ALWAYS TAKEN, and it is still the unbound answer.
+  //
+  // NO LINE, NO TOTAL, NO PROJECTION — and each is NULL rather than zero. Zero
+  // is a number, and `preview.js` reads a number as a quoted line: a spread of
+  // `0` means pick'em, not "unpriced". Null is what makes the absence legible
+  // to the surface that has to draw it.
+  const shell = {
     name: opponent.team_name,
     record: '',
     you: { name: actingTeamName() || 'Your team', record: '' },
     weekLabel: weekPhaseLabel(authoritativeWeek()) || '',
-    // NO LINE, NO TOTAL, NO PROJECTION — and each is NULL rather than zero.
-    // Zero is a number, and `preview.js` reads a number as a quoted line: a
-    // spread of `0` means pick'em, not "unpriced". Null is what makes the
-    // absence legible to the surface that has to draw it.
     ml: null,
     spread: null,
     total: null,
@@ -465,7 +473,45 @@ export function openPreview(spec) {
     yourLineup: [],
     opponentLineup: [],
     settled: false,
+  };
+
+  // ── UIRECON WAVE 4A · THE PREVIEW HAS A READ MODEL NOW ───────────────────
+  //
+  // What stood here handed the sheet nulls and empty lineups unconditionally,
+  // so every narrative branch took its "nothing is bound" path and LINEUPS drew
+  // its empty state — on a demo seeded with nine starters and a projection per
+  // player per week, priced by those very rows. The gap was never the data; it
+  // was that nothing read it.
+  //
+  // IT OPENS FIRST AND FILLS SECOND. The sheet is drawn immediately from the
+  // shell above so a tap is never waiting on a request, and the served view
+  // re-renders it in place when it lands. A read that fails leaves the unbound
+  // preview standing, which is the honest state for a surface that could not
+  // ask.
+  unbindPreview();
+  // PUSHED FROM THE COMPOSER, OPENED FROM A CARD. Reached from inside the
+  // composer the preview must stack, so closing it returns to a composer still
+  // holding the market, mode and stake the GM entered (§10); reached from a
+  // discovery card there is nothing underneath and it opens as one level.
+  const present = spec.push ? pushSheet : openSheet;
+  present(() => previewSheet(shell, {
+    served: servedPreview(),
+    marketId: spec.marketId ?? null,
   }));
+
+  const leagueId = currentLeagueId();
+  const week = authoritativeWeek();
+  if (leagueId === null || week === null) return;
+
+  apiFetch(`/league/${leagueId}/versus/preview`
+    + `?week=${week}&opponent_team_id=${opponent.team_id}`)
+    .then((view) => {
+      bindPreview(view);
+      renderTopSheet();
+    })
+    .catch(() => {
+      markPreviewUnavailable();
+    });
 }
 
 export function openComposer(spec) {
@@ -892,6 +938,10 @@ async function bindAuthoritativeData() {
     // that could reach one without the other would show a price for a market it
     // could not name.
     setMarketHook({ marketFor });
+    // UIRECON Wave 4A — one preview path. Installed on the same condition as
+    // the board hook, because a preview explains a board: a composer that could
+    // reach the preview without one would be explaining a market it cannot name.
+    setPreviewHook(openPreview);
     setRespondHook({
       accept: acceptChallenge,
       decline: declineChallenge,
@@ -908,6 +958,7 @@ async function bindAuthoritativeData() {
     setRespondHook(null);
     setQuoteHook(null);
     setMarketHook(null);
+    setPreviewHook(null);
   }
 
   // Presentation capability, from the server's own answer. It decides what is
@@ -1266,6 +1317,8 @@ function clearAuthoritativeData() {
   // WP3C.2 — and so does the market. A held board is last week's prices for
   // last session's league.
   setMarketHook(null);
+  setPreviewHook(null);
+  unbindPreview();
   unbindCommissioner();
   unbindSettings();
   unbindSlate();

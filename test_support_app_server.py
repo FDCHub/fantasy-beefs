@@ -350,6 +350,39 @@ _SEED_PRICEABLE_VERSUS = """
     _qweek = {slate_week}
     _qctxv = _qctx(db, gm_team.id)
 
+    # ── UIRECON WAVE 4A · PROJECT THE ROWS THE ENGINE ACTUALLY READS ─────────
+    #
+    # `_fetch_starters_for_odds` takes the first `N_START` roster rows BY ID, so
+    # when `_SEED_ACTION` has already seeded a roster its players are the ones
+    # priced — and its projections are deliberately written under the wrong
+    # (season, source), which is what the note above this block describes. The
+    # nine players added below therefore sat behind them: the pairing priced,
+    # and every projection the Matchup Preview read was 0.0.
+    #
+    # That was invisible while nothing read the lineup. The Wave 4A preview read
+    # model reads exactly what the simulator is handed, so the fixture has to
+    # give those rows a projection in the LEAGUE'S OWN context or the suite
+    # certifies a lineup of zeroes.
+    #
+    # ADDITIVE, AND ONLY WHERE ONE IS MISSING. Existing rows are left alone, so
+    # the refusal-path team below still has no lineup and `_SEED_ACTION`'s own
+    # wrong-context rows are still there to be resolved past.
+    for _qt, _qbase in ((gm_team, 12.4), (comm_team, 11.9)):
+        for _qidx, _qrow in enumerate(
+                db.query(_QR).filter(_QR.team_id == _qt.id)
+                  .order_by(_QR.id).limit(9).all()):
+            _qhave = (db.query(_QPr)
+                      .filter(_QPr.player_id == _qrow.player_id,
+                              _QPr.week == _qweek,
+                              _QPr.season == _qctxv.season,
+                              _QPr.source == _qctxv.source).first())
+            if _qhave is None:
+                db.add(_QPr(player_id=_qrow.player_id, week=_qweek,
+                            season=_qctxv.season,
+                            projected_points=round(_qbase + _qidx * 0.7, 1),
+                            source=_qctxv.source))
+    db.flush()
+
     for _qt, _qnfl, _qbase in ((gm_team, "KC", 12.4), (comm_team, "PHI", 11.9)):
         for _qi in range(9):
             _qpl = _QP(name=_qt.team_name[:4] + "-Q" + str(_qi),

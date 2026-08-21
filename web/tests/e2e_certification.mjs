@@ -62,7 +62,7 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
         ).length;
 
         const rails = [...panel.querySelectorAll('.fs-rail')];
-        const snaps = [...panel.querySelectorAll('.fs-carousel, .fs-vcar')];
+        const snaps = [...panel.querySelectorAll('.fs-carousel, .fs-rescar')];
 
         return {
           docWidth: document.documentElement.scrollWidth,
@@ -84,7 +84,14 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
           railsScrollable: rails.every(x => x.scrollWidth <= x.clientWidth + 1
             || getComputedStyle(x).overflowX === 'auto'),
           railsOverflowing: rails.filter(x => x.scrollWidth > x.clientWidth + 1).length,
-          snapsSnap: snaps.every(x => getComputedStyle(x).scrollSnapType.startsWith('y')),
+          // UIRECON WAVE 4B — CAROUSELS SNAP; THE AXIS IS THE CAROUSEL'S OWN.
+          // Play's rail still runs down the page and Wrap Up's now runs across
+          // it, because a horizontal rail whose items are each one viewport
+          // wide needs no pixel height cap to present one card — and the cap
+          // the vertical one needed is what went stale against Rev 4.3's taller
+          // cards. What both must do, and what this has always been about, is
+          // park on a card rather than drift between two.
+          snapsSnap: snaps.every(x => /^[xy] /.test(getComputedStyle(x).scrollSnapType)),
           // A card that overflows its own box slices text through the glyphs.
           // Short phones are where this bites, so it is measured at each size.
           clippedCards: [...panel.querySelectorAll('.fs-wcard, .fs-pool, .fs-poolrow, .fs-gmcard')]
@@ -111,7 +118,7 @@ await withPage({ port: 9341 }, async ({ evaluate, setViewport }) => {
           `${r.railsOverflowing} rail(s) overflowing, all reachable`);
       }
       if (tab === 'league' || tab === 'week') {
-        check(`${tab}: vertical carousels snap`, r.snapsSnap === true);
+        check(`${tab}: carousels snap to a card`, r.snapsSnap === true);
       }
     }
 

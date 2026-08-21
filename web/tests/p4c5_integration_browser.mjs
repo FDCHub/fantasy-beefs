@@ -293,11 +293,25 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
         const navRect = nav ? nav.getBoundingClientRect() : null;
         const strip = panel.querySelector('.fs-strip');
         const head = panel.querySelector('.fs-heading__text, .fs-tabhdr__title');
+        // UIRECON WAVE 4B — THE SCROLL CONTAINER IS AN ANCESTOR, NOT ALWAYS
+        // THE PARENT. This looked at el.parentElement alone, which was enough
+        // while Wrap Up's carousel scrolled VERTICALLY: stacked items never
+        // reached past the right edge, so nothing off-screen had a scrolling
+        // grandparent. A horizontal rail puts cards 2..N genuinely off-screen
+        // by design, and their parent is the item wrapper rather than the rail.
+        // The claim is unchanged — nothing escapes the region that scrolls it —
+        // and the walk is what makes it true of a region two levels up.
+        const inAScroller = (el) => {
+          for (let p = el.parentElement; p; p = p.parentElement) {
+            const ox = getComputedStyle(p).overflowX;
+            if (ox === 'auto' || ox === 'scroll') return true;
+            if (p === panel) return false;
+          }
+          return false;
+        };
         const overflowing = [...panel.querySelectorAll('*')].filter((el) => {
           const r = el.getBoundingClientRect();
-          return r.width > 0 && r.right > doc.clientWidth + 1
-            && getComputedStyle(el.parentElement || el).overflowX !== 'auto'
-            && getComputedStyle(el.parentElement || el).overflowX !== 'scroll';
+          return r.width > 0 && r.right > doc.clientWidth + 1 && !inAScroller(el);
         }).length;
         return {
           viewport: doc.clientWidth,
@@ -311,7 +325,7 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
             ? strip.scrollWidth > strip.clientWidth + 1 : false,
           headerClipped: head
             ? head.scrollWidth > head.clientWidth + 1 : false,
-          rails: panel.querySelectorAll('.fs-rail, .fs-vcar, .fs-zone').length,
+          rails: panel.querySelectorAll('.fs-rail, .fs-rescar, .fs-zone').length,
           overflowing,
         };
       `));

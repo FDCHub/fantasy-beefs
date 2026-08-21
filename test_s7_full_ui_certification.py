@@ -347,10 +347,15 @@ _assert("the Ledger title is the locked wording",
         APP.get("ledgerTitle") == "FANTASYSTAKES LEDGER")
 _assert("the Rules title is the locked wording",
         APP.get("rulesTitle") == "RULES & SETTINGS")
-# WP3C — Rev 4.3 §11 removed the redundant directional arrow from every swipe
-# heading. Wording otherwise unchanged and still pinned exactly.
+# WP3C — Rev 4.3 §11 removed the redundant directional arrow.
+#
+# UIRECON WAVE 4B — and `4 SHOWN` went with the vertical carousel it
+# described. All three Wrap sections carry one heading grammar now,
+# NAME · SWIPE, and a one-card rail makes a shown-count meaningless: a GM
+# swipes to the next card whether there are two or four. The four-card cap
+# itself is unchanged and still lives in `week.BETS_SHOWN`.
 _assert("The Week's bets heading is the locked viewport treatment",
-        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE")
+        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · SWIPE")
 _assert("no rendered heading carries a directional arrow (§11)",
         "↕" not in ALL_PANELS, "↕ found")
 _assert("the legal line is exact and lives on Rules & Settings only",

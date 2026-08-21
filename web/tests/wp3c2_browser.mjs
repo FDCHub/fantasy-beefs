@@ -477,9 +477,15 @@ await withPage({ port: 9463 }, async ({ evaluate, reload, setViewport }) => {
     };
   })();`);
 
+  // UIRECON WAVE 4A — MATCHUP BECAME ON OFFER, and the order is otherwise the
+  // one this suite locked. The old first block was a label/value pair naming the
+  // two teams, which the sheet subtitle already carried — two statements of one
+  // fact, and the second of them was the one a GM read first. That slot now
+  // carries the MARKET the GM is being offered, which is the thing the analysis
+  // below it explains and the thing the sheet could not previously name.
   check('the locked analysis order is intact',
     preview.titles.join(' → ')
-      === 'MATCHUP → WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+      === 'ON OFFER → WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
     preview.titles.join(' → '));
   check('and it carries no market cells and no Over/Under control',
     preview.hasMarkets === false);

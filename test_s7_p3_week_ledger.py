@@ -400,8 +400,13 @@ _assert("the Yahoo module identifies official Yahoo matchups",
         "YAHOO LEAGUE MATCHUPS" in WEEK_PANEL)
 _assert("Yahoo cards are badged as fixtures, not wagers",
         WEEK_PANEL.count(">YAHOO<") == 6, str(WEEK_PANEL.count(">YAHOO<")))
-_assert("the Pools module is rows rather than a second carousel",
-        "fs-poolrows" in WEEK_PANEL)
+# UIRECON WAVE 4B — the Pools module is the same carousel as its two peers now.
+# An OPEN Pool still draws its compact row inside it, because "you have a pick
+# to make" is a different statement from "here is what happened".
+_assert("the Pools module shares the one Wrap carousel",
+        'id="fs-pools-carousel"' in WEEK_PANEL and "fs-rescar" in WEEK_PANEL)
+_assert("an open Pool keeps its compact row inside that carousel",
+        "fs-poolrow" in WEEK_PANEL)
 
 print("\nAn unquoted moneyline is drawn as unquoted, never derived from the spread")
 
@@ -474,18 +479,26 @@ _assert("the memo states the pending-hold rule to the GM",
 
 print("\nLayout rules asserted where they are expressed")
 
-vcar = _rule(LEDGER_CSS, ".fs-vcar")
-_assert("the week carousels are vertical", "overflow-y: auto" in vcar)
+# UIRECON WAVE 4B — THE CAROUSEL TURNED SIDEWAYS, AND ALL THREE MODULES SHARE
+# IT. `.fs-vcar` scrolled vertically inside a fixed `max-height` tuned against
+# Rev 4.2 card sizes; Rev 4.3's taller cards turned its deliberate peek at the
+# next card's title into half a visible card. The replacement has no height in
+# it to go stale: items each exactly one viewport wide, so one card fills the
+# rail by construction at any card height and any screen width.
+rescar = _rule(LEDGER_CSS, ".fs-rescar")
+_assert("the week carousels are horizontal", "overflow-x: auto" in rescar)
 _assert("they snap, so a card is never presented half-shown",
-        "scroll-snap-type: y mandatory" in vcar)
-_assert("they do not scroll sideways", "overflow-x: hidden" in vcar)
+        "scroll-snap-type: x mandatory" in rescar)
+_assert("they do not scroll vertically", "overflow-y: hidden" in rescar)
+_assert("no pixel height caps a rail", "max-height" not in rescar)
 
-item = _rule(LEDGER_CSS, ".fs-vcar__item")
+item = _rule(LEDGER_CSS, ".fs-rescar__item")
 _assert("every scroll settles on a card boundary",
         "scroll-snap-align: start" in item and "scroll-snap-stop: always" in item)
+_assert("one item is exactly one viewport wide", "flex: 0 0 100%" in item)
 
 poolrows = _rule(LEDGER_CSS, ".fs-poolrows")
-_assert("the Pools module is a plain column, not a scroller",
+_assert("an open Pool's row is a plain column, not a scroller of its own",
         "flex-direction: column" in poolrows and "overflow" not in poolrows)
 
 wkscroll = _rule(LEDGER_CSS, ".fs-wkscroll")

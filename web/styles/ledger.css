@@ -58,9 +58,9 @@
 }
 
 /* ── The Week · three modules ──────────────────────────────────────────────
- * The column scrolls; each module sizes to its own content. Yahoo and Bets
- * carry bounded snap carousels so a long slate cannot push Pools off the
- * dashboard. */
+ * The column scrolls; each module sizes to its own content. All three carry the
+ * same bounded snap carousel, so no one module can push the other two off the
+ * dashboard and none of them is built differently from its peers. */
 
 .fs-wkscroll {
   flex: 1 1 auto;
@@ -72,28 +72,84 @@
 
 .fs-wkmod + .fs-wkmod { margin-top: var(--fs-space-2); }
 
-/* Vertical snap carousel — one card presented at a time, with a deliberate
- * peek at the next card's identity line so the rail reads as scrollable. The
- * height is set so that peek lands on the next card's HEADER rather than part
- * way through its market row: a card sliced through its middle looks like a
- * layout fault, while a visible next-card title reads as an invitation. */
-.fs-vcar {
-  max-height: 180px;
-  overflow-y: auto;
-  overflow-x: hidden;
+/* ══ THE RESULT CAROUSEL — UIRECON Wave 4B ═════════════════════════════════
+ *
+ * ONE COMPLETE CARD AT A TIME, AND IT CANNOT BE OTHERWISE.
+ *
+ * WHAT THIS REPLACES. `.fs-vcar` scrolled VERTICALLY inside a fixed
+ * `max-height`, with a deliberate peek at the next card's header — a height
+ * measured against Rev 4.2 card sizes. Rev 4.3 grew those cards and the peek
+ * became half a card, which is the "one and a half cards" the POR names. The
+ * previous repair for that kind of drift was to re-tune the pixel value, which
+ * is exactly how it went stale the first time.
+ *
+ * SO THE GEOMETRY DOES THE WORK INSTEAD. Each item is exactly 100% of the
+ * viewport's width, so one item fills it by construction — at any card height,
+ * at any viewport width, forever. There is no number here to go stale, and no
+ * arrangement in which a second card is partly visible.
+ *
+ * THE HEIGHT IS THE CARD'S. A horizontal rail takes its height from its tallest
+ * item rather than from a cap, which is what lets the three sections share the
+ * tab: each takes what its content needs, and none of them can consume the
+ * screen the way a 180px vertical viewport did when the section above it had
+ * four cards and the one below had one.
+ *
+ * CONTAINED, PER THE SHELL POR. `overflow-x: auto` on the rail and items that
+ * are exactly one viewport wide mean the scroll lives here and never reaches
+ * the tab or the document. */
+
+.fs-rescar {
+  display: flex;
+  gap: var(--fs-c-gap-cell);
+  overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  scroll-snap-type: y mandatory;
+  scroll-snap-type: x mandatory;
   scrollbar-width: none;
+  /* The rail is as wide as its section and no wider — `min-width: 0` is what
+   * stops a wide card from widening the flex column it sits in, which is how a
+   * carousel leaks horizontal overflow onto the tab. */
+  min-width: 0;
+  /* Items stretch to the tallest, so the three cards in one section are one
+   * height and the section is that height. */
+  align-items: stretch;
 }
 
-.fs-vcar.is-compact { max-height: 162px; }
+.fs-rescar::-webkit-scrollbar { display: none; }
 
-.fs-vcar::-webkit-scrollbar { display: none; }
-
-.fs-vcar__item {
-  padding-bottom: var(--fs-space-2);
+/* EXACTLY ONE VIEWPORT WIDE. `flex: 0 0 100%` is the whole mechanism: it cannot
+ * shrink to let a neighbour peek in and cannot grow past the viewport. The
+ * `gap` above sits BETWEEN items and is therefore never visible at rest — the
+ * next card starts a full viewport away. */
+.fs-rescar__item {
+  flex: 0 0 100%;
+  min-width: 0;
   scroll-snap-align: start;
   scroll-snap-stop: always;
+  display: flex;
+}
+
+/* The card fills its item, so two sections' cards line up even when one has
+ * more to say than the other. */
+.fs-rescar__item > * { flex: 1 1 auto; min-width: 0; }
+
+/* THE SHARED RESULT SHELL. Outer box, and nothing that distinguishes one result
+ * kind from another: a Yahoo fixture, a settled Matchup and a settled Prop Pool
+ * are the same card with different data in it. The left-edge accent is the
+ * existing `.fs-wcard` lifecycle treatment and carries the outcome, which is
+ * the one thing that legitimately differs. */
+.fs-wcard--result {
+  height: 100%;
+  min-width: 0;
+}
+
+/* A result card's foot carries a winner or a week — text, not a control — so it
+ * wraps rather than truncating the one fact the card is about. */
+.fs-wcard--result .fs-wcard__footvalue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A Yahoo fixture is not a wager: no accent bar unless it is settled, and the
@@ -101,7 +157,9 @@
 .fs-wcard--yahoo .fs-wcard__badge { letter-spacing: .12em; }
 
 /* ── The Week · Pools rows ─────────────────────────────────────────────────
- * All four visible together, no carousel of their own. */
+ * An OPEN Pool still draws this compact row — "you have a pick to make" is a
+ * different statement from "here is what happened", and it belongs in the
+ * carousel item rather than in a result card it has no result to fill. */
 
 .fs-poolrows {
   display: flex;

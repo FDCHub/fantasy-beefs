@@ -550,21 +550,33 @@ const preview = previewSheet(matchup('destroyers'));
 // THE ORDER IS INVERTED. Analysis now comes before the dense lineup table —
 // §10's "analysis must appear before dense lineup content" — where Rev 4.2 put
 // Sportsbook View and the lineups first and the analysis last.
-for (const heading of ['MATCHUP', 'WHY THE LINE LOOKS THIS WAY', 'THE READ',
+// UIRECON WAVE 4A — THE MATCHUP IS NAMED ONCE.
+//
+// A `MATCHUP` block listing both team names sat under a sheet subtitle
+// that had just given both team names — the same two facts twice inside
+// about sixty pixels, and in the bound state the second copy carried two
+// blank values. The slot now carries what the subtitle does not: the
+// market on offer (`ON OFFER`) for a live pairing, or the final score
+// (`RESULT`) for a settled one. An UNBOUND preview has neither, so it
+// renders no second block at all — which is what these fixtures are.
+for (const heading of ['WHY THE LINE LOOKS THIS WAY', 'THE READ',
   'LINEUPS']) {
   check(`the preview carries ${heading}`, preview.body.includes(heading));
 }
+check('the unbound preview lists no second copy of the two teams',
+  !preview.body.includes('fs-prev__title">MATCHUP<'));
 check('the preview carries NO odds-market block (§10)',
   !preview.body.includes('SPORTSBOOK VIEW')
   && !/data-market/.test(preview.body));
-check('matchup identity comes first',
-  preview.body.indexOf('MATCHUP') < preview.body.indexOf('WHY THE LINE'));
+check('the explanation is the first thing in the sheet body',
+  preview.body.indexOf('WHY THE LINE') >= 0
+  && !/fs-prev__title">(?!WHY THE LINE)/.test(preview.body.slice(0, 200)));
 check('Why The Line precedes The Read',
   preview.body.indexOf('WHY THE LINE') < preview.body.indexOf('THE READ'));
 check('and BOTH analysis sections precede the lineups',
   preview.body.indexOf('THE READ') < preview.body.indexOf('LINEUPS'));
-check('the identity block is open and not collapsible',
-  /fs-prev__head is-static/.test(preview.body));
+check('an unbound preview has no static identity block to draw',
+  !/fs-prev__head is-static/.test(preview.body));
 check('the analysis sections are open by default; the lineups are not',
   /is-open[^]*WHY THE LINE/.test(preview.body)
   && preview.body.includes('aria-expanded="false"'));

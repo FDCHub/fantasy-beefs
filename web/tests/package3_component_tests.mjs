@@ -160,7 +160,16 @@ section('A Yahoo matchup opens the shared Matchup Preview');
 const yahooPreview = previewSheet(slate[1]);
 // WP3C — the Rev 4.3 §10 preview: no market block, analysis before lineups.
 // See the equivalent note in package2_component_tests.mjs.
-for (const heading of ['MATCHUP', 'WHY THE LINE LOOKS THIS WAY', 'THE READ',
+// UIRECON WAVE 4A — THE MATCHUP IS NAMED ONCE.
+//
+// A `MATCHUP` block listing both team names sat under a sheet subtitle
+// that had just given both team names — the same two facts twice inside
+// about sixty pixels, and in the bound state the second copy carried two
+// blank values. The slot now carries what the subtitle does not: the
+// market on offer (`ON OFFER`) for a live pairing, or the final score
+// (`RESULT`) for a settled one. An UNBOUND preview has neither, so it
+// renders no second block at all — which is what these fixtures are.
+for (const heading of ['WHY THE LINE LOOKS THIS WAY', 'THE READ',
   'LINEUPS']) {
   check(`the preview carries ${heading}`, yahooPreview.body.includes(heading));
 }
@@ -199,10 +208,18 @@ check('the heading is the locked Rev 4.2 wording',
 // WP3C — Rev 4.3 §11 removed the redundant directional arrow. The claim is
 // otherwise unchanged: the heading states the VIEWPORT treatment (how many are
 // shown) rather than a record count, and the word SWIPE carries the affordance.
-// UIRECON WAVE 1 — the locked public term. The claim is unchanged: the
-// heading states the VIEWPORT treatment rather than a record count.
+// UIRECON WAVE 1 — the locked public term.
+//
+// UIRECON WAVE 4B — `4 SHOWN` IS GONE, AND THE CAP IT NAMED IS NOT. The three
+// Wrap sections carry one heading grammar now (NAME · SWIPE), and a one-card
+// carousel makes a shown-count meaningless: a GM swipes to the next card
+// whether there are two or four. `BETS_SHOWN` still bounds the section, which
+// the next assertion holds to, so what this wave removed is a heading that
+// described the viewport — not the viewport itself.
 check('the locked heading states the viewport treatment, not a record count',
-  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · SWIPE', BETS_HEADING);
+check('and the four-card cap it used to advertise still bounds the section',
+  BETS_SHOWN === 4, String(BETS_SHOWN));
 check('and it carries no public-facing Versus',
   !BETS_HEADING.includes('VERSUS'), BETS_HEADING);
 check('and it carries no directional arrow', !BETS_HEADING.includes('↕'));
@@ -213,7 +230,7 @@ check('the bets carry the Package 2 wager grammar',
 check('a bet is tappable through the shared wager grammar',
   week.includes('data-card-action="wager"'));
 
-section('FantasyStakes Pools shows all four launch Pools without a carousel');
+section('FantasyStakes Pools shows all four launch Pools, one card at a time');
 
 const currentPools = weekPools(CURRENT_WEEK);
 check('four Pools', currentPools.length === 4, String(currentPools.length));
@@ -222,8 +239,19 @@ check('the four are the governing catalog’s launch Pools',
     === POOLS.map((p) => p.catalogNumber).join(','));
 check('every Pool keeps its catalog rule',
   currentPools.every((p, i) => p.rule === POOLS[i].rule));
-check('the Pools module is rows, not a second carousel',
-  week.includes('fs-poolrows') && !week.includes('id="fs-week-pools" class="fs-vcar'));
+// UIRECON WAVE 4B — THE POOLS MODULE IS A CAROUSEL NOW, DELIBERATELY. It was
+// the one Wrap section built differently from its two peers: a flat column of
+// buttons beside two carousels, for a third thing a GM reads exactly the same
+// way. All three share `resultSection()` today. An OPEN Pool still draws its
+// compact `.fs-poolrow` inside the rail — "you have a pick to make" is a
+// different statement from "here is what happened" — so the row survives; what
+// changed is the container it sits in.
+check('the Pools module shares the one Wrap carousel',
+  week.includes('id="fs-pools-carousel"') && week.includes('fs-rescar'));
+check('an open Pool keeps its compact row inside that carousel',
+  week.includes('fs-poolrow'));
+check('the retired vertical carousel is gone from every module',
+  !week.includes('fs-vcar'));
 check('rollover stays a modifier on a subject type',
   currentPools.every((p) => ['TEAM', 'MATCHUP'].includes(p.scope)));
 

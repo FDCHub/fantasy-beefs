@@ -238,10 +238,23 @@ await withPage({ port: 9473 }, async ({ evaluate, setViewport }) => {
       String(preview.banner));
     check('no claim of official standing survives anywhere in it',
       !/official\s+yahoo/i.test(preview.text));
+    // UIRECON WAVE 4A — MATCHUP IS GONE AND ON OFFER STANDS IN ITS SLOT.
+    //
+    // The old first block restated the two team names the sheet subtitle
+    // already carried. Its slot now names the MARKET the GM is being offered,
+    // which is what the three analysis modules below it explain — and which is
+    // fetched, so it is present exactly when this session has a served market
+    // to name and absent when it does not. The pending family legitimately has
+    // none. What is invariant, and is what this assertion has always been
+    // about, is the ANALYSIS ORDER underneath.
+    const analysis = preview.titles
+      .filter((t) => t !== 'ON OFFER' && t !== 'RESULT');
     check('the locked analysis order is untouched',
-      preview.titles.join(' → ')
-        === 'MATCHUP → WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+      analysis.join(' → ')
+        === 'WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
       preview.titles.join(' → '));
+    check('and nothing restates the pairing the sheet header already names',
+      !preview.titles.includes('MATCHUP'), preview.titles.join(' → '));
     if (EXPECT.family === 'demo') {
       check('a Demo preview carries NO Yahoo wording at all',
         !/Yahoo/.test(preview.text), 'no Yahoo mention');

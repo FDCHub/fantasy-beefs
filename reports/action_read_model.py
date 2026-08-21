@@ -171,6 +171,15 @@ class ActionCard:
     # Settlement, when it exists
     settled: bool = False
     net_cents: Optional[int] = None
+    #: UIRECON Wave 4B — the persisted terminal status of THIS GM's bet, exactly
+    #: as `bets.status` holds it: `won`, `lost`, `push`, `void`. None while the
+    #: wager is still open.
+    #:
+    #: REPORTED, NOT DERIVED. A Wrap result card needs to say what happened, and
+    #: inferring it from the sign of `net_cents` would call a push and a void the
+    #: same thing and would invent an outcome for a zero-net win. The row already
+    #: knows; this carries it.
+    outcome: Optional[str] = None
 
     created_at: Optional[str] = None
     expires_at: Optional[str] = None
@@ -325,7 +334,7 @@ def _final_lock(db: Session, challenge_id: int) -> Optional[ChallengeFinalLock]:
 
 
 def _settlement(db: Session, challenge_id: int, team_id: int
-                ) -> tuple[bool, Optional[int]]:
+                ) -> tuple[bool, Optional[int], Optional[str]]:
     """Whether this GM's side has settled, and their net in cents.
 
     SETTLED MEANS THE GM'S OWN BET SETTLED. A challenge is not "completed"
@@ -338,19 +347,24 @@ def _settlement(db: Session, challenge_id: int, team_id: int
                   .filter(Wallet.team_id == team_id).all()}
     mine = [b for b in _bets_for(db, challenge_id) if b.wallet_id in wallet_ids]
     if not mine:
-        return False, None
+        return False, None, None
     bet = mine[0]
     if bet.status in ("pending", None):
-        return False, None
+        return False, None, None
 
+    # THE STATUS IS CARRIED THROUGH VERBATIM. It is the row's own terminal word
+    # and the only authority on what happened; the net below is arithmetic ON
+    # that word, not a substitute for it.
     stake_cents = int(round(float(bet.amount) * 100))
     if bet.status == "won":
         # The payout net of the stake — what the GM is up on the wager.
-        return True, int(round(stake_cents * float(bet.odds))) - stake_cents
+        return (True,
+                int(round(stake_cents * float(bet.odds))) - stake_cents,
+                bet.status)
     if bet.status == "lost":
-        return True, -stake_cents
+        return True, -stake_cents, bet.status
     # push / void and anything else terminal: no gain, no loss.
-    return True, 0
+    return True, 0, bet.status
 
 
 def gm_action_state(db: Session, *, team_id: int, league_id: int,
@@ -393,7 +407,7 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
                        else challenge.challenger_team_id)
         opponent = db.query(Team).filter(Team.id == opponent_id).first()
         proposal = _active_proposal(db, challenge)
-        settled, net_cents = _settlement(db, challenge.id, team_id)
+        settled, net_cents, outcome = _settlement(db, challenge.id, team_id)
         owner = decision_team_id(challenge)
         is_anchor = challenge.challenger_team_id == team_id
 
@@ -476,6 +490,7 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
             final_locked=final_lock is not None,
             settled=settled,
             net_cents=net_cents,
+            outcome=outcome,
             created_at=(challenge.created_at.isoformat()
                         if challenge.created_at else None),
             expires_at=(challenge.active_response_expires_at.isoformat()

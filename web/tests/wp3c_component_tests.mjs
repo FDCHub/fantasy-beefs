@@ -247,9 +247,18 @@ const previewModel = {
 const prev = previewSheet(previewModel);
 const prevTitles = [...prev.body.matchAll(/fs-prev__title">([^<]*)/g)].map((m) => m[1]);
 
+// UIRECON WAVE 4A — THE MATCHUP IS NAMED ONCE.
+//
+// A `MATCHUP` block listing both team names sat under a sheet subtitle
+// that had just given both team names — the same two facts twice inside
+// about sixty pixels, and in the bound state the second copy carried two
+// blank values. The slot now carries what the subtitle does not: the
+// market on offer (`ON OFFER`) for a live pairing, or the final score
+// (`RESULT`) for a settled one. An UNBOUND preview has neither, so it
+// renders no second block at all — which is what these fixtures are.
 check('the section order is the locked one',
   prevTitles.join(' → ')
-    === 'MATCHUP → WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+    === 'WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
   prevTitles.join(' → '));
 check('there is no SPORTSBOOK VIEW block',
   !prev.body.includes('SPORTSBOOK VIEW'));
@@ -464,8 +473,11 @@ section('K · Wrap Up keeps its shape and loses the arrow');
 
 check('the bets heading carries no directional arrow',
   !BETS_HEADING.includes('↕'), BETS_HEADING);
+// UIRECON WAVE 4B — the viewport treatment IS the whole heading now. `4 SHOWN`
+// named a cap that a one-card carousel makes meaningless; `SWIPE` names what a
+// GM does, and all three Wrap sections say it the same way.
 check('and still states the viewport treatment',
-  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · SWIPE', BETS_HEADING);
 
 unbindAll();
 

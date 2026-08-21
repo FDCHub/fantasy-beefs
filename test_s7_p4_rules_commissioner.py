@@ -662,10 +662,15 @@ _assert("the GM cards lay out in two columns",
 
 print("\nCarry-forward: The Week's locked bets heading")
 
-# WP3C — Rev 4.3 §11 removed the redundant directional arrow. The wording is
-# otherwise unchanged and is still pinned exactly.
+# WP3C — Rev 4.3 §11 removed the redundant directional arrow.
+#
+# UIRECON WAVE 4B — and `4 SHOWN` went with the vertical carousel it
+# described. All three Wrap sections carry one heading grammar now,
+# NAME · SWIPE, and a one-card rail makes a shown-count meaningless: a GM
+# swipes to the next card whether there are two or four. The four-card cap
+# itself is unchanged and still lives in `week.BETS_SHOWN`.
 _assert("the heading is the locked Rev 4.3 wording",
-        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE",
+        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · SWIPE",
         str(APP.get("betsHeading")))
 _assert("it renders unchanged on the current week", APP.get("weekCurrentHasHeading") is True)
 _assert("and unchanged on a past week", APP.get("weekPastHasHeading") is True)

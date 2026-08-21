@@ -96,9 +96,17 @@ await withPage({ port: 9392, settleMs: 1800 }, async ({ evaluate }) => {
     return {
       opened: Boolean(form),
       instance: form ? Number.parseInt(form.dataset.instance, 10) : null,
+      // UIRECON WAVE 3B — THE SUBJECTS ARE CHOICE CELLS, NOT OPTIONS.
+      //
+      // The governed claim path is unchanged: the same served census, the same
+      // subject ids, the same submit_claim refusals. What went is the native
+      // <select> that carried them — a control no stylesheet in the product
+      // styled, so the one surface that takes a Prop Pool claim rendered as a
+      // user-agent dropdown on a near-black ground. Each subject is now the
+      // same fs-seg__opt cell a GM taps to choose a market.
       options: form
-        ? [...form.querySelectorAll('#fs-poolpick option')]
-            .map((o) => o.value).filter(Boolean)
+        ? [...form.querySelectorAll('[data-poolpick-subject]')]
+            .map((o) => o.dataset.poolpickSubject).filter(Boolean)
         : [],
       buttonText: form ? form.querySelector('#fs-poolpick-save').textContent : '',
       held: (document.querySelector('#fs-poolpick-held') || {}).textContent || null,
@@ -114,7 +122,7 @@ await withPage({ port: 9392, settleMs: 1800 }, async ({ evaluate }) => {
   report.check('and offers the subjects the occurrence admits',
     opened.options.length > 0, `${opened.options.length} options`);
   report.check('the button invites a first pick',
-    opened.buttonText === 'Submit pick', opened.buttonText);
+    opened.buttonText === 'Submit Pick', opened.buttonText);
   report.check('and the GM is shown they hold no pick yet',
     opened.held === '—', String(opened.held));
 
@@ -124,8 +132,10 @@ await withPage({ port: 9392, settleMs: 1800 }, async ({ evaluate }) => {
 
   const submitted = await evaluate(asyncProbe(`
     const form = document.querySelector('#fs-poolpick-form');
-    const select = form.querySelector('#fs-poolpick');
-    select.value = '${CHOSEN}';
+    // A CHOICE IS MADE THE WAY A GM MAKES IT — by pressing the cell. Setting a
+    // value on a control would prove the form's plumbing; pressing the cell
+    // proves the surface a GM actually meets.
+    form.querySelector('[data-poolpick-subject="${CHOSEN}"]').click();
     form.querySelector('#fs-poolpick-save').click();
     // Long enough for the write AND the authoritative re-read the shell issues
     // afterwards; a shorter wait would race the confirmation rather than
@@ -169,11 +179,13 @@ await withPage({ port: 9392, settleMs: 1800 }, async ({ evaluate }) => {
     el.click();
     ${waitFor('#fs-poolpick-form')}
     const held = document.querySelector('#fs-poolpick-held');
-    const select = document.querySelector('#fs-poolpick');
+    const pressed = document.querySelector(
+      '[data-poolpick-subject][aria-pressed="true"]');
     const save = document.querySelector('#fs-poolpick-save');
     return {
       held: held ? held.textContent.trim() : null,
-      selected: select ? Number.parseInt(select.value, 10) : null,
+      selected: pressed
+        ? Number.parseInt(pressed.dataset.poolpickSubject, 10) : null,
       button: save ? save.textContent : '',
     };
   `));
@@ -183,7 +195,7 @@ await withPage({ port: 9392, settleMs: 1800 }, async ({ evaluate }) => {
   report.check('with that subject preselected',
     reopened.selected === CHOSEN, String(reopened.selected));
   report.check('and the button now offers a CHANGE rather than a first pick',
-    reopened.button === 'Change pick', reopened.button);
+    reopened.button === 'Change Pick', reopened.button);
 
   /* ── Nothing about this moved money ─────────────────────────────────────── */
 

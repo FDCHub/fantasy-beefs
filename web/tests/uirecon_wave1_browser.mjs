@@ -381,7 +381,7 @@ await withPage({ port: 9411 }, async ({ evaluate, setViewport }) => {
       out.wrap = [...document.querySelectorAll('#panel-week .fs-wkmod')]
         .map(mod => {
           const head = mod.querySelector('.fs-heading');
-          const body = mod.querySelector('.fs-vcar, .fs-poolrows');
+          const body = mod.querySelector('.fs-rescar, .fs-poolrows');
           if (!head || !body) return null;
           return {
             where: mod.dataset.module,
@@ -485,7 +485,12 @@ await withPage({ port: 9411 }, async ({ evaluate, setViewport }) => {
       // A SCROLL REGION IS DECLARED, NOT DISCOVERED. These are the containers
       // the POR permits to scroll; anything else that overflows is a defect
       // rather than a design.
-      const SCROLLERS = ['.fs-carousel', '.fs-vcar', '.fs-rail', '.fs-rails',
+      // UIRECON WAVE 4B — fs-vcar BECAME fs-rescar. Wrap Up's carousel
+      // turned horizontal, so the POR still names exactly one scroll region on
+      // that tab; only its axis changed. The old class no longer exists, and
+      // leaving it here would have declared nothing while the real rail read as
+      // undeclared.
+      const SCROLLERS = ['.fs-carousel', '.fs-rescar', '.fs-rail', '.fs-rails',
                          '.fs-wkscroll', '.fs-lscroll', '.fs-st__scroll',
                          '.fs-scroll', '.fs-pools', '.fs-poolrows'];
       for (const id of PANELS) {

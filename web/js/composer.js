@@ -104,6 +104,24 @@ export function setQuoteHook(hook) {
 let MARKET_HOOK = null;
 
 /** @param {null|object} hook */
+/**
+ * How this composer opens the Matchup Preview — UIRECON Wave 4A.
+ *
+ * INSTALLED BY THE SHELL, which is the only thing that knows the acting league,
+ * the authoritative week and how to fetch a preview. Null in demo mode and in
+ * the component suites, and a null hook means the composer falls back to the
+ * fixture sheet it has always pushed — which is what keeps those suites green
+ * and honest rather than newly dependent on a network read.
+ *
+ * @type {((spec: {opponentId: number, marketId: ?string, push: boolean}) => void)|null}
+ */
+let PREVIEW_HOOK = null;
+
+/** @param {Function|null} hook */
+export function setPreviewHook(hook) {
+  PREVIEW_HOOK = hook || null;
+}
+
 export function setMarketHook(hook) {
   MARKET_HOOK = hook;
 }
@@ -1052,8 +1070,25 @@ function bindComposer(host, api) {
 
   const preview = host.querySelector('[data-composer-preview]');
   if (preview) {
-    // Pushed on top: the composer stays underneath with its state intact.
-    preview.addEventListener('click', () => api.push(() => previewSheet(session.matchup)));
+    // ── UIRECON WAVE 4A · ONE PREVIEW PATH, NOT TWO ────────────────────────
+    //
+    // This pushed `previewSheet(session.matchup)` directly — the FIXTURE
+    // matchup, with no served lineups and no board — so the preview reached
+    // from inside the composer could never show what the preview reached from
+    // a Play card now shows. Both go through the shell's `openPreview` now,
+    // which is the one place that fetches the read model, and it is told to
+    // PUSH so the composer stays underneath with its state intact.
+    //
+    // NO HOOK, NO CHANGE IN BEHAVIOUR. An unbound composer — the component
+    // suites — still gets the fixture sheet it always got.
+    preview.addEventListener('click', () => {
+      const opponentId = session.state.opponent.teamId;
+      if (PREVIEW_HOOK && opponentId !== null && opponentId !== undefined) {
+        PREVIEW_HOOK({ opponentId, marketId: session.state.marketId, push: true });
+        return;
+      }
+      api.push(() => previewSheet(session.matchup));
+    });
   }
 
   // WP3C.1 — QUOTE ON MOUNT TOO. Opening from a market cell on a Play card

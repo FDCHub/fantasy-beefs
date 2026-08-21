@@ -686,3 +686,124 @@
   color: var(--g2);
   text-align: center;
 }
+/* ══ LINEUPS — UIRECON Wave 4A ═════════════════════════════════════════════
+ *
+ * THE PROJECTIONS THE PRICE RESTS ON. Before this wave the Matchup Preview was
+ * handed empty lineups by construction, so this block had nothing to style and
+ * `.fs-spl`'s five-column split table was all there was. That table stays for
+ * the UNBOUND preview, where there genuinely is no roster to name; these rules
+ * are for the bound one, where there is.
+ *
+ * TWO TEAMS, ONE CONSTRUCTION. `lineupTable()` renders both sides — the acting
+ * GM's and the opponent's — so they are not "styled the same", they are the
+ * same call with different data. Nothing below distinguishes them: no accent,
+ * no emphasis, no ordering cue. The only difference on screen is the team name
+ * each carries, which is the identity the POR permits and no more.
+ *
+ * SIDE BY SIDE WHERE THERE IS ROOM, STACKED WHERE THERE IS NOT. A lineup row is
+ * a position, a name and a figure; two of them fit a tablet and neither fits
+ * half a phone. The grid switches on available width rather than on a device
+ * guess, and the phone case is the default because that is the case the product
+ * is designed around. */
+
+.fs-lineups {
+  display: grid;
+  gap: var(--fs-space-4);
+  grid-template-columns: 1fr;
+}
+
+/* 560px is where two lineup columns each clear the width a name needs without
+ * truncating — measured against the longest showcase team name rather than
+ * chosen. Below it the two stack, which is the phone layout. */
+@media (min-width: 560px) {
+  .fs-lineups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.fs-lineup {
+  min-width: 0;
+  border: var(--fs-c-border);
+  border-radius: var(--fs-c-radius-cell);
+  padding: var(--fs-space-3);
+  background: var(--fs-c-surface-inset);
+}
+
+.fs-lineup__team {
+  font-size: var(--fs-c-size-body-sub);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.3;
+  color: var(--fs-c-text);
+  /* One line, and an ellipsis rather than a wrap, so two stacked lineups have
+   * identical heading heights whatever the two names are. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-bottom: var(--fs-space-2);
+}
+
+/* ONE GRID FOR THE HEAD AND EVERY ROW, so the projection column is a column
+ * rather than three separately-aligned figures. `minmax(0, 1fr)` on the name is
+ * what lets a long player name ellipsize instead of pushing the figure out of
+ * the card — the horizontal-overflow rule the shell POR fixes. */
+.fs-lineup__head,
+.fs-lineup__row {
+  display: grid;
+  grid-template-columns: 3.5em minmax(0, 1fr) 3.5em;
+  gap: var(--fs-space-2);
+  align-items: baseline;
+  /* Every row is the same height whatever it holds — the parallel-construction
+   * requirement for a lineup, stated once here rather than per row type. */
+  min-height: 26px;
+  padding: 3px 0;
+}
+
+.fs-lineup__head {
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--fs-c-text-faint);
+  border-bottom: var(--fs-border-hair);
+}
+
+.fs-lineup__row + .fs-lineup__row { border-top: var(--fs-border-hair); }
+
+.fs-lineup__pos {
+  font-size: var(--fs-c-size-fine);
+  color: var(--fs-c-text-muted);
+  white-space: nowrap;
+}
+
+.fs-lineup__name {
+  min-width: 0;
+  font-size: var(--fs-c-size-fine);
+  color: var(--fs-c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The figure is a number and is drawn as one — the canonical tabular monospace,
+ * right-aligned so the column reads down. */
+.fs-lineup__proj {
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-c-size-fine);
+  color: var(--fs-c-text);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* THE TOTAL IS THE SERVER'S SUM, and it is marked as the row that closes the
+ * lineup rather than as another starter. */
+.fs-lineup__row.is-total {
+  margin-top: var(--fs-space-2);
+  border-top: 1px solid var(--edge);
+}
+
+.fs-lineup__row.is-total .fs-lineup__name {
+  font-weight: var(--fs-weight-strong);
+  color: var(--fs-c-text-muted);
+}
+
+.fs-lineup__row.is-total .fs-lineup__proj {
+  font-weight: var(--fs-c-weight-number);
+  color: var(--fs-c-gold);
+}

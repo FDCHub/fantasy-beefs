@@ -131,8 +131,12 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // swipe heading. The wording is otherwise unchanged and still pinned exactly.
   check('the Yahoo module names official Yahoo matchups',
     modules[0].heading === 'YAHOO LEAGUE MATCHUPS · SWIPE', modules[0].heading);
-  check('the Bets module states its derived count',
-    modules[1].heading === 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE', modules[1].heading);
+  // UIRECON WAVE 4B — one heading grammar for all three: NAME · SWIPE. The
+  // derived count named a viewport cap that a one-card carousel makes
+  // meaningless, and only this module ever carried one. The cap itself is
+  // unchanged; what went is a heading that described it.
+  check('the Bets module carries the shared heading grammar',
+    modules[1].heading === 'FANTASYSTAKES MATCHUPS · SWIPE', modules[1].heading);
   check('no rail heading carries a directional arrow',
     modules.every((m) => !m.heading.includes('↕')),
     modules.map((m) => m.heading).join(' | '));
@@ -143,9 +147,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // satisfy — so this week is legitimately undrawn and the module names itself
   // without a count. The four-slot contract is certified against a DRAWN slate
   // in test_s8_p4b3_settings_pool.py.
-  check('the Pools module names itself, with a count only when drawn',
-    modules[2].heading === 'FANTASYSTAKES PROP POOLS'
-    || modules[2].heading === 'FANTASYSTAKES PROP POOLS · 4 THIS WEEK',
+  // UIRECON WAVE 4B — the Pools module carries the same grammar as its two
+  // peers now, drawn or not. A count in one section's heading and not the
+  // others' was the last thing distinguishing three identical statements.
+  check('the Pools module carries the shared heading grammar',
+    modules[2].heading === 'FANTASYSTAKES PROP POOLS · SWIPE',
     modules[2].heading);
   check('no module clips its own content', modules.every(m => !m.clipped));
 
@@ -160,8 +166,8 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       count: cards.length,
       badges: cards.map(c => c.querySelector('.fs-wcard__badge').textContent),
       first: cards[0].querySelector('.fs-wcard__identity').textContent,
-      snap: getComputedStyle(zone.querySelector('.fs-vcar')).scrollSnapType,
-      scrolls: getComputedStyle(zone.querySelector('.fs-vcar')).overflowY,
+      snap: getComputedStyle(zone.querySelector('.fs-rescar')).scrollSnapType,
+      scrolls: getComputedStyle(zone.querySelector('.fs-rescar')).overflowX,
       anyChallenge: cards.some(c => /Challenge/.test(c.textContent)),
       interactiveMarkets: zone.querySelectorAll('[data-market]').length,
       // WP5: counted, not dereferenced. A provider matchup draws NO market row
@@ -178,8 +184,13 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('every card is badged YAHOO', yahoo.badges.every(b => b === 'YAHOO'));
   check('the viewer’s own matchup leads the carousel',
     yahoo.first.includes(served.actingTeamName), yahoo.first);
-  check('the carousel snaps vertically', yahoo.snap === 'y mandatory', yahoo.snap);
-  check('the carousel scrolls vertically', yahoo.scrolls === 'auto', yahoo.scrolls);
+  // UIRECON WAVE 4B — THE AXIS CHANGED AND THE CLAIM DID NOT. What this pair
+  // has always asserted is that the module presents one card at a time and
+  // snaps rather than drifting. The rail is horizontal now because a vertical
+  // one had to be capped in pixels to bound it, and that cap went stale against
+  // Rev 4.3's taller cards; items exactly one viewport wide need no cap.
+  check('the carousel snaps', yahoo.snap === 'x mandatory', yahoo.snap);
+  check('the carousel is what scrolls', yahoo.scrolls === 'auto', yahoo.scrolls);
   check('no Yahoo card offers a challenge', yahoo.anyChallenge === false);
   check('Yahoo market cells are not tappable', yahoo.interactiveMarkets === 0);
   // THE REQUIREMENT, PRESERVED AND STRENGTHENED. Sprint 7 checked that five of
@@ -257,10 +268,23 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // WP3C -- Rev 4.3 §10: no odds-market block, and analysis before the dense
   // lineup table. Same rebuild the package 2 suite measures; asserted here on
   // the Yahoo-sourced preview as well, because both open the same sheet.
-  check('the preview carries the four shared sections in the §10 order',
+  // UIRECON WAVE 4A — THE MATCHUP BLOCK IS GONE, AND NOTHING REPLACES IT HERE.
+  //
+  // That block was a label/value pair naming the two teams, which the sheet
+  // subtitle already carried — one fact stated twice, and the duplicate was the
+  // one a GM read first. Its slot now carries the MARKET on offer, which is the
+  // thing the three modules below it explain.
+  //
+  // A YAHOO FIXTURE HAS NO MARKET ON OFFER, so on this preview that slot is
+  // correctly empty and the sheet is the three analysis modules alone. The
+  // priced FantasyStakes preview, which does carry one, is asserted on the
+  // four-section order in test_uirecon_wave4.py.
+  check('the preview carries the three shared analysis sections in the §10 order',
     preview.titles.join('|')
-      === 'MATCHUP|WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
+      === 'WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
     preview.titles.join('|'));
+  check('and no block restates the pairing the sheet header already names',
+    !preview.titles.includes('MATCHUP'), preview.titles.join('|'));
   check('and it carries no odds-market block',
     !preview.titles.includes('SPORTSBOOK VIEW'));
   check('it says this is not a FantasyStakes wager',
@@ -291,11 +315,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     };
   `);
   // WP5 — AT MOST FOUR, AND NEVER INVENTED. Sprint 7 asserted exactly four
-  // because the illustrative week always had four. `4 SHOWN` is the locked
-  // VIEWPORT treatment — week.js records that a three-wager week must not
-  // redraw the heading as "3 SHOWN" — so the heading is not a card count, and
-  // the real claim is the one week.js states: at most four, and "the shortfall
-  // is never made up by inventing a wager that no protocol record supports".
+  // because the illustrative week always had four. UIRECON Wave 4B retired the
+  // heading that advertised the cap and kept the cap itself in
+  // `week.BETS_SHOWN`, which is where the real claim always lived: at most
+  // four, and "the shortfall is never made up by inventing a wager that no
+  // protocol record supports".
   check('the Bets module shows at most the four the heading presents',
     bets.count <= 4, `${bets.count} card(s)`);
   check('and invents no wager when the bound week holds fewer',
@@ -328,14 +352,17 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   const pools = await evaluate(`
     const zone = document.querySelector('[data-module="pools"]');
     const rows = [...zone.querySelectorAll('.fs-poolrow')];
-    const box = zone.querySelector('.fs-poolrows').getBoundingClientRect();
+    const rail = zone.querySelector('.fs-rescar');
+    const items = rail ? [...rail.querySelectorAll(':scope > .fs-rescar__item')] : [];
     return {
       count: rows.length,
       badges: rows.map(r => r.querySelector('.fs-poolrow__badge').textContent),
       names: rows.map(r => r.querySelector('.fs-poolrow__name').textContent),
       allVisible: rows.every(r => r.getBoundingClientRect().height > 0),
-      noCarousel: zone.querySelectorAll('.fs-vcar').length === 0,
-      scrolls: zone.querySelector('.fs-poolrows').scrollHeight > box.height + 1,
+      sharesTheWrapCarousel: Boolean(rail),
+      oneCardWide: items.length === 0 || items.every(
+        (i) => Math.abs(i.getBoundingClientRect().width - rail.clientWidth) <= 1),
+      scrollsVertically: rail ? rail.scrollHeight > rail.clientHeight + 1 : false,
     };
   `);
   // GOVERNED REVISION, S8-P4B-3 — and the claim it replaces is the important
@@ -343,8 +370,17 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // An undrawn week renders none, which is exactly what is asserted here.
   check('an undrawn week renders no Pools rather than the launch four',
     pools.count === 0 || pools.count === 4, String(pools.count));
-  check('they are rows, not another carousel', pools.noCarousel === true);
-  check('the module does not scroll internally', pools.scrolls === false);
+  // UIRECON WAVE 4B — THE POOLS MODULE IS THE SAME CAROUSEL AS ITS TWO PEERS.
+  // It was the one Wrap section built differently: a flat column of buttons
+  // beside two carousels, for a third thing a GM reads exactly the same way.
+  // The rows survive inside it — an OPEN Pool has a pick to make rather than a
+  // result to report — and the claim underneath both versions of this check is
+  // the same one: the module never becomes a scroller of its own inside the tab.
+  check('the module shares the one Wrap carousel',
+    pools.sharesTheWrapCarousel === true);
+  check('and presents exactly one card at a time', pools.oneCardWide === true);
+  check('the module does not scroll vertically',
+    pools.scrollsVertically === false);
   check('every Pool carries a subject-type badge',
     pools.badges.every(b => /^(TEAM|MATCHUP)/.test(b)), pools.badges.join(' | '));
   check('rollover appears only as a modifier on a type',
@@ -402,11 +438,13 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     `${past.final} of ${past.cards}`
     + (past.cards === 0 ? ' — the provider stated no matchups for this week' : ''));
   check('no past matchup still presents as pregame', past.pregame === 0);
-  // Locked copy, identical on both weeks: `4 SHOWN` is the viewport treatment,
-  // not a count of records, and a week holding three settled wagers still shows
-  // three rather than gaining a fabricated fourth.
+  // Locked copy, identical on both weeks. UIRECON Wave 4B replaced `4 SHOWN`
+  // with the shared NAME · SWIPE grammar the other two Wrap sections use; the
+  // claim here is unchanged and is the one the next assertion holds to — the
+  // heading is the same on every week, and a week holding three settled wagers
+  // still shows three rather than gaining a fabricated fourth.
   check('the locked bets heading is unchanged on a past week',
-    past.betsHeading === 'FANTASYSTAKES MATCHUPS · 4 SHOWN · SWIPE', past.betsHeading);
+    past.betsHeading === 'FANTASYSTAKES MATCHUPS · SWIPE', past.betsHeading);
   // The claim in the heading comment above, asserted rather than restated: a
   // week draws the wagers it really has and never gains a fabricated one.
   check('the past week draws only the wagers it really has',

@@ -300,3 +300,213 @@ export function theRead(m) {
         'smaller than the record gap suggests.',
   ];
 }
+/* ══ THE SERVED PREVIEW'S OWN NARRATIVE — UIRECON Wave 4A ══════════════════
+ *
+ * WHY THERE ARE TWO NARRATIVE PATHS IN THIS FILE, AND WHY THAT IS RIGHT.
+ *
+ * `whyTheLine` and `theRead` above answer for a preview that has NOTHING bound
+ * — no lineups, no board — which before Wave 4A was every preview in the
+ * product. They are unchanged, still certified, and still what an unbound
+ * surface says: that nothing is priced and nothing may be named.
+ *
+ * The two below answer for a preview the server actually described. They are a
+ * different job, not a variant of the same one: one explains an absence, the
+ * other explains a matchup.
+ *
+ * THE GROUNDING RULE FROM THE TOP OF THIS FILE STILL BINDS, and binds harder.
+ * Every sentence produced here is a statement about a field the read model
+ * served: a projected lineup total, a projected margin, a simulated win
+ * probability, a spread, a total, a moneyline. There is no source in this
+ * repository for real-world player availability, conditions or roster
+ * movement, so no sentence may imply one — and generating the prose from the
+ * figures is what makes that guarantee hold rather than merely assert it.
+ *
+ * NOTHING HERE COMPUTES A PRICE. The probability, the spread, the total and the
+ * moneyline are the simulation's, read verbatim. The only arithmetic is
+ * `Math.abs` on a served margin and a percentage rendered from a served
+ * probability — presentation of numbers the server produced.
+ */
+
+/** A served figure, or null. Keeps every sentence below free of type checks. */
+function servedNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** A served probability as a percentage, one decimal. */
+function servedPercent(probability) {
+  const p = servedNumber(probability);
+  return p === null ? null : Math.round(p * 1000) / 10;
+}
+
+/**
+ * WHY THE LINE LOOKS THIS WAY, from the served preview.
+ *
+ * METHOD FIRST, THEN THIS MATCHUP'S NUMBERS. The first paragraph is the same
+ * every time because the method is the same every time — it is what the product
+ * claims and what a GM is owed before they are shown a price. The paragraphs
+ * after it are this pairing's, and each is dropped rather than softened when
+ * the field behind it was not served.
+ *
+ * @param {object} view a served MatchupPreviewOut
+ * @param {{marketId?: string}} [opts] the market the GM entered from
+ * @returns {string[]} paragraphs
+ */
+export function whyTheLineFromPreview(view, opts = {}) {
+  const market = (view && view.market) || {};
+  const acting = (view && view.acting) || {};
+  const opponent = (view && view.opponent) || {};
+
+  const method =
+    'FantasyStakes projects both starting lineups using your league’s scoring '
+    + 'settings and each player’s current projection, then simulates the '
+    + 'matchup many times over. The spread is the simulation’s expected margin, '
+    + 'the total is its expected combined score, and the moneyline is how often '
+    + 'each side comes out ahead across those runs.';
+
+  if (!market.available) {
+    return [
+      method,
+      market.unavailable_reason
+        || 'This matchup has no market on offer right now.',
+    ];
+  }
+
+  const paragraphs = [method];
+
+  const winPct = servedPercent(market.acting_win_probability);
+  const spread = servedNumber(market.acting_spread);
+  const moneyline = servedNumber(market.acting_moneyline);
+
+  // THE SENTENCE THE WHOLE SURFACE EXISTS FOR: the simulation's own output, and
+  // the market that output produced.
+  if (winPct !== null && spread !== null) {
+    if (spread === 0) {
+      paragraphs.push(
+        `Across those runs ${acting.team_name} comes out ahead ${winPct}% of `
+        + 'the time and the two lineups finish level, which is why this '
+        + 'matchup prices as a pick’em.');
+    } else {
+      paragraphs.push(
+        `Across those runs ${acting.team_name} comes out ahead ${winPct}% of `
+        + `the time, for an expected margin of ${Math.abs(spread).toFixed(1)}. `
+        + `That margin is the ${formatSpread(spread)} on the Spread`
+        + (moneyline === null ? '.'
+          : ` and the ${formatOdds(moneyline)} on the Moneyline.`));
+    }
+  }
+
+  const total = servedNumber(market.total_line);
+  const actingTotal = servedNumber(acting.projected_total);
+  const opponentTotal = servedNumber(opponent.projected_total);
+  if (total !== null) {
+    paragraphs.push(
+      `The Over/Under of ${total.toFixed(1)} is the combined score those same `
+      + 'runs expect'
+      + (actingTotal !== null && opponentTotal !== null
+        ? `, against projected lineup totals of ${actingTotal.toFixed(1)} and `
+          + `${opponentTotal.toFixed(1)}.`
+        : '.'));
+  }
+
+  // The market the GM entered from is named last, so the explanation reads the
+  // same whichever one they came in on and still answers the one they chose.
+  const chosen = { ml: 'Moneyline', spread: 'Spread', ou: 'Over/Under' }[
+    opts.marketId];
+  paragraphs.push(chosen
+    ? `${chosen} is the market you opened. Calculated for your league.`
+    : 'Calculated for your league.');
+
+  return paragraphs;
+}
+
+/**
+ * THE READ — what the numbers mean, from the served preview.
+ *
+ * IT INTERPRETS; IT DOES NOT RE-EXPLAIN THE METHOD. Every claim below is one
+ * the served fields support on their own: which lineup projects higher, by how
+ * much, how close that leaves the price to a pick'em, and how the expected
+ * combined score sits against the two lineup totals. Where the read model
+ * supports nothing, this says nothing rather than reaching for football.
+ *
+ * @param {object} view a served MatchupPreviewOut
+ * @returns {string[]} paragraphs
+ */
+export function theReadFromPreview(view) {
+  const market = (view && view.market) || {};
+  const acting = (view && view.acting) || {};
+  const opponent = (view && view.opponent) || {};
+
+  const actingTotal = servedNumber(acting.projected_total);
+  const opponentTotal = servedNumber(opponent.projected_total);
+  const margin = servedNumber(view && view.projected_margin);
+  const actingRows = Array.isArray(acting.lineup) ? acting.lineup.length : 0;
+  const opponentRows = Array.isArray(opponent.lineup) ? opponent.lineup.length : 0;
+
+  // NO LINEUPS, NO READ. Two sides with no projected starters give nothing to
+  // interpret, and saying so is the honest answer.
+  if (actingTotal === null || opponentTotal === null
+      || (actingRows === 0 && opponentRows === 0)) {
+    return ['Starting lineups for this matchup are not bound yet, so there is '
+      + 'nothing here to read.'];
+  }
+
+  const actingAhead = margin !== null && margin > 0;
+  const aheadName = actingAhead ? acting.team_name : opponent.team_name;
+  const behindName = actingAhead ? opponent.team_name : acting.team_name;
+  const aheadTotal = actingAhead ? actingTotal : opponentTotal;
+  const behindTotal = actingAhead ? opponentTotal : actingTotal;
+  const gap = margin === null ? null : Math.abs(margin);
+
+  const paragraphs = [];
+
+  if (gap !== null && gap === 0) {
+    paragraphs.push(
+      `${acting.team_name} and ${opponent.team_name} project to the same `
+      + `total — ${actingTotal.toFixed(1)} each. There is nothing between `
+      + 'these two lineups on paper.');
+  } else if (gap !== null) {
+    // HOW CLOSE THIS IS reads off the PRICE, not off the projection gap.
+    //
+    // Judging it from the gap alone was wrong in an instructive way: a 4.5
+    // point difference read as "near a pick'em" in the same breath as a 65.8%
+    // win probability, because a lineup gap and a market are not the same
+    // measure of closeness. The spread IS the market's answer to that question
+    // — it is the simulation's expected margin — so it is the one that decides
+    // the sentence. Within a point either way is a pick'em in a product whose
+    // smallest line step is half a point.
+    const spread = servedNumber(market.acting_spread);
+    const nearPickEm = spread !== null && Math.abs(spread) <= 1.0;
+    paragraphs.push(
+      `${aheadName} carries the higher projected lineup total — `
+      + `${aheadTotal.toFixed(1)} to ${behindTotal.toFixed(1)}, a gap of `
+      + `${gap.toFixed(1)}. `
+      + (nearPickEm
+        ? 'The market lands within a point of level, so either lineup can '
+          + 'take it.'
+        : 'That edge carries into the price rather than washing out.'));
+  }
+
+  const winPct = servedPercent(market.acting_win_probability);
+  if (winPct !== null) {
+    const decisive = winPct >= 60 || winPct <= 40;
+    paragraphs.push(
+      `The simulation puts ${acting.team_name} at ${winPct}%`
+      + (decisive
+        ? ' — the runs separate these two by more than the projected totals '
+          + 'alone suggest.'
+        : ' — near enough to even that the outcome is genuinely open.'));
+  }
+
+  const total = servedNumber(market.total_line);
+  if (total !== null) {
+    const combined = actingTotal + opponentTotal;
+    paragraphs.push(
+      `The expected combined score of ${total.toFixed(1)} sits `
+      + (total > combined ? 'above' : 'below')
+      + ` the ${combined.toFixed(1)} these two lineups project on paper, which `
+      + 'is the spread of outcomes the simulation adds to the two totals.');
+  }
+
+  return paragraphs.length ? paragraphs
+    : ['There is not enough bound for this matchup to read yet.'];
+}

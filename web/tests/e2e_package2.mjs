@@ -578,14 +578,23 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   check('the preview opens in the shared sheet', /Matchup Preview/.test(preview.title));
   check('it carries no SPORTSBOOK VIEW block (§10)',
     !preview.titles.includes('SPORTSBOOK VIEW'), preview.titles.join(' | '));
-  check('it carries the matchup identity', preview.titles.includes('MATCHUP'));
+  // UIRECON WAVE 4A — THE PAIRING IS NAMED ONCE, IN THE SHEET HEADER.
+  //
+  // MATCHUP was a label/value pair carrying the two team names the subtitle
+  // above it already carried. Its slot now carries the MARKET on offer, and a
+  // market has to be fetched — so the tap opens the sheet immediately, from
+  // what the surface already holds, and the served block lands a moment later.
+  // A GM never waits on a request to see the preview, which is why this
+  // assertion is about what is on screen AT THE TAP.
+  check('it carries no block restating the pairing',
+    !preview.titles.includes('MATCHUP'), preview.titles.join(' | '));
   check('it carries WHY THE LINE LOOKS THIS WAY',
     preview.titles.includes('WHY THE LINE LOOKS THIS WAY'));
   check('it carries THE READ', preview.titles.includes('THE READ'));
   check('it carries LINEUPS', preview.titles.includes('LINEUPS'));
-  check('section order is Matchup → Why The Line → The Read → Lineups',
+  check('section order is Why The Line → The Read → Lineups',
     preview.titles.join('|')
-      === 'MATCHUP|WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
+      === 'WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
     preview.titles.join(' | '));
   check('the preview replaces the composer view while it is open',
     preview.composerGone === true);

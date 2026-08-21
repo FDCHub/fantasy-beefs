@@ -228,6 +228,11 @@ function normaliseCard(row) {
 
     settled: Boolean(row.settled),
     netCents: Number.isInteger(row.net_cents) ? row.net_cents : null,
+    // UIRECON WAVE 4B — `bets.status` for this GM's side, verbatim. `won`
+    // below is a PRESENTATION convenience derived from the net and has always
+    // been one; `outcome` is what the row actually says, and it is the only
+    // thing that can tell a push from a void.
+    outcome: typeof row.outcome === 'string' ? row.outcome : null,
     won: row.settled && Number.isInteger(row.net_cents) ? row.net_cents >= 0 : false,
 
     expiresAt: row.expires_at || null,

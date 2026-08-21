@@ -155,6 +155,21 @@ export function slateRows() {
     // model published a claim count. It does now.
     entered: typeof slot.entered === 'number' ? slot.entered : undefined,
     openForClaims: Boolean(slot.open_for_claims),
+    // ── UIRECON WAVE 4B · the settled outcome, carried straight through ─────
+    //
+    // Every one of these is the server's, derived by `pool_result_view` from
+    // what settlement WROTE — the winner-distribution posting and the claims it
+    // paid. Nothing here re-evaluates a pool or divides a pot; an empty
+    // `winningSubjects` means nobody picked a winner and the pot rolled over or
+    // was swept, which is a real outcome rather than a missing value.
+    classification: slot.settlement_classification || null,
+    winningSubjectIds: Array.isArray(slot.winning_subject_ids)
+      ? slot.winning_subject_ids : [],
+    winningSubjects: Array.isArray(slot.winning_subject_labels)
+      ? slot.winning_subject_labels.filter(Boolean) : [],
+    myReturnCents: typeof slot.my_return_cents === 'number'
+      ? slot.my_return_cents : 0,
+    myResult: slot.my_result || null,
     locked: SERVED.locked === undefined ? true : Boolean(SERVED.locked),
   }));
 }

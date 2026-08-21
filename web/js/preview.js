@@ -1,100 +1,89 @@
 /* ============================================================================
  * FantasyStakes — UI/UX Rev 4.3 · Matchup Preview
- * WP3C (was Sprint 7 Package 2)
+ * WP3C, reconciled by UIRECON Wave 4A
  *
  * AN ANALYSIS SURFACE, AND ONLY THAT — Rev 4.3 §10.
  *
- * WHAT CHANGED AND WHY. Rev 4.2's preview opened with a SPORTSBOOK VIEW block
- * restating the moneyline, the spread and the total, then showed lineups, then
- * the analysis. Three things were wrong with that under Rev 4.3:
+ * The locked order is:
  *
- *   1. IT DUPLICATED THE MARKETS. The same three numbers the GM had just tapped
- *      past were repeated inside the surface meant to explain them, which made
- *      the preview read like a second place to bet. §10 removes the block.
- *   2. THE ANALYSIS CAME LAST. A GM opening "why does this line look this way?"
- *      met a table of nine roster slots before a sentence of explanation.
- *   3. THE ORDER WAS NOT THE POR'S.
+ *     MATCHUP PREVIEW               the sheet title
+ *     identity + market snapshot    who, when, and what is on offer
+ *     WHY THE LINE LOOKS THIS WAY   ← the method, then this matchup's numbers
+ *     THE READ                      ← what those numbers mean
+ *     LINEUPS                       ← the projections both of the above rest on
  *
- * The locked order is now exactly:
+ * ── WHAT WAVE 4A CHANGED, AND WHY EACH ONE MATTERED ────────────────────────
  *
- *     MATCHUP PREVIEW
- *     matchup identity / records
- *     WHY THE LINE LOOKS THIS WAY   ← analysis
- *     THE READ                      ← short, stronger takeaway
- *     LINEUPS                       ← dense content, last
+ *   IT HAS DATA NOW. `shell.js openPreview()` handed this surface
+ *   `spread: null`, `yourLineup: []` and `opponentLineup: []`, so every branch
+ *   in `narrative.js` took its "not priced yet" path and LINEUPS drew its empty
+ *   state. The demo has seeded nine starters and a projection per player per
+ *   week the whole time; what was missing was a read model between them, and
+ *   `reports/matchup_preview_read_model.py` is it.
  *
- * ANALYSIS BEFORE LINEUPS is the whole point, so both analysis sections open by
- * default and the lineups collapse. That inverts Rev 4.2, where the lineups
- * were the section held open.
+ *   THE MATCHUP IS NAMED ONCE. The sheet subtitle read `A vs B · Week n` and
+ *   the block underneath it repeated `A` and `B` as two rows — both teams,
+ *   twice, inside about sixty pixels, and in the bound state the second copy
+ *   carried two blank values. The identity block now carries what the subtitle
+ *   does not: the market on offer.
  *
- * IT IS PUSHED, NOT SWAPPED. Opening the preview from inside the composer
- * pushes a sheet level rather than replacing one, so closing it returns to a
- * composer still holding the market, mode and stake the GM entered (§10's
- * closing requirement). Nothing in this file writes composer state.
+ *   THE THREE MODULES ARE PEERS. WHY THE LINE, THE READ and LINEUPS are one
+ *   `collapsible()` construction — same header height, same chevron, same
+ *   border, same padding, same typography — with content-specific bodies only.
  *
- * IT RECOMPUTES NOTHING. `whyTheLine` and `theRead` are narrative over inputs
- * the surface was already given; no line is priced here and no settlement rule
- * is applied. Rev 4.3 §28.
+ * IT RECOMPUTES NOTHING. Every figure drawn here is a served field: the
+ * projections, the server's own lineup totals, the win probabilities, the
+ * spread, the total and the moneyline. Rev 4.3 §28.
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
 import { escapeHtml } from './components.js';
-import { theRead, whyTheLine } from './narrative.js';
+import {
+  theRead, theReadFromPreview, whyTheLine, whyTheLineFromPreview,
+} from './narrative.js';
+import { formatOdds } from './wager-model.js';
+import { formatSpread } from './narrative.js';
 
 /**
  * @param {object} m a matchup view model
+ * @param {{served?: object|null, marketId?: string|null}} [ctx]
  * @returns {{title: string, sub: string, body: string, onMount: Function}}
  */
-export function previewSheet(m) {
+export function previewSheet(m, ctx = {}) {
+  const served = ctx.served || null;
+
   // Where the matchup came from is stated, not implied. A Yahoo league matchup
   // is not a FantasyStakes wager, and the preview must not let a GM mistake one
   // for the other just because the grammar is shared.
   const fromYahoo = m.source === 'yahoo';
   const week = m.weekLabel || '';
 
-  // WP3D — THE OLD SOURCE BANNER IS GONE, and the exact contractual
-  // attribution replaces it.
-  //
-  // The banner was written to keep a GM from mistaking a Yahoo league matchup
-  // for a FantasyStakes wager, which is a real and worthwhile distinction — and
-  // the sentence below still draws it. What the banner ALSO did, unintentionally,
-  // was claim official standing for the matchup, in a product Yahoo does not
-  // operate, endorse or approve. Rev 4.3 §23 permits a data-source statement
-  // and no more, so that claim had to go whether or not the attribution
-  // replaced it. The retired wording is named in the WP3D report and in the
-  // suites that used to pin it; it is deliberately not spelled here, because
-  // the shipped source is scanned for it.
-  //
-  // The attribution is not a substitute for the distinction, and the closing
-  // note is not a substitute for the attribution. Both are kept, each doing its
-  // own job: one says where the matchup came from, the other says what it is
-  // not.
   const closingNote = fromYahoo
     ? '<div class="fs-note">Analysis only. This is a Yahoo league matchup, ' +
       'not a FantasyStakes wager — nothing here stakes Credits.</div>'
     : '<div class="fs-note">Analysis only — no wager runs through this card. ' +
       'Close to return to your challenge; nothing you have entered is lost.</div>';
 
-  // ATTRIBUTED ONLY WHEN THIS SHEET IS ACTUALLY SHOWING YAHOO INFORMATION.
-  //
-  // Two conditions, both required, and they are different questions. `fromYahoo`
-  // is whether THIS MATCHUP came from the provider; `attributionFooter` checks
-  // whether the SESSION's league is Yahoo-backed at all. A Demo session fails
-  // the second and gets nothing, which is the hard rule — the same component
-  // renders both, and only the authoritative provider binding decides.
   const sourceFooter = attributionFooter({ showsYahooInformation: fromYahoo });
+
+  // THE TWO NARRATIVE PATHS ANSWER DIFFERENT QUESTIONS. A served preview
+  // explains a real matchup from real figures; an unbound one explains that
+  // there is nothing bound. Neither is a degraded version of the other.
+  const why = served
+    ? whyTheLineFromPreview(served, { marketId: ctx.marketId })
+    : whyTheLine(m);
+  const read = served ? theReadFromPreview(served) : theRead(m);
 
   return {
     title: 'Matchup Preview',
     sub: [`${m.you.name} vs ${m.name}`, week].filter(Boolean).join(' · '),
     body:
-      identitySection(m) +
+      identitySection(m, served) +
       // ANALYSIS FIRST, BOTH OPEN. §10.
-      collapsible('WHY THE LINE LOOKS THIS WAY', paragraphs(whyTheLine(m)),
-                  { open: true }) +
-      collapsible('THE READ', paragraphs(theRead(m)), { open: true }) +
+      collapsible('WHY THE LINE LOOKS THIS WAY', paragraphs(why), { open: true }) +
+      collapsible('THE READ', paragraphs(read), { open: true }) +
       // DENSE CONTENT LAST, AND COLLAPSED.
-      lineupsSection(m) +
+      lineupsSection(m, served) +
       closingNote +
       sourceFooter,
     onMount: (host) => {
@@ -110,47 +99,61 @@ export function previewSheet(m) {
 }
 
 /**
- * Matchup identity and records — the POR's second block.
+ * The market snapshot — what this block carries INSTEAD of the team names.
  *
- * NO MARKET CELLS. This is where Rev 4.2's SPORTSBOOK VIEW sat, and what
- * replaces it carries who is playing and what they have done, not what the
- * board says. A record the surface does not hold is left out rather than
- * drawn as a dash beside one it does.
+ * THE SUBTITLE ALREADY SAID WHO IS PLAYING. Rev 4.2's SPORTSBOOK VIEW sat here
+ * and §10 removed it for restating the three markets the GM had just tapped
+ * past; what replaced it restated the two team names the subtitle had just
+ * given. Wave 4A puts the one thing neither of those carried in this slot: the
+ * offer itself, in the same three-market vocabulary the composer uses.
+ *
+ * A SETTLED MATCHUP REPORTS ITS RESULT HERE INSTEAD. A final score is not a
+ * market — it is the matchup's own record, which is what §10's second block is
+ * for.
  *
  * @param {object} m
+ * @param {object|null} served
  * @returns {string}
  */
-function identitySection(m) {
-  // A SETTLED MATCHUP REPORTS ITS RESULT HERE.
-  //
-  // Rev 4.2 carried the final scores inside SPORTSBOOK VIEW, which §10 removed
-  // — and removing the block must not silently lose the result with it. A final
-  // score is not a market: it is the matchup's own record, which is exactly
-  // what §10's second block is for. So it moves here, and what does NOT come
-  // with it is the `Closing line` row, because a closing line is a market
-  // figure and this build does not retain one anyway.
-  const rows = m.settled
-    ? [
-      { label: 'Result', value: m.winner ? `${m.winner} by `
-        + `${Math.abs(m.spread).toFixed(1)}` : '' },
+function identitySection(m, served) {
+  const rows = [];
+
+  if (m.settled) {
+    rows.push(
+      { label: 'Result', value: m.winner
+        ? `${m.winner} by ${Math.abs(m.spread).toFixed(1)}` : '' },
       { label: `Final · ${m.you.name}`,
         value: typeof m.yourProjection === 'number'
           ? m.yourProjection.toFixed(1) : '' },
       { label: `Final · ${m.name}`,
         value: typeof m.opponentProjection === 'number'
           ? m.opponentProjection.toFixed(1) : '' },
-    ].filter((r) => r.value)
-    : [
-      { label: m.you.name, value: m.you.record || '' },
-      { label: m.name, value: m.record || '' },
-    ].filter((r) => r.label);
+    );
+  } else if (served && served.market && served.market.available) {
+    const market = served.market;
+    if (typeof market.acting_moneyline === 'number') {
+      rows.push({ label: 'Moneyline', value: formatOdds(market.acting_moneyline) });
+    }
+    if (typeof market.acting_spread === 'number') {
+      rows.push({ label: 'Spread', value: formatSpread(market.acting_spread) });
+    }
+    if (typeof market.total_line === 'number') {
+      rows.push({ label: 'Over/Under', value: market.total_line.toFixed(1) });
+    }
+  } else if (served && served.market) {
+    rows.push({ label: 'Market', value: '—' });
+  }
 
+  const filtered = rows.filter((row) => row.value);
+  if (!filtered.length) return '';
+
+  const heading = m.settled ? 'RESULT' : 'ON OFFER';
   return (
     '<section class="fs-prev is-open" data-preview-section="identity">' +
     '<div class="fs-prev__head is-static">' +
-    '<span class="fs-prev__title">MATCHUP</span></div>' +
+    `<span class="fs-prev__title">${heading}</span></div>` +
     '<div class="fs-prev__body is-open">' +
-    rows.map((row) => (
+    filtered.map((row) => (
       '<div class="fs-prev__row">' +
       `<span class="fs-prev__label">${escapeHtml(row.label)}</span>` +
       `<span class="fs-prev__value">${escapeHtml(row.value)}</span>` +
@@ -165,7 +168,92 @@ function figure(row) {
   return typeof row.projection === 'number' ? row.projection.toFixed(1) : '—';
 }
 
-function lineupsSection(m) {
+/**
+ * One team's projected starting lineup.
+ *
+ * BOTH TEAMS USE THIS FUNCTION. That is the whole of the parallel-construction
+ * requirement for LINEUPS: the acting GM's column and the opponent's are not
+ * "styled the same", they are the same call with different data. There is no
+ * emphasis on either side beyond the team name each carries.
+ *
+ * @param {{name: string, rows: Array<object>, total: number|null}} spec
+ * @returns {string}
+ */
+function lineupTable(spec) {
+  const rows = spec.rows.map((row) => (
+    '<div class="fs-lineup__row">' +
+    `<span class="fs-lineup__pos">${escapeHtml(row.position || '—')}</span>` +
+    `<span class="fs-lineup__name">${escapeHtml(row.player || '—')}</span>` +
+    `<span class="fs-lineup__proj">${escapeHtml(figure(row))}</span>` +
+    '</div>'
+  )).join('');
+
+  const total = typeof spec.total === 'number'
+    ? spec.total.toFixed(1) : '—';
+
+  return (
+    '<div class="fs-lineup">' +
+    `<div class="fs-lineup__team">${escapeHtml(spec.name)}</div>` +
+    '<div class="fs-lineup__head">' +
+    '<span class="fs-lineup__pos">POS</span>' +
+    '<span class="fs-lineup__name">PLAYER</span>' +
+    '<span class="fs-lineup__proj">PROJ</span>' +
+    '</div>' +
+    rows +
+    '<div class="fs-lineup__row is-total">' +
+    '<span class="fs-lineup__pos"></span>' +
+    '<span class="fs-lineup__name">Projected total</span>' +
+    `<span class="fs-lineup__proj">${escapeHtml(total)}</span>` +
+    '</div>' +
+    '</div>'
+  );
+}
+
+/**
+ * LINEUPS — the projections the price rests on.
+ *
+ * THE ROWS ARE THE ONES THE SIMULATOR WAS HANDED. `matchup_preview_read_model`
+ * reads them through `_fetch_starters_for_odds`, which is the same call
+ * `compute_market_board` makes, so what a GM sees here is what priced the
+ * matchup rather than a second roster read that could disagree with it.
+ *
+ * @param {object} m
+ * @param {object|null} served
+ * @returns {string}
+ */
+function lineupsSection(m, served) {
+  if (served) {
+    const acting = served.acting || {};
+    const opponent = served.opponent || {};
+    const map = (row) => ({
+      position: row.position,
+      player: row.player_name,
+      projection: row.projected_points,
+    });
+    const actingRows = (acting.lineup || []).map(map);
+    const opponentRows = (opponent.lineup || []).map(map);
+
+    if (!actingRows.length && !opponentRows.length) {
+      return collapsible('LINEUPS',
+        '<div class="fs-note">Neither team has a starting lineup bound for '
+        + 'this week yet, so there are no projections to show.</div>');
+    }
+
+    return collapsible('LINEUPS',
+      '<div class="fs-lineups">'
+      + lineupTable({ name: acting.team_name || m.you.name,
+        rows: actingRows, total: acting.projected_total })
+      + lineupTable({ name: opponent.team_name || m.name,
+        rows: opponentRows, total: opponent.projected_total })
+      + '</div>'
+      + '<div class="fs-note">These are the projected starters and projections '
+      + 'FantasyStakes simulated to produce the market above. Projections '
+      + 'refresh until the week’s first kickoff.</div>');
+  }
+
+  // ── UNBOUND. Unchanged from WP3C, and it has to be: with no served preview
+  // there is no source for either roster, and naming players here would be
+  // inventing one.
   const mine = Array.isArray(m.yourLineup) ? m.yourLineup : [];
   const theirs = Array.isArray(m.opponentLineup) ? m.opponentLineup : [];
 
@@ -189,19 +277,17 @@ function lineupsSection(m) {
     );
   }).join('');
 
-  // What is unknown depends on the matchup: the viewer's own roster is known
-  // and an opponent's is not; in a third-party Yahoo matchup neither is; and in
-  // a PAST week the per-slot figures themselves are not retained on either side.
   const named = mine.some((r) => r.player);
   const bindingNote = m.settled
     ? 'Per-slot results for a past week are not retained in this build. The '
       + 'team totals are the result; the rows above them bind from the provider '
       + 'once its read is wired.'
     : (named
-      ? 'Opponent starters bind from the provider once its read is wired; the '
+      ? 'Opponent starters bind from Yahoo once its read is wired; the '
         + 'slot shape and projections are what the inputs give us today.'
-      : 'Starters for both teams bind from the provider once its read is wired. '
-        + 'Naming them here would be inventing a roster no source supports.');
+      : 'Starters for both teams bind from Yahoo once the provider read is '
+        + 'wired. Naming them here would be inventing a roster no source '
+        + 'supports.');
 
   const totals = (typeof m.yourProjection === 'number'
                   && typeof m.opponentProjection === 'number')
@@ -226,9 +312,6 @@ function lineupsSection(m) {
     '<div class="fs-note">Projections are the pregame projection and refresh ' +
     `until the week’s first kickoff. ${bindingNote}</div>`;
 
-  // COLLAPSED BY DEFAULT — the inversion of Rev 4.2, and the mechanism by which
-  // "analysis appears before dense lineup content" is true on screen and not
-  // merely true in the source order.
   return collapsible('LINEUPS', body);
 }
 
