@@ -553,8 +553,15 @@ export function poolSheet(pool) {
     sub: `${poolBadge(pool)} · catalog #${pool.catalogNumber}`,
     body:
       outcomeRows +
-      '<div class="fs-prev__row"><span class="fs-prev__label">Subject</span>' +
-      `<span class="fs-prev__value">${escapeHtml(pool.subject)}</span></div>` +
+      // UIRECON WAVE 3B — THE QUESTION, WHERE THE SCOPE ENUM USED TO BE.
+      //
+      // A row reading `Subject · Matchup` stood here. It named the census scope
+      // the engine validates against, which is a true fact and not one a GM
+      // asked for, and it was the same word the pick control below used as its
+      // caption — so the sheet introduced itself with an enum twice. What a GM
+      // needs before choosing is what they are being asked, and that is derived
+      // from the served scope rather than invented.
+      `<p class="fs-poolq">${escapeHtml(poolQuestion(pool))}</p>` +
       '<div class="fs-prev__row"><span class="fs-prev__label">Settles on</span>' +
       `<span class="fs-prev__value fs-money">${escapeHtml(pool.rule)}</span></div>` +
       '<div class="fs-prev__row"><span class="fs-prev__label">Entry</span>' +
@@ -657,26 +664,81 @@ function poolPickControl(pool) {
       + '</div>';
   }
 
-  const options = ['<option value="">— choose —</option>'].concat(
-    pool.subjects.map((s) => (
-      `<option value="${s.subject_id}"`
-      + (current && current.subject_id === s.subject_id ? ' selected' : '')
-      + `>${escapeHtml(s.label)}</option>`
-    )),
-  ).join('');
+  // NOTHING TO CHOOSE FROM IS A REAL STATE. The census can admit no subjects —
+  // an unplayed week, a scope the league cannot fill — and the server says so
+  // by serving an empty list. Offering an empty grid and a Submit button would
+  // be offering a press that is certain to be refused.
+  if (!pool.subjects.length) {
+    return held + '<div class="fs-note is-warn">No eligible '
+      + escapeHtml(pool.subject) + 's for this week yet.</div>';
+  }
+
+  // ── THE CHOICE CELLS — UIRECON Wave 3B ───────────────────────────────────
+  //
+  // WHAT THIS REPLACES. A native `<select>` inside a `.fs-setform` that had no
+  // CSS in any stylesheet — so the one control in the product that takes a
+  // governed Prop Pool claim rendered as an unstyled user-agent dropdown on the
+  // app's near-black ground, captioned with a scope enum. It was the least
+  // usable control on the most playable surface.
+  //
+  // IT IS THE WAVE 1 CHOICE CELL. The same `.fs-seg__opt` a GM taps to pick a
+  // market or a set of terms, with the same geometry, the same 44px floor, the
+  // same gold selected treatment and the same `aria-pressed` grammar. A pick is
+  // a pick wherever the product asks for one.
+  //
+  // EVERY OPTION IS THE SERVER'S. `subject_id` and `label` are carried straight
+  // from `PoolSlotOut.subjects`, which the read model projects from the same
+  // census `pool_claims._validate_subject` checks a submission against. Nothing
+  // here enumerates a team, names a matchup, or filters the list.
+  const cells = pool.subjects.map((s) => {
+    const selected = Boolean(current && current.subject_id === s.subject_id);
+    return (
+      '<button type="button" class="fs-seg__opt is-wrap'
+      + (selected ? ' is-selected' : '') + '" '
+      + `data-poolpick-subject="${escapeHtml(String(s.subject_id))}" `
+      + `aria-pressed="${selected}">`
+      + `<span class="fs-seg__label">${escapeHtml(s.label)}</span>`
+      + '</button>'
+    );
+  }).join('');
+
+  // ONE COLUMN FOR MATCHUPS, TWO FOR TEAMS, and the served scope decides. A
+  // matchup label names both sides — `Gravy Train vs The Braintrust` — and does
+  // not fit half a phone; a team name does.
+  const columns = pool.scope === 'MATCHUP' ? 'is-single' : 'is-double';
 
   return (
-    held +
-    `<form class="fs-setform" id="fs-poolpick-form" data-instance="${pool.poolInstanceId}">` +
-    '<label class="fs-setform__label" for="fs-poolpick">' +
-    `${escapeHtml(pool.subject)}</label>` +
-    `<select class="fs-setform__input" id="fs-poolpick">${options}</select>` +
-    '<button type="submit" class="fs-btn fs-btn--gold fs-setform__save" ' +
-    `id="fs-poolpick-save">${current ? 'Change pick' : 'Submit pick'}</button>` +
-    '<p class="fs-setform__error" id="fs-poolpick-error" role="alert" ' +
-    'aria-live="polite"></p>' +
-    '</form>'
+    `<form class="fs-poolpick" id="fs-poolpick-form" `
+    + `data-instance="${pool.poolInstanceId}">`
+    + `<div class="fs-poolpick__grid ${columns}" role="group" `
+    + `aria-label="${escapeHtml(poolQuestion(pool))}">${cells}</div>`
+    + held
+    + '<button type="submit" class="fs-btn fs-btn--gold fs-poolpick__save" '
+    + `id="fs-poolpick-save">${current ? 'Change Pick' : 'Submit Pick'}</button>`
+    + '<p class="fs-poolpick__error" id="fs-poolpick-error" role="alert" '
+    + 'aria-live="polite"></p>'
+    + '</form>'
   );
+}
+
+/**
+ * What this Prop Pool is asking, composed from what the server served.
+ *
+ * DERIVED, NOT AUTHORED, AND DELIBERATELY SO. The catalog carries a display
+ * name and a settle condition; it does not carry a written question, and Wave 3
+ * is explicit that no catalog field may be added to invent one. So the sentence
+ * is built from the served SCOPE — the same value that decides which subjects
+ * the census admits — and the settle condition is shown in full on its own row
+ * directly beneath. A GM reads what they are picking and what decides it,
+ * without this file claiming to know anything the catalog did not say.
+ *
+ * @param {object} pool a row from `slateRows()`
+ * @returns {string}
+ */
+function poolQuestion(pool) {
+  return pool.scope === 'MATCHUP'
+    ? 'Which matchup do you think takes this Prop Pool?'
+    : 'Which team do you think takes this Prop Pool?';
 }
 
 /**
@@ -701,18 +763,54 @@ export function bindPoolPickForm(host, ctx) {
   const form = host.querySelector('#fs-poolpick-form');
   if (!form) return;
 
-  const select = form.querySelector('#fs-poolpick');
   const save = form.querySelector('#fs-poolpick-save');
   const error = form.querySelector('#fs-poolpick-error');
   const held = host.querySelector('#fs-poolpick-held');
+  const cells = [...form.querySelectorAll('[data-poolpick-subject]')];
   let inFlight = false;
+
+  /** The pressed cell's served subject id, or NaN when none is pressed. */
+  const chosen = () => {
+    const pressed = cells.find((c) => c.getAttribute('aria-pressed') === 'true');
+    return pressed
+      ? Number.parseInt(pressed.dataset.poolpickSubject, 10) : Number.NaN;
+  };
+
+  // SELECTING IS LOCAL; SUBMITTING IS GOVERNED. Pressing a cell moves the
+  // selection and updates `Your pick` so the GM can see what they are about to
+  // send — it posts nothing. The claim is written only by the submit handler
+  // below, through the same governed command as before.
+  cells.forEach((cell) => {
+    cell.addEventListener('click', () => {
+      if (inFlight) return;
+      cells.forEach((other) => {
+        const isThis = other === cell;
+        other.classList.toggle('is-selected', isThis);
+        other.setAttribute('aria-pressed', String(isThis));
+      });
+      // `Your pick` FOLLOWS THE SELECTION, AND SAYS IT IS NOT YET SENT.
+      //
+      // WP6C's rule is that a CONFIRMATION must be the server's persisted
+      // claim and never the value the GM chose, and that rule is kept below.
+      // This is a different statement: it is what the GM is about to submit,
+      // which they are entitled to read before pressing. `is-pending` is what
+      // keeps the two apart on screen — the row is drawn as unresolved until
+      // the governed write returns and rewrites it from `selected_subject_id`.
+      if (held) {
+        held.textContent = cell.querySelector('.fs-seg__label').textContent;
+        held.classList.add('is-pending');
+      }
+      error.textContent = '';
+      save.textContent = 'Submit Pick';
+    });
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (inFlight) return;
 
     error.textContent = '';
-    const subjectId = Number.parseInt(select.value, 10);
+    const subjectId = chosen();
     if (!Number.isInteger(subjectId)) {
       error.textContent = 'Choose one first.';
       return;
@@ -729,20 +827,29 @@ export function bindPoolPickForm(host, ctx) {
         poolInstanceId: Number.parseInt(form.dataset.instance, 10),
         subjectId,
       });
-      // THE CONFIRMATION IS THE SERVER'S. The label redrawn below is looked up
-      // from `selected_subject_id` — what was PERSISTED — not from the value
-      // the GM chose. The two agree on every success, and on the one occasion
-      // they would not, the GM is shown what the database holds.
-      const option = Array.from(select.options).find(
-        (o) => Number.parseInt(o.value, 10) === body.selected_subject_id);
-      if (held && option) held.textContent = option.textContent;
-      select.value = String(body.selected_subject_id);
+      // THE CONFIRMATION IS THE SERVER'S. The cell matched below is found by
+      // `selected_subject_id` — what was PERSISTED — not by the value the GM
+      // chose. The two agree on every success, and on the one occasion they
+      // would not, the GM is shown what the database holds. The only thing that
+      // changed in Wave 3B is where the label is read from: the pressed choice
+      // cell rather than a `<select>` option.
+      const confirmed = cells.find((c) => Number.parseInt(
+        c.dataset.poolpickSubject, 10) === body.selected_subject_id);
+      if (held && confirmed) {
+        held.textContent = confirmed.querySelector('.fs-seg__label').textContent;
+        held.classList.remove('is-pending');
+      }
+      cells.forEach((c) => {
+        const isConfirmed = c === confirmed;
+        c.classList.toggle('is-selected', isConfirmed);
+        c.setAttribute('aria-pressed', String(isConfirmed));
+      });
       save.textContent = 'Pick recorded';
       ctx.onClaimed(body);
     } catch (refusal) {
       error.textContent = ctx.explain(refusal);
       save.disabled = false;
-      save.textContent = 'Submit pick';
+      save.textContent = 'Submit Pick';
     } finally {
       inFlight = false;
     }

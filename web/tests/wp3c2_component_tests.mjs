@@ -212,8 +212,11 @@ check('no free-form line input is offered',
 
 SESSION.state = selectMarket(SESSION.state, 'ou');
 body = composerSheet().body;
+// UIRECON WAVE 3A — the block's line row is a label/value pair now, so the
+// total reads `Total` + `211.5` in two spans rather than one run-on string.
+// The claim is unchanged: the served total is on screen, exactly.
 check('the total detail states the combined total',
-  body.includes('Combined total 211.5'));
+  body.includes('>Total<') && body.includes('>211.5<'));
 check('and offers BOTH sides', body.includes('data-composer-side="over"')
   && body.includes('data-composer-side="under"'));
 check('with neither pre-selected — nothing is chosen for the GM',

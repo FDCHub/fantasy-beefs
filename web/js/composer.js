@@ -30,6 +30,7 @@ import {
   MODE_COPY,
   MODE_DYNAMIC,
   MODE_LOCKED,
+  MODES,
   composerEconomics,
   createComposerState,
   dynamicCeilingNote,
@@ -590,22 +591,129 @@ function servedMarketCells(served) {
  * @param {object|null} served
  * @returns {string}
  */
+/* ── The market block — UIRECON Wave 3A ──────────────────────────────────────
+ *
+ * THREE FIXED SLOTS, RENDERED FOR EVERY MARKET, IN THE SAME ORDER, AT THE SAME
+ * HEIGHT:
+ *
+ *     C · the line          what this market is, and the number it is offering
+ *     F · the side          which side you are on — a choice only where there
+ *                           genuinely is one
+ *     D · the note          one sentence saying what that means
+ *
+ * WHAT THIS REPLACES, AND WHY IT HAD TO GO. The block that stood here returned
+ * `''` for moneyline, a two-row block for spread, and a three-row block with a
+ * pair of buttons for over/under. Measured at 390x844 against a priced pairing,
+ * moving Moneyline → Spread → Over/Under moved every single thing below the
+ * market selector:
+ *
+ *                        ML     SPR     O/U
+ *     Locked / Dynamic   259     322     345
+ *     stake control      447     510     533
+ *     Send Challenge     645     708     731
+ *
+ * Eighty-six pixels of travel under the GM's thumb, on a control that spends
+ * their Credits. The card was not presenting three views of one wager; it was
+ * presenting three different cards.
+ *
+ * THE SIDE SLOT IS FILLED, NOT RESERVED. Reserving an empty 44px row for the
+ * two markets that have no side choice would have bought stationarity with dead
+ * space. Moneyline and Spread do have a side to STATE even though they have
+ * none to pick — you are backing your own team — so the slot shows it, as a
+ * static cell with the choice cell's geometry and none of its affordance. Only
+ * Over/Under puts real buttons there, and they land exactly where the static
+ * cell was.
+ *
+ * THE UNAVAILABLE STATE KEEPS THE SAME THREE SLOTS. A refusal used to be a
+ * `.fs-note.is-warn` of its own height, which is why an unpriceable pairing
+ * drifted 42px between markets even with nothing to show. It now draws the
+ * unresolved figure in the line, the unresolved side, and the server's own
+ * sentence in the note.
+ *
+ * NOTHING HERE PRICES ANYTHING. Every number is a served field handed to an
+ * existing formatter; `acting_spread` arrives already signed and no sign
+ * convention lives in this file.
+ *
+ * @param {object} state
+ * @param {object|null} served
+ * @returns {string}
+ */
 function marketDetail(state, served) {
-  if (!served || !state.marketId || state.marketId === 'ml') return '';
-
-  if (!served.available) {
-    return '<div class="fs-note is-warn" data-market-detail="unavailable">'
-      + escapeHtml(served.unavailable_reason
-        || 'This matchup has no market on offer right now.')
-      + '</div>';
-  }
+  // NO SERVED BOARD, NO BLOCK. The demo composer has no market read model and
+  // its three markets are already identical to one another, so there is no
+  // drift to correct and nothing honest to draw. WP3C.2 certifies that the
+  // unbound composer emits no `data-market-detail` and no side control.
+  if (!served) return '';
 
   const you = session.actingTeamName || 'Your team';
   const them = state.opponent.authoritativeName || served.opponent_name || 'Opponent';
+  const market = state.marketId;
 
-  if (state.marketId === 'spread') {
+  /** One row of the block, so all three are built the same way. */
+  const line = (label, value, exact) => (
+    '<div class="fs-marketdetail__line">'
+    + `<span class="fs-marketdetail__linelabel">${escapeHtml(label)}</span>`
+    + `<span class="fs-marketdetail__linevalue"${
+      exact === undefined ? '' : ` data-exact-line="${exact}"`}>${
+      escapeHtml(value)}</span>`
+    + '</div>'
+  );
+  /** The side slot as a STATEMENT — the choice cell's geometry, no affordance. */
+  const staticSide = (text) => (
+    '<div class="fs-seg fs-seg--side" role="group" aria-label="Your side">'
+    + '<div class="fs-seg__opt is-static">'
+    + `<span class="fs-seg__label">${escapeHtml(text)}</span>`
+    + '</div></div>'
+  );
+  const note = (text, attrs = '') => (
+    `<div class="fs-marketdetail__note"${attrs}>${escapeHtml(text)}</div>`
+  );
+  const block = (kind, body) => (
+    `<div class="fs-marketdetail" data-market-detail="${kind}">${body}</div>`
+  );
+
+  if (!served.available) {
+    return block('unavailable',
+      line('Market', PENDING_FIGURE)
+      + staticSide(PENDING_FIGURE)
+      + note(served.unavailable_reason
+        || 'This matchup has no market on offer right now.'));
+  }
+
+  // THE CARD IS STATIONARY FROM THE MOMENT IT OPENS, not merely from the second
+  // market onward. A composer reached from the card body rather than from one
+  // of its market cells opens with nothing selected, and without this the GM's
+  // FIRST choice would grow the card by the whole block. The slots are drawn
+  // unresolved instead, so picking a market fills them rather than creating
+  // them.
+  if (!market) {
+    return block('none',
+      line('Market', PENDING_FIGURE)
+      + staticSide(PENDING_FIGURE)
+      + note('Pick a market above to see the line FantasyStakes calculated '
+        + 'for your league.'));
+  }
+
+  if (market === 'ml') {
+    const odds = served.acting_moneyline;
+    if (typeof odds !== 'number') {
+      return block('ml', line('Moneyline', PENDING_FIGURE)
+        + staticSide(PENDING_FIGURE)
+        + note('This market is not priced yet.'));
+    }
+    return block('ml',
+      line('Moneyline', formatOdds(odds), odds)
+      + staticSide(`${you} to win`)
+      + note('Your team wins the matchup outright. Calculated for your league.'));
+  }
+
+  if (market === 'spread') {
     const yours = served.acting_spread;
-    if (typeof yours !== 'number') return '';
+    if (typeof yours !== 'number') {
+      return block('spread', line('Spread', PENDING_FIGURE)
+        + staticSide(PENDING_FIGURE)
+        + note('This market is not priced yet.'));
+    }
     // WHO IS GIVING THE POINTS reads off the served sign, which is the whole
     // reason the server sends a signed number rather than a magnitude.
     const giving = yours < 0 ? you : them;
@@ -613,22 +721,25 @@ function marketDetail(state, served) {
     const sentence = yours === 0
       ? `${you} and ${them} are level — no points either way.`
       : `${giving} gives ${Math.abs(yours).toFixed(1)} points to ${getting}.`;
-    return (
-      '<div class="fs-marketdetail" data-market-detail="spread">'
-      + `<div class="fs-marketdetail__line" data-exact-line="${yours}">`
-      + `${escapeHtml(you)} ${escapeHtml(formatSpread(yours))}</div>`
-      + `<div class="fs-marketdetail__note">${escapeHtml(sentence)}</div>`
-      + '</div>'
-    );
+    return block('spread',
+      line('Spread', formatSpread(yours), yours)
+      + staticSide(`${you} ${formatSpread(yours)}`)
+      + note(`${sentence} Calculated for your league.`));
   }
 
   const total = served.total_line;
-  if (typeof total !== 'number') return '';
-  return (
-    '<div class="fs-marketdetail" data-market-detail="ou">'
-    + `<div class="fs-marketdetail__line" data-exact-line="${total}">`
-    + `Combined total ${escapeHtml(total.toFixed(1))}</div>`
-    + '<div class="fs-seg fs-seg--side" role="group" aria-label="Over or under">'
+  if (typeof total !== 'number') {
+    return block('ou', line('Total', PENDING_FIGURE)
+      + staticSide(PENDING_FIGURE)
+      + note('This market is not priced yet.'));
+  }
+  // A TOTAL NEEDS A CHOICE. Over and Under are two different wagers; the
+  // composer offers both and defaults to neither, and `Send` stays disabled
+  // until one is picked. The total itself is not offered as a choice — it is
+  // the market. These are the only real buttons this block ever renders, and
+  // they occupy exactly the row the static cell occupies elsewhere.
+  const sides =
+    '<div class="fs-seg fs-seg--side" role="group" aria-label="Over or under">'
     + ['over', 'under'].map((side) => {
       const selected = state.side === side;
       return (
@@ -638,12 +749,14 @@ function marketDetail(state, served) {
         + '</button>'
       );
     }).join('')
-    + '</div>'
-    + (state.side ? ''
-      : '<div class="fs-marketdetail__note" data-side-required>Choose Over or '
-        + 'Under to price this wager.</div>')
-    + '</div>'
-  );
+    + '</div>';
+  return block('ou',
+    line('Total', total.toFixed(1), total)
+    + sides
+    + (state.side
+      ? note('Both teams’ scores added together. Calculated for your league.')
+      : note('Choose Over or Under to price this wager.',
+        ' data-side-required')));
 }
 
 function previewButton() {
@@ -672,12 +785,41 @@ function modeSelector(state) {
   );
 }
 
+/* ── The terms explanation — UIRECON Wave 3A ─────────────────────────────────
+ *
+ * BOTH BODIES ARE IN THE DOM; ONE IS VISIBLE. Measured at 390x844, the LOCKED
+ * body ran one line longer than the DYNAMIC one, so choosing terms moved the
+ * stake field, the economics and `Send Challenge` 17px up the card. §4 of the
+ * Wave 3 brief is explicit that changing mode must not move the rest of the
+ * card, and this is the mechanism that guarantees it at EVERY width rather than
+ * at the one a magic `min-height` was measured against: the two bodies occupy
+ * the same grid cell, so the block is as tall as the taller of them, whatever
+ * the viewport does to their line counts.
+ *
+ * THE HIDDEN ONE IS PROPERLY HIDDEN. `visibility: hidden` — not opacity, not a
+ * clip — so it is out of the accessibility tree and out of the tab order, and
+ * `aria-hidden` says so a second time. A GM using a screen reader hears the
+ * terms they chose and nothing else.
+ *
+ * THE COPY IS UNTOUCHED. `MODE_COPY` is quoted from the adopted Locked/Dynamic
+ * ruling and asserted character-for-character by
+ * `test_s8_p4c2r2_final_lock_copy.py`; nothing here rewords it, shortens it or
+ * chooses between the two on any basis other than `state.mode`.
+ */
 function modeExplanation(state) {
   const copy = MODE_COPY[state.mode];
+  const bodies = MODES.map((mode) => {
+    const active = mode === state.mode;
+    return (
+      `<div class="fs-modenote__body${active ? ' is-active' : ''}"`
+      + (active ? '' : ' aria-hidden="true"')
+      + `>${escapeHtml(MODE_COPY[mode].body)}</div>`
+    );
+  }).join('');
   return (
     '<div class="fs-modenote" data-mode-note>' +
     `<div class="fs-modenote__head">${escapeHtml(copy.headline)}</div>` +
-    `<div class="fs-modenote__body">${escapeHtml(copy.body)}</div>` +
+    `<div class="fs-modenote__stack">${bodies}</div>` +
     '</div>'
   );
 }

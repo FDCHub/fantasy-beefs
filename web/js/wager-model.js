@@ -42,10 +42,24 @@ import { assertIntegerCents, formatCredits } from './credits.js';
 // `wagercard.matchupMarketCells` while `label` said `Spread`. Two spellings of
 // one market in two files is how they come to disagree; the abbreviation now
 // lives beside the market it abbreviates.
+/* UIRECON WAVE 3A — `label` CARRIES THE PUBLIC WORDING.
+ *
+ * The composer's market selector reads `label` and drew `ML` / `Spread` /
+ * `O/U`: two abbreviations and a word, in three cells that are meant to be
+ * peers. The locked public wording is Moneyline, Spread and Over/Under, and
+ * these cells are the widest place the product names a market, so they are
+ * where it says so in full.
+ *
+ * `short` IS A DIFFERENT FIELD FOR A DIFFERENT REASON and is deliberately not
+ * touched. It labels the three-cell row on the Play discovery card and on the
+ * Status lifecycle cards, where a cell is roughly 68px wide; `Over/Under` would
+ * ellipsize there, which is a worse answer than the abbreviation the surface
+ * was designed around. `persisted` is protocol and is never a display concern.
+ */
 export const MARKETS = Object.freeze([
-  Object.freeze({ id: 'ml', label: 'ML', short: 'ML', longLabel: 'Moneyline', persisted: 'straight' }),
+  Object.freeze({ id: 'ml', label: 'Moneyline', short: 'ML', longLabel: 'Moneyline', persisted: 'straight' }),
   Object.freeze({ id: 'spread', label: 'Spread', short: 'SPR', longLabel: 'Spread', persisted: 'spread' }),
-  Object.freeze({ id: 'ou', label: 'O/U', short: 'O/U', longLabel: 'Over / Under', persisted: 'over_under' }),
+  Object.freeze({ id: 'ou', label: 'Over/Under', short: 'O/U', longLabel: 'Over / Under', persisted: 'over_under' }),
 ]);
 
 export const MODE_LOCKED = 'locked';

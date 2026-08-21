@@ -319,6 +319,16 @@ def claim_week_pools(db, *, league, teams: dict, week: int) -> int:
         if not subjects:
             continue
         for n, spec in enumerate(showcase.TEAMS):
+            # UIRECON WAVE 3B — ONE SLOT, ONE GM, LIVE WEEK ONLY.
+            #
+            # The visitor is skipped on the live week's first Pool slot so the
+            # demo has a Prop Pool they can actually pick. Every other GM claims
+            # it, they claim the other three, and no completed week is affected
+            # — `week` here is the loop's week and the guard names it, so a
+            # settled week can never take this branch. See the note beside
+            # `showcase.VISITOR_OPEN_PICK_SLOT` for why this moves no Credits.
+            if showcase.visitor_skips_claim(week, instance.slot, spec.ordinal):
+                continue
             submit_claim(db, pool_instance_id=instance.id,
                          team_id=teams[spec.ordinal].id,
                          subject_id=subjects[(n + instance.slot) % len(subjects)],

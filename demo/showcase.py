@@ -62,6 +62,57 @@ SEASON_FINAL_WEEK = 17
 CURRENT_WEEK = 11
 COMPLETED_THROUGH_WEEK = 10
 
+# ── UIRECON Wave 3B · THE ONE DEMO-ONLY CHANGE IN THIS WAVE ──────────────────
+#
+# WHAT IT FIXES. The showcase claims a Prediction for EVERY GM on EVERY drawn
+# occurrence, including the live week — see `gameplay.claim_week_pools` and the
+# re-claim loop in `reset._restore`. That is right for the eleven GMs the
+# visitor is playing against: it fills the pot, gives settlement a field, and
+# makes `entered` a real number. It is wrong for the visitor themselves, because
+# it means every Prop Pool they open is already answered, and the product's
+# first-time experience — read the question, choose, submit — is unreachable in
+# the demo that exists to show it.
+#
+# WHAT IT CHANGES, AND NOTHING MORE. One GM is skipped on ONE live-week slot.
+# Every other GM still claims that slot, the visitor still claims the other
+# three, and no completed week is touched at all.
+#
+# WHY THAT IS ECONOMICALLY INERT. A claim is a blind Prediction, not a stake:
+# entry is collected per GM per WEEK by `collect_weekly_entries` regardless of
+# how many occurrences they claim, so skipping one claim moves no Credits, does
+# not change any pot, and does not change what any GM paid. It changes the
+# CENSUS of claimants on one occurrence, which is what settlement evaluates —
+# and settlement is unchanged: eleven claims still resolve there.
+#
+#: The showcase team the Try Demo visitor is seated on. Mirrors
+#: `demo.seed.DEMO_SEAT_ORDINAL`, which owns the seating itself; the two are
+#: asserted equal by `test_uirecon_wave3.py` so this copy cannot drift.
+VISITOR_ORDINAL = 7
+
+#: The live-week Pool slot left unclaimed for the visitor. Slot 1 of 4 — the
+#: first Prop Pool they meet, so the openable one is the one they open.
+VISITOR_OPEN_PICK_SLOT = 1
+
+
+def visitor_skips_claim(week: int, slot: int, ordinal: int) -> bool:
+    """Whether the showcase leaves this (week, slot, GM) unclaimed.
+
+    ONE PREDICATE, TWO CALLERS. `gameplay.claim_week_pools` applies it while
+    seeding and `reset._restore` applies it again while restoring, and they have
+    to agree exactly — a skip in one and not the other would either hand the
+    visitor a fully-claimed slate on reset or leave a slot permanently empty. It
+    is a function rather than a repeated `if` so there is one place to read the
+    rule and one place to test it.
+
+    IT IS SCOPED THREE WAYS AND ALL THREE MATTER. The live week, so no completed
+    week is ever touched; one slot, so three of the four Prop Pools still show
+    the already-picked state; one GM, so the other eleven still claim and the
+    settlement census is unchanged in size but one.
+    """
+    return (week == CURRENT_WEEK
+            and slot == VISITOR_OPEN_PICK_SLOT
+            and ordinal == VISITOR_ORDINAL)
+
 #: The league's own economy, in exact cents.
 #:
 #: WHY 1000 AND NOT ANYTHING ELSE. `activate_season_allocation` resolves its

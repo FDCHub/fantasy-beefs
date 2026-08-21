@@ -147,6 +147,84 @@
  * redundant as well. Net height change on the Play card: nil — one step down on
  * the label, one step up on the value. */
 
+/* ══ THE PROP POOL PICK SURFACE — UIRECON Wave 3B ═════════════════════════
+ *
+ * WHAT WAS HERE BEFORE: nothing. `.fs-setform` — the class the pick control
+ * wore — appeared in the markup and in no stylesheet, and no `select` element
+ * is styled anywhere in this product. So the one control that takes a governed
+ * Prop Pool claim rendered as a user-agent dropdown on a near-black sheet,
+ * captioned with the census scope enum. The claim path underneath it was sound
+ * the whole time; the surface was the defect.
+ *
+ * IT IS THE WAVE 1 CHOICE CELL NOW. The grid below lays out `.fs-seg__opt`
+ * cells — the same control a GM taps to choose a market or a set of terms — so
+ * the geometry, the 44px floor, the gold selected treatment and the
+ * `aria-pressed` grammar are the primitive's and not this surface's. */
+
+/* THE QUESTION. It sits where the scope enum used to and reads as the sheet's
+ * own sentence: card-primary size, primary colour, above everything it governs. */
+.fs-poolq {
+  margin: var(--fs-space-2) 0 var(--fs-space-4);
+  font-size: var(--fs-c-size-body);
+  line-height: 1.35;
+  color: var(--fs-c-text);
+}
+
+.fs-poolpick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-3);
+  margin-top: var(--fs-space-4);
+}
+
+/* EQUAL CELLS, WHATEVER THE LABELS DO. `1fr` columns and `grid-auto-rows: 1fr`
+ * together mean every cell in the grid is the size of the largest — a long team
+ * name cannot make its own cell taller than its neighbour's, which is the
+ * "equal dimensions" the brief asks of a selection cell. */
+.fs-poolpick__grid {
+  display: grid;
+  gap: var(--fs-c-gap-cell);
+  grid-auto-rows: 1fr;
+}
+
+/* ONE COLUMN FOR MATCHUPS, TWO FOR TEAMS, decided by the served scope in
+ * `league.js`. A matchup label names both sides and does not fit half a phone;
+ * a team name does. */
+.fs-poolpick__grid.is-single { grid-template-columns: 1fr; }
+.fs-poolpick__grid.is-double { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* A PICK LIST IS NOT A SEGMENTED ROW. The primitive holds its label to one line
+ * because a market label is two words; a team name is not, and truncating one
+ * would make two teams indistinguishable. `is-wrap` lets the label use the
+ * cell's height — which the grid has already equalised — instead of an
+ * ellipsis. */
+.fs-seg__opt.is-wrap {
+  padding: var(--fs-space-3) var(--fs-space-2);
+}
+
+.fs-seg__opt.is-wrap .fs-seg__label {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.25;
+}
+
+/* `Your pick` IS A ROW OF THE SHEET, and it reads as unresolved until the
+ * governed write returns. `is-pending` is the same amber the rest of the
+ * product uses for "not settled yet": what a GM has chosen but not yet sent is
+ * exactly that. */
+#fs-poolpick-held.is-pending { color: var(--amber); }
+
+.fs-poolpick__save { min-height: var(--fs-c-touch); }
+
+.fs-poolpick__error {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: var(--fs-c-size-fine);
+  line-height: 1.4;
+  color: var(--red);
+}
+
 /* ── Play · Pool cards ────────────────────────────────────────────────────── */
 
 /* STILL A 2×2 GRID — OR-3 and §8.5. Nothing here changes the layout; what

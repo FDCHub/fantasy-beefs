@@ -141,8 +141,14 @@ check('the locked note says acceptance selects the frozen terms',
 section('Betting vocabulary and persisted values');
 
 check('three markets', MARKETS.length === 3);
-check('the labels are ML, Spread and O/U',
-  MARKETS.map((m) => m.label).join(' ') === 'ML Spread O/U');
+// UIRECON WAVE 3A — `label` carries the locked PUBLIC wording, which the
+// composer's market selector draws. `short` keeps the abbreviations for the
+// narrow three-cell rows on the Play card and the Status rails, and is asserted
+// separately below so the two cannot be confused for one field.
+check('the public labels are Moneyline, Spread and Over/Under',
+  MARKETS.map((m) => m.label).join(' ') === 'Moneyline Spread Over/Under');
+check('the narrow-cell abbreviations are unchanged',
+  MARKETS.map((m) => m.short).join(' ') === 'ML SPR O/U');
 check('ML persists as the engine\'s `straight`',
   MARKETS.find((m) => m.id === 'ml').persisted === 'straight');
 check('Spread persists as `spread`',

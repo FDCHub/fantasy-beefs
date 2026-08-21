@@ -117,7 +117,16 @@ export function slateRows() {
     // catalog assigned and the definition's settle condition — rather than
     // invented. `entryCents` is the league's Standard Pool Bet, supplied by
     // the caller because it is a SETTING, not a property of the draw.
-    subject: slot.scope === 'MATCHUP' ? 'Matchup' : 'Team',
+    // UIRECON WAVE 3B — A NOUN FOR A SENTENCE, NOT A LABEL FOR A FIELD.
+    //
+    // This read `'Matchup'` / `'Team'` and was used as the caption on the
+    // pick control, which is how every Prop Pool came to be fronted by a
+    // dropdown labelled `Matchup` — a scope enum where a question belonged.
+    // The value is the same served scope; what changed is that it is now a
+    // word the surface can put INSIDE a sentence rather than above a
+    // control. The scope itself is carried untouched on `scope` for anything
+    // that needs the governed value.
+    subject: slot.scope === 'MATCHUP' ? 'matchup' : 'team',
     rule: slot.metric_expression || '—',
     entryCents: ENTRY_CENTS,
     // Not settled state the slate carries; the detail sheet reads these only

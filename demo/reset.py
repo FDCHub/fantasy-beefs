@@ -464,6 +464,34 @@ def restore_in_place(db, league) -> dict:
                         for t in db.query(Team)
                         .filter(Team.league_id == league.id).all()
                         if t.team_name in ordinal_of}
+    # UIRECON WAVE 3B — RESTORE MEANS RESTORE, INCLUDING THE EMPTY SLOT.
+    #
+    # The canonical CURRENT state now has the visitor UNCLAIMED on one live-week
+    # slot, so a visitor who made a pick and then reset has to end up without
+    # one again. Skipping the re-claim below is not enough — `submit_claim`
+    # with `replace=True` overwrites a claim but never removes one, so their pick
+    # would simply survive the reset and the demo would be a single use.
+    #
+    # A DIRECT DELETE, LIKE THE CHALLENGE AND BET CLEANUP ABOVE. This module
+    # already removes visitor-created rows this way and every path through it
+    # has passed `assert_demo_league` first. It is scoped to one league, one
+    # team, one unsettled instance on the live week.
+    from db.schema import PoolClaim as _PoolClaim
+
+    _visitor = teams_by_ordinal.get(showcase.VISITOR_ORDINAL)
+    withdrawn = 0
+    if _visitor is not None:
+        for instance in open_instances:
+            if not showcase.visitor_skips_claim(
+                    instance.week, instance.slot, showcase.VISITOR_ORDINAL):
+                continue
+            for stale in (db.query(_PoolClaim)
+                          .filter(_PoolClaim.pool_instance_id == instance.id,
+                                  _PoolClaim.team_id == _visitor.id).all()):
+                db.delete(stale)
+                withdrawn += 1
+        db.flush()
+
     for instance in open_instances:
         definition = (db.query(PoolDefinition)
                       .filter(PoolDefinition.key == instance.definition_key)
@@ -475,6 +503,14 @@ def restore_in_place(db, league) -> dict:
         if not subjects:
             continue
         for n, spec in enumerate(showcase.TEAMS):
+            # UIRECON WAVE 3B — the same skip the seed applies, applied again on
+            # restore. Without it, resetting the demo would hand the visitor
+            # back a fully-claimed slate and quietly undo the one Prop Pool they
+            # are meant to be able to pick. `instance.week` is checked because
+            # this loop walks every UNSETTLED occurrence, not just the live one.
+            if showcase.visitor_skips_claim(instance.week, instance.slot,
+                                            spec.ordinal):
+                continue
             submit_claim(db, pool_instance_id=instance.id,
                          team_id=teams_by_ordinal[spec.ordinal].id,
                          subject_id=subjects[(n + instance.slot) % len(subjects)],
@@ -482,7 +518,8 @@ def restore_in_place(db, league) -> dict:
             reclaimed += 1
     db.flush()
     return {"restored": True, "challenges_removed": len(extra),
-            "postings_removed": removed_postings, "claims_reapplied": reclaimed}
+            "postings_removed": removed_postings, "claims_reapplied": reclaimed,
+            "visitor_claims_withdrawn": withdrawn}
 
 
 def ensure_canonical() -> dict:

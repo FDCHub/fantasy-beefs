@@ -301,6 +301,145 @@
   color: var(--g1);
 }
 
+/* ══ THE MARKET BLOCK — UIRECON Wave 3A ═══════════════════════════════════
+ *
+ * THE SLOTS THE CARD STANDS ON. Three rows, rendered for every market, each at
+ * a height the content cannot change:
+ *
+ *     __line   one row  ·  what the market is, and the number it offers
+ *     side     one row  ·  the touch floor, whether it holds a statement or
+ *                          two real buttons
+ *     __note   two rows ·  reserved, so a longer sentence cannot push the card
+ *
+ * WHY THE NOTE IS RESERVED RATHER THAN LEFT TO GROW. It is the one slot whose
+ * content genuinely varies in length — a one-line moneyline sentence, a spread
+ * sentence naming both teams, or a server refusal. Reserving two lines and
+ * clamping at two is what makes the row a fixed quantity at every width; the
+ * copy is written to fit it, and the clamp is the guard rather than the plan.
+ *
+ * THIS BLOCK HAD NO CSS AT ALL BEFORE THIS WAVE. `.fs-marketdetail` appeared in
+ * the markup and in no stylesheet, which is why a priced spread rendered as
+ * `Gravy Train PKGravy Train and The Braintrust are level` — two rows with
+ * nothing separating them. Every rule below is new. */
+
+.fs-marketdetail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-c-gap-cell);
+  margin-top: var(--fs-space-3);
+}
+
+/* THE LINE: what the market is, and its number. Label left, figure right, on
+ * one row — the same left/right grammar the economics rows below use, so a GM
+ * reads the card in one column of labels and one of figures. */
+.fs-marketdetail__line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  min-height: 22px;
+}
+
+.fs-marketdetail__linelabel {
+  font-size: var(--fs-c-size-fine);
+  letter-spacing: var(--fs-c-track-label);
+  color: var(--fs-c-text-muted);
+  white-space: nowrap;
+}
+
+/* The figure is a number and is drawn as one — the canonical tabular monospace
+ * every other figure in the product uses. */
+.fs-marketdetail__linevalue {
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-c-size-metric);
+  font-weight: var(--fs-c-weight-number);
+  letter-spacing: var(--fs-c-track-number);
+  line-height: 1.1;
+  color: var(--fs-c-text);
+  white-space: nowrap;
+}
+
+/* TWO RESERVED LINES. `min-height` holds the row open and the clamp holds it
+ * shut, so the slot is the same height whether it carries a short sentence, a
+ * long one, or a refusal the server worded. */
+.fs-marketdetail__note {
+  min-height: calc(2 * 1.45em);
+  font-size: var(--fs-c-size-fine);
+  line-height: 1.45;
+  color: var(--fs-c-text-muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* THE SIDE ROW IS THE CHOICE CELL'S ROW, whatever is standing in it. Over/Under
+ * puts two real buttons here; Moneyline and Spread put one static cell. Both
+ * take the primitive's geometry, so the row is one height and the primary
+ * action below it never moves. */
+.fs-seg--side { min-height: var(--fs-c-touch); }
+
+/* A STATEMENT, NOT A CONTROL. Identical box to the choice cell beside it — the
+ * primitive at the top of this sheet gives it that — and none of the
+ * affordance: no pointer, no press state, and a muted label so it does not
+ * invite a tap it would not answer. */
+.fs-seg__opt.is-static {
+  cursor: default;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--line2);
+}
+
+.fs-seg__opt.is-static .fs-seg__label { color: var(--fs-c-text-muted); }
+
+/* ── The terms explanation ─────────────────────────────────────────────────
+ *
+ * THE STACK IS WHAT KEEPS THE CARD STILL. Both mode bodies occupy one grid
+ * cell, so the block is as tall as the longer of them at whatever width the
+ * viewport is, and choosing terms swaps which is visible rather than changing
+ * how much room the block takes. `visibility` — not `display` — because the
+ * hidden body must still contribute its height. */
+.fs-modenote__stack { display: grid; }
+
+.fs-modenote__stack > .fs-modenote__body {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+.fs-modenote__stack > .fs-modenote__body.is-active { visibility: visible; }
+
+/* ── The opponent fallback selector ────────────────────────────────────────
+ *
+ * Drawn only for a composer handed no authoritative opponent — the Play card
+ * normally answers this before the sheet opens. It had no CSS either; these are
+ * the shared field and button treatments, so the fallback looks like the rest
+ * of the card rather than like unstyled markup. */
+.fs-oppsel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-c-gap-cell);
+  margin-bottom: var(--fs-space-4);
+}
+
+.fs-oppsel__label {
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--fs-c-text-muted);
+}
+
+.fs-oppsel__btn {
+  min-height: var(--fs-c-touch);
+  text-align: left;
+}
+
+.fs-oppsel__btn.is-selected {
+  background: var(--fs-c-gold-fill);
+  border-color: var(--fs-c-gold);
+  color: var(--fs-c-gold);
+}
+
 /* The segmented ROW. Its cells are the shared choice cell defined at the top of
  * this sheet — `.fs-seg__opt`, `.fs-seg__label` and `.fs-seg__value` are styled
  * there, alongside `.fs-market`, because they are the same control. The block

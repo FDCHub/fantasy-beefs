@@ -367,8 +367,16 @@ MARKETS = APP.get("markets", [])
 _assert("three markets, persisted as the lifecycle's own values",
         [m["persisted"] for m in MARKETS] == ["straight", "spread", "over_under"],
         ", ".join(m["persisted"] for m in MARKETS))
-_assert("the display labels are ML, Spread and O/U",
-        [m["label"] for m in MARKETS] == ["ML", "Spread", "O/U"])
+# UIRECON WAVE 3A — `label` carries the locked public wording and is what the
+# composer's market selector draws; `short` keeps the abbreviations for the
+# narrow three-cell rows on the Play card and the Status rails. Both are pinned,
+# so a later change cannot quietly move one onto the other.
+_assert("the public display labels are Moneyline, Spread and Over/Under",
+        [m["label"] for m in MARKETS] == ["Moneyline", "Spread", "Over/Under"],
+        ", ".join(m["label"] for m in MARKETS))
+_assert("the narrow-cell abbreviations are unchanged",
+        [m["short"] for m in MARKETS] == ["ML", "SPR", "O/U"],
+        ", ".join(m["short"] for m in MARKETS))
 
 # WP3C — PLAY IS UNBOUND IN THIS PROBE, so it renders its intentional empty
 # state rather than cards. The probe imports the modules directly and binds no
