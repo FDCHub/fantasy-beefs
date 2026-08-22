@@ -447,10 +447,10 @@ a { color: inherit; text-underline-offset: 3px; }
    drawn differently - gold against a quiet grey - which read as two different
    kinds of thing sitting in the same template. The `.chip--quiet` modifier
    went with the difference; nothing selects it any more. */
-.odds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.odds { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
 .chip { white-space: nowrap;
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 62px; padding: 6px 10px;
+  min-width: 62px; padding: 6px 8px;
   border-radius: 12px; border: 1px solid var(--card-line);
   background: rgba(200, 162, 77, .07);
   color: var(--gold2);
