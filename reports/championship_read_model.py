@@ -511,55 +511,43 @@ def tied_championship_distribution(
     rows: tuple[ChampionshipRow, ...] | list[ChampionshipRow],
     split: tuple[int, int, int] = (60, 30, 10),
 ) -> tuple[ChampionshipAward, ...]:
-    """Apply the RC2 tied-podium rule to a fixed FantasyStakes Championship Pot.
+    """Apply the tied-podium rule to the FantasyStakes Championship Pot.
 
-    The three ordinal prize slots are calculated in integer cents. As in the
-    existing championship arithmetic, any percentage-flooring remainder is
-    assigned to the first ordinal slot so the full pot is conserved. If a tie
-    occupies multiple slots, those slot amounts are pooled and split equally
-    across every tied GM. Any indivisible cent remainder in that equal split is
-    assigned by ascending canonical team id solely for arithmetic determinism.
+    ── WP-10 · DELEGATES TO THE ONE CANONICAL IMPLEMENTATION ────────────────
+
+    The arithmetic that stood here IS the Final POR §17 rule and was the only
+    one of the repository's three championship-split implementations that had a
+    tie rule at all. It has been MOVED to
+    `economy/championship_distribution.py`, not rewritten, so all three pillars
+    — Points, FantasyStakes and Fantasy Football — pay a dead heat identically.
+    Before WP-10 they could not: `economy/championship.py`'s arithmetic paid a
+    two-way tie for first 60 and 30 by whatever order its caller built.
+
+    THIS FUNCTION'S OWN CONTRACT IS UNCHANGED. Same name, same arguments, same
+    `ChampionshipAward` shape, same conservation guarantee, same ascending-id
+    remainder convention — its callers and its certified assertions all still
+    hold. What changed is that the rule now lives in one place.
+
+    ONE DELIBERATE DIFFERENCE, AND IT IS A CORRECTION. The canonical function
+    returns a Placement for EVERY GM, including unpaid ones; this adapter keeps
+    the historical behaviour of emitting awards only where Credits actually
+    moved, because `awards_json` records what was PAID and a zero-amount award
+    row would read as a payment of nothing.
     """
-    if isinstance(total_cents, bool) or not isinstance(total_cents, int) or total_cents < 0:
-        raise ValueError("total_cents must be a non-negative integer")
-    if len(split) != 3 or any(isinstance(p, bool) or not isinstance(p, int) or p < 0
-                              for p in split) or sum(split) != 100:
-        raise ValueError("split must contain three non-negative integer percentages summing to 100")
+    from economy.championship_distribution import distribute_championship
+
     if not rows:
         raise ValueError("rows must contain at least one championship team")
-    if len({r.team_id for r in rows}) != len(rows):
-        raise ValueError("rows contain duplicate team ids")
 
-    ordered = sorted(rows, key=lambda r: (-r.championship_score_cents, r.team_id))
-
-    slot_amounts = [total_cents * pct // 100 for pct in split]
-    slot_amounts[0] += total_cents - sum(slot_amounts)
-
-    awards: list[ChampionshipAward] = []
-    cursor = 0
-    for score, grouped in groupby(ordered, key=lambda r: r.championship_score_cents):
-        group = list(grouped)
-        place = cursor + 1
-        first_slot = cursor
-        last_slot = min(cursor + len(group), len(slot_amounts))
-        prize_pool = sum(slot_amounts[first_slot:last_slot]) if first_slot < len(slot_amounts) else 0
-        if prize_pool:
-            base, remainder = divmod(prize_pool, len(group))
-            by_team = sorted(group, key=lambda r: r.team_id)
-            for i, row in enumerate(by_team):
-                awards.append(ChampionshipAward(
-                    team_id=row.team_id,
-                    place=place,
-                    championship_score_cents=int(score),
-                    amount_cents=base + (1 if i < remainder else 0),
-                    tied=len(group) > 1,
-                ))
-        cursor += len(group)
-        if cursor >= len(ordered) or cursor >= 3 and prize_pool == 0:
-            # No later group can occupy a paid ordinal slot.
-            if cursor >= 3:
-                break
-
-    if sum(a.amount_cents for a in awards) != total_cents:
-        raise AssertionError("championship distribution failed to conserve the pot")
-    return tuple(sorted(awards, key=lambda a: (a.place, a.team_id)))
+    placements = distribute_championship(
+        total_cents,
+        ((r.team_id, r.championship_score_cents) for r in rows),
+        split=tuple(split),
+    )
+    return tuple(ChampionshipAward(
+        team_id=p.team_id,
+        place=p.place,
+        championship_score_cents=p.rank_value,
+        amount_cents=p.amount_cents,
+        tied=p.tied,
+    ) for p in placements if p.amount_cents)

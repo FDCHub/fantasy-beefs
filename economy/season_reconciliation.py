@@ -37,7 +37,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from economy.championship import championship_distribution
+from economy.championship_distribution import (
+    distribute_championship, podium_standings,
+)
 from economy.championship_podium import resolve_podium
 from economy.economy_events import (
     DOOR_CHAMPIONSHIP_DISTRIBUTION,
@@ -231,11 +233,12 @@ def distribute_championship(db, *, league_id: int,
                             podium_source=None) -> ChampionshipResult:
     """Pay the Championship pot out by the accepted 60/30/10 rule.
 
-    THE ARITHMETIC IS NOT REIMPLEMENTED. `championship_distribution()` is the
-    accepted pure function and is called unchanged, including its remainder
+    THE ARITHMETIC IS NOT REIMPLEMENTED. WP-10's
+    `economy/championship_distribution.py` is the ONE canonical split for all
+    three championship pillars and is called unchanged, including its remainder
     rule: every ordinary place floors, and the ENTIRE indivisible remainder goes
-    to first place. That rule is deliberately different from the Pool's §6.3
-    canonical-id spread, and collapsing the two would silently change payouts.
+    to first place. It also carries the Final POR §17 dead-heat rule, which the
+    arithmetic this path used before carried no equivalent of.
 
     ── WP1D — WHO RECEIVES IT ──────────────────────────────────────────────
 
@@ -307,7 +310,31 @@ def distribute_championship(db, *, league_id: int,
                 f"placed team {team_id} has no wallet; refusing to pay a "
                 f"subset of the placements.")
 
-    placements = championship_distribution(pot, list(split), list(order))
+    # ── WP-10 · THE ONE CANONICAL SPLIT ──────────────────────────────────────
+    #
+    # Final POR §17 fixes 60/30/10 AND its dead-heat rule as product rules, and
+    # requires one implementation across all three championship pillars. This
+    # path used `economy/championship.py::championship_distribution`, which had
+    # no tie rule at all: it paid an ordered list 60/30/10 in whatever order the
+    # caller built, so a genuine dead heat was resolved by list construction
+    # rather than by the rule.
+    #
+    # `podium_standings` gives each podium finisher a DISTINCT descending rank
+    # value, so a bracket — which cannot tie, by `derive_podium_keys`' own
+    # three-distinct-ids contract — reports no tie and is paid exactly as
+    # before. The dead-heat machinery is present and simply never fires here,
+    # which is the correct relationship between a knockout result and a rule
+    # that exists for scored ones.
+    #
+    # The `(place, team_id, pct, cents)` tuple shape is preserved for
+    # `ChampionshipResult.placements` and every certified caller of it.
+    ranked = distribute_championship(pot, podium_standings(order),
+                                     split=tuple(split))
+    by_place = {p.place: p for p in ranked}
+    placements = tuple(
+        (p.place, p.team_id, split[p.place - 1] if p.place <= len(split) else 0,
+         p.amount_cents)
+        for p in (by_place[k] for k in sorted(by_place)))
     paid = sum(amount for _, _, _, amount in placements)
     if paid != pot:
         raise SeasonReconciliationError(
