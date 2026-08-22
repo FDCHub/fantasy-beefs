@@ -448,7 +448,7 @@ a { color: inherit; text-underline-offset: 3px; }
    kinds of thing sitting in the same template. The `.chip--quiet` modifier
    went with the difference; nothing selects it any more. */
 .odds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.chip {
+.chip { white-space: nowrap;
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 62px; padding: 6px 10px;
   border-radius: 12px; border: 1px solid var(--card-line);
