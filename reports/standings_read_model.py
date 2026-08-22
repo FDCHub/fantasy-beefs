@@ -33,7 +33,15 @@ GM as having spent nothing.
 
     versus_net = Σ(spend-account legs under the Versus doors) + open Versus escrow
     pool_net   = Σ(spend-account legs under the Pool doors)
-    net        = versus_net + pool_net
+    skunk_fees = Σ(this season's Skunk assessed against the GM)   FINAL POR §8
+    net        = versus_net + pool_net - skunk_fees
+
+THE SKUNK TERM IS ERA-GATED ON `ruleset_version`. A season activated before the
+Final POR is scored by the two-term identity it was played under, and reads zero
+here; a Final POR season subtracts what its Skunk machinery actually posted. The
+subtrahend is derived through `economy_event`, never from the `receivable:`
+balance — see `economy/skunk.py::skunk_fees_by_team` for the two independent
+reasons that matters.
 
 THE OPEN-ESCROW TERM IS WHY AN UNSETTLED WAGER IS NOT A LOSS. Placing a stake
 debits the spend account immediately; the money sits in `escrow:` until the
@@ -71,7 +79,9 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from economy.economy_events import wallet_account
+from economy.skunk import skunk_fees_by_team
 from reports.ledger_read_model import LedgerReadModelError, league_positions
+from ruleset import is_final_por
 
 
 # ── The door groupings ───────────────────────────────────────────────────────
@@ -163,10 +173,38 @@ class StandingsRow:
     versus_net_cents: int
     pool_net_cents: int
 
+    #: FINAL POR §8 — Skunk assessed against this GM this league-season, as a
+    #: POSITIVE magnitude, SUBTRACTED by `net_cents`.
+    #:
+    #: POSITIVE-AND-SUBTRACTED, not signed-and-added, because the column the
+    #: standings table draws is headed `SKUNK` and shows what a GM was charged.
+    #: `economy/current_settle.py` already states the same figure the same way
+    #: (`receivable_cents=-receivable`), so the two surfaces agree on sign.
+    #:
+    #: ZERO ON A LEGACY SEASON, ALWAYS. The Skunk term is gated on
+    #: `ruleset_version`: a season activated before the Final POR keeps the
+    #: two-term identity it was scored under, and its frozen championship rows
+    #: stay exactly what they were.
+    skunk_fees_cents: int = 0
+
     @property
     def net_cents(self) -> int:
-        """The combined competitive result Overall ranks on."""
-        return self.versus_net_cents + self.pool_net_cents
+        """The FantasyStakes Score this GM's championship standing ranks on.
+
+        FINAL POR §8:  Matchup Net + Prop Pool Net − Skunk Fees
+
+        WHY THE SKUNK TERM BELONGS IN A COMPETITIVE TOTAL AT ALL. Every other
+        term here is a wagering result, and Skunk is not one — it is a fantasy
+        performance penalty. The POR admits it deliberately: a GM's
+        FantasyStakes Score is meant to answer "how did you do", and being the
+        worst loser in the league every week is part of that answer.
+
+        IT IS NOT A SECOND CHARGE. The same single assessment appears in My
+        Settle as an obligation and here as a score penalty. They are different
+        questions over one posting — what you owe, and how you are doing — and
+        the Rules card carries the sentence that says so.
+        """
+        return self.versus_net_cents + self.pool_net_cents - self.skunk_fees_cents
 
     @property
     def versus_record(self) -> str:
@@ -185,6 +223,9 @@ class StandingsRow:
             "pool_wins": self.pool_wins,
             "versus_net_cents": self.versus_net_cents,
             "pool_net_cents": self.pool_net_cents,
+            # FINAL POR §8 / §26 — the SKUNK standings column. Positive
+            # magnitude on the wire; `net_cents` has already subtracted it.
+            "skunk_fees_cents": self.skunk_fees_cents,
             "net_cents": self.net_cents,
         }
 
@@ -393,6 +434,21 @@ def league_standings(db: Session, *, league_id: int,
         raise LedgerReadModelError("LEAGUE_NOT_FOUND",
                                    f"League {league_id} not found")
 
+    # ── FINAL POR §8 · THE SKUNK TERM, ERA-GATED ─────────────────────────────
+    #
+    # Read ONCE for the whole league rather than per GM: it is one grouped query
+    # either way, and a per-row read would make a twelve-team table twelve
+    # queries for a figure that is a property of the season.
+    #
+    # A LEGACY SEASON GETS AN EMPTY MAP AND THEREFORE ZERO, which is what keeps
+    # its Score the two-term figure it was played, frozen and paid under. The
+    # gate is `ruleset_version` and nothing else — not the presence of Skunk
+    # postings, which a legacy season also has.
+    skunk_by_team: dict[int, int] = {}
+    if is_final_por(db, league_id=league_id, season=league.season):
+        skunk_by_team = skunk_fees_by_team(
+            db, league_id=league_id, season=league.season)
+
     rows: list[StandingsRow] = []
     for position in positions:
         team_id = position.team_id
@@ -431,6 +487,7 @@ def league_standings(db: Session, *, league_id: int,
                               - _legacy_wager_net_cents(db, team_id,
                                                         VERSUS_DOORS)),
             pool_net_cents=_door_net_cents(db, team_id, POOL_DOORS),
+            skunk_fees_cents=skunk_by_team.get(team_id, 0),
         ))
 
     return LeagueStandings(

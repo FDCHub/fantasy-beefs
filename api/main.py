@@ -5265,6 +5265,11 @@ class StandingsRowOut(BaseModel):
     pool_wins:        int
     versus_net_cents: int
     pool_net_cents:   int
+    #: FINAL POR §8 / §26 — the SKUNK standings column, a POSITIVE magnitude.
+    #: `net_cents` has already subtracted it; a client must not subtract again.
+    #: Always 0 for a season governed by the legacy ruleset.
+    skunk_fees_cents: int
+    #: FantasyStakes Score: versus_net + pool_net - skunk_fees.
     net_cents:        int
 
 

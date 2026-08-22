@@ -201,8 +201,24 @@ _assert("the rank itself is the server's, not an index",
 READ_MODEL = _read_root("reports", "standings_read_model.py")
 _assert("the backend read model exists",
         os.path.isfile(os.path.join(ROOT, "reports", "standings_read_model.py")))
-_assert("it derives Overall from the two competitive nets, not from a balance",
-        "self.versus_net_cents + self.pool_net_cents" in READ_MODEL)
+# FINAL POR §8 — REPLACED, NOT RELAXED.
+#
+# This asserted the literal source string `self.versus_net_cents +
+# self.pool_net_cents`, which encoded the RC2 two-term identity. The Final POR
+# makes FantasyStakes Score a THREE-term figure, so the old string is now the
+# wrong answer and keeping it would have pinned the obsolete rule in place.
+#
+# The claim WP3B was making survives intact and is what is asserted here: Overall
+# is derived from competitive nets rather than from any balance. The Skunk term
+# is a competitive penalty, not a balance, so the original intent is unchanged.
+_assert("it derives Overall from the competitive terms, not from a balance",
+        "self.versus_net_cents + self.pool_net_cents - self.skunk_fees_cents"
+        in READ_MODEL)
+_assert("  · and the Skunk term is era-gated, so legacy seasons keep two terms",
+        "is_final_por(db, league_id=league_id, season=league.season)" in READ_MODEL)
+_assert("  · Overall still reads no Wallet or Current Settle figure",
+        "current_settle_cents" not in READ_MODEL
+        and "wallet_balance" not in READ_MODEL)
 _assert("it composes the certified position read rather than re-attributing",
         "league_positions(db, league_id=league_id)" in READ_MODEL)
 _assert("it sums BOTH spend accounts, so min-funded spend is not missed",
