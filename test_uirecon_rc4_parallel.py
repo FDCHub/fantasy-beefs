@@ -345,12 +345,22 @@ _assert("the backfill is registered in the release manifest",
 _assert("  · after the migration that adds the column",
         _manifest.index("0008_pool_definition_public_question")
         < _manifest.index("0009_pool_definition_public_question_backfill"))
+# BOUNDED BY 0009'S OWN ENTRY, NOT BY THE END OF THE TUPLE.
+#
+# This previously terminated on `),\n)` — the close of the ACTIVE tuple — which
+# only worked while 0009 happened to be the LAST migration registered. The Final
+# POR appends 0010, so that anchor stopped matching and the assertion died on a
+# None regex rather than reporting anything about 0009. The claim being made has
+# nothing to do with position: it is that 0009's OWN entry declares no schema
+# object. Anchoring to its own closing `),` says that and stays true however many
+# migrations follow it.
+_entry_0009 = re.search(
+    r'identifier="0009_pool_definition_public_question_backfill"[\s\S]*?\n    \),',
+    _manifest)
 _assert("  · and it claims no new schema object, because it adds none",
-        re.search(r'identifier="0009_pool_definition_public_question_backfill"'
-                  r'[\s\S]{0,400}?\)', _manifest) is not None
-        and "columns=" not in re.search(
-            r'identifier="0009_pool_definition_public_question_backfill"'
-            r'[\s\S]{0,400}?\),\n\)', _manifest).group(0))
+        _entry_0009 is not None
+        and "columns=" not in _entry_0009.group(0)
+        and "tables=" not in _entry_0009.group(0))
 
 _backfill = _read_root(
     "migrations", "backfill_pool_definition_public_question.py")

@@ -624,8 +624,110 @@ function bindSheet() {
  *
  * @param {string} destinationId
  */
-export function goTo(destinationId, zone = null) {
+/**
+ * The destination the reader is currently on.
+ *
+ * FINAL POR · UI-1 — THE SHELL REMEMBERS WHERE THE READER IS.
+ *
+ * `mountApplication()` used to end with `goTo(DEFAULT_DESTINATION_ID)`
+ * unconditionally, and every local mutation that rebuilt the panels therefore
+ * ALSO navigated the reader to Standings. Submitting a Prop Pool pick did
+ * exactly that: `onClaimed` → `mountApplication()` → `goTo('standings')`, so a
+ * GM who tapped Submit on Play watched the sheet close and the app jump to a
+ * different tab. The remount was correct — the panels genuinely had to redraw —
+ * and the navigation was an unintended side effect of it.
+ *
+ * Null before the first navigation, which is the only time the DEFAULT is the
+ * right answer.
+ *
+ * @type {string|null}
+ */
+let ACTIVE_DESTINATION_ID = null;
+
+/**
+ * The destination the reader is on, or null before the first navigation.
+ *
+ * Exported so a certification suite can assert that a local mutation left the
+ * reader where they were, rather than inferring it from rendered classes.
+ *
+ * @returns {string|null}
+ */
+export function activeDestinationId() {
+  return ACTIVE_DESTINATION_ID;
+}
+
+/**
+ * Every horizontal one-card rail, across all THREE carousel families.
+ *
+ * FINAL POR · UI-1. The families are separately declared and separately styled
+ * — `.fs-carousel` in gameplay.css (Play), `.fs-rail--carousel` in tabs.css
+ * (Status), `.fs-rescar` in ledger.css (Wrap Up) — and nothing before this
+ * treated them as one set. They are one set for exactly ONE purpose: a rail's
+ * scroll offset is its carousel position, and a remount that replaces the DOM
+ * loses every one of them.
+ *
+ * THIS SELECTOR ADDS NO STYLING AND NO SHARED CSS. It is a read/write list for
+ * scroll offsets only, so a change here cannot regress one family's geometry
+ * through another's — which is the specific hazard the shared-carousel
+ * certification called out.
+ */
+const CAROUSEL_RAIL_SELECTOR = '.fs-carousel, .fs-rail--carousel, .fs-rescar';
+
+/**
+ * Capture every rail's scroll offset, keyed by panel and position-in-panel.
+ *
+ * KEYED BY STRUCTURE, NOT BY IDENTITY, because rails carry no stable id and
+ * inventing one would mean touching three unrelated renderers. A remount
+ * rebuilds the same panels in the same order from the same data, so the nth
+ * rail of a panel is the same rail. When it is NOT — because the data changed
+ * shape — the offset restores onto a different rail at worst, which a scroll
+ * position can survive; a wrong id would have been no better.
+ *
+ * @returns {Map<string, number>}
+ */
+function captureRailScroll() {
+  const positions = new Map();
+  ALL_DESTINATIONS.forEach((d) => {
+    const panel = document.getElementById(d.panelId);
+    if (!panel) return;
+    panel.querySelectorAll(CAROUSEL_RAIL_SELECTOR).forEach((rail, index) => {
+      if (rail.scrollLeft) positions.set(`${d.panelId}:${index}`, rail.scrollLeft);
+    });
+  });
+  return positions;
+}
+
+/**
+ * Restore captured rail offsets after a remount.
+ *
+ * A rail on a panel that is not currently active may be `display:none`, and
+ * assigning `scrollLeft` to it does nothing. That is accepted: the panel the
+ * reader is looking at is the one whose position matters, and it is active by
+ * the time this runs.
+ *
+ * @param {Map<string, number>} positions
+ */
+function restoreRailScroll(positions) {
+  if (!positions || positions.size === 0) return;
+  ALL_DESTINATIONS.forEach((d) => {
+    const panel = document.getElementById(d.panelId);
+    if (!panel) return;
+    panel.querySelectorAll(CAROUSEL_RAIL_SELECTOR).forEach((rail, index) => {
+      const left = positions.get(`${d.panelId}:${index}`);
+      if (left) rail.scrollLeft = left;
+    });
+  });
+}
+
+/**
+ * @param {string} destinationId
+ * @param {string|null} zone
+ * @param {{keepSheet?: boolean}} [options] `keepSheet` suppresses the sheet
+ *   close for a REMOUNT that is not a destination change — see `goTo`'s body.
+ */
+export function goTo(destinationId, zone = null, options = {}) {
   const next = selectDestination(destinationId);
+  ACTIVE_DESTINATION_ID = destinationId;
 
   next.forEach((d) => {
     const tab = document.querySelector(`.fs-tabbar__item[data-destination="${d.id}"]`);
@@ -643,7 +745,15 @@ export function goTo(destinationId, zone = null) {
   });
 
   // A destination change is a context change: the sheet does not survive it.
-  closeSheet();
+  //
+  // A REMOUNT IS NOT A DESTINATION CHANGE, which is why `keepSheet` exists.
+  // `mountApplication` re-navigates to wherever the reader already was in order
+  // to re-light the tab and re-activate the panel after the DOM was replaced;
+  // closing the sheet there would tear down a control the reader is still
+  // using. The Pool pick path depends on this: its own comment states the sheet
+  // is deliberately NOT re-rendered so the GM keeps their confirmation, and
+  // before UI-1 the unconditional close here discarded it anyway.
+  if (options.keepSheet !== true) closeSheet();
 
   scrollToZone(destinationId, zone);
 }
@@ -1009,7 +1119,11 @@ async function bindAuthoritativeData() {
         } catch {
           markEconomyUnavailable();
         }
-        mountApplication();
+        // FINAL POR · UI-1 — a commissioner who just activated the season is
+        // reading Rules & Settings. The panels must redraw because activation
+        // changed what every one of them may show; the reader must not be moved
+        // off the surface they are working on to learn that.
+        mountApplication({ preserveContext: true });
       },
     });
   } else {
@@ -1055,7 +1169,10 @@ async function bindAuthoritativeData() {
         // authoritative refresh — no second read to fall out of step with.
         bindSettings(settings);
         api.rerender();
-        mountApplication();
+        // FINAL POR · UI-1 — the sheet was just re-rendered on purpose, so the
+        // remount behind it must not close it, and a saved setting is not a
+        // reason to navigate anywhere.
+        mountApplication({ preserveContext: true });
       },
     });
   });
@@ -1100,7 +1217,18 @@ async function bindAuthoritativeData() {
           // SERVER's persisted subject into its own held row, so the open sheet
           // is showing authoritative state either way; reopening it rebuilds
           // from the slate just refreshed above.
-          mountApplication();
+          //
+          // FINAL POR · UI-1 — `preserveContext` IS WHAT MAKES THAT TRUE.
+          //
+          // The paragraph above states the intent and, before UI-1, the code
+          // did not deliver it. `mountApplication()` ended in
+          // `goTo(DEFAULT_DESTINATION_ID)`, so submitting a Prop Pool pick
+          // navigated the GM from Play to Standings AND closed the sheet whose
+          // survival this comment describes — the panels were redrawn, and so
+          // was the reader's whole context. Preserving it keeps the GM on Play,
+          // keeps the Pool carousel where they left it, and keeps the
+          // confirmation they just earned on screen.
+          mountApplication({ preserveContext: true });
         },
       });
     });
@@ -1383,7 +1511,20 @@ function mountPoints() {
  * commissioner data — replacing those sources is the binding package's work,
  * and doing it here would spread it across two.
  */
-function mountApplication() {
+function mountApplication(options = {}) {
+  // FINAL POR · UI-1 — A REMOUNT PRESERVES CONTEXT; A FRESH MOUNT DOES NOT.
+  //
+  // `preserveContext` is passed by callers that rebuilt the panels because
+  // DATA CHANGED, not because the reader navigated: the Pool pick path is the
+  // first, and any later local mutation that needs the panels redrawn is the
+  // same case. Such a caller must leave the reader on the tab they were using,
+  // with their carousel where they left it and their open sheet intact.
+  //
+  // A FRESH MOUNT — sign-in — deliberately does none of that. There is no
+  // previous context to preserve, and Standings is the locked landing tab.
+  const preserveContext = options.preserveContext === true;
+  const railScroll = preserveContext ? captureRailScroll() : null;
+
   const { mast, panels, tabbar, gate } = mountPoints();
 
   gate.hidden = true;
@@ -1424,7 +1565,16 @@ function mountApplication() {
 
   bindNavigation();
 
-  goTo(DEFAULT_DESTINATION_ID);
+  // WHERE THE READER WAS, or the locked landing tab on a first mount. The
+  // fallback is `ACTIVE_DESTINATION_ID === null`, which is true exactly once
+  // per session — before any navigation has happened.
+  const destination = (preserveContext && ACTIVE_DESTINATION_ID)
+    ? ACTIVE_DESTINATION_ID : DEFAULT_DESTINATION_ID;
+  goTo(destination, null, { keepSheet: preserveContext });
+
+  // AFTER `goTo`, not before: an inactive panel may be `display:none`, and a
+  // rail inside one cannot take a scroll offset until its panel is active.
+  restoreRailScroll(railScroll);
 }
 
 /**
@@ -1515,6 +1665,15 @@ if (typeof document !== 'undefined') {
   // Exposed for manual inspection in the browser console.
   window.FantasyStakes = {
     goTo, openSheet, pushSheet, popSheet, closeSheet, openComposer, switchLeague,
+    activeDestinationId,
+    // FINAL POR · UI-1 — THE DRIVE-POINT FOR CONTEXT PRESERVATION.
+    //
+    // Exposed so a browser suite can exercise the exact call the Pool-claim
+    // path makes, rather than reaching inside the module or re-implementing the
+    // remount. A test that called a private copy would prove the copy works and
+    // leave the real call site uncertified — which is how the original defect
+    // survived every existing suite.
+    remountPreservingContext: () => mountApplication({ preserveContext: true }),
   };
 
   if (document.readyState === 'loading') {
