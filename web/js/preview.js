@@ -78,12 +78,18 @@ export function previewSheet(m, ctx = {}) {
     title: 'Matchup Preview',
     sub: [`${m.you.name} vs ${m.name}`, week].filter(Boolean).join(' · '),
     body:
+      // FINAL POR §27E — LINEUPS SITS ABOVE ON OFFER.
+      //
+      // `identitySection` draws the `ON OFFER` block. LINEUPS is the roster the
+      // price rests on, and a reader comparing an offer against the lineups now
+      // meets the lineups first rather than scrolling past the analysis to
+      // reach them. Still COLLAPSED — moving it up changes the order, not the
+      // density.
+      lineupsSection(m, served) +
       identitySection(m, served) +
       // ANALYSIS FIRST, BOTH OPEN. §10.
       collapsible('WHY THE LINE LOOKS THIS WAY', paragraphs(why), { open: true }) +
       collapsible('THE READ', paragraphs(read), { open: true }) +
-      // DENSE CONTENT LAST, AND COLLAPSED.
-      lineupsSection(m, served) +
       closingNote +
       sourceFooter,
     onMount: (host) => {

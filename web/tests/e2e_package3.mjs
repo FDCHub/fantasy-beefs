@@ -279,9 +279,12 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // correctly empty and the sheet is the three analysis modules alone. The
   // priced FantasyStakes preview, which does carry one, is asserted on the
   // four-section order in test_uirecon_wave4.py.
-  check('the preview carries the three shared analysis sections in the §10 order',
+  // FINAL POR §27E — LINEUPS MOVED ABOVE ON OFFER, so the three collapsibles
+  // now read LINEUPS first. Rev 4.3 §10's claim that the two analysis modules
+  // stay together and in order is unchanged and is still what this asserts.
+  check('the preview carries the three shared analysis sections in Final POR order',
     preview.titles.join('|')
-      === 'WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
+      === 'LINEUPS|WHY THE LINE LOOKS THIS WAY|THE READ',
     preview.titles.join('|'));
   check('and no block restates the pairing the sheet header already names',
     !preview.titles.includes('MATCHUP'), preview.titles.join('|'));
@@ -615,13 +618,21 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   const weekExpected = [
     ['Available', ledger.available_cents],
     ['In Play', ledger.in_play_cents],
-    ['Held', ledger.held_open_challenges_cents],
+// FINAL POR §30 — `HELD` became `ESCROW`. The VALUE is unchanged: still
+// held_open_challenges_cents, still reported beside the position, still never
+// added to any total. Only the label changed, plus the `included in In Play`
+// context that keeps the subset relationship visible.
+    ['Escrow', ledger.held_open_challenges_cents],
     ['Min Left', ledger.weekly_min_live_cents],
   ];
   for (const [i, [label, cents]] of weekExpected.entries()) {
+    // THE FIGURE IS THE PREFIX, because a cell may carry secondary context
+    // after it — Final POR §30 gives Escrow `· included in In Play` so the
+    // subset relationship is visible. `startsWith` asserts the money exactly
+    // and lets a cell explain itself; `exact` below is unaffected either way.
     check(`week strip cell ${i + 1} is ${label}, as the Ledger served it`,
       strips.week[i].label === label
-      && strips.week[i].value === `$${Math.round(cents / 100)}`,
+      && strips.week[i].value.startsWith(`$${Math.round(cents / 100)}`),
       `${strips.week[i].label} ${strips.week[i].value} vs served $${cents / 100}`);
     check(`${label} keeps its exact cents`,
       Number(strips.week[i].exact) === cents,
@@ -688,10 +699,14 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // `ledgerSection()` as the three that explain into it. Four numbered
   // sections, one construction.
   check('the Ledger has four numbered sections', sections.length === 4, String(sections.length));
-  check('they are Advances, Wagering Summary, Season Adjustments and Current Settle',
+  // FINAL POR §30 — section 1 is `OPENING FANTASYSTAKES ALLOCATION`. `Advances`
+  // read as a loan against a balance; what the section reports is the season's
+  // opening allocation of virtual credits. Four sections, one construction —
+  // the claim UIRECON Wave 2 was making — is unchanged.
+  check('they are Opening Allocation, Wagering Summary, Season Adjustments and Current Settle',
     sections.map(s => s.title).join(' | ')
-      === 'FANTASYSTAKES ADVANCES | WAGERING SUMMARY | SEASON ADJUSTMENTS + WINNINGS'
-        + ' | CURRENT SETTLE',
+      === 'OPENING FANTASYSTAKES ALLOCATION | WAGERING SUMMARY'
+        + ' | SEASON ADJUSTMENTS + WINNINGS | CURRENT SETTLE',
     sections.map(s => s.title).join(' | '));
   check('the Wagering Summary is the elevated section',
     sections[1].elevated === true && !sections[0].elevated && !sections[2].elevated);

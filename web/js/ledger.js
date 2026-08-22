@@ -227,8 +227,11 @@ function advancesSection(r) {
   const a = r.advances;
   return ledgerSection({
     number: '1',
-    title: 'FANTASYSTAKES ADVANCES',
-    sub: 'Virtual stakes advanced to you for the season.',
+    // FINAL POR §30 — the approved public label. `Advances` reads as a loan
+    // against a balance; what this section reports is the season's opening
+    // allocation of virtual credits.
+    title: 'OPENING FANTASYSTAKES ALLOCATION',
+    sub: 'Virtual credits allocated to you for the season.',
     body:
       // Season-Opening is a PARENT of its two components and a SIBLING of Added
       // Stakes. Nesting Added Stakes underneath would claim it was part of the
@@ -406,7 +409,14 @@ function currentSettleSection(r) {
     title: 'CURRENT SETTLE',
     sub: 'What you would owe or be owed if the season closed now.',
     body: `<div id="fs-current-settle">${body}</div>`,
-    open: true,
+    // FINAL POR §30 — ALL FOUR ACCOUNT CARDS ARRIVE CLOSED.
+    //
+    // Current Settle opened on arrival because it is the number the page exists
+    // to derive. But a reconciliation figure is not what a GM comes to Account
+    // to read first, and opening the densest of the four cards by default put
+    // an accounting statement in front of a reader who may only have wanted
+    // their Wallet. The affordance is unchanged and one tap away.
+    open: false,
   });
 }
 
@@ -475,11 +485,20 @@ export function buildLedgerPanel() {
       // them means something — the exact double count both read models are
       // written to prevent.
       //
-      // `Held` IS ALSO THE POR'S OWN WORD for this figure, not a placeholder:
-      // Rev 4.3 §14.1 retains `Held` as an Account term, and the Rev 3.1
-      // register defines it as "Pending offer holds ... `Held · not In Play`".
-      // It is therefore both the accurate label and the locked one.
-      { label: 'Held', cents: heldCents, pending: unresolved },
+      // FINAL POR §30 — `ESCROW`, WITH THE SUBSET RELATIONSHIP MADE VISIBLE.
+      //
+      // The objection recorded above is real and is NOT dismissed: this figure
+      // is `held_open_challenges_cents`, which `reports/ledger_read_model.py`
+      // states is "a SUBSET of `in_play_cents` rather than an addition to it".
+      // Labelling it `ESCROW` beside `In Play` without saying so would invite
+      // exactly the addition both read models exist to prevent.
+      //
+      // So the POR's label is used AND the relationship is drawn: `included in
+      // In Play` rides the cell as secondary context. THE ARITHMETIC IS
+      // UNCHANGED — this cell is still reported beside the position and is
+      // still never added to any total.
+      { label: 'Escrow', cents: heldCents, pending: unresolved,
+        context: 'included in In Play' },
       // UIRECON WAVE 1 — `Weekly Min Left` measured 93.8px against a 68px
       // cell and wrapped, stretching every cell on both of this tab's strips.
       { label: 'Min Left', cents: weeklyMinLeftCents(),

@@ -382,7 +382,11 @@ check('the Credits disclaimer appears exactly once',
 const weekCells = [
   ['Available', 6500, '$65'],
   ['In Play', 2800, '$28'],
-  ['Held', 2500, '$25'],
+// FINAL POR §30 — `HELD` became `ESCROW`. The VALUE is unchanged: still
+// held_open_challenges_cents, still reported beside the position, still never
+// added to any total. Only the label changed, plus the `included in In Play`
+// context that keeps the subset relationship visible.
+  ['Escrow', 2500, '$25'],
   ['Min Left', 1000, '$10'],
 ];
 for (const [label, cents, drawn] of weekCells) {

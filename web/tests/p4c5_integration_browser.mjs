@@ -172,7 +172,7 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
     && leagueAvailable.exact === ledgerAvailable.exact,
     `${leagueAvailable ? leagueAvailable.exact : '?'} vs ${ledgerAvailable ? ledgerAvailable.exact : '?'}`);
 
-  const held = cell(money.ledgerCells, 'Held');
+  const held = cell(money.ledgerCells, 'Escrow');
   const inPlay = cell(money.ledgerCells, 'In Play');
   report.check('Held is a memo SUBSET of In Play, not a term beside it',
     held && inPlay && Number(held.exact) <= Number(inPlay.exact),

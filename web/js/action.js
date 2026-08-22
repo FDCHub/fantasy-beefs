@@ -36,6 +36,7 @@ import { attributionFooter } from './attribution.js';
 import { PanelComposer, escapeHtml, sectionHeading, tabHeader } from './components.js';
 import { counterStakeSheet } from './counter-stake.js';
 import { headingWithPhase } from './phase.js';
+import { SWIPE_WORD } from './league.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
 import {
   RAILS,
@@ -247,11 +248,17 @@ export function buildActionPanel() {
 }
 
 /** The locked rail words. One spelling, one place, four rails. */
+// FINAL POR §28 — THE FOUR LOCKED CATEGORY NAMES.
+//
+// `WAITING` / `LIVE` / `COMPLETED` named three different kinds of thing: a
+// state of mind, a state of play and a state of record. The locked set names
+// the same four rails by the ACTION each one holds, so the column reads as one
+// sentence four times over and a GM can tell at a glance which rail wants them.
 const RAIL_WORDS = Object.freeze({
   action: 'ACTION REQUIRED',
-  waiting: 'WAITING',
-  live: 'LIVE',
-  completed: 'COMPLETED',
+  waiting: 'PENDING ACTION',
+  live: 'LOCKED ACTION',
+  completed: 'RESOLVED ACTION',
 });
 
 /**
@@ -287,7 +294,14 @@ const RAIL_WORDS = Object.freeze({
 export function railHeading(rail) {
   const word = RAIL_WORDS[rail];
   if (!word) throw new Error(`unknown rail "${rail}"`);
-  return `${word}: ${sectionCount(rail)}`;
+  // FINAL POR §28 — `LABEL · N · SWIPE`.
+  //
+  // `LABEL: N` carried the count and said nothing about the affordance. Each
+  // rail shows ONE card at a time, so a reader who does not know it swipes
+  // cannot reach cards two and three at all — the count told them something
+  // was there and not how to get to it. SWIPE is the same word Play and Wrap Up
+  // already use, so the whole application states the affordance one way.
+  return `${word} · ${sectionCount(rail)} · ${SWIPE_WORD}`;
 }
 
 /**

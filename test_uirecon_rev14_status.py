@@ -121,17 +121,28 @@ _tabs_rules = _without_comments(_tabs_css)
 
 # ── §1 · The heading grammar, and whose number it is ────────────────────────
 
-_section("§1 · every rail heading reads `LABEL: N`, and N is the server's")
+_section("§1 · every rail heading reads `LABEL · N · SWIPE`, and N is the server's")
 
-for _rail in ("ACTION REQUIRED", "WAITING", "LIVE", "COMPLETED"):
+# FINAL POR §28 — THE LOCKED CATEGORY NAMES CHANGED, SO THIS LIST DID.
+#
+# `WAITING` / `LIVE` / `COMPLETED` named three different kinds of thing.
+# The Final POR names all four rails by the ACTION each one holds. The
+# assertion's INTENT is unchanged — the four words are stated once, in a
+# frozen map, and nothing assembles a heading per rail — so only the words
+# themselves are replaced.
+for _rail in ("ACTION REQUIRED", "PENDING ACTION", "LOCKED ACTION",
+              "RESOLVED ACTION"):
     _assert(f"the rail `{_rail}` keeps its locked word", _rail in _action_code)
 
 _assert("the four words are stated once, as a frozen map",
         "const RAIL_WORDS = Object.freeze({" in _action_code)
 _assert("and one expression builds every heading from them",
-        "return `${word}: ${sectionCount(rail)}`;" in _action_code)
+        "return `${word} · ${sectionCount(rail)} · ${SWIPE_WORD}`;"
+        in _action_code)
+_assert("the affordance is the same word Play and Wrap Up use",
+        "import { SWIPE_WORD }" in _action_code)
 _assert("no heading is assembled by a per-rail switch any more",
-        "case 'waiting': return `WAITING" not in _action_code)
+        "case 'waiting': return `" not in _action_code)
 
 # THE SURFACE MAY NOT COUNT FOR ITSELF. `sectionCount` is the only counting
 # call in this file; a `.length` on the rendered cards would agree today and

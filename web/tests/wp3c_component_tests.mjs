@@ -384,7 +384,7 @@ check('the trust anchor is exact', LEDGER_TRUST_ANCHOR
   === 'Real odds. Fantasy stakes. Ledger keeps score.');
 check('it appears on Account, once', (account.match(/fs-anchor/g) || []).length === 1);
 check('the top-level strips answer the four questions',
-  ['Available', 'In Play', 'Held', 'Min Left', 'Settle']
+  ['Available', 'In Play', 'Escrow', 'Min Left', 'Settle']
     .every((l) => account.includes(l)));
 check('Current Settle is visible without expanding anything',
   account.indexOf('fs-current-settle') > 0

@@ -425,13 +425,13 @@ await withPage({ port: 9471 }, async ({ evaluate, setViewport, pressKey }) => {
     // wagers is `In Play`, one cell to its left, of which this figure is a
     // documented subset. Renaming it `Escrow` would have said the two are
     // different money.
-    check(`the Account strip still reads Available / In Play / Held / `
+    // FINAL POR §30 — the cell is `Escrow` now, and the Rev 1.4 objection is
+    // answered by the `included in In Play` context rather than by the label.
+    check(`the Account strip reads Available / In Play / Escrow / `
       + `Min Left — ${at}`,
       JSON.stringify(account.labels)
-        === JSON.stringify(['Available', 'In Play', 'Held', 'Min Left']),
+        === JSON.stringify(['Available', 'In Play', 'Escrow', 'Min Left']),
       account.labels.join(' · '));
-    check(`the third cell is not mislabelled Escrow — ${at}`,
-      !account.labels.includes('Escrow'), account.labels[2]);
     check(`its label is one unclipped line — ${at}`,
       account.thirdLines === 1 && account.thirdClipped === false,
       `${account.thirdLines} line(s), clipped=${account.thirdClipped}`);

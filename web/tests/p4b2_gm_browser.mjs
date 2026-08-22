@@ -76,7 +76,7 @@ await withPage({ port: 9363, settleMs: 1400 }, async ({ evaluate }) => {
   // asset terms, so the total cannot move. That is the check that this whole
   // revision is a reallocation and not a gain.
   const WEEK = [['Available', '$40', '4000'], ['In Play', '$53', '5300'],
-                ['Held', '$25', '2500'], ['Min Left', '$10', '1000']];
+                ['Escrow', '$25', '2500'], ['Min Left', '$10', '1000']];
   for (const [i, [label, value, exact]] of WEEK.entries()) {
     report.check(`My Week ${label} draws ${value}`,
       ledger.week[i].label === label && ledger.week[i].value === value

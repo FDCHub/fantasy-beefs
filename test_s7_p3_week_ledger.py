@@ -268,8 +268,16 @@ _assert("the model states the no-double-counting rule as a boundary",
 print("\nThe locked Rev 4.2 figures are the ones drawn")
 
 STRIP = APP.get("weekStrip", {})
+# FINAL POR §30 — `HELD` BECAME `ESCROW`, WITH ITS SUBSET STATED.
+#
+# The VALUE is unchanged: still `held_open_challenges_cents`, still reported
+# beside the position, still never added to any total. What changed is the
+# label and the addition of `included in In Play` as secondary context, because
+# `ESCROW` beside `In Play` without that line invites exactly the addition both
+# read models exist to prevent. The cents assertion below is the load-bearing
+# half and is untouched.
 for label, key, cents in [("Available", "availableCents", 6500), ("In Play", "inPlayCents", 2800),
-                          ("Held", "heldCents", 2500), ("Weekly Min Left", "weeklyMinLeftCents", 1000)]:
+                          ("Escrow", "heldCents", 2500), ("Weekly Min Left", "weeklyMinLeftCents", 1000)]:
     _assert(f"the week strip's {label} is exactly {cents} cents",
             STRIP.get(key) == cents, str(STRIP.get(key)))
 _assert("the season Bet Record is 14–7", APP.get("betRecord") == "14–7", str(APP.get("betRecord")))

@@ -354,7 +354,7 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
   // UIRECON WAVE 1 — `Weekly Min Left` is labelled `Min Left`; same cell, same
   // source. The four questions the strip answers are unchanged.
   check('the top-level strips answer what I have and what is in play',
-    ['Available', 'In Play', 'Held', 'Min Left']
+    ['Available', 'In Play', 'Escrow', 'Min Left']
       .every((l) => account.stripLabels.includes(l)),
     account.stripLabels.join(' | '));
   // §20 / §14.2 — the figure the tab exists to derive may not require

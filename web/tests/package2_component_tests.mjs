@@ -418,10 +418,18 @@ check('every open wager\'s pot is both stakes',
 
 section('Rail headings match the locked wording');
 
-check('ACTION REQUIRED 2', railHeading('action') === 'ACTION REQUIRED 2');
-check('WAITING 2', railHeading('waiting') === 'WAITING 2');
-check('LIVE 4', railHeading('live') === 'LIVE 4');
-check('COMPLETED · 14–7 SEASON', railHeading('completed') === 'COMPLETED · 14–7 SEASON');
+// FINAL POR §28 — the four locked names, and the `LABEL · N · SWIPE` grammar.
+// The counts are the fixture's own, exactly as before; only the words and the
+// separator changed, so this still asserts that the heading is built from the
+// frozen map rather than composed per rail.
+check('ACTION REQUIRED · 2 · SWIPE',
+  railHeading('action') === 'ACTION REQUIRED · 2 · SWIPE');
+check('PENDING ACTION · 2 · SWIPE',
+  railHeading('waiting') === 'PENDING ACTION · 2 · SWIPE');
+check('LOCKED ACTION · 4 · SWIPE',
+  railHeading('live') === 'LOCKED ACTION · 4 · SWIPE');
+check('RESOLVED ACTION heading carries a count and the affordance',
+  /^RESOLVED ACTION · \d+ · SWIPE$/.test(railHeading('completed')));
 
 // S8-P4C-2R — THE DEMO HALF OF THE SEASON-RECORD REPAIR. Production drops the
 // record because 14–7 has no authoritative source; the locked Rev 4.2 heading
@@ -445,16 +453,20 @@ check('the shipped heading is in demo mode by default', actionMode() === 'demo')
 // THE RECORD DID NOT GO ANYWHERE. `seasonRecordLabel()` still draws it in the
 // summary strip's Bet Record cell, which is a figure's slot rather than a
 // heading's; that is asserted separately below.
-check('every rail heading is the Rev 1.4 LABEL: N form',
+// FINAL POR §28 — the grammar is now `LABEL · N · SWIPE`. The Rev 1.4 claim
+// this replaces was that ONE form covers all four rails and that the count is
+// load-bearing; both still hold, and the affordance is now stated too.
+check('every rail heading is the LABEL · N · SWIPE form',
   ['action', 'waiting', 'live', 'completed']
-    .every((r) => /^[A-Z ]+: \d+$/.test(uiRailHeading(r))),
+    .every((r) => /^[A-Z ]+ · \d+ · SWIPE$/.test(uiRailHeading(r))),
   ['action', 'waiting', 'live', 'completed'].map(uiRailHeading).join(' | '));
-check('and the COMPLETED heading states its count rather than a season record',
-  uiRailHeading('completed') === 'COMPLETED: 3'
+check('and the RESOLVED ACTION heading states its count, not a season record',
+  uiRailHeading('completed') === 'RESOLVED ACTION · 3 · SWIPE'
   && !uiRailHeading('completed').includes('SEASON'),
   uiRailHeading('completed'));
 check('while ACTION REQUIRED still counts the fixture in demo',
-  uiRailHeading('action') === 'ACTION REQUIRED: 2', uiRailHeading('action'));
+  uiRailHeading('action') === 'ACTION REQUIRED · 2 · SWIPE',
+  uiRailHeading('action'));
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 
@@ -616,13 +628,19 @@ check('the unbound preview lists no second copy of the two teams',
 check('the preview carries NO odds-market block (§10)',
   !preview.body.includes('SPORTSBOOK VIEW')
   && !/data-market/.test(preview.body));
-check('the explanation is the first thing in the sheet body',
-  preview.body.indexOf('WHY THE LINE') >= 0
-  && !/fs-prev__title">(?!WHY THE LINE)/.test(preview.body.slice(0, 200)));
+// FINAL POR §27E — LINEUPS NOW SITS ABOVE ON OFFER, so the section order
+// changed and these two assertions are REPLACED rather than loosened. What
+// Rev 4.3 §10 was protecting — the two analysis sections stay together, in
+// order, and open — is unchanged and is still asserted.
+check('LINEUPS precedes the ON OFFER block',
+  preview.body.indexOf('LINEUPS') < preview.body.indexOf('ON OFFER')
+  || preview.body.indexOf('ON OFFER') === -1,
+  `lineups@${preview.body.indexOf('LINEUPS')} onoffer@${preview.body.indexOf('ON OFFER')}`);
 check('Why The Line precedes The Read',
   preview.body.indexOf('WHY THE LINE') < preview.body.indexOf('THE READ'));
-check('and BOTH analysis sections precede the lineups',
-  preview.body.indexOf('THE READ') < preview.body.indexOf('LINEUPS'));
+check('and the two analysis sections stay adjacent, after the lineups',
+  preview.body.indexOf('LINEUPS') < preview.body.indexOf('WHY THE LINE')
+  && preview.body.indexOf('WHY THE LINE') < preview.body.indexOf('THE READ'));
 check('an unbound preview has no static identity block to draw',
   !/fs-prev__head is-static/.test(preview.body));
 check('the analysis sections are open by default; the lineups are not',

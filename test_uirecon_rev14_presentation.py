@@ -216,13 +216,29 @@ _assert("clicking it still opens the account sheet",
 
 _section("§4 · the strip label, and the read model it answers to")
 
-_assert("the Account strip's third cell is still labelled Held",
-        "{ label: 'Held', cents: heldCents" in LEDGER_JS)
-_assert("it was NOT renamed Escrow",
-        "label: 'Escrow'" not in LEDGER_JS)
+# FINAL POR §30 — THIS BLOCK ASSERTED A REFUSAL THAT IS NOW SUPERSEDED.
+#
+# Rev 1.4 considered renaming this cell `Escrow` and REFUSED, on the ground that
+# `held_open_challenges_cents` is a documented SUBSET of `in_play_cents` and that
+# labelling the subset `Escrow` beside the whole of it invites the addition both
+# read models exist to prevent. That reasoning was sound and the Final POR
+# overrides the conclusion, not the reasoning.
+#
+# So the rename lands AND the objection is answered structurally: the cell now
+# carries `included in In Play` as secondary context, and the arithmetic is
+# untouched — still reported beside the position, still never added to a total.
+# The assertion that used to forbid the label now REQUIRES the safeguard.
+_assert("the Account strip's third cell is labelled Escrow",
+        "{ label: 'Escrow', cents: heldCents" in LEDGER_JS)
+_assert("  · and states the subset relationship, so it reads as part of In Play",
+        "context: 'included in In Play'" in LEDGER_JS)
+_assert("  · while the arithmetic is unchanged — it is added to no total",
+        "never subtracted from it again" in LEDGER_JS
+        or "never added to any total" in LEDGER_JS
+        or "reported beside it" in LEDGER_JS)
 _assert("the four cells are still the locked four",
         all(f"label: '{cell}'" in LEDGER_JS
-            for cell in ("Available", "In Play", "Held", "Min Left")))
+            for cell in ("Available", "In Play", "Escrow", "Min Left")))
 _assert("the figure is still the server's own held amount",
         "boundHeldCents()" in LEDGER_JS)
 _assert("and is still bound from `held_open_challenges_cents`",

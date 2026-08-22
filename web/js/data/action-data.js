@@ -314,11 +314,24 @@ export function settledCents() {
 
 /** Rail headings, with counts derived from the cards themselves. */
 export function railHeading(rail) {
-  switch (rail) {
-    case 'action': return `ACTION REQUIRED ${cardsFor('action').length}`;
-    case 'waiting': return `WAITING ${cardsFor('waiting').length}`;
-    case 'live': return `LIVE ${cardsFor('live').length}`;
-    case 'completed': return `COMPLETED · ${seasonRecordLabel()} SEASON`;
-    default: throw new Error(`unknown rail "${rail}"`);
-  }
+  // FINAL POR §28 — THE LOCKED NAMES AND THE ONE GRAMMAR, HERE TOO.
+  //
+  // This is the DEMO fixture's heading builder and it drew a different set of
+  // words from the shipped surface's: `WAITING` / `LIVE` / `COMPLETED · 14–7
+  // SEASON`. Two heading vocabularies for four rails is how a demo comes to
+  // describe a product that does not exist, so it now states the same four
+  // locked category names in the same `LABEL · N · SWIPE` form.
+  //
+  // THE SEASON RECORD DID NOT GO ANYWHERE. `seasonRecordLabel()` still draws it
+  // in the summary strip's Bet Record cell, which is a figure's slot rather
+  // than a heading's.
+  const words = {
+    action: 'ACTION REQUIRED',
+    waiting: 'PENDING ACTION',
+    live: 'LOCKED ACTION',
+    completed: 'RESOLVED ACTION',
+  };
+  const word = words[rail];
+  if (!word) throw new Error(`unknown rail "${rail}"`);
+  return `${word} · ${cardsFor(rail).length} · SWIPE`;
 }

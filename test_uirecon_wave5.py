@@ -102,7 +102,15 @@ _section("§1 · the four rails keep their locked names and public terms")
 
 _action_js = _read("web", "js", "action.js")
 
-for _rail in ("ACTION REQUIRED", "WAITING", "LIVE", "COMPLETED"):
+# FINAL POR §28 — THE LOCKED CATEGORY NAMES CHANGED, SO THIS LIST DID.
+#
+# `WAITING` / `LIVE` / `COMPLETED` named three different kinds of thing.
+# The Final POR names all four rails by the ACTION each one holds. The
+# assertion's INTENT is unchanged — the four words are stated once, in a
+# frozen map, and nothing assembles a heading per rail — so only the words
+# themselves are replaced.
+for _rail in ("ACTION REQUIRED", "PENDING ACTION", "LOCKED ACTION",
+              "RESOLVED ACTION"):
     _assert(f"the rail `{_rail}` keeps its locked heading", f"'{_rail}" in _action_js
             or f'"{_rail}' in _action_js or _rail in _action_js)
 

@@ -620,9 +620,11 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
     preview.titles.includes('WHY THE LINE LOOKS THIS WAY'));
   check('it carries THE READ', preview.titles.includes('THE READ'));
   check('it carries LINEUPS', preview.titles.includes('LINEUPS'));
-  check('section order is Why The Line → The Read → Lineups',
+  // FINAL POR §27E — LINEUPS moved above ON OFFER, so it is now first of the
+  // three. The two analysis modules still sit together and in order.
+  check('section order is Lineups → Why The Line → The Read',
     preview.titles.join('|')
-      === 'WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
+      === 'LINEUPS|WHY THE LINE LOOKS THIS WAY|THE READ',
     preview.titles.join(' | '));
   check('the preview replaces the composer view while it is open',
     preview.composerGone === true);
@@ -789,11 +791,12 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   check('the four rails are in the locked order',
     action.railIds.join(',') === 'action,waiting,live,completed',
     action.railIds.join(','));
+  // FINAL POR §28 — the four locked category names.
   check('rail headings keep the locked wording',
     action.headings[0].startsWith('ACTION REQUIRED')
-    && action.headings[1].startsWith('WAITING')
-    && action.headings[2].startsWith('LIVE')
-    && action.headings[3].startsWith('COMPLETED'),
+    && action.headings[1].startsWith('PENDING ACTION')
+    && action.headings[2].startsWith('LOCKED ACTION')
+    && action.headings[3].startsWith('RESOLVED ACTION'),
     action.headings.join(' | '));
 
   // AND THE COUNTS AGREE WITH THE SERVER. This replaces the literal 2,2,4,3
