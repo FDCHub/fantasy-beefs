@@ -725,8 +725,19 @@ if _RUNNABLE:
 _section("§7 · the control, the stamp and the copy")
 
 _affordance = _read("web", "js", "refresh-odds.js")
-_assert("the control reads `↻ REFRESH ODDS`",
-        "'↻ REFRESH ODDS'" in _affordance)
+# SUPERSEDED BY THE REFINE-REFRESH PASS. Rev 1.4 drew this as a full-width
+# button captioned `↻ REFRESH ODDS`. That is the size this product uses for
+# DECISIONS — Accept, Counter, Submit Pick — and a refresh is a GM looking
+# something up, so the affordance became the small shared glyph Play uses and
+# the caption became the accessible name. The verb is unchanged; what changed is
+# how loudly it is stated.
+_assert("the control is the shared small glyph, not a full-width button",
+        "refreshControl({" in _affordance
+        and "fs-oddsref--card" in _affordance
+        and "'↻ REFRESH ODDS'" not in _affordance)
+_assert("  · and its subject moved into the accessible name, which a keyboard "
+        "and a screen reader both reach",
+        "REFRESH_LABEL = 'Refresh odds for this Matchup'" in _affordance)
 _assert("the stamp reads `Updated H:MM AM`", "`Updated ${" in _affordance)
 _assert("the confirmation is the two ruled lines",
         "'Fresh odds from current projections'" in _affordance

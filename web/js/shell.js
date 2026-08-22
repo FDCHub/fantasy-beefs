@@ -62,6 +62,7 @@ import {
   bindMarketBoard, markMarketBoardUnavailable, marketFor, unbindMarketBoard,
 } from './market-model.js';
 import { requestMarketBoard } from './versus-market-command.js';
+import { setPlayRefreshContext } from './play-odds-refresh.js';
 
 // WP3D — where this league's data comes from, stated once in the chrome.
 import { sourceChip } from './attribution.js';
@@ -857,8 +858,15 @@ async function bindAuthoritativeData() {
     } catch {
       markMarketBoardUnavailable();
     }
+    // PLAY'S REFRESH CONTROLS NEED THE SAME LEAGUE AND WEEK THIS BOARD WAS
+    // PRICED FOR, and they must not guess either: re-reading a different week
+    // would answer a question about a market the GM is not looking at. The
+    // context is set even when the read failed, so a GM whose first board did
+    // not arrive can still ask for one.
+    setPlayRefreshContext({ leagueId, week: data.week });
   } else {
     markMarketBoardUnavailable();
+    setPlayRefreshContext(null);
   }
 
   // WP3B — the competitive standings. Read by EVERY member, like the Skunk and
@@ -1331,6 +1339,10 @@ function clearAuthoritativeData() {
   unbindStandings();
   unbindVersus();
   unbindMarketBoard();
+  // The board and the context that refreshes it are one fact; leaving the
+  // context behind on sign-out would let a control ask about a league the
+  // next session may not be in.
+  setPlayRefreshContext(null);
   unbindEconomy();
   setEconomyHook(null);
   setStandingsContext(null);

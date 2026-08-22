@@ -286,8 +286,15 @@ _assert("and it is still WAGERING SUMMARY that asks",
 # THE WRAP UP CARD IS NOT THIS PASS'S. The same instruction applies there and
 # is another pass's to carry out; asserting it here would fail for a reason
 # this file's own diff could not explain.
+#
+# MEASURED OVER DECLARATIONS, NOT PROSE. A later pass added a block to this
+# sheet whose COMMENT explains where its control sits relative to
+# `.fs-wcard__head` — an explanation, not a rule — and a raw substring search
+# read that as a restyle of the Wrap Up card. Comments are stripped first, so
+# the guard now catches what it was written to catch and nothing else.
 _assert("the Wrap Up result card was not touched from here",
-        "fs-wcard" not in COMPONENTS_CSS.split("UIRECON Rev 1.4")[-1])
+        "fs-wcard" not in re.sub(r"/\*[\s\S]*?\*/", " ", COMPONENTS_CSS)
+        .split("UIRECON Rev 1.4")[-1])
 
 
 # ── Node tier ───────────────────────────────────────────────────────────────

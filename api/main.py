@@ -5393,6 +5393,20 @@ class VersusBoardOut(BaseModel):
     week:           int
     acting_team_id: int
     markets:        list[VersusMarketOut]
+    #: When THIS BOARD WAS PRICED, stamped by the server that priced it.
+    #:
+    #: The Play surface offers a refresh control and says `Odds updated 11:47 AM`
+    #: beside it. That sentence is a claim about when a Monte Carlo actually ran,
+    #: and the only process that knows is the one that ran it — a client reading
+    #: its own clock when the response lands would be stating its round-trip
+    #: latency as the model's completion time, and two GMs on the same board
+    #: would print two different times for one computation.
+    #:
+    #: A BOARD IS COMPUTED PER REQUEST, so this is always "now" at the moment of
+    #: pricing rather than a cache age. It moves no money, decides nothing, and
+    #: is not an input to any price: it exists so a surface can say when, and
+    #: never have to guess.
+    computed_at:    datetime
 
 
 #: One pairing's refusal, mapped from the engine to product language.
@@ -5536,7 +5550,11 @@ def versus_market_board(
         ))
 
     return VersusBoardOut(league_id=league_id, week=week,
-                          acting_team_id=acting_team_id, markets=rows)
+                          acting_team_id=acting_team_id, markets=rows,
+                          # Stamped AFTER the pricing loop, so it reports when
+                          # the board finished rather than when the request
+                          # arrived.
+                          computed_at=datetime.now(timezone.utc))
 
 
 # ── The Matchup Preview read (UIRECON Wave 4A) ────────────────────────────────

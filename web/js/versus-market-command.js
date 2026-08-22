@@ -26,13 +26,32 @@ export class MarketError extends Error {
 /**
  * Read this GM's offered Versus markets for a week.
  *
+ * ONE OPPONENT, OR ALL OF THEM. `opponent_team_id` is the route's own optional
+ * filter and has been since WP3C.2; the per-card refresh control uses it so
+ * re-reading one price costs one pairing's Monte Carlo rather than the league's.
+ * Passing nothing is the whole board, exactly as before.
+ *
+ * IT IS THE SAME GET EITHER WAY — same eligibility authority, same refusal
+ * vocabulary, same nothing-is-written guarantee. A narrower question does not
+ * get a weaker answer.
+ *
  * @param {number} leagueId
  * @param {number} week the authoritative week
+ * @param {number|null} [opponentTeamId] one pairing, or null for the board
  * @returns {Promise<object>} a VersusBoardOut
  */
-export async function requestMarketBoard(leagueId, week) {
+export async function requestMarketBoard(leagueId, week, opponentTeamId = null) {
+  // THE NULLISH CHECK IS LOAD-BEARING, and it is the whole reason this is not
+  // one `Number.isFinite` call. `Number(null)` is 0 and `Number('')` is 0 —
+  // both finite — so a coercion-only guard turns "the whole board" into
+  // "opponent 0", which is not a team and which the route correctly refuses
+  // with a 400. That refusal reaches the shell as a failed board read, and
+  // every card on Play draws its unpriced state.
+  const scoped = opponentTeamId !== null && opponentTeamId !== undefined
+    && opponentTeamId !== '' && Number.isFinite(Number(opponentTeamId));
+  const scope = scoped ? `&opponent_team_id=${Number(opponentTeamId)}` : '';
   try {
-    return await apiFetch(`/league/${leagueId}/versus/board?week=${week}`);
+    return await apiFetch(`/league/${leagueId}/versus/board?week=${week}${scope}`);
   } catch (error) {
     if (error instanceof ApiError) {
       const detail = error.detail;

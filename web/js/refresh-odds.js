@@ -44,6 +44,10 @@
  * ========================================================================== */
 
 import { escapeHtml } from './components.js';
+import { refreshControl, runRefresh } from './odds-refresh.js';
+// `refreshControl` still draws the Dynamic card's own glyph; the Locked
+// comparison below deliberately draws none.
+import { formatOdds } from './wager-model.js';
 
 /**
  * The control's label.
@@ -56,7 +60,29 @@ import { escapeHtml } from './components.js';
  * `Counter`, `Decline`), because this is not a decision on the wager and should
  * not sit in the same visual register as the three controls that are.
  */
-export const REFRESH_LABEL = '↻ REFRESH ODDS';
+export const REFRESH_LABEL = 'Refresh odds for this Matchup';
+
+/* ── THE WIDE BUTTON IS GONE ────────────────────────────────────────────────
+ *
+ * Rev 1.4 drew `↻ REFRESH ODDS` as a full-width control. It worked and it read
+ * wrong: a button that wide is the size this product uses for DECISIONS —
+ * Accept, Counter, Submit Pick — and a refresh is a GM looking something up.
+ * The affordance is now the same small glyph Play uses, from `odds-refresh.js`,
+ * so one gesture means one thing everywhere in the product.
+ *
+ * THE WORDS MOVED INTO THE ACCESSIBLE NAME rather than disappearing. `↻` cannot
+ * say WHAT it refreshes, so `REFRESH_LABEL` is the button's `aria-label` — which
+ * a keyboard and a screen reader both reach, and a tooltip is not.
+ */
+
+/** The label on a LOCKED card's frozen price. */
+export const LOCKED_ODDS_LABEL = 'LOCKED ODDS';
+
+/** The label on the live market line for the same pairing. */
+export const CURRENT_ODDS_LABEL = 'CURRENT ODDS';
+
+/** What `CURRENT ODDS` reads when no live line can be quoted. */
+export const CURRENT_ODDS_UNAVAILABLE = 'Unavailable';
 
 /** The two lines shown after a successful refresh, in order. Copy of record. */
 export const REFRESH_CONFIRMATION = Object.freeze([
@@ -165,10 +191,102 @@ export function refreshOddsControl(card, state = {}) {
   const stamp = refreshStamp(state.refreshedAt || null);
   return (
     `<div class="fs-refresh" data-refresh-block data-challenge-id="${escapeHtml(String(card.challengeId))}">`
-    + '<button type="button" class="fs-refresh__btn" data-refresh-odds>'
-    + `${escapeHtml(REFRESH_LABEL)}</button>`
+    + refreshControl({
+      scope: 'wager',
+      target: card.challengeId,
+      label: REFRESH_LABEL,
+      extraClass: 'fs-oddsref--card',
+    })
     + `<span class="fs-refresh__stamp" data-refresh-stamp>${escapeHtml(stamp)}</span>`
     + '<div class="fs-refresh__note" data-refresh-note aria-live="polite"></div>'
+    + '</div>'
+  );
+}
+
+/**
+ * Whether this card may show a LOCKED-versus-CURRENT comparison.
+ *
+ * LOCKED ONLY, AND ONLY WHILE IT IS STILL A WAGER. A Dynamic card has its own
+ * live figures and a refresh that updates them; a settled card's price is
+ * history, and a live line beside it would invite a comparison nobody can act
+ * on. The frozen price itself has to exist, because a comparison with one side
+ * missing is not a comparison.
+ *
+ * @param {object} card a normalised Action card
+ * @returns {boolean}
+ */
+export function canCompareLockedOdds(card) {
+  if (!card || card.mode !== 'locked') return false;
+  if (card.settled) return false;
+  return Number.isInteger(card.yourMoneyline);
+}
+
+/**
+ * `LOCKED ODDS -118 / CURRENT ODDS -135`, as HTML.
+ *
+ * ── THE LOCKED FIGURE IS THE WAGER; THE CURRENT FIGURE IS THE WEATHER ───────
+ *
+ * A Locked wager's terms froze when it was OFFERED, and acceptance merely
+ * SELECTS a frozen proposal (Locked-vs-Dynamic ruling §§1–2). Nothing on this
+ * surface can move them, and this block is careful never to suggest otherwise:
+ * the two rows are LABELLED differently, the current figure is drawn quieter,
+ * and there is no arrow, delta or colour implying one is becoming the other.
+ *
+ * WHAT `CURRENT` IS. The live market line for the SAME PAIRING, from the same
+ * board Play prices its cards from — not a re-quote of this wager, which cannot
+ * be re-quoted. It answers "what would this matchup cost today", which is a
+ * fair question with an honest answer, and it is exactly why the Locked reply
+ * to wanting different terms is Refresh & Relock: a COUNTER that puts a new
+ * frozen proposal on the table.
+ *
+ * AN ABSENT CURRENT LINE SAYS SO. `Unavailable` rather than a dash, because a
+ * dash in this product is an unresolved FIGURE and this is an unresolved
+ * QUESTION — the board could not price the pairing, or was priced for another
+ * week. Nothing is fabricated to fill the row.
+ *
+ * @param {object} card a normalised Action card
+ * @param {{moneyline?: number|null, available?: boolean}} [current]
+ * @returns {string}
+ */
+export function lockedOddsComparison(card, current = {}) {
+  if (!canCompareLockedOdds(card)) return '';
+
+  const live = current && current.available === true
+    && Number.isInteger(current.moneyline)
+    ? formatOdds(current.moneyline)
+    : CURRENT_ODDS_UNAVAILABLE;
+
+  const row = (label, value, quiet) => (
+    `<span class="fs-oddscmp__row${quiet ? ' is-quiet' : ''}">`
+    + `<span class="fs-oddscmp__label">${escapeHtml(label)}</span>`
+    + `<span class="fs-oddscmp__value"${quiet ? ' data-current-odds' : ''}>`
+    + `${escapeHtml(value)}</span>`
+    + '</span>'
+  );
+
+  // ── IT IS A READING, NOT A CONTROL, AND THAT IS TWO DECISIONS ─────────────
+  //
+  // THE FIRST IS SPACE, AND IT WAS MEASURED. A Status lifecycle card is a
+  // fixed-height carousel item and Rev 1.4 Part 11 tuned all four rails to fit
+  // one mobile viewport. Adding a refresh glyph to this block took it to 36px,
+  // and the card then needed 142px inside 136 and clipped its own foot at every
+  // certified viewport. A block that annotates a card may not break it.
+  //
+  // THE SECOND IS MEANING, and it is the better reason. Rev 1.4's own note
+  // argued at length that a refresh affordance on a Locked card would put two
+  // very different verbs side by side: one that changes nothing, and Refresh &
+  // Relock, which replaces the wager. A read-only pair of figures cannot be
+  // mistaken for either.
+  //
+  // THE FIGURE STILL MOVES. `CURRENT ODDS` is read from the same market board
+  // Play prices its cards from, so refreshing on Play updates what this card
+  // reports the next time Status draws — one board, one line, two surfaces.
+  return (
+    '<div class="fs-oddscmp" data-locked-odds '
+    + `data-challenge-id="${escapeHtml(String(card.challengeId))}" `
+    + `data-opponent-team-id="${escapeHtml(String(card.opponentTeamId))}">`
+    + row(LOCKED_ODDS_LABEL, formatOdds(card.yourMoneyline), false)
+    + row(CURRENT_ODDS_LABEL, live, true)
     + '</div>'
   );
 }
@@ -210,25 +328,33 @@ export function bindRefreshControl(block, leagueId) {
   const challengeId = Number(block.dataset.challengeId);
   if (!button || !Number.isFinite(challengeId)) return;
 
-  button.addEventListener('click', async () => {
-    button.disabled = true;
-    if (note) note.textContent = 'Reading…';
-    try {
-      const served = await REFRESH_HOOK.refresh(leagueId, challengeId);
-      if (stamp) stamp.textContent = refreshStamp(served && served.refreshed_at);
-      if (note) note.innerHTML = refreshConfirmation();
-    } catch (error) {
+  // THE SHARED STATE MACHINE drives the glyph — idle, working, done, error —
+  // so this control and Play's behave identically on a refusal. What is local
+  // to this surface is WHERE the two outcomes are written: the stamp and the
+  // two-line confirmation under the card, which Play has no equivalent of.
+  button.addEventListener('click', (event) => {
+    // The lifecycle card is tappable in its own right; a refresh must not also
+    // be whatever the card behind it does.
+    event.preventDefault();
+    event.stopPropagation();
+    runRefresh(button, {
+      work: async () => {
+        if (note) note.textContent = '';
+        const served = await REFRESH_HOOK.refresh(leagueId, challengeId);
+        if (stamp) stamp.textContent = refreshStamp(served && served.refreshed_at);
+        if (note) note.innerHTML = refreshConfirmation();
+        return served;
+      },
       // THE MATCHUP IS STILL FINE, AND THE COPY SAYS SO. A refusal here means
       // the DISPLAY could not be refreshed; nothing about the wager moved, and
       // `explainRefreshRefusal` is written so no sentence suggests otherwise.
-      if (note) {
+      onError: (error) => {
+        if (!note) return;
         note.textContent = REFRESH_HOOK.explain
           ? REFRESH_HOOK.explain(error)
           : 'Fresh odds are not available right now. Your Matchup is unchanged.';
-      }
-    } finally {
-      button.disabled = false;
-    }
+      },
+    });
   });
 }
 
@@ -245,16 +371,46 @@ export function bindRefreshControl(block, leagueId) {
  * the moment the card appears — including for the GM who did not press the
  * button. A card whose read is refused simply does not gain the control.
  *
+ * ── IT ALSO DECORATES LOCKED CARDS, AND WITH SOMETHING ELSE ────────────────
+ *
+ * A Locked wager gets no refresh control: its terms froze when it was OFFERED
+ * and there is no live line behind them to reveal. What it DOES get, when the
+ * caller can supply one, is a read-only `LOCKED ODDS / CURRENT ODDS` block —
+ * the frozen price beside the live market line for the same pairing. That is a
+ * comparison, not an affordance, and nothing about it can be pressed.
+ *
+ * `currentOddsFor` IS THE CALLER'S, because this module must not know that a
+ * market board exists. It is handed a function from card to `{available,
+ * moneyline}` and asks it once per Locked card; a caller with no board omits it
+ * and every row reads `Unavailable`, which is the honest answer.
+ *
  * @param {Element} root the panel the cards were rendered into
- * @param {{leagueId: number, cards: object[]}} options
- * @returns {Promise<number>} how many controls were mounted
+ * @param {{leagueId: number, cards: object[],
+ *          currentOddsFor?: Function}} options
+ * @returns {Promise<number>} how many decorations were mounted
  */
 export async function mountRefreshOdds(root, options = {}) {
-  const { leagueId, cards = [] } = options;
+  const { leagueId, cards = [], currentOddsFor } = options;
   if (!root || !REFRESH_HOOK || !Number.isFinite(Number(leagueId))) return 0;
 
   let mounted = 0;
   for (const card of cards) {
+    if (canCompareLockedOdds(card)) {
+      const host = root.querySelector(`[data-card-id="${CSS.escape(card.id)}"]`);
+      if (!host || host.querySelector('[data-locked-odds]')) continue;
+      // NO SOURCE FOR `CURRENT`, NO BLOCK. `currentOddsFor` answers null when
+      // no market board covers this card's week, and a comparison with nothing
+      // to compare against is not a comparison — it is a card made taller by an
+      // apology. The Dynamic control takes the same position two branches down.
+      const current = typeof currentOddsFor === 'function'
+        ? currentOddsFor(card) : null;
+      if (!current) continue;
+      const html = lockedOddsComparison(card, current);
+      if (!html) continue;
+      asideOf(host).insertAdjacentHTML('beforeend', html);
+      mounted += 1;
+      continue;
+    }
     if (!canRefreshOdds(card)) continue;
     const host = root.querySelector(`[data-card-id="${CSS.escape(card.id)}"]`);
     if (!host || host.querySelector('[data-refresh-block]')) continue;
@@ -275,22 +431,34 @@ export async function mountRefreshOdds(root, options = {}) {
       eligible: true,
     });
     if (!html) continue;
-    // INTO THE CARD'S `aside` SLOT, which the shared grammar places between the
-    // copy and the foot. Appending to the card element instead would put the
-    // control after the foot's call to action, which reads as a second, later
-    // verb — and the affordance is not a next step, it is context.
-    let slot = host.querySelector('.fs-wcard__aside');
-    if (!slot) {
-      slot = host.ownerDocument.createElement('div');
-      slot.className = 'fs-wcard__aside';
-      const foot = host.querySelector('.fs-wcard__foot');
-      if (foot) host.insertBefore(slot, foot);
-      else host.appendChild(slot);
-    }
+    const slot = asideOf(host);
     slot.insertAdjacentHTML('beforeend', html);
     const block = slot.querySelector('[data-refresh-block]');
     bindRefreshControl(block, leagueId);
     mounted += 1;
   }
   return mounted;
+}
+
+/**
+ * The card's `aside` slot, created if the grammar has not drawn one.
+ *
+ * BETWEEN THE COPY AND THE FOOT, which is where the shared grammar puts it.
+ * Appending to the card element instead would land after the foot's call to
+ * action, and read as a second, later verb — and neither decoration is a next
+ * step. One is context and the other is a comparison.
+ *
+ * @param {Element} host a card element
+ * @returns {Element}
+ */
+function asideOf(host) {
+  let slot = host.querySelector('.fs-wcard__aside');
+  if (!slot) {
+    slot = host.ownerDocument.createElement('div');
+    slot.className = 'fs-wcard__aside';
+    const foot = host.querySelector('.fs-wcard__foot');
+    if (foot) host.insertBefore(slot, foot);
+    else host.appendChild(slot);
+  }
+  return slot;
 }

@@ -207,6 +207,11 @@ function normaliseCard(row) {
     status: row.status,
     mode: row.mode,
     week: row.week ? `WK ${row.week}` : '',
+    // THE NUMBER, BESIDE THE LABEL. `week` is a rendered string and cannot be
+    // compared; the Locked odds comparison needs to know whether the market
+    // board on screen was priced for THIS card's week before it may call a
+    // board line "current". A card from an earlier week has no current price.
+    weekNumber: Number.isInteger(row.week) ? row.week : null,
 
     // WHOSE MOVE, straight from the server. The renderer offers controls from
     // this and from nothing else.
@@ -215,6 +220,12 @@ function normaliseCard(row) {
 
     marketLabel: marketLabel(row),
     line: lineLabel(row),
+    // THE ODDS OF RECORD for this GM's side, verbatim from the contract. On a
+    // Locked wager this is the figure that froze when the challenge was
+    // OFFERED, and it is what `LOCKED ODDS` reports. Carried rather than
+    // re-derived: a price the surface recomputed could disagree with the one
+    // settlement will pay.
+    yourMoneyline: Number.isInteger(row.your_moneyline) ? row.your_moneyline : null,
 
     yourStakeCents: stake,
     opponentStakeCents: theirs,

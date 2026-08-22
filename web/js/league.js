@@ -45,7 +45,11 @@ import {
   LEAGUE_MODE_DEMO, currentWeek, leagueMode, leagueName,
 } from './league-model.js';
 import { attributionFooter } from './attribution.js';
-import { marketFor } from './market-model.js';
+import { marketComputedAt, marketFor, marketMode } from './market-model.js';
+import {
+  BOARD_STAMP_ID, oddsStamp, refreshControl, refreshStatus,
+} from './odds-refresh.js';
+import { bindPlayOddsRefresh } from './play-odds-refresh.js';
 import { formatSpread } from './narrative.js';
 import { weekPhaseLabel } from './phase.js';
 import { SLATE_MODE_DEMO, slateMode, slateRows } from './pool-slate-model.js';
@@ -79,6 +83,48 @@ export const SWIPE_WORD = 'SWIPE';
  */
 export const MATCHUPS_HEADING = 'MATCHUPS';
 export const POOLS_HEADING = 'PROP POOLS';
+
+/* ── The odds-refresh affordance on Play ────────────────────────────────────
+ *
+ * TWO LEVELS, ONE PROMISE. The heading control re-reads the whole board; each
+ * card's control re-reads that one pairing. Both are the same glyph and both
+ * re-run the SAME server-side pricing the cards were drawn from, so a GM never
+ * has to work out which of two refreshes they just used.
+ *
+ * WHY PLAY IS WHERE THIS BELONGS. Play is the screen where prices are shopped:
+ * eleven opponents, three markets each, all of them simulated against
+ * projections that move. Before this the only refresh in the product was on a
+ * wager that already existed — a GM could re-read a price they had committed to
+ * and not one they were considering.
+ *
+ * THE STAMP IS THE SERVER'S. `marketComputedAt()` is the `computed_at` the
+ * board came back with, so `Odds updated 11:47 AM` reports when a Monte Carlo
+ * finished rather than when a response landed.
+ *
+ * DEMO DRAWS NO CONTROL. The illustrative fixture has no board to re-read, and
+ * a glyph whose first press is a no-op is worse than an absent one.
+ */
+export const BOARD_REFRESH_LABEL = 'Refresh odds for all matchups';
+
+/** @returns {string} the heading control, or '' when there is no board. */
+function boardRefreshControl() {
+  if (marketMode() !== 'authoritative') return '';
+  return refreshControl({
+    scope: 'board',
+    label: BOARD_REFRESH_LABEL,
+    extraClass: 'fs-oddsref--heading',
+  });
+}
+
+/** @returns {string} the heading's stamp line, or '' when there is no board. */
+function boardRefreshStamp() {
+  if (marketMode() !== 'authoritative') return '';
+  return refreshStatus({
+    id: BOARD_STAMP_ID,
+    text: oddsStamp(marketComputedAt()),
+    extraClass: 'fs-oddsref__stamp--board',
+  });
+}
 
 /**
  * @returns {string}
@@ -356,6 +402,22 @@ function versusCard(opponent) {
       ? `<span class="fs-wcard__context">${escapeHtml(opponent.owner)}</span>`
       : '')
     + '</button>'
+    // THE PER-CARD REFRESH, in the head's trailing slot.
+    //
+    // `.fs-wcard__head` is a `space-between` row whose first child is the
+    // challenge button, so a second child lands hard right — the upper-right
+    // corner, where a market-refresh control belongs and where it collides with
+    // nothing. It is INSIDE the head and OUTSIDE the challenge button, because
+    // a button inside a button is invalid HTML and would make the refresh
+    // unreachable by keyboard.
+    + (marketMode() === 'authoritative'
+      ? refreshControl({
+        scope: 'pairing',
+        target: opponent.teamId,
+        label: `Refresh odds for ${opponent.name}`,
+        extraClass: 'fs-oddsref--card',
+      })
+      : '')
     + '</div>'
     // §9 — a clear FULL-WIDTH action row, directly above the markets.
     + '<button type="button" class="fs-previewrow" '
@@ -394,7 +456,8 @@ function versusZone() {
   // readable facts" asks for.
   return (
     sectionHeading(MATCHUPS_HEADING,
-      `${count} OPPONENT${count === 1 ? '' : 'S'} · ${SWIPE_WORD}`)
+      `${count} OPPONENT${count === 1 ? '' : 'S'} · ${SWIPE_WORD}`,
+      boardRefreshControl() + boardRefreshStamp())
     + `<div class="fs-carousel" id="fs-bets-carousel" role="list">${cards}</div>`
   );
 }
@@ -460,7 +523,9 @@ function poolCard(pool) {
     // THE QUESTION IS THE CARD'S SUBTITLE, and it is the server's sentence.
     // `poolQuestion` prefers the catalog's `public_question` and falls back to
     // the scope-derived prompt only where the catalog carries none.
-    + `<span class="fs-pool__question">${escapeHtml(poolQuestion(pool))}</span>`
+    + `<span class="fs-pool__question${hasPoolQuestion(pool) ? '' : ' is-missing'}"`
+    + `${hasPoolQuestion(pool) ? '' : ' data-question-missing'}>`
+    + `${escapeHtml(poolQuestion(pool))}</span>`
     + '<span class="fs-pool__foot">'
     + `<span class="fs-pool__entry">${escapeHtml(formatCredits(pool.entryCents))}`
     + ` · ${escapeHtml(entered)}</span>`
@@ -524,6 +589,13 @@ function poolsZone() {
  * @param {{openComposer: Function, openSheet: Function}} api
  */
 export function bindLeague(panel, api) {
+  // THE ODDS-REFRESH CONTROLS BIND FIRST, and by delegation from the panel
+  // rather than per control. Play is redrawn on every authoritative refresh and
+  // each redraw replaces the card elements underneath; a listener attached to a
+  // button would be gone after the first one. `bindPlayOddsRefresh` is
+  // idempotent, so calling it on every build costs one dataset read.
+  bindPlayOddsRefresh(panel);
+
   panel.querySelectorAll('[data-card-action="challenge"]').forEach((card) => {
     const cardId = card.dataset.cardId;
 
@@ -772,33 +844,90 @@ function poolPickControl(pool) {
 }
 
 /**
- * What this Prop Pool is asking — the CATALOG'S sentence.
+ * The neutral state for a drawable Pool that arrived without its question.
  *
- * WAVE 3 DERIVED IT FROM SCOPE, AND SAID SO. That was the correct call at the
- * time and it carried its own limit in its comment: the catalog held a name and
- * a settle condition and no written question, and no field was to be invented
- * here to supply one. The consequence was that all sixty-four drawable
- * definitions were introduced with one of two sentences, neither of which said
- * anything about the contest.
+ * IT DESCRIBES THE ABSENCE, NOT THE CONTEST. Every word that could pass for
+ * product copy about what a GM is picking is exactly what must not be here: the
+ * point of removing the derivation is that this file no longer has an opinion
+ * about what any Pool asks. Four words that say a governed field is missing are
+ * honest; a sentence a GM could mistake for the question is not.
+ */
+export const MISSING_QUESTION_TEXT = 'Question unavailable';
+
+/**
+ * Drawable Pools seen without a `public_question`, for the integrity path.
  *
- * POR REV 1.4 §3 ADDS THE FIELD, so the derivation retires. `public_question`
- * is governed catalog content, written against each definition's actual
- * mechanic, and it reaches the browser on the slot beside `display_name`.
+ * A SET, NOT A COUNTER, so a test can name the offender. Cleared by nothing:
+ * the register is per-page-load and a single occurrence is the whole signal.
+ * @type {Set<string>}
+ */
+const MISSING_QUESTIONS = new Set();
+
+/**
+ * Which drawable Pools have rendered without a governed question this session.
  *
- * THE SCOPE FALLBACK SURVIVES, AND ONLY AS A FALLBACK. It answers exactly two
- * cases: the demo fixture rows, and any definition the catalog left without a
- * question — §7 leaves the 16 non-drawable ones without one on purpose. It is
- * NEVER a preference over a served question, and nothing here composes a
- * sentence out of a display name, a key or a settle condition.
+ * EXPOSED SO THE DEFECT IS OBSERVABLE rather than only visible. A card that
+ * quietly drew a neutral placeholder would look like a design choice; this is
+ * what lets a certification assert that it never happens, and what a developer
+ * reads when it does.
  *
- * @param {object} pool a row from `slateRows()`
+ * @returns {string[]} definition keys or catalog numbers, ascending
+ */
+export function missingPoolQuestions() {
+  return [...MISSING_QUESTIONS].sort();
+}
+
+/**
+ * What this Prop Pool is asking — the CATALOG'S sentence, and ONLY that.
+ *
+ * ── THE DERIVATION IS GONE, NOT DEMOTED ─────────────────────────────────────
+ *
+ * Wave 3 composed this sentence from `scope`, because the catalog held no
+ * written question and no field was to be invented here to supply one. POR
+ * Rev 1.4 §3 added `public_question` as governed catalog content and the
+ * derivation was left in place as a fallback. That fallback is now REMOVED for
+ * every Pool a league can draw.
+ *
+ * WHY A FALLBACK WAS THE WRONG SHAPE EVEN THOUGH IT NEVER FIRED. A client-side
+ * generator that produces plausible product copy is indistinguishable, on the
+ * surface, from the governed field it stands in for — so the one situation it
+ * exists for, a Pool whose catalog data is broken, is precisely the situation in
+ * which it hides the breakage. §3.2 makes the catalog the sole authority for
+ * this sentence; a second author in the browser contradicts that whether or not
+ * it is preferred.
+ *
+ * SO A MISSING QUESTION IS AN INTEGRITY EVENT. It is registered, warned about
+ * once per definition, and rendered as `MISSING_QUESTION_TEXT` — and the Play
+ * tab keeps working, because a broken row must not cost a GM the other three.
+ *
+ * THE 16 NON-DRAWABLE DEFINITIONS ARE NOT THIS CASE. §7 leaves them without a
+ * question on purpose; they are never drawn, so they never reach this function.
+ *
+ * @param {object} pool a row from `slateRows()` or the illustrative fixture
  * @returns {string}
  */
 function poolQuestion(pool) {
-  if (pool.question) return pool.question;
-  return pool.scope === 'MATCHUP'
-    ? 'Which matchup do you think takes this Prop Pool?'
-    : 'Which team do you think takes this Prop Pool?';
+  if (pool && pool.question) return pool.question;
+
+  const subject = String(
+    (pool && (pool.definitionKey || pool.catalogNumber)) || 'unknown');
+  if (!MISSING_QUESTIONS.has(subject)) {
+    MISSING_QUESTIONS.add(subject);
+    // ONE WARNING PER DEFINITION. The card renders on every panel build, and a
+    // per-render warning would bury the first one under its own repetitions.
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn(
+        `[FantasyStakes] Prop Pool ${subject} was drawn without a governed `
+        + 'public_question. POR Rev 1.4 §3 makes the catalog the sole authority '
+        + 'for this sentence, so none is composed here.');
+    }
+  }
+  return MISSING_QUESTION_TEXT;
+}
+
+/** @returns {boolean} whether this row carries its governed question. */
+function hasPoolQuestion(pool) {
+  return Boolean(pool && pool.question);
 }
 
 /**

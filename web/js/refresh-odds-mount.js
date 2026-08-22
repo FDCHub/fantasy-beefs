@@ -34,6 +34,7 @@
  * ========================================================================== */
 
 import { actionMode, sectionCards, servedAction } from './action-model.js';
+import { marketFor, marketWeek } from './market-model.js';
 import { mountRefreshOdds, setRefreshHook } from './refresh-odds.js';
 import {
   explainRefreshRefusal, readOddsRefresh, requestOddsRefresh,
@@ -45,7 +46,7 @@ setRefreshHook({
   explain: explainRefreshRefusal,
 });
 
-/** The rails a live Dynamic Matchup can be sitting on. */
+/** The rails a live Matchup — Dynamic or Locked — can be sitting on. */
 const RAILS = ['live', 'waiting', 'action'];
 
 let scheduled = false;
@@ -62,7 +63,62 @@ async function sweep() {
 
   const cards = RAILS.flatMap((rail) => sectionCards(rail));
   if (!cards.length) return;
-  await mountRefreshOdds(panel, { leagueId: served.league_id, cards });
+  await mountRefreshOdds(panel, {
+    leagueId: served.league_id, cards, currentOddsFor,
+  });
+}
+
+/**
+ * The live market line for a Locked card's pairing, or nothing.
+ *
+ * ── THE WEEK GUARD IS THE WHOLE HONESTY OF THIS FUNCTION ────────────────────
+ *
+ * The bound board was priced for ONE week. A Locked wager sitting on the LIVE
+ * rail from an earlier week has no current price on that board, and quoting one
+ * anyway would put this week's market beside last week's frozen odds and call
+ * the pair a comparison. When the weeks disagree the row reads `Unavailable`,
+ * which is true.
+ *
+ * `acting_moneyline` IS THE COMPARABLE FIGURE. The board is anchored on the
+ * acting GM as challenger, and `yourMoneyline` on the card is this GM's own
+ * odds of record — the same side of the same pairing, so the two are the same
+ * question asked at two moments.
+ *
+ * NOTHING IS COMPUTED. The board row arrived over the wire; this reads two
+ * fields off it and returns them.
+ *
+ * @param {object} card a normalised Action card
+ * @returns {{available: boolean, moneyline: number|null}}
+ */
+function currentOddsFor(card) {
+  // NULL MEANS "NO COMPARISON IS POSSIBLE HERE"; `{available: false}` means
+  // "comparable, but this pairing has no line". The difference decides whether
+  // a block is drawn at all.
+  //
+  // WITHOUT A BOARD FOR THIS CARD'S WEEK THERE IS NOTHING TO COMPARE, and a
+  // block whose second row read `Unavailable` forever would be a permanent
+  // apology rather than information. The illustrative fixture is exactly that
+  // case — it has no market board — which is why Status's demo cards gain
+  // nothing, and why the lifecycle card keeps the height it was certified at.
+  if (!card || !Number.isInteger(card.weekNumber)) return null;
+  if (marketWeek() !== card.weekNumber) return null;
+
+  // NO SERVED ROW, NO COMPARISON. `marketFor` answers null unless an
+  // AUTHORITATIVE board is bound and carries this pairing, so this is the one
+  // check that cannot be satisfied by an unbound model, a stale week or a
+  // fixture. It is deliberately separate from the `available` test below: a row
+  // that exists and cannot be priced is a real answer worth showing, and a row
+  // that was never served is not an answer at all.
+  const row = marketFor(card.opponentTeamId);
+  if (!row) return null;
+
+  const unavailable = { available: false, moneyline: null };
+  if (row.available !== true) return unavailable;
+  return {
+    available: Number.isInteger(row.acting_moneyline),
+    moneyline: Number.isInteger(row.acting_moneyline)
+      ? row.acting_moneyline : null,
+  };
 }
 
 function schedule() {
@@ -88,5 +144,6 @@ export function startRefreshOddsMount() {
   });
   schedule();
 }
+
 
 startRefreshOddsMount();

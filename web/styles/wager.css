@@ -836,23 +836,14 @@
   gap: var(--fs-space-2);
 }
 
-.fs-refresh__btn {
-  min-height: var(--fs-c-touch);
-  padding: var(--fs-space-1) var(--fs-space-3);
-  background: transparent;
-  border: 1px solid var(--edge);
-  border-radius: var(--fs-c-radius-cell);
-  color: var(--g1);
-  font-size: var(--fs-c-size-body-sub);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: var(--fs-c-track-label);
-  cursor: pointer;
-}
-
-.fs-refresh__btn:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
+/* THE WIDE BUTTON IS GONE — UIRECON refine-refresh pass.
+ *
+ * `.fs-refresh__btn` was a full-width control reading `↻ REFRESH ODDS`. It is
+ * superseded by `.fs-oddsref` in `components.css`: the same verb as a small
+ * glyph, shared with Play's two refresh controls, so one gesture means one
+ * thing across the product. `.fs-refresh` below survives as the LAYOUT that
+ * holds the glyph, its stamp and its confirmation note.
+ */
 
 /* THE TIMESTAMP IS A NUMBER AND IS DRAWN AS ONE — the canonical tabular
  * monospace, so a stamp that ticks from 10:09 to 10:42 does not change width

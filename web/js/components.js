@@ -42,17 +42,34 @@ export function escapeHtml(value) {
 /**
  * Shared section heading with an optional right-side helper label.
  *
+ * `action` IS TRUSTED MARKUP AND EVERY OTHER ARGUMENT IS NOT. `text` and
+ * `helper` are escaped because they carry league content — team names, counts,
+ * served copy. `action` is a control this application built for itself, so it
+ * is inserted as-is; it exists because an affordance that belongs to a section
+ * has nowhere else to live that keeps it beside the words it acts on.
+ *
+ * IT SITS WITH THE TEXT, NOT WITH THE HELPER. `.fs-heading` is a
+ * `space-between` row, so an action appended as a third child would be pushed
+ * to the far edge and read as belonging to the count rather than to the
+ * heading. Wrapping the text and the action in one lead group keeps the control
+ * against the word it refreshes and leaves the helper where it was.
+ *
  * @param {string} text
  * @param {string} [helper]
+ * @param {string} [action] caller-built control markup, inserted verbatim
  * @returns {string}
  */
-export function sectionHeading(text, helper = '') {
+export function sectionHeading(text, helper = '', action = '') {
   const helperHtml = helper
     ? `<span class="fs-heading__helper">${escapeHtml(helper)}</span>`
     : '';
+  const textHtml = `<span class="fs-heading__text">${escapeHtml(text)}</span>`;
+  const lead = action
+    ? `<span class="fs-heading__lead">${textHtml}${action}</span>`
+    : textHtml;
   return (
     '<div class="fs-heading">' +
-    `<span class="fs-heading__text">${escapeHtml(text)}</span>` +
+    lead +
     helperHtml +
     '</div>'
   );

@@ -93,3 +93,59 @@ export function marketAvailable(teamId) {
   const row = marketFor(teamId);
   return Boolean(row && row.available);
 }
+
+/**
+ * When the served board was priced, as the server stamped it.
+ *
+ * THE SERVER'S FACT, CARRIED VERBATIM. The Play surface prints
+ * `Odds updated 11:47 AM` beside its refresh control, and that sentence is a
+ * claim about when a Monte Carlo ran. Reading the client clock instead would
+ * print round-trip latency as the model's completion time.
+ *
+ * @returns {string|null} an ISO timestamp, or null when nothing is bound
+ */
+export function marketComputedAt() {
+  if (MODE !== MARKET_MODE_AUTHORITATIVE || !SERVED) return null;
+  return SERVED.computed_at || null;
+}
+
+/**
+ * Replace ONE pairing's row from a single-opponent board read.
+ *
+ * WHY A MERGE RATHER THAN A REBIND. The per-card refresh asks for one opponent
+ * (`/versus/board?opponent_team_id=`), so the response carries one row. Binding
+ * it whole would drop every other card's market and leave eleven cards showing
+ * `Play ›` because one was refreshed — a per-card control that blanked the rail
+ * is worse than no control.
+ *
+ * THE STAMP MOVES WITH IT, and that is deliberate rather than sloppy: the
+ * heading's stamp says when the odds on screen were last priced, and after a
+ * per-card refresh the newest thing on screen is that card. A stamp that only
+ * moved on a full-board read would go stale while the GM watched a price
+ * change.
+ *
+ * REFUSED IF NOTHING IS BOUND. A single row is not a board, and promoting one
+ * to be the whole board would tell every other card it is unpriceable.
+ *
+ * @param {object} board a VersusBoardOut carrying one market row
+ * @returns {boolean} whether the row was merged
+ */
+export function applyMarketRow(board) {
+  if (MODE !== MARKET_MODE_AUTHORITATIVE || !SERVED) return false;
+  if (!board || !Array.isArray(board.markets) || board.markets.length !== 1) {
+    return false;
+  }
+  const fresh = board.markets[0];
+  if (!fresh || typeof fresh.opponent_team_id !== 'number') return false;
+
+  const markets = SERVED.markets.map(
+    (row) => (row.opponent_team_id === fresh.opponent_team_id ? fresh : row));
+  // A pairing the bound board never carried is ADDED rather than dropped: the
+  // roster can gain a team between reads, and refusing to show a market the
+  // server just priced would be the surface overruling it.
+  if (!markets.some((row) => row.opponent_team_id === fresh.opponent_team_id)) {
+    markets.push(fresh);
+  }
+  SERVED = { ...SERVED, markets, computed_at: board.computed_at || SERVED.computed_at };
+  return true;
+}

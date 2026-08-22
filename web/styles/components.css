@@ -439,3 +439,214 @@
  * own scroll region. The Wrap Up result card is a different surface with its
  * own rule and is not this lane's to change. */
 .fs-lscroll .fs-lsec.is-elevated { box-shadow: none; }
+
+/* ══ THE ODDS-REFRESH CONTROL — UIRECON refine-refresh pass ═════════════════
+ *
+ * ONE CONTROL, THREE HOMES. It sits beside the `MATCHUPS` heading on Play, in
+ * the upper-right of every Play Matchup card, and on the Status tab's live
+ * Dynamic cards where a full-width `↻ REFRESH ODDS` button used to be. It
+ * lives in `components.css` rather than in any one surface's sheet for exactly
+ * that reason: a control that means "re-read this market" must look and behave
+ * the same wherever a market is shown, or the gesture stops being one gesture.
+ *
+ * ── IT MUST NOT MOVE THE CARD IT SITS ON ───────────────────────────────────
+ *
+ * The Play card is one snap position in a carousel whose geometry Rev 1.4
+ * certified. A control that added height would change the card, the item and
+ * the snap; so the glyph is sized to the line it shares — `.fs-wcard__head`'s
+ * first child is a 44px challenge button, and this sits INSIDE that height with
+ * `align-self: flex-start` and no vertical padding of its own.
+ *
+ * THE TAP TARGET IS BIGGER THAN THE GLYPH, and that is the point of the
+ * negative margin: the painted control is small and quiet, while the pressable
+ * area meets the governed 44px floor by extending into the padding around it.
+ * A 20px tap target with a 44px `min-height` would have pushed the row taller;
+ * this keeps the row and gives the thumb the whole corner.
+ */
+.fs-oddsref {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  /* THE TARGET IS THE BUTTON, NOT A PSEUDO-ELEMENT.
+   *
+   * This was first drawn as a 26px box with `::after { inset: -10px }` reaching
+   * out to 44. It measured 44x44 to `elementFromPoint` and 26px to WP3E's
+   * accessibility gate, which reads a bounding rect on every visible
+   * interactive control — and the gate is right: a reach nothing can measure is
+   * a reach nobody can audit.
+   *
+   * So the BUTTON is the governed 44px target and the painted circle moved into
+   * the glyph. The control still reads as small and quiet, and is now honestly
+   * the size it claims. It costs no layout where it matters:
+   * `.fs-wcard__head` is already 44px tall because the challenge control is. */
+  width: var(--fs-c-touch);
+  height: var(--fs-c-touch);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--g1);
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fs-oddsref:hover { color: var(--bone); }
+
+.fs-oddsref:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.fs-oddsref:disabled { cursor: default; }
+
+.fs-oddsref__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* The painted control: small and quiet, inside a target that is not. */
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--edge);
+  border-radius: 50%;
+  font-size: var(--fs-size-fine);
+  line-height: 1;
+}
+
+.fs-oddsref:hover .fs-oddsref__glyph { border-color: var(--g2); }
+
+.fs-oddsref[data-refresh-state="done"] .fs-oddsref__glyph {
+  border-color: var(--g2);
+}
+
+/* WORKING IS A SPIN, NOT A SUBSTITUTION. The glyph a GM pressed keeps its
+ * identity while it turns, so the control never looks like it was replaced by
+ * a different control mid-press. */
+.fs-oddsref[data-refresh-state="working"] .fs-oddsref__glyph {
+  animation: fs-oddsref-spin 900ms linear infinite;
+}
+
+/* DONE IS BRIEF AND IT IS NOT GREEN. A refresh moved no money, and the palette
+ * this product uses for green is the palette it uses for winning credits. */
+.fs-oddsref[data-refresh-state="done"] { color: var(--bone); }
+
+@keyframes fs-oddsref-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* REDUCED MOTION GETS A STATE, NOT AN ANIMATION. The control still has to say
+ * it is working, so the spin is replaced by a dimming rather than removed. */
+@media (prefers-reduced-motion: reduce) {
+  .fs-oddsref[data-refresh-state="working"] .fs-oddsref__glyph {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* The heading control sits with the word it refreshes, not with the count.
+ *
+ * IT WRAPS, AND THE STAMP IS WHAT WRAPS. `Odds updated 11:47 AM` beside
+ * `MATCHUPS ↻` and `11 OPPONENTS · SWIPE` does not fit 320px, and putting the
+ * stamp in the flow BELOW the heading changed the title-to-content gap that
+ * UIRECON Waves 1–3 certify as uniform across every section — measured 17px
+ * against the 5px every other section has. Keeping it INSIDE the heading box
+ * leaves that gap untouched: the heading grows, the space under it does not. */
+.fs-heading__lead {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fs-space-2);
+  min-width: 0;
+}
+
+/* THE STAMP IS A NUMBER AND IS DRAWN AS ONE — tabular figures, so a stamp that
+ * ticks from 11:09 to 11:47 does not change width and shift the row. */
+.fs-oddsref__stamp {
+  display: block;
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-micro);
+  color: var(--g1);
+}
+
+.fs-oddsref__stamp:empty { display: none; }
+
+/* The stamp takes its own line INSIDE the lead group. `flex-basis: 100%` is
+ * what puts it there — the heading row is already carrying a count and a swipe
+ * affordance, and a fourth item on that line would push one of them off at
+ * 320px. */
+.fs-oddsref__stamp--board {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* ── LOCKED ODDS versus CURRENT ODDS ────────────────────────────────────────
+ *
+ * TWO ROWS THAT MUST NOT READ AS A TRANSITION. A Locked wager's price froze
+ * when it was offered and cannot move; the live line beside it is context. So
+ * there is no arrow between them, no delta, and no colour on either figure —
+ * the only difference in treatment is that the current row is quieter, which
+ * says "this one is not your wager" without saying anything else. */
+/* ONE LINE, MEASURED RATHER THAN CHOSEN. Stacked as two rows this block was
+ * 32px, and a Status lifecycle card is a fixed-height carousel item: measured
+ * at every certified viewport, the card needed 138px inside 132px and clipped
+ * its own foot. Rev 1.4 Part 11 tuned those four rails to fit one mobile
+ * viewport, so growing the card is not available — the block has to fit the
+ * card it annotates.
+ *
+ * Laid out in a row it is one line, and the card is unchanged. Both figures
+ * keep their own label, so nothing about what each number means depends on
+ * position. */
+.fs-oddscmp {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--fs-space-2) var(--fs-space-4);
+}
+
+.fs-oddscmp__row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--fs-space-2);
+}
+
+.fs-oddscmp__label {
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--g2);
+}
+
+.fs-oddscmp__value {
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-micro);
+  color: var(--bone);
+}
+
+.fs-oddscmp__row.is-quiet .fs-oddscmp__value { color: var(--g1); }
+
+/* THE CARD VARIANT CENTRES ITSELF IN THE HEAD ROW.
+ *
+ * `.fs-wcard__head` is `align-items: flex-start` and its first child is a 44px
+ * challenge target, so a 26px control aligned to the start sits flush with the
+ * top of the card — and its 9px of upward reach then falls OUTSIDE the card, on
+ * the carousel item behind it. Measured at 390x844: the card's top edge was
+ * 6px above the button's, so the effective target was 41px tall rather than 44.
+ *
+ * Centring it inside the row it already shares costs no height — the row is
+ * 44px either way — and puts the whole 44px reach inside the card, which is the
+ * only place a tap can land on it. */
+.fs-oddsref--card { align-self: center; }
+
+/* The inline variant is unused today — the Locked comparison is read-only — and
+ * is kept because the affordance is shared and a later caller may want a glyph
+ * inside a figure row. It keeps the 44px target and gives up only the circle. */
+.fs-oddsref--inline .fs-oddsref__glyph {
+  width: 18px;
+  height: 18px;
+  border-color: transparent;
+  font-size: var(--fs-size-eyebrow);
+}

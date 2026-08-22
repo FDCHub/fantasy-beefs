@@ -91,8 +91,16 @@ const control = refreshOddsControl(DYNAMIC_LIVE, {
   refreshedAt: '2026-08-21T14:42:03', eligible: true });
 
 check('the control carries the locked label', control.includes(REFRESH_LABEL));
-check('and the label is the glyph form the brief specifies',
-  REFRESH_LABEL === '↻ REFRESH ODDS', REFRESH_LABEL);
+// SUPERSEDED BY THE REFINE-REFRESH PASS. Rev 1.4 put the words on the face of a
+// full-width button. That is the size this product uses for DECISIONS, and a
+// refresh is a GM looking something up — so the face became the shared small
+// glyph and the words became the accessible name, which a keyboard and a screen
+// reader reach and a caption on a 26px control could not carry anyway.
+check('and the label names its subject, as the accessible name of the control',
+  REFRESH_LABEL === 'Refresh odds for this Matchup', REFRESH_LABEL);
+check('  · which is where the control actually announces itself',
+  control.includes(`aria-label="${REFRESH_LABEL}"`));
+check('  · and the glyph is the shared one', control.includes('↻'));
 check('it is a real button, so it has a keyboard path',
   control.includes('<button type="button"'));
 check('it names the challenge it belongs to',

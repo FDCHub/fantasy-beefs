@@ -457,9 +457,21 @@ _assert("the Pool card takes the CARD radius the Matchup card takes, not the "
         in _rule(GAMEPLAY_CSS, ".fs-pool--card"))
 _assert("one card fills its carousel item, so a second can never be half-shown",
         "height: 100%" in _rule(GAMEPLAY_CSS, ".fs-pool--card"))
+# STRENGTHENED BY THE REFINE-REFRESH PASS. This read "prefers the served
+# question", which was true of a build that still carried a scope-derived
+# fallback behind it. That generator is now GONE for every drawable Pool: a
+# client-side author of plausible product copy is indistinguishable from the
+# governed field it stands in for, so the one case it existed for — broken
+# catalog data — was the case in which it hid the breakage.
 _assert("the card carries the served question, not a scope-derived stand-in",
-        'class="fs-pool__question"' in LEAGUE_JS
-        and "if (pool.question) return pool.question;" in LEAGUE_JS)
+        'class="fs-pool__question' in LEAGUE_JS
+        and "if (pool && pool.question) return pool.question;" in LEAGUE_JS)
+_assert("  · and no scope-derived question generator remains at all",
+        "do you think" not in LEAGUE_JS)
+_assert("  · a drawable Pool with no governed question gets a neutral state "
+        "and an integrity event, never invented copy",
+        "MISSING_QUESTION_TEXT = 'Question unavailable'" in LEAGUE_JS
+        and "missingPoolQuestions" in LEAGUE_JS)
 
 print("\nAction's four rails stay single rows")
 
