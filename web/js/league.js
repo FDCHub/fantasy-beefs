@@ -4,11 +4,15 @@
  *
  * "What can I play?" — Rev 4.3 §4.
  *
- * TWO ZONES UNDER THE STRIP, and both Rev 4.2 shapes are deliberately kept:
- * FantasyStakes Versus is a vertical carousel presenting one card at a time,
- * and FantasyStakes Pools is a compact 2×2 grid. OR-3 preserved both, and
- * Rev 4.3 §8.5 is explicit that Play's Pools must NOT become Status-style
- * horizontal rails for the sake of cross-tab consistency.
+ * TWO SECTIONS UNDER THE STRIP, AND THEY ARE ONE CARD FAMILY IN TWO CONTENTS.
+ * Matchups and Prop Pools are each a horizontal carousel presenting exactly one
+ * complete card at a time, at one shared outer width and one shared outer
+ * height. Rev 4.2's vertical rail and 2×2 Pool grid are both superseded — the
+ * grid by POR Rev 1.4 §4, which needs a line for the governed question, and the
+ * vertical rail by the RC4 mobile reconciliation, which measured it clipping its
+ * own card on a real phone. Rev 4.3 §8.5's concern was that Play's Pools must not
+ * become STATUS-style rails of several small tiles; one complete card per
+ * viewport is the opposite of that, and is what both sections now do.
  *
  * WHAT WP3C CHANGED, AND WHY EACH ONE MATTERED
  *
@@ -215,20 +219,48 @@ export function buildLeaguePanel() {
   // Credits in the strip. It is a source disclosure at the foot of the page,
   // not a label attached to any figure.
   //
-  // IT ENDS THE POOLS ZONE RATHER THAN THE PANEL, AND THAT IS A MEASURED
-  // DECISION. Play's two zones split whatever height the panel has left, and
-  // at 375x667 the Versus carousel has exactly none to give: measured at HEAD,
-  // the rail was 128px for a card that needs 128px. A block placed after the
-  // zones takes its height from BOTH of them, and the wager card is the one
-  // that cannot afford it — it clipped its own markets the moment the line was
-  // added there. The Pools grid is compact and has the room, so the line ends
-  // that zone instead. It is still the last thing on the surface, still one
-  // instance, still above the bottom navigation.
+  // ── THE PLAY DECK — RC4 MOBILE RECONCILIATION ────────────────────────────
+  //
+  // WHAT WAS HERE, AND WHY IT FAILED ON A REAL PHONE. The two zones split
+  // whatever height the panel had left, at `flex: 1 1 0` each, and each zone's
+  // rail took what its own heading did not. Measured on the deployed RC4 build
+  // at 320x568: the Matchups zone was 133.11px, its heading block 88.59px of
+  // that, and the rail 44.52px — for a card whose content is 155px. The card
+  // did not shrink and could not: `.fs-carousel__item` carries
+  // `min-height: 100%`, so it grew to its content and the rail clipped it a
+  // third of the way down, exactly where the PROP POOLS heading begins. That is
+  // the "Matchup card runs under the Prop Pools section" report, and the earlier
+  // certification could not see it because it compared the card to the ITEM and
+  // the item to the RAIL — never the rail to the card.
+  //
+  // A HEIGHT NEGOTIATION IS THE WRONG SHAPE FOR THIS SURFACE. Two card zones
+  // cannot both be given a complete card out of 276px of panel; the fixed
+  // quantity is the CARD, and the screen has to yield to it. So the deck below
+  // is sized by its content and the surface scrolls vertically when a phone is
+  // too short — the same construction Wrap Up has used since Wave 4B, and the
+  // reason Wrap Up never produced this defect.
+  //
+  // `.fs-playdeck` IS WHAT MAKES THE TWO CARD FAMILIES ONE SIZE. It is a grid
+  // of four rows — heading, rail, heading, rail — and the two rail rows are a
+  // matched pair of `minmax(0, 1fr)`, so they resolve to the SAME height at
+  // every width, whichever family's content is taller. Neither zone contributes
+  // a box of its own (`display: contents`), which is what keeps a heading out
+  // of its rail's track: Matchups carries a refresh control and a stamp that
+  // Prop Pools does not, and equal ZONES would therefore have produced unequal
+  // RAILS. See `gameplay.css` — "PARALLEL CARD GEOMETRY".
+  //
+  // THE ATTRIBUTION LEAVES THE POOLS ZONE. It ended that zone because a block
+  // after the zones took height from both of them, and at 375x667 the Matchup
+  // card had none to give. The deck no longer negotiates height with anything,
+  // so the source line goes back where it reads correctly: after both sections,
+  // last on the surface, one instance, inside the scroll and above the nav.
   composer.add(
     '<div class="fs-zones">' +
+    '<div class="fs-playdeck">' +
     `<div class="fs-zone fs-zone--bets">${versusZone()}</div>` +
-    '<div class="fs-zone fs-zone--pools">'
-    + poolsZone() + attributionFooter() + '</div>' +
+    `<div class="fs-zone fs-zone--pools">${poolsZone()}</div>` +
+    '</div>' +
+    attributionFooter() +
     '</div>',
   );
 
@@ -493,10 +525,16 @@ function poolRows() {
  * THE SAME CAROUSEL AS THE MATCHUPS ABOVE, LITERALLY. The card is placed in
  * `.fs-carousel__item` inside `.fs-carousel` — the identical elements the
  * Matchups rail uses, not a parallel implementation that agrees today. So the
- * outer width, the horizontal inset, the gutter, the vertical snap, the
- * gesture, the hidden scrollbar and the "never half a card" guarantee are the
- * same rules and cannot drift apart. Only the card's INSIDE is Pool-specific,
- * which is what §4 asks for.
+ * outer width, the item width, the gutter, the horizontal snap, the gesture,
+ * the hidden scrollbar and the "never half a card" guarantee are the same rules
+ * and cannot drift apart.
+ *
+ * AND SINCE RC4 THE OUTER HEIGHT IS SHARED TOO, which reuse alone did not give:
+ * each rail took the height its own zone had left, so the Pool card measured
+ * 135.97px against the Matchup card's 155px in adjacent sections. Both rails
+ * are now a matched pair of grid tracks, so the two families are one size by
+ * construction. Only the card's INSIDE is Pool-specific, which is what §4 asks
+ * for.
  *
  * WHAT THE CARD STILL CARRIES. The TEAM/MATCHUP badge and the ROLLOVER
  * modifier on it — a rolling Pool is not a different kind of Pool — the entry,
@@ -903,10 +941,18 @@ export function missingPoolQuestions() {
  * THE 16 NON-DRAWABLE DEFINITIONS ARE NOT THIS CASE. §7 leaves them without a
  * question on purpose; they are never drawn, so they never reach this function.
  *
+ * EXPORTED FOR WRAP UP — RC4 MOBILE RECONCILIATION. The Prop Pool result card
+ * carries the same sentence the Play card asks, and it must be the SAME
+ * sentence from the SAME source: a second reader with its own preference is how
+ * two surfaces come to describe one contest differently. Nothing about the rule
+ * changes by being exported — the catalog is still the sole authority, a
+ * missing question is still an integrity event, and there is still no client
+ * that can compose one.
+ *
  * @param {object} pool a row from `slateRows()` or the illustrative fixture
  * @returns {string}
  */
-function poolQuestion(pool) {
+export function poolQuestion(pool) {
   if (pool && pool.question) return pool.question;
 
   const subject = String(

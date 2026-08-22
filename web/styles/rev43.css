@@ -469,14 +469,16 @@
   flex: 0 0 auto;
 }
 
-/* PLAY PAYS FOR IT OUT OF ITS OWN BOTTOM PADDING. `.fs-zones` ended the panel
- * with `space-4` of breathing room; the source line now ends the Pools zone and
- * its own margin provides that separation, so the padding is redundant. This
- * matters at 375x667, where the Versus carousel has almost no slack — measured
- * 128px of rail for a 128px card at HEAD — and every pixel spent below the
- * zones comes out of a wager card. With the line inside Pools and this padding
- * released, the card measures 133px in 133px. */
-#panel-league .fs-zones { padding-bottom: 0; }
+/* PLAY PAID FOR IT OUT OF ITS OWN BOTTOM PADDING — SUPERSEDED AT RC4.
+ *
+ * `.fs-zones` ended the panel with `space-4` of breathing room and this
+ * released it, because Play's two sections were dividing a fixed panel height
+ * and every pixel spent below them came out of a wager card. The reasoning was
+ * sound and the premise is gone: the deck is sized by its CONTENT now and the
+ * region scrolls, so nothing below the sections is taken from a card. The
+ * padding is restored in `gameplay.css` — "PARALLEL CARD GEOMETRY" — where the
+ * region that scrolls is declared, and it is removed from here rather than
+ * overridden so the two sheets cannot disagree about one box. */
 
 .fs-attribution__link {
   font-size: var(--fs-size-micro);
@@ -532,10 +534,19 @@
  *
  * WHAT WAS NOT DONE, deliberately: no market removed, no card content hidden,
  * no type shrunk below the readability floor, no density increase. */
-.fs-carousel__item {
-  height: auto;
-  min-height: 100%;
-}
+/* RC4 MOBILE RECONCILIATION — THIS RELEASE IS WHAT LET THE CARD LEAVE ITS RAIL.
+ *
+ * `min-height: 100%` was the right answer to the question §K2 asked: where the
+ * rail is too short, let the item grow to its card and let the rail scroll. On a
+ * real phone the rail was 44.52px against a 155px card, so the "intentional
+ * vertical scrolling" was a card cut off a third of the way down, one line below
+ * the fold of a section — read by a GM as the Matchup card running under PROP
+ * POOLS.
+ *
+ * The rail is horizontal now and an item is one viewport wide by construction,
+ * so there is no shortfall left to absorb. The declaration is removed rather
+ * than overridden: `gameplay.css` — "PARALLEL CARD GEOMETRY" — is the single
+ * place this item is sized. */
 
 /* -- B - the masthead keeps the wordmark legible at every width ------------
  *

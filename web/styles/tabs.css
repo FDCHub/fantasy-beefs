@@ -13,27 +13,25 @@
   min-height: 0;
 }
 
-/* Vertical carousel — one complete matchup card at a time.
- * `y mandatory` makes every scroll settle on a card boundary, so a card is
- * never presented half-shown. */
-.fs-carousel {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  scroll-snap-type: y mandatory;
-  scrollbar-width: none;
-}
-
-.fs-carousel::-webkit-scrollbar { display: none; }
-
-.fs-carousel__item {
-  height: 100%;
-  padding-bottom: var(--fs-space-2);
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-}
+/* ── The Play carousel — SUPERSEDED HERE, DECLARED IN `gameplay.css` ────────
+ *
+ * WHAT STOOD HERE. `.fs-carousel` was a VERTICAL snap list — `overflow-y: auto`,
+ * `scroll-snap-type: y mandatory`, `overflow-x: hidden` — whose viewport was
+ * whatever height the zone had left after its heading. `.fs-carousel__item` took
+ * `height: 100%` (later relaxed to `min-height: 100%` by `rev43.css` §K2) and a
+ * bottom pad.
+ *
+ * WHY IT IS GONE RATHER THAN TUNED. A vertical viewport can be shorter than the
+ * card it presents, and on the deployed RC4 build it was: 44.52px of rail for a
+ * 155px Matchup card at 320x568, clipped exactly where the PROP POOLS heading
+ * began. `min-height: 100%` is what let the item outgrow the rail, and no value
+ * of it fixes a rail with no height to give. The rail is horizontal now, where
+ * one item is one viewport BY DEFINITION and cannot be too small for its card.
+ *
+ * IT IS NOT RESTATED HERE, DELIBERATELY. One declaration, in
+ * `gameplay.css` — "PARALLEL CARD GEOMETRY" — is what keeps the Matchups rail
+ * and the Prop Pools rail from drifting apart, and a second set of rules in
+ * this file is exactly how they would. */
 
 /* Pools — all four visible together, no scrolling inside the zone. */
 .fs-pools {

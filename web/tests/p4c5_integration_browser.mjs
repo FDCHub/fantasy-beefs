@@ -243,7 +243,9 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
       await new Promise((r) => setTimeout(r, 250));
       const panel = document.getElementById('panel-' + t);
       out[t] = {
-        rows: panel.querySelectorAll('.fs-poolrow').length,
+        // RC4 - the Prop Pool item is the shared result card now.
+        rows: panel.querySelectorAll(
+          '[data-module="pools"] .fs-rescar__item > .fs-wcard').length,
         cards: panel.querySelectorAll('.fs-zone--pools .fs-wcard').length,
         text: panel.textContent,
       };

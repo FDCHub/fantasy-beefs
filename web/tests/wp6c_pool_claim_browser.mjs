@@ -88,8 +88,8 @@ await withPage({ port: 9392, settleMs: 1800 }, async ({ evaluate }) => {
     ${waitFor('.fs-tabbar__item[data-destination="week"]')}
     if (!el) return { opened: false, reason: 'no week tab', options: [] };
     el.click();
-    ${waitFor('#panel-week .fs-poolrow')}
-    if (!el) return { opened: false, reason: 'no Pool row rendered', options: [] };
+    ${waitFor('#panel-week [data-module="pools"] .fs-rescar__item > .fs-wcard')}
+    if (!el) return { opened: false, reason: 'no Pool card rendered', options: [] };
     el.click();
     ${waitFor('#fs-poolpick-form')}
     const form = el;
@@ -174,8 +174,8 @@ await withPage({ port: 9392, settleMs: 1800 }, async ({ evaluate }) => {
     ${WAIT_HELPER}
     document.querySelector('[data-fs-close]')?.click();
     await new Promise((r) => setTimeout(r, 300));
-    ${waitFor('#panel-week .fs-poolrow')}
-    if (!el) return { held: null, selected: null, button: 'no row' };
+    ${waitFor('#panel-week [data-module="pools"] .fs-rescar__item > .fs-wcard')}
+    if (!el) return { held: null, selected: null, button: 'no card' };
     el.click();
     ${waitFor('#fs-poolpick-form')}
     const held = document.querySelector('#fs-poolpick-held');
@@ -200,9 +200,11 @@ await withPage({ port: 9392, settleMs: 1800 }, async ({ evaluate }) => {
   /* ── Nothing about this moved money ─────────────────────────────────────── */
 
   const drawn = await evaluate(
-    "return document.querySelectorAll('#panel-week .fs-poolrow').length;");
+    "return document.querySelectorAll("
+    + "'#panel-week [data-module=\"pools\"] .fs-rescar__item > .fs-wcard'"
+    + ").length;");
   report.check('the four-slot Pool presentation is unchanged by the cutover',
-    drawn === before.length, `${drawn} rows`);
+    drawn === before.length, `${drawn} cards`);
 });
 
 report.finish();

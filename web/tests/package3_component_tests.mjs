@@ -242,14 +242,25 @@ check('every Pool keeps its catalog rule',
 // UIRECON WAVE 4B — THE POOLS MODULE IS A CAROUSEL NOW, DELIBERATELY. It was
 // the one Wrap section built differently from its two peers: a flat column of
 // buttons beside two carousels, for a third thing a GM reads exactly the same
-// way. All three share `resultSection()` today. An OPEN Pool still draws its
-// compact `.fs-poolrow` inside the rail — "you have a pick to make" is a
-// different statement from "here is what happened" — so the row survives; what
-// changed is the container it sits in.
+// way. All three share `resultSection()` today.
+//
+// RC4 MOBILE RECONCILIATION — AND NOW ONE CARD FAMILY TOO. Wave 4B unified the
+// rail and left the ITEM split: a settled Pool drew the shared result card and
+// an OPEN one kept its compact `.fs-poolrow`, on the reasoning that "you have a
+// pick to make" is a different statement from "here is what happened".
+//
+// That distinction was never about the BOX. Measured on the deployed RC4 build
+// at Week 11, where every Pool on the slate is open, all four items drew the row
+// and the third carousel measured 45px against 132.30px of Yahoo and 150.06px
+// of FantasyStakes Matchup — a strip beside two carousels, in a tab whose whole
+// construction is three peers. Both states take the shared shell now; what
+// differs is what they SAY inside it, which is where §11 puts the difference.
 check('the Pools module shares the one Wrap carousel',
   week.includes('id="fs-pools-carousel"') && week.includes('fs-rescar'));
-check('an open Pool keeps its compact row inside that carousel',
-  week.includes('fs-poolrow'));
+check('an open Pool draws the shared result card, not a list row',
+  !week.includes('fs-poolrow') && week.includes('fs-wcard--result'));
+check('  · and it still says what an OPEN Pool has to say',
+  week.includes('Your pick') && /OPEN|PREGAME|LOCKED/.test(week));
 check('the retired vertical carousel is gone from every module',
   !week.includes('fs-vcar'));
 check('rollover stays a modifier on a subject type',

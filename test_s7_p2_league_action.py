@@ -412,22 +412,74 @@ _assert("no opposing player is named", not named, ", ".join(sorted(set(named))[:
 # at the point they are expressed, so a change that breaks the intent is caught
 # where it is made rather than only where it shows.
 
-print("\nLeague's two zones, and the layout rules that keep them honest")
+print("\nLeague's two sections, and the layout rules that keep them honest")
 
+# ── RC4 MOBILE RECONCILIATION · WHY THESE ASSERTIONS MOVED ───────────────────
+#
+# `.fs-zones > .fs-zone { flex: 1 1 0 }` was the equal-billing rule: neither
+# Play section could grow at the other's expense. It is still the PRIMITIVE's
+# rule — `components.js::equalZones` emits it and `test_s7_p1_ui_shell.py`
+# still certifies it there — and it is no longer the rule Play uses, because
+# equal billing turned out to be a fair split of a quantity that is not the
+# surface's to divide.
+#
+# MEASURED ON THE DEPLOYED RC4 BUILD at 320x568: the Matchups section took half
+# the panel (133.11px), its heading took 88.59px of that, and the rail was left
+# with 44.52px for a card whose content is 155px. `.fs-carousel__item` carried
+# `min-height: 100%`, so the item grew to the card and the rail clipped it — a
+# third of a Matchup card, cut off exactly where PROP POOLS begins.
+#
+# A CARD IS THE FIXED THING AND THE SCREEN YIELDS TO IT. Play's two sections are
+# now the four rows of one grid whose two rail tracks are a matched pair, sized
+# to the taller family's content, with the surface scrolling vertically where a
+# phone cannot hold both. That is what makes the Matchup card and the Prop Pool
+# card one outer width AND one outer height, which is the owner rule these
+# assertions now protect.
+#
+# THE RAIL TURNED HORIZONTAL FOR A STRUCTURAL REASON, not a stylistic one: a
+# vertical viewport can be shorter than its card, and a horizontal one cannot be
+# narrower than an item defined as one viewport wide.
+#
+# ONE DECLARATION, IN `gameplay.css`. The superseded rules are GONE from
+# `tabs.css` and `rev43.css` rather than overridden, because two declarations of
+# one rail is how the two rails drift apart again.
 zone_rule = _rule(COMPONENTS_CSS, ".fs-zones > .fs-zone")
-_assert("neither zone can grow at the other's expense", "flex: 1 1 0" in zone_rule)
-_assert("both zones can shrink inside the column", "min-height: 0" in zone_rule)
+_assert("the equal-billing primitive still exists for its own consumers",
+        "flex: 1 1 0" in zone_rule and "min-height: 0" in zone_rule)
 
-carousel = _rule(TABS_CSS, ".fs-carousel")
-_assert("the Bets carousel is vertical", "overflow-y: auto" in carousel)
+deck = _rule(GAMEPLAY_CSS, ".fs-playdeck")
+_assert("Play's two sections are one grid",
+        "display: grid" in deck)
+_assert("its two rail tracks are a matched pair, so the two card families "
+        "cannot measure differently",
+        "grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr)" in deck)
+_assert("the grid is at least as tall as the tallest card in either family",
+        "min-height: max-content" in deck)
+_assert("neither zone puts a box between a heading and its rail",
+        "display: contents"
+        in _rule(GAMEPLAY_CSS, "#panel-league .fs-playdeck > .fs-zone"))
+
+carousel = _rule(GAMEPLAY_CSS, "#panel-league .fs-carousel")
+_assert("the Play carousel is horizontal", "overflow-x: auto" in carousel)
 _assert("it snaps, so a card is never presented half-shown",
-        "scroll-snap-type: y mandatory" in carousel)
-_assert("it does not scroll sideways", "overflow-x: hidden" in carousel)
+        "scroll-snap-type: x mandatory" in carousel)
+_assert("it cannot be drawn into the section beneath it",
+        "overflow-y: hidden" in carousel)
+_assert("and it is exactly its grid track, never its own content",
+        "height: 100%" in carousel)
 
-item = _rule(TABS_CSS, ".fs-carousel__item")
-_assert("one complete card fills the carousel at a time", "height: 100%" in item)
+item = _rule(GAMEPLAY_CSS, "#panel-league .fs-carousel__item")
+_assert("one complete card fills the carousel at a time",
+        "flex: 0 0 100%" in item)
 _assert("every scroll settles on a card boundary",
         "scroll-snap-align: start" in item and "scroll-snap-stop: always" in item)
+_assert("and the item can no longer outgrow the rail that holds it",
+        "min-height: 0" in item)
+
+_tabs_rules = re.sub(r"/\*[\s\S]*?\*/", " ", TABS_CSS)
+_assert("the superseded vertical carousel is gone from tabs.css entirely",
+        ".fs-carousel {" not in _tabs_rules
+        and ".fs-carousel__item {" not in _tabs_rules)
 
 # UIRECON REV 1.4 PART 4 — THE 2x2 GRID IS SUPERSEDED, AND BY A PRODUCT
 # RULING RATHER THAN A PREFERENCE.
@@ -445,9 +497,15 @@ _assert("every scroll settles on a card boundary",
 # SO THE ASSERTION MOVES TO THE THING THAT IS NOW TRUE: Play's Pools use the
 # SAME two elements as the Matchups carousel directly above them, which is the
 # only way the two rails cannot drift apart. The carousel rules asserted just
-# above — vertical, `y mandatory`, `overflow-x: hidden`, `height: 100%`,
+# above — horizontal, `x mandatory`, `overflow-y: hidden`, `flex: 0 0 100%`,
 # `scroll-snap-stop: always` — are therefore the Pool rail's rules too, and are
 # not restated here.
+#
+# RC4 ADDS THE HEIGHT, WHICH REUSE ALONE COULD NOT GIVE. The two rails shared
+# every rule and were still two sizes, because each took the height its own zone
+# had left: 135.97px of Prop Pool against 155px of Matchup at 375x667. They are
+# a matched pair of grid tracks now, asserted above and measured in the browser
+# tier of `test_uirecon_rc4_parallel.py`.
 _assert("Play's Pools ride the Matchups carousel itself, not a parallel rail",
         'class="fs-carousel" id="fs-play-pools"' in LEAGUE_JS
         and '"fs-carousel__item"' in LEAGUE_JS)

@@ -401,12 +401,18 @@ _assert("the Yahoo module identifies official Yahoo matchups",
 _assert("Yahoo cards are badged as fixtures, not wagers",
         WEEK_PANEL.count(">YAHOO<") == 6, str(WEEK_PANEL.count(">YAHOO<")))
 # UIRECON WAVE 4B — the Pools module is the same carousel as its two peers now.
-# An OPEN Pool still draws its compact row inside it, because "you have a pick
-# to make" is a different statement from "here is what happened".
+#
+# RC4 MOBILE RECONCILIATION — AND THE SAME CARD FAMILY. Wave 4B unified the rail
+# and left the ITEM split: a settled Pool drew the shared result card, an OPEN
+# one kept its compact 45px row. That distinction was never about the BOX, and
+# on the deployed build it cost the section its standing — at a week where every
+# Pool is open, all four items drew the row and the third carousel measured 45px
+# against 132.30px and 150.06px of its two peers. Both states take the shared
+# shell now; what differs is what they say inside it.
 _assert("the Pools module shares the one Wrap carousel",
         'id="fs-pools-carousel"' in WEEK_PANEL and "fs-rescar" in WEEK_PANEL)
-_assert("an open Pool keeps its compact row inside that carousel",
-        "fs-poolrow" in WEEK_PANEL)
+_assert("an open Pool draws the shared result card, not a list row",
+        "fs-poolrow" not in WEEK_PANEL)
 
 print("\nAn unquoted moneyline is drawn as unquoted, never derived from the spread")
 

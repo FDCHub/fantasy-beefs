@@ -351,13 +351,17 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
 
   const pools = await evaluate(`
     const zone = document.querySelector('[data-module="pools"]');
-    const rows = [...zone.querySelectorAll('.fs-poolrow')];
+    // RC4 - AN OPEN PROP POOL IS A CARD NOW, NOT A 45px LIST ROW. Everything
+    // asserted below is asserted of the same facts in the same order; only the
+    // element carrying them changed, and it changed so that this section
+    // measures the same as the two carousels above it.
+    const rows = [...zone.querySelectorAll('.fs-rescar__item > .fs-wcard')];
     const rail = zone.querySelector('.fs-rescar');
     const items = rail ? [...rail.querySelectorAll(':scope > .fs-rescar__item')] : [];
     return {
       count: rows.length,
-      badges: rows.map(r => r.querySelector('.fs-poolrow__badge').textContent),
-      names: rows.map(r => r.querySelector('.fs-poolrow__name').textContent),
+      badges: rows.map(r => (r.querySelector('.fs-wcard__context') || {}).textContent || ''),
+      names: rows.map(r => (r.querySelector('.fs-wcard__identity') || {}).textContent || ''),
       allVisible: rows.every(r => r.getBoundingClientRect().height > 0),
       sharesTheWrapCarousel: Boolean(rail),
       oneCardWide: items.length === 0 || items.every(
@@ -392,7 +396,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // its catalog number are certified against a DRAWN slate in
   // test_s8_p4b3_settings_pool.py, where the fixture provides one.
   const poolSheetText = await evaluate(`
-    const row = document.querySelector('[data-module="pools"] .fs-poolrow');
+    const row = document.querySelector('[data-module="pools"] .fs-rescar__item > .fs-wcard');
     if (!row) return null;
     row.click();
     const text = document.getElementById('fs-sheet').textContent;
@@ -420,7 +424,9 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       betsHeading: panel.querySelector('[data-module="bets"] .fs-heading__text').textContent,
       betsText: panel.querySelector('[data-module="bets"]').textContent,
       betsCount: panel.querySelectorAll('[data-module="bets"] .fs-wcard').length,
-      poolStates: [...panel.querySelectorAll('.fs-poolrow__state')].map(el => el.textContent),
+      // RC4 - a Prop Pool's state is the shared card's badge now.
+      poolStates: [...panel.querySelectorAll(
+        '[data-module="pools"] .fs-wcard__badge')].map(el => el.textContent),
       strips: panel.querySelectorAll('.fs-strip').length,
       modules: panel.querySelectorAll('[data-module]').length,
     };

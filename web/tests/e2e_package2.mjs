@@ -143,10 +143,25 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   // eleven was never a fact about this league.
   //
   // WHAT IS STILL PINNED EXACTLY is everything that was actually being tested:
-  // the rail snaps vertically, never horizontally, presents exactly ONE card at
-  // a time, and sizes that card to the rail. The multi-card scrolling claims
+  // the rail snaps, never scrolls on the other axis, presents exactly ONE card
+  // at a time, and sizes that card to the rail. The multi-card scrolling claims
   // need a second card to be meaningful and are reported as not present when
   // the league has none — rather than passing vacuously.
+  //
+  // RC4 MOBILE RECONCILIATION — THE AXIS TURNED, AND THE CLAIM DID NOT.
+  //
+  // This rail snapped VERTICALLY, and its viewport was whatever height the zone
+  // had left after its heading. Measured on the deployed RC4 build at 320x568
+  // that was 44.52px for a 155px card: `one card fills the carousel viewport`
+  // read the ITEM against the RAIL, and both agreed, because `min-height: 100%`
+  // had grown the item to the card while the rail clipped both. The card ran
+  // under the Prop Pools section and every viewport in this suite passed.
+  //
+  // The rail is horizontal now, where one item is one viewport BY DEFINITION
+  // and cannot be too small for its card. So `y mandatory` becomes `x
+  // mandatory`, `overflowY: auto` becomes `overflowX: auto`, "stacked, not side
+  // by side" becomes its opposite — and one more assertion is added, comparing
+  // the RAIL to the CARD, which is the comparison that would have caught this.
   const carousel = await evaluate(`
     const rail = document.getElementById('fs-bets-carousel');
     if (!rail) return { absent: true, count: 0 };
@@ -155,9 +170,11 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
     const box = rail.getBoundingClientRect();
     const first = items[0] ? items[0].getBoundingClientRect() : null;
     const second = items[1] ? items[1].getBoundingClientRect() : null;
+    const card = rail.querySelector('.fs-carousel__item > *');
+    const cardBox = card ? card.getBoundingClientRect() : null;
     const fullyVisible = items.filter(el => {
       const r = el.getBoundingClientRect();
-      return r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+      return r.left >= box.left - 1 && r.right <= box.right + 1;
     }).length;
     return {
       absent: false,
@@ -165,11 +182,13 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
       snapType: style.scrollSnapType,
       overflowY: style.overflowY,
       overflowX: style.overflowX,
+      railWidth: Math.round(box.width),
       railHeight: Math.round(box.height),
-      itemHeight: first ? Math.round(first.height) : null,
+      itemWidth: first ? Math.round(first.width) : null,
+      cardHeight: cardBox ? Math.round(cardBox.height) : null,
       fullyVisible,
-      secondIsBelow: second ? second.top >= first.bottom - 1 : null,
-      canScroll: rail.scrollHeight > rail.clientHeight,
+      secondIsBeside: second ? second.left >= first.right - 1 : null,
+      canScroll: rail.scrollWidth > rail.clientWidth,
     };
   `);
 
@@ -178,33 +197,39 @@ await withPage({ port: 9335 }, async ({ evaluate }) => {
   check('every card is a real opponent, not a fixture count',
     carousel.count === served.eligibleOpponents,
     `${carousel.count} cards for ${served.eligibleOpponents} eligible opponents`);
-  check('the carousel snaps vertically', /y mandatory/.test(carousel.snapType), carousel.snapType);
-  check('the carousel scrolls vertically', carousel.overflowY === 'auto');
-  check('the carousel does not scroll horizontally', carousel.overflowX === 'hidden');
+  check('the carousel snaps horizontally',
+    /x mandatory/.test(carousel.snapType), carousel.snapType);
+  check('the carousel scrolls horizontally', carousel.overflowX === 'auto');
+  check('the carousel does not scroll vertically', carousel.overflowY === 'hidden');
   check('one card fills the carousel viewport',
-    Math.abs(carousel.itemHeight - carousel.railHeight) <= 2,
-    `card ${carousel.itemHeight}px in a ${carousel.railHeight}px rail`);
+    Math.abs(carousel.itemWidth - carousel.railWidth) <= 2,
+    `item ${carousel.itemWidth}px in a ${carousel.railWidth}px rail`);
+  // THE ASSERTION WHOSE ABSENCE COST FIVE CERTIFICATIONS.
+  check('  · and the rail is as tall as the card, so nothing is clipped',
+    Math.abs(carousel.cardHeight - carousel.railHeight) <= 2,
+    `card ${carousel.cardHeight}px in a ${carousel.railHeight}px rail`);
   check('exactly one card is fully presented at a time',
     carousel.fullyVisible === 1, `${carousel.fullyVisible} fully visible`);
 
   if (carousel.count > 1) {
-    check('cards are stacked, not side by side', carousel.secondIsBelow === true);
-    check('the remaining opponents are reachable by scrolling', carousel.canScroll === true);
+    check('cards are side by side, not stacked', carousel.secondIsBeside === true);
+    check('the remaining opponents are reachable by swiping',
+      carousel.canScroll === true);
 
     const scrolled = await evaluate(`
       const rail = document.getElementById('fs-bets-carousel');
-      rail.scrollTop = rail.clientHeight;
+      rail.scrollLeft = rail.clientWidth;
       const box = rail.getBoundingClientRect();
       const items = [...rail.querySelectorAll('.fs-carousel__item')];
       const visible = items.filter(el => {
         const r = el.getBoundingClientRect();
-        return r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+        return r.left >= box.left - 1 && r.right <= box.right + 1;
       });
       const idx = items.indexOf(visible[0]);
-      rail.scrollTop = 0;
+      rail.scrollLeft = 0;
       return { count: visible.length, idx };
     `);
-    check('scrolling advances to the next single card',
+    check('swiping advances to the next single card',
       scrolled.count === 1 && scrolled.idx === 1, `card index ${scrolled.idx}`);
   } else {
     check('this league has one opponent — multi-card scrolling not exercised',

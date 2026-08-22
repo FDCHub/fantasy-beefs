@@ -211,7 +211,9 @@ await withPage({ port: 9381, settleMs: 1700 }, async ({ evaluate }) => {
   const pools = await evaluate(asyncProbe(`
     const panel = document.getElementById('panel-week');
     const mod = panel.querySelector('[data-module="pools"]');
-    return { rows: mod ? mod.querySelectorAll('.fs-poolrow').length : -1 };
+    // RC4 - the Prop Pool item is the shared result card now.
+    return { rows: mod
+      ? mod.querySelectorAll('.fs-rescar__item > .fs-wcard').length : -1 };
   `));
   report.check('the Pool slate binding is preserved',
     pools.rows >= 0, String(pools.rows));

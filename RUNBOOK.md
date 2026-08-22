@@ -168,7 +168,21 @@ python test_s8_p4c5_integration.py              # five tabs x 375/390/430
 python test_s8_p4c2_action_browser.py           # seven Action states
 python test_s8_p4c3_provider_browser.py         # bound + pending provider
 python test_s8_p4b3r_browser.py                 # settings + Pool slate
+
+# Parallel construction — Play and Wrap Up card geometry, MEASURED. Needs a
+# running seeded demo, because the governed weekly draw and the market board
+# are what the cards are drawn from:
+#     python -m demo.seed
+#     python -m uvicorn api.main_rc2:app --host 127.0.0.1 --port 8000
+FS_TEST_ORIGIN=http://127.0.0.1:8000 python test_uirecon_rc4_parallel.py
 ```
+
+`test_uirecon_rc4_parallel.py` certifies EIGHT viewports, and four of them are
+REDUCED USABLE HEIGHTS — 320x454, 375x553, 390x664 — representing iPhone Safari
+with its address bar and toolbar showing. That distinction is not decorative:
+RC4 shipped with the Play Matchup card clipped by its own rail on a real phone
+while every suite passed at 320x568 / 375x667 / 390x844, because a device's
+SCREEN height is not the height the page is laid out in.
 
 Each starts its own disposable SQLite app-server and headless Chrome.
 

@@ -42,7 +42,7 @@ import {
   slateRows,
 } from './pool-slate-model.js';
 import { lifecycleCard, wagerSheet } from './action.js';
-import { poolSheet } from './league.js';
+import { poolQuestion, poolSheet } from './league.js';
 import { previewSheet } from './preview.js';
 import { matchupMarketCells, wagerCard } from './wagercard.js';
 import { onActivate } from './interaction.js';
@@ -406,29 +406,85 @@ function versusBody() {
 
 /* ── Module 3 · FantasyStakes Pools ─────────────────────────────────────────*/
 
-function poolRow(pool) {
-  const badge = poolBadge(pool);
-  const badgeClass = pool.scope === 'TEAM' ? 'is-team' : 'is-matchup';
-  const rolling = pool.continuation || pool.rolledForward;
+/**
+ * One Prop Pool that has NOT settled yet, in the shared result shell.
+ *
+ * ── WHAT THIS REPLACES, AND WHY A ROW WAS THE WRONG COMPONENT ──────────────
+ *
+ * `.fs-poolrow` was a 45px button: badge, name, one state string and a figure,
+ * on one line. It was correct for the flat list this module used to be, and
+ * Wave 4B kept it deliberately — "an unsettled one keeps the compact row it has
+ * always had, because still open is a different statement from here is what
+ * happened".
+ *
+ * MEASURED ON THE DEPLOYED RC4 BUILD, that reasoning cost the section its
+ * standing. At Week 11 every Pool on the slate is open, so all four items drew
+ * the row and the third carousel measured 45px against 132.30px of Yahoo and
+ * 150.06px of FantasyStakes Matchup — a strip beside two carousels, in a tab
+ * whose whole construction is three peers.
+ *
+ * SO THE SHELL IS THE SHARED ONE AND THE CONTENT IS STILL "STILL OPEN". The
+ * distinction Wave 4B was protecting was never about the BOX; it was about what
+ * the card says. A settled Pool reports a winner and what it returned; an open
+ * one reports what it is asking, what it costs to be in, how many are in and
+ * what is in the pot. Same shell, different data — §11, applied one level
+ * further in than Wave 4B took it.
+ *
+ * NOTHING HERE IS INVENTED. The question is the catalog's, through the same
+ * `poolQuestion` the Play card asks it with — a second author would be exactly
+ * what POR Rev 1.4 §3.2 forbids. The pick is read back from the served subject
+ * list, and a GM who has not entered gets the unresolved mark rather than a
+ * guess. `entered` is the claim COUNT the read model publishes, and is the
+ * em dash where a demo row has no occurrence to count.
+ *
+ * @param {object} pool a slate row, or an illustrative fixture row
+ * @returns {string}
+ */
+function poolOpenCard(pool) {
+  // THE BADGE IS THE POOL'S OWN STATE, and every word of it is served. A drawn
+  // slot is OPEN while the read model says claims are accepted and LOCKED once
+  // the governed window has closed; the illustrative fixture carries its own
+  // state string and keeps it.
+  const badge = pool.openForClaims === undefined
+    ? 'PREGAME'
+    : (pool.openForClaims ? 'OPEN' : 'LOCKED');
 
-  const figure = pool.settled && pool.qualified ? pool.returnCents : pool.potCents;
-  const figureLabel = pool.settled && pool.qualified ? 'Return' : 'Pot';
+  const figures = [
+    { label: 'Buy-in', value: formatCredits(pool.entryCents),
+      exactCents: pool.entryCents },
+    { label: 'Entered', value: pool.entered === undefined
+      ? PENDING_FIGURE : String(pool.entered) },
+    { label: 'Pot', value: formatCredits(pool.potCents),
+      exactCents: pool.potCents,
+      // A CARRIED POT KEEPS ITS GOLD, which is how a rollover is marked without
+      // a gold card. `is-carried` is the same modifier the Play Prop Pool card
+      // and the retired Wrap Up row both used, so one Pool that carried is
+      // marked one way wherever a GM meets it — and it is a MODIFIER on a
+      // subject type, never a third type.
+      tone: pool.continuation || pool.rolledForward ? 'carried' : '' },
+  ];
 
-  return (
-    `<button type="button" class="fs-poolrow" data-pool="${pool.catalogNumber}">` +
-    `<span class="fs-poolrow__badge ${badgeClass}${rolling ? ' is-rollover' : ''}">` +
-    `${escapeHtml(badge)}</span>` +
-    '<span class="fs-poolrow__main">' +
-    `<span class="fs-poolrow__name">${escapeHtml(pool.name)}</span>` +
-    `<span class="fs-poolrow__state">${escapeHtml(pool.state)}</span>` +
-    '</span>' +
-    '<span class="fs-poolrow__fig">' +
-    `<span class="fs-poolrow__figlabel">${figureLabel}</span>` +
-    `<span class="fs-poolrow__figvalue${rolling ? ' is-carried' : ''}" ` +
-    `data-exact-cents="${figure}">${escapeHtml(formatCredits(figure))}</span>` +
-    '</span>' +
-    '</button>'
-  );
+  // WHOSE SIDE THIS GM IS ON, WHERE THE SETTLED CARD PUTS THE WINNER. A pool a
+  // GM has not entered says so; it does not draw an empty slot.
+  const picked = (pool.subjects || []).find(
+    (s) => s.subject_id === pool.mySubjectId);
+  const mine = picked ? picked.label
+    : (pool.mySubjectId ? PENDING_FIGURE : 'Not entered');
+
+  return resultCard({
+    identity: pool.name,
+    badge,
+    badgeTone: 'neutral',
+    // THE SCOPE AND THE QUESTION, in the slot the settled card gives the pick.
+    // `poolBadge` is the same TEAM / MATCHUP / ROLLOVER word the Play card
+    // carries, so a GM meets one vocabulary for one Pool on both surfaces.
+    context: `${poolBadge(pool)} · ${poolQuestion(pool)}`,
+    figures,
+    footLabel: 'Your pick',
+    footValue: mine,
+    tapAction: 'pool',
+    tapId: String(pool.catalogNumber),
+  });
 }
 
 /**
@@ -468,15 +524,20 @@ function poolsModule() {
   //
   // This was a flat column of `.fs-poolrow` buttons while the two sections
   // above it were carousels — three things a GM reads the same way, built three
-  // ways. A settled Pool draws the shared result card; an unsettled one keeps
-  // the compact row it has always had, because "still open" is a different
-  // statement from "here is what happened".
+  // ways.
+  //
+  // RC4 — AND NOW ONE CARD FAMILY, LIKE ITS TWO PEERS. Wave 4B unified the
+  // rail and left the ITEM split: a settled Pool drew the shared result card
+  // and an open one kept its 45px row. At Week 11 every Pool on the slate is
+  // open, so the section drew four rows and measured 45px beside 132.30px and
+  // 150.06px of carousel. Both states take the shared shell now; what differs
+  // is what they say inside it.
   return resultSection({
     title: 'FANTASYSTAKES PROP POOLS · SWIPE',
     id: 'pools',
     state: mode,
     items: pools.map((pool) => (
-      pool.settled ? poolResultCard(pool) : poolRow(pool))),
+      pool.settled ? poolResultCard(pool) : poolOpenCard(pool))),
     empty: '',
   });
 }
@@ -515,12 +576,32 @@ export function buildWeekPanel() {
   // extended, it is preceded by the season's own headline once there is one.
   composer.add(seasonResultsSection(championshipResults(), weekTeamName));
 
+  // ── THE THREE MODULES ARE ONE DECK — RC4 MOBILE RECONCILIATION ───────────
+  //
+  // WAVE 4B MADE THEM ONE CONSTRUCTION AND LEFT THEM THREE SIZES. Each rail
+  // took its height from its own tallest card, which is what a horizontal rail
+  // does and what that wave explicitly wanted — "each takes what its content
+  // needs". Measured on the deployed RC4 build at 390x844 that produced
+  // 132.30px of Yahoo, 150.06px of FantasyStakes Matchup and 45px of Prop Pool:
+  // three peer sections a GM reads the same way, drawn at three sizes.
+  //
+  // `.fs-wkdeck` PUTS THE THREE RAILS ON A MATCHED SET OF GRID TRACKS, so the
+  // three result-card families measure identically by construction rather than
+  // by agreement. Nothing about the sections themselves changes — same builder,
+  // same rail, same item wrapper, same headings, same order, same separators.
+  // See `gameplay.css` — "PARALLEL CARD GEOMETRY".
+  //
+  // THE SKUNK CALLOUT STAYS OUTSIDE IT. It is a result announcement rather than
+  // a module — no rail, no carousel, nothing to tap — so it leads the scroll
+  // and is not one of the three tracks.
   composer.add(
     '<div class="fs-wkscroll">' +
     skunkCallout() +
+    '<div class="fs-wkdeck">' +
     yahooModule() +
     betsModule() +
     poolsModule() +
+    '</div>' +
     '</div>',
   );
 
@@ -665,11 +746,12 @@ export function bindWeek(panel, api) {
     });
   });
 
-  // UIRECON WAVE 4B — ONE OPENER FOR BOTH POOL PRESENTATIONS. An open Pool
-  // draws `.fs-poolrow[data-pool]`; a settled one draws the shared result card,
-  // which carries its id in the `data-card-id` every tappable card uses. Both
-  // open the same sheet, so both are bound here rather than one of them being
-  // silently inert.
+  // ONE OPENER FOR EVERY POOL PRESENTATION. Wave 4B bound two, because an open
+  // Pool drew `.fs-poolrow[data-pool]` and a settled one drew the shared result
+  // card. RC4 gives both states the shared card, so `data-card-action="pool"`
+  // is the only path a Pool is reached by now — and the `[data-pool]` binding
+  // is kept because Play's Prop Pool card still uses that attribute and this
+  // panel must not become the reason a surface is silently inert.
   const pools = slateMode() === SLATE_MODE_DEMO
     ? weekPools(activeWeek()) : slateRows();
   const openPool = (id) => {

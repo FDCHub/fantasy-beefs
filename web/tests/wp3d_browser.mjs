@@ -355,8 +355,15 @@ await withPage({ port: 9473 }, async ({ evaluate, setViewport }) => {
         chipTruncated: label ? label.scrollWidth > label.clientWidth + 1 : null,
         chipOverNav: chip
           ? chip.getBoundingClientRect().bottom > nav.top : null,
+        // RC4 MOBILE RECONCILIATION - THE REGION IS WHAT MUST CLEAR THE NAV.
+        // Play scrolls as a page now, so the source line is ordinary content
+        // near the end of a CLIPPED scroll region rather than the last block of
+        // a fixed-height panel: below the fold on a short phone, and painted
+        // nowhere the region does not reach. The claim - nothing Play draws
+        // lands on the navigation - is asked of the box that does the clipping.
         attrOverNav: attr
-          ? attr.getBoundingClientRect().bottom > nav.top + 1 : null,
+          ? (document.querySelector('#panel-league .fs-zones')
+             || attr).getBoundingClientRect().bottom > nav.top + 1 : null,
         lockupW: Math.round(lockup.width),
         clipped: cards.filter((c) => c.scrollHeight > c.clientHeight + 1).length,
       };

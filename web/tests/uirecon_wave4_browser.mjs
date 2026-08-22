@@ -443,12 +443,29 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
     const panel = document.getElementById('panel-week');
     const out = [];
     for (const s of panel.querySelectorAll('.fs-wkmod')) {
+      const rail = s.querySelector('.fs-rescar');
+      const railLeft = rail ? Math.round(rail.getBoundingClientRect().left) : null;
       for (const card of s.querySelectorAll('.fs-rescar__item .fs-wcard')) {
         const r = card.getBoundingClientRect();
         const cs = getComputedStyle(card);
+        const item = card.parentElement.getBoundingClientRect();
         out.push({
           mod: s.dataset.module,
-          w: Math.round(r.width), left: Math.round(r.left),
+          railLeft,
+          // RC4 - THE INSET INSIDE ITS OWN ITEM, not the viewport coordinate.
+          // These are HORIZONTAL rails: the second card in a rail is one
+          // viewport further right by construction, so a raw left coordinate
+          // compares scroll position rather than shell geometry. It read as
+          // equal only for as long as two of the three sections happened to
+          // hold one card each; RC4 gave the Prop Pool section four cards of
+          // its own and the claim collapsed into a statement about how many
+          // cards a week has.
+          //
+          // The claim it was making is kept, and split in two: every shell
+          // fills its own carousel item, and every rail starts at the same x.
+          // Together those are exactly "every result card sits on the same left
+          // edge", and they stay true however many cards a section holds.
+          w: Math.round(r.width), left: Math.round(r.left - item.left),
           pad: cs.padding, radius: cs.borderRadius,
           hasHead: Boolean(card.querySelector('.fs-wcard__head')),
           hasIdentity: Boolean(card.querySelector('.fs-wcard__identity')),
@@ -469,9 +486,12 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
     const first = shells[0];
     check('every result card is the same width', shells.every((s) => near(s.w, first.w)),
       [...new Set(shells.map((s) => s.w))].join(','));
-    check('every result card sits on the same left edge',
-      shells.every((s) => near(s.left, first.left)),
+    check('every result card fills its own carousel item',
+      shells.every((s) => near(s.left, 0)),
       [...new Set(shells.map((s) => s.left))].join(','));
+    check('every result rail sits on the same left edge',
+      new Set(shells.map((s) => s.railLeft)).size === 1,
+      [...new Set(shells.map((s) => s.railLeft))].join(','));
     check('every result card has the same padding',
       shells.every((s) => s.pad === first.pad),
       [...new Set(shells.map((s) => s.pad))].join(' | '));
@@ -508,10 +528,18 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
       })),
     }));
   `);
-  const WORDS = ['WON', 'LOST', 'PUSH', 'VOID', 'SETTLED', 'NO WINNER', 'NOT ENTERED'];
-  check('every result card carries a served outcome word',
+  // RC4 — THE VOCABULARY GREW BECAUSE THE SHELL DID, AND EVERY WORD IS STILL
+  // THE SERVER'S. An OPEN Prop Pool draws the shared result card now instead of
+  // a 45px list row, so `.fs-wcard--result` covers a state this list did not
+  // have a word for. OPEN and LOCKED come from the read model's
+  // `open_for_claims`; PREGAME is the illustrative fixture's own state. None of
+  // the three is computed here, which is the claim this section makes — the
+  // surface reports what it was told and settles nothing.
+  const WORDS = ['WON', 'LOST', 'PUSH', 'VOID', 'SETTLED', 'NO WINNER',
+                 'NOT ENTERED', 'OPEN', 'LOCKED', 'PREGAME'];
+  check('every result card carries a served state word',
     settled.every((c) => WORDS.includes(String(c.badge).trim())),
-    settled.map((c) => c.badge).join(',') || 'no settled card on this week');
+    settled.map((c) => c.badge).join(',') || 'no result card on this week');
   check('every money figure carries the exact served cents',
     settled.every((c) => c.figures
       .filter((f) => /stake|credits|pot|return/i.test(f.label))

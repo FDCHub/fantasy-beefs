@@ -102,6 +102,24 @@ ACTIVE: tuple = (
         summary="Pool Catalog Rev 1.4 §3 — nullable public_question on pool_definition, seeded from the governed catalog",
         columns=(("pool_definition", "public_question"),),
     ),
+    # RC4 MOBILE RECONCILIATION — 0008 ADDED THE COLUMN AND BACKFILLED NOTHING.
+    #
+    # Its own docstring is explicit that the 64 questions "arrive with the
+    # ordinary Rev 1.4 re-seed". Every path that re-seeds the catalog does
+    # deliver them; a RELEASE does not — `preDeployCommand` runs this manifest
+    # and nothing in it calls `seed_definitions`. A deployed database whose
+    # `pool_definition` rows predate Rev 1.4 therefore kept eighty NULLs and
+    # Play drew `Question unavailable` on live drawable Pools.
+    #
+    # NO SCHEMA OBJECT IS ADDED, so this migration names no `tables` and no
+    # `columns`: it asserts nothing new about the shape of the database and
+    # `verify` has nothing further to corroborate. 0008 already guarantees the
+    # column it writes to, and is ordered before it.
+    Migration(
+        identifier="0009_pool_definition_public_question_backfill",
+        module="migrations.backfill_pool_definition_public_question",
+        summary="Pool Catalog Rev 1.4 §3 — carry the governed public_question onto pool_definition rows written before the revision",
+    ),
 )
 
 

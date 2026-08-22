@@ -490,9 +490,23 @@ await withPage({ port: 9411 }, async ({ evaluate, setViewport }) => {
       // that tab; only its axis changed. The old class no longer exists, and
       // leaving it here would have declared nothing while the real rail read as
       // undeclared.
+      //
+      // RC4 MOBILE RECONCILIATION — fs-zones IS DECLARED, AND THAT IS THE
+      // WHOLE REPAIR STATED IN ONE LINE.
+      //
+      // Play used to hold its two sections in a height NEGOTIATION: neither
+      // could scroll, so each rail took what its heading left and the Matchup
+      // rail came out at 44.52px for a 155px card at 320x568 — clipped exactly
+      // where the PROP POOLS heading begins. Play scrolls VERTICALLY now, like
+      // Wrap Up's fs-wkscroll beside it in this list, which is what lets both
+      // sections present a complete card on a phone too short for both at once.
+      // A declared vertical scroll region is the POR's answer to that; an
+      // undeclared one is the defect this assertion exists to catch, and this
+      // is the declaration.
       const SCROLLERS = ['.fs-carousel', '.fs-rescar', '.fs-rail', '.fs-rails',
-                         '.fs-wkscroll', '.fs-lscroll', '.fs-st__scroll',
-                         '.fs-scroll', '.fs-pools', '.fs-poolrows'];
+                         '.fs-wkscroll', '.fs-zones', '.fs-lscroll',
+                         '.fs-st__scroll', '.fs-scroll', '.fs-pools',
+                         '.fs-poolrows'];
       for (const id of PANELS) {
         { const tab = document.querySelector(
             '.fs-tabbar__item[data-destination="' + id + '"]');
