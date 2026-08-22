@@ -97,6 +97,17 @@ REASON_NO_STANDINGS = "NO_STANDINGS"
 CLASSIFICATION_ASSESSED = "ASSESSED"
 CLASSIFICATION_NO_LOSER = "NO_LOSER"
 
+#: Every `economy_event` type whose posting moves a GM's Skunk obligation, and
+#: therefore their FantasyStakes Score.
+#:
+#: ENUMERATED BY NAME, NEVER BY PREFIX — the same discipline
+#: `reports/standings_read_model.py` applies to its door groupings, for the same
+#: reason: a prefix test silently absorbs any event type added later, which is
+#: how a non-Skunk movement ends up inside a Score without anybody editing this
+#: file. WP-12's correction event types join this tuple deliberately when they
+#: land, and the reversal nets against the assessment because both are here.
+SKUNK_SCORING_EVENT_TYPES: tuple[str, ...] = (EVENT_SKUNK_ASSESSMENT,)
+
 
 @dataclass(frozen=True)
 class SkunkAssessment:
@@ -294,6 +305,122 @@ def assess_weekly_skunk(db, *, league_id: int, week: int,
         classification=CLASSIFICATION_ASSESSED, largest_margin=margin,
         assessed=tuple(sorted(allocation.items())),
         total_cents=contribution_cents)
+
+
+# ── Per-team season totals (FINAL POR · WP-3) ─────────────────────────────────
+
+def skunk_fees_by_team(db, *, league_id: int, season: int) -> dict[int, int]:
+    """Skunk assessed against each GM this league-season, as POSITIVE cents.
+
+    THE THIRD TERM OF FantasyStakes Score. Final POR §8 makes the identity
+    `Matchup Net + Prop Pool Net - Skunk Fees`, and this is where the subtrahend
+    comes from.
+
+    ── WHY THIS GOES THROUGH `economy_event` AND NOT THE ACCOUNT BALANCE ──────
+
+    Reading `receivable:{team}` directly would be shorter and is WRONG on two
+    independent counts, either of which alone would be disqualifying:
+
+      1. IT IS NOT SKUNK-ONLY. `betting/shortfall_sweep.py` also posts to
+         `receivable:{team}`. That path has no production caller today, so the
+         balance happens to be pure Skunk — a fact about current wiring, not a
+         property of the account. A score identity may not rest on one.
+
+      2. IT IS NOT SEASON-SCOPED. `receivable_account()` is `receivable:{team}`
+         with no season in it, so a league playing a second season would find
+         the first season's Skunk still subtracted from the new season's Score.
+
+    `economy_event` carries `league_id`, `season` and `posting_id` and is
+    indexed on `(league_id, season)`, so joining through it answers exactly the
+    question asked: what did THIS league-season's Skunk machinery post against
+    this GM.
+
+    ── PER-TEAM ATTRIBUTION COMES FROM THE POSTING, NOT THE EVENT ────────────
+
+    A Skunk assessment event is LEAGUE-WEEK scoped: `team_id` is NULL on it and
+    `amount_cents` is the whole weekly fee. The per-GM split lives in the
+    posting's `receivable:` legs, which is also what makes a tied week report
+    2.5 and 2.5 rather than 5 against each — the split the engine actually made.
+
+    ── SIGN, AND WHY A CORRECTION NETS FOR FREE ─────────────────────────────
+
+    Legs are summed as posted and NEGATED once. An assessment posts a negative
+    `receivable:` leg, so it contributes positively here. A WP-12 correction
+    reversal posts the matching positive leg under its own door against the same
+    league-season event family, so it contributes negatively and the two net —
+    with no special case, and with both postings preserved in full.
+
+    Returns a dict with an entry for every team that has any Skunk history this
+    league-season. A GM never skunked is simply absent; callers read 0.
+    """
+    from sqlalchemy import text
+
+    db.flush()
+    # EXPLICIT PLACEHOLDERS, one per event type — the same shape
+    # `reports/standings_read_model.py::_door_net_cents` uses for its door list,
+    # and for the same reason: an `IN :tuple` bind is dialect-dependent and
+    # expands differently under SQLite and PostgreSQL.
+    placeholders = ", ".join(f":e{i}" for i in range(len(SKUNK_SCORING_EVENT_TYPES)))
+    params: dict[str, object] = {
+        f"e{i}": t for i, t in enumerate(SKUNK_SCORING_EVENT_TYPES)}
+    params.update({"league_id": league_id, "season": season})
+    # ── THE POSTING ID IS NORMALISED ON BOTH SIDES, AND IT HAS TO BE ─────────
+    #
+    # `economy_event.posting_id` and `ledger_entries.posting_id` are both
+    # declared `Uuid`, and on PostgreSQL both are native `uuid` — a plain
+    # equality join works there. ON SQLITE THEY DO NOT MATCH:
+    #
+    #   ledger_entries   'e4441c39d13144ea9d7ebb61c75ae271'   (ORM insert)
+    #   economy_event    'e4441c39-d131-44ea-9d7e-bb61c75ae271'
+    #
+    # because `economy_events.record_event` inserts through RAW SQL with
+    # `str(posting_id)`, which bypasses the `Uuid` type's own serialisation,
+    # while `ledger.post` inserts through the ORM and gets the dashless form.
+    #
+    # MEASURED, NOT ASSUMED: a plain equality join over that pair returns zero
+    # rows on SQLite and every row on PostgreSQL. Nothing had ever joined these
+    # two tables before, so the divergence had never surfaced.
+    #
+    # THE WRITE FORMAT IS DELIBERATELY LEFT ALONE. "Fixing" `record_event` to
+    # insert a normalised value would orphan every economy_event row already
+    # written on a SQLite deployment, which is a far worse trade than
+    # normalising at read time. Stripping dashes and lowercasing gives the same
+    # answer on both dialects and on rows written by either path.
+    norm = "REPLACE(LOWER(CAST({0}.posting_id AS TEXT)), '-', '')"
+    rows = db.execute(text(
+        "SELECT le.account, COALESCE(SUM(le.amount_cents), 0) "
+        "FROM ledger_entries le "
+        f"JOIN economy_event ev ON {norm.format('ev')} = {norm.format('le')} "
+        "WHERE ev.league_id = :league_id "
+        "  AND ev.season = :season "
+        f"  AND ev.event_type IN ({placeholders}) "
+        "  AND le.account LIKE 'receivable:%' "
+        "GROUP BY le.account"), params).fetchall()
+
+    totals: dict[int, int] = {}
+    for account, amount in rows:
+        try:
+            team_id = int(str(account).split(":", 1)[1])
+        except (IndexError, ValueError):
+            # An account this module did not write cannot be attributed to a GM,
+            # and guessing would put a number on a fact nobody recorded.
+            continue
+        total = -int(amount or 0)
+        if total:
+            totals[team_id] = total
+    return totals
+
+
+def cumulative_skunk_fees_cents(db, *, league_id: int, season: int,
+                                team_id: int) -> int:
+    """One GM's Skunk total for a league-season, as positive cents.
+
+    A thin read over `skunk_fees_by_team` so a single-GM caller and the
+    standings sweep cannot drift: there is one query shape and one sign
+    convention, and both live in one place.
+    """
+    return skunk_fees_by_team(
+        db, league_id=league_id, season=season).get(team_id, 0)
 
 
 # ── Season distribution ───────────────────────────────────────────────────────

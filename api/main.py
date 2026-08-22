@@ -6636,7 +6636,8 @@ class EconomyConfigUpdateRequest(BaseModel):
     """
     weekly_bet_minimum_cents:        int = Field(..., ge=100, le=10_000)
     championship_contribution_cents: int = Field(..., ge=100, le=100_000)
-    skunk_fee_cents:                 int = Field(..., ge=100, le=10_000)
+    #: FINAL POR §9D — Skunk Fees are optional, so 0 is admissible here.
+    skunk_fee_cents:                 int = Field(..., ge=0, le=10_000)
 
 
 class EconomyConfigOut(BaseModel):

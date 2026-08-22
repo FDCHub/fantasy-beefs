@@ -2673,8 +2673,9 @@ class LeagueSeasonEconomyConfig(Base):
         CheckConstraint(
             "championship_contribution_cents BETWEEN 100 AND 100000",
             name="ck_lsec_championship_contribution"),
+        # FINAL POR §9D — 0 is a governed choice: Skunk Fees are optional.
         CheckConstraint(
-            "skunk_fee_cents BETWEEN 100 AND 10000",
+            "skunk_fee_cents BETWEEN 0 AND 10000",
             name="ck_lsec_skunk_fee"),
         # NULL passes a CHECK, which is exactly right: a draft has not derived
         # these yet. Once written they must be positive.

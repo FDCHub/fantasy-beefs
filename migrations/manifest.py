@@ -136,6 +136,17 @@ ACTIVE: tuple = (
         summary="Final POR WP-1 — season-level ruleset era gate; absence means the legacy ruleset and nothing is backfilled",
         tables=("league_season_ruleset",),
     ),
+    # FINAL POR §9D — Skunk Fees are optional, so 0 must be storable.
+    #
+    # NAMES NO `tables` OR `columns`, and that is not an omission: it adds no
+    # database object. It only WIDENS an existing CHECK, and `verify` corroborates
+    # the presence of objects rather than the shape of constraints. The widening
+    # is asserted directly by test_finalpor_wp2_skunk_zero.py on both dialects.
+    Migration(
+        identifier="0011_skunk_fee_allows_zero",
+        module="migrations.relax_skunk_fee_allows_zero",
+        summary="Final POR §9D — league_season_economy_config.ck_lsec_skunk_fee widened to admit a 0 Weekly Skunk Fee",
+    ),
 )
 
 

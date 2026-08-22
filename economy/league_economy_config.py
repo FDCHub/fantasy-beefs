@@ -68,7 +68,18 @@ MIN_WEEKLY_BET_MINIMUM_CENTS = 100          # $1
 MAX_WEEKLY_BET_MINIMUM_CENTS = 10_000       # $100
 MIN_CHAMPIONSHIP_CONTRIBUTION_CENTS = 100   # $1
 MAX_CHAMPIONSHIP_CONTRIBUTION_CENTS = 100_000   # $1,000
-MIN_SKUNK_FEE_CENTS = 100                   # $1
+# FINAL POR §9D — ZERO IS A GOVERNED CHOICE, NOT AN ABSENT SETTING.
+#
+# Skunk Fees are OPTIONAL. A commissioner who sets 0 has decided the league
+# plays without them, and that decision must be expressible: with a $1 floor the
+# only way to "turn Skunk off" was to leave the economy unconfigured, which
+# turns off the whole configured economy with it.
+#
+# ZERO ALSO SWITCHES OFF THE POINTS CHAMPIONSHIP, because the Points pot is the
+# Skunk actually assessed and a league that assesses none has no pot. That
+# consequence is the POR's and is derived from this number rather than from a
+# second flag that could disagree with it.
+MIN_SKUNK_FEE_CENTS = 0                     # Skunk Fees are optional (§9D)
 MAX_SKUNK_FEE_CENTS = 10_000                # $100
 
 # ── Setup defaults ───────────────────────────────────────────────────────────
