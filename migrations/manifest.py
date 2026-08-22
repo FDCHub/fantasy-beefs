@@ -120,6 +120,22 @@ ACTIVE: tuple = (
         module="migrations.backfill_pool_definition_public_question",
         summary="Pool Catalog Rev 1.4 §3 — carry the governed public_question onto pool_definition rows written before the revision",
     ),
+    # FINAL POR · WP-1 — THE ERA GATE, AND IT RUNS BEFORE EVERY ECONOMY CHANGE.
+    #
+    # Ordered first among the Final POR migrations deliberately. Every later
+    # economy migration is safe only because this table exists to distinguish a
+    # season governed by the new rules from one that must keep its original
+    # ones; applying any of them first would leave a window in which the two
+    # eras were indistinguishable.
+    #
+    # ADDITIVE AND UNBACKFILLED. Absence of a row IS the legacy ruleset, so this
+    # migration writes no data and changes no existing table.
+    Migration(
+        identifier="0010_season_ruleset",
+        module="migrations.add_season_ruleset",
+        summary="Final POR WP-1 — season-level ruleset era gate; absence means the legacy ruleset and nothing is backfilled",
+        tables=("league_season_ruleset",),
+    ),
 )
 
 

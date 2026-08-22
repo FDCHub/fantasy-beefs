@@ -172,6 +172,7 @@ from economy.economy_events import (
     reserve_account,
 )
 from ledger.ledger import SEASON_ALLOCATION_DOOR, post as ledger_post
+from ruleset import stamp_ruleset
 
 #: Re-exported for callers/tests; the literal lives in ledger.ledger
 #: beside the funded-balance exemption it activates.
@@ -505,6 +506,21 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
             season                    = config.ALLOCATION_SEASON,
             topoff_cap_multiplier_bps = league_multiplier_bps,
         ))
+
+        # FINAL POR · WP-1 — THE ERA GATE IS STAMPED HERE, AND ONLY HERE.
+        #
+        # A season is activated exactly once, in this transaction, and the rules
+        # it is activated under are decided at that moment. Stamping it anywhere
+        # later would leave a window in which Credits had been issued under rules
+        # nothing had recorded; stamping it earlier would leave a season marked
+        # as governed by rules it never actually began under, because every
+        # refusal below rolls this back with the rest of the activation.
+        #
+        # A REPLAY NEVER REACHES THIS. The state machine returns above on the
+        # complete-and-matching path, so the only caller here is a genuine first
+        # activation. `stamp_ruleset` is idempotent on agreement regardless, and
+        # raises on a contradiction rather than restamping.
+        stamp_ruleset(db, league_id=league_id, season=config.ALLOCATION_SEASON)
 
         posting_ids: list[uuid.UUID] = []
         for team_id in team_ids:

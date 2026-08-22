@@ -2720,6 +2720,71 @@ class LeagueSeasonEconomyConfig(Base):
     league = relationship("League")
 
 
+# ── Season ruleset version (WP-1) ─────────────────────────────────────────────
+
+class LeagueSeasonRuleset(Base):
+    """One league-season's governing RULESET — the single era gate (WP-1).
+
+    THE ONE QUESTION THIS ROW ANSWERS: *which edition of the FantasyStakes rules
+    governs this league-season?* Scoring, economy, pot funding, lifecycle and
+    reconciliation all changed together in the Final POR, and a season is played
+    entirely under one edition of them. Three separate version columns —
+    scoring, economy, lifecycle — could disagree with one another about the same
+    season; one column cannot.
+
+    ── ABSENCE IS A GOVERNED STATE, NOT A GAP ────────────────────────────────
+
+    A league-season with NO ROW here is `RULESET_LEGACY`. Every season activated
+    before WP-1 is in exactly that state, and none is migrated, backfilled or
+    reinterpreted — which is what lets the Final POR land without touching a
+    single historical Credit, frozen score or paid award.
+
+    ── INSERT-ONLY, STAMPED AT ACTIVATION ────────────────────────────────────
+
+    There is no update path and no delete path. The ruleset governs Credits that
+    have already been issued and results that have already been scored; changing
+    it mid-season would leave the record disagreeing with the season it is
+    supposed to explain. Correcting a mis-stamped season requires a separately
+    governed season-reset protocol, which FantasyStakes does not have and this
+    package does not invent.
+
+    ONE ROW PER LEAGUE-SEASON, so no pair of rows can disagree — the same
+    argument `LeagueSeasonEconomyConfig` makes, for the same reason.
+
+    ── DEFINED HERE RATHER THAN IN A FEATURE MODULE ──────────────────────────
+
+    Registered with `Base` in `db/schema.py` so `create_all` always builds it on
+    a fresh database, with no explicit import-order registration step. The RC2
+    championship models are registered by `api.main_rc2` instead, and the
+    migration manifest records what that cost: booting the wrong entrypoint
+    against a fresh database built none of those tables while `stamp_all` still
+    recorded their migrations as applied. The era gate is read by `economy`,
+    `reports` and `betting` alike, so it may not depend on any one of them
+    having been imported first.
+    """
+
+    __tablename__ = "league_season_ruleset"
+    __table_args__ = (
+        UniqueConstraint("league_id", "season", name="uq_lsr_league_season"),
+        CheckConstraint("ruleset_version >= 1", name="ck_lsr_version_positive"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    league_id = Column(Integer, ForeignKey("leagues.id", name="fk_lsr_league"),
+                       nullable=False)
+    season = Column(Integer, nullable=False)
+
+    #: The governing ruleset edition. See `ruleset.py` for the named constants;
+    #: the integer is stored rather than a string so ordering comparisons
+    #: ("is this season at or past the Final POR?") are exact.
+    ruleset_version = Column(Integer, nullable=False)
+
+    stamped_at = Column(DateTime(timezone=True), nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+
+
 # ── Durable top-off disclosure (B6 Group C) ───────────────────────────────────
 
 class TopOffDisclosure(Base):
