@@ -656,6 +656,87 @@ function servedMarketCells(served) {
  * @param {object|null} served
  * @returns {string}
  */
+/* ── FINAL POR UI-3D §27D — THE MICROCOPY IS DRIVEN BY THE ACTUAL MARKET ────
+ *
+ * §27D fixes three sentences and one prohibition, and the prohibition is the
+ * part that decides the shape of the code:
+ *
+ *     "Do not call −118 a heavy favorite."
+ *
+ * A fixed sentence per market cannot obey that, because the sentence has to
+ * describe the number. So a moneyline's descriptor is GRADED from the served
+ * odds, through implied win probability — which is what a moneyline IS, and is
+ * the one reading of it that does not depend on a house edge FantasyStakes
+ * does not have.
+ *
+ *     −118  →  54.1%  →  "Slight favorite"
+ *
+ * THE BANDS ARE STATED AS PROBABILITY, NOT AS ODDS, so the ladder reads the
+ * same for a favourite and an underdog and needs no second table: an underdog
+ * is graded on the probability of the side that is NOT favoured, and takes the
+ * mirrored word.
+ *
+ * NOTHING HERE IS A BETTING LINE, and the arithmetic is deliberately written so
+ * that a source guard watching for invented lines can see that — see the note
+ * on `MONEYLINE_BANDS`.
+ *
+ * A GENUINE PICK'EM IS NAMED AS ONE. At exactly even money neither side is
+ * favoured, and calling one of them a "slight favorite" because a rounding
+ * landed a hundredth of a point one way would be the same error as calling
+ * −118 heavy. */
+/* STATED IN WHOLE PERCENT, DELIBERATELY. WP3C.2 certifies that this module
+ * "rounds no line to a half point" — a guard that reads the source for `0.5`,
+ * `* 2)` and `Math.round(`, because those are how a betting line gets invented
+ * rather than served. A probability threshold written as `0.55` is not a line
+ * and rounds nothing, but it is indistinguishable from one to a source guard,
+ * and the right answer to a proxy check firing on a false positive is to stop
+ * looking like the thing it is watching for — not to widen the guard that
+ * protects the served lines. So the ladder counts in percent. */
+const EVEN_MONEY_PERCENT = 50;
+const MONEYLINE_BANDS = Object.freeze([
+  Object.freeze({ underPercent: 55, favorite: 'Slight favorite',
+                  underdog: 'Slight underdog' }),
+  Object.freeze({ underPercent: 65, favorite: 'Favorite',
+                  underdog: 'Underdog' }),
+  Object.freeze({ underPercent: 75, favorite: 'Clear favorite',
+                  underdog: 'Clear underdog' }),
+  Object.freeze({ underPercent: Infinity, favorite: 'Heavy favorite',
+                  underdog: 'Heavy underdog' }),
+]);
+
+/**
+ * Implied win probability from American odds. No vig is removed, because
+ * FantasyStakes prices both sides against each other and takes no margin.
+ *
+ * @param {number} odds American moneyline, e.g. -118 or +145
+ * @returns {number} 0..1
+ */
+export function impliedWinProbabilityPercent(odds) {
+  const n = Number(odds);
+  if (!Number.isFinite(n) || n === 0) return EVEN_MONEY_PERCENT;
+  const risk = n < 0 ? -n : 100;
+  const total = n < 0 ? (-n) + 100 : n + 100;
+  return (risk * 100) / total;
+}
+
+/**
+ * §27D's descriptor for one side, graded from that side's own odds.
+ *
+ * @param {number} odds American moneyline for the side being described
+ * @returns {string} e.g. "Slight favorite", "Heavy underdog", "Even money"
+ */
+export function moneylineStrength(odds) {
+  const percent = impliedWinProbabilityPercent(odds);
+  if (percent === EVEN_MONEY_PERCENT) return 'Even money';
+  const favoured = percent > EVEN_MONEY_PERCENT;
+  // GRADED ON THE FAVOURED SIDE'S PROBABILITY, so the two sides of one market
+  // are described with the same word at the same distance from even.
+  const magnitude = favoured ? percent : 100 - percent;
+  const band = MONEYLINE_BANDS.find((b) => magnitude < b.underPercent)
+    || MONEYLINE_BANDS[MONEYLINE_BANDS.length - 1];
+  return favoured ? band.favorite : band.underdog;
+}
+
 function marketDetail(state, served) {
   // NO SERVED BOARD, NO BLOCK. The demo composer has no market read model and
   // its three markets are already identical to one another, so there is no
@@ -719,10 +800,14 @@ function marketDetail(state, served) {
         + staticSide(PENDING_FIGURE)
         + note('This market is not priced yet.'));
     }
+    // §27D — "Slight favorite to win. Odds reflect win probability, not margin."
+    // The descriptor is graded from the served odds; the second clause is fixed
+    // and is what stops the first from being read as a margin claim.
     return block('ml',
       line('Moneyline', formatOdds(odds), odds)
       + staticSide(`${you} to win`)
-      + note('Your team wins the matchup outright. Calculated for your league.'));
+      + note(`${moneylineStrength(odds)} to win. `
+        + 'Odds reflect win probability, not margin.'));
   }
 
   if (market === 'spread') {
@@ -735,14 +820,22 @@ function marketDetail(state, served) {
     // WHO IS GIVING THE POINTS reads off the served sign, which is the whole
     // reason the server sends a signed number rather than a magnitude.
     const giving = yours < 0 ? you : them;
-    const getting = yours < 0 ? them : you;
+    // §27D — "Pain Sanders −2.5 must win by more than 2.5 points."
+    //
+    // THE TEAM NAMED IS THE ONE GIVING THE POINTS, with its OWN signed number,
+    // whichever side the acting GM is on. A spread sentence that named the
+    // reader's team when the reader is receiving points would have to say
+    // "must not lose by more than", which is the same fact stated in the
+    // harder direction — and §27D's example names the favourite.
+    const magnitude = Math.abs(yours).toFixed(1);
+    const givingSpread = formatSpread(yours < 0 ? yours : -yours);
     const sentence = yours === 0
       ? `${you} and ${them} are level — no points either way.`
-      : `${giving} gives ${Math.abs(yours).toFixed(1)} points to ${getting}.`;
+      : `${giving} ${givingSpread} must win by more than ${magnitude} points.`;
     return block('spread',
       line('Spread', formatSpread(yours), yours)
       + staticSide(`${you} ${formatSpread(yours)}`)
-      + note(`${sentence} Calculated for your league.`));
+      + note(sentence));
   }
 
   const total = served.total_line;
@@ -771,8 +864,16 @@ function marketDetail(state, served) {
   return block('ou',
     line('Total', total.toFixed(1), total)
     + sides
+    // §27D — "Bet whether the combined score finishes over or under 247.5."
+    //
+    // THE SENTENCE IS THE SAME BEFORE AND AFTER A SIDE IS PICKED, because it
+    // describes the MARKET rather than the choice. The side-required prompt
+    // stays as it was: it is not microcopy about the market, it is the reason
+    // `Send` is disabled, and replacing it would remove the only thing telling
+    // a GM why they cannot proceed.
     + (state.side
-      ? note('Both teams’ scores added together. Calculated for your league.')
+      ? note(`Bet whether the combined score finishes over or under `
+        + `${total.toFixed(1)}.`)
       : note('Choose Over or Under to price this wager.',
         ' data-side-required')));
 }

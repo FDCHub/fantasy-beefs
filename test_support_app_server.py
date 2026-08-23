@@ -253,8 +253,32 @@ _SEED_POOL_SLATE = """
                    lock_time=datetime.now(timezone.utc) + _td(days=3)))
     db.flush()
 
-    slate_keys = [d.key for d in db.query(PoolDefinition)
-                  .order_by(PoolDefinition.catalog_number).limit(4).all()]
+    # FINAL POR §16 / UI-3B — THE FIXTURE DRAWS THE GOVERNED MIX, 3 TEAM + 1
+    # MATCHUP, rather than the first four definitions by catalog number.
+    #
+    # WHY IT MATTERS THAT A FIXTURE IS RIGHT ABOUT THIS. `betting.pool_rotation
+    # .DEFAULT_SCOPE_MIX` is `(('TEAM', 3), ('MATCHUP', 1))` and is certified at
+    # the data layer, but the first four catalog definitions happen to be all
+    # TEAM — so every browser suite that reads this fixture was looking at a
+    # slate composition the product does not draw, and a surface that rendered
+    # a MATCHUP occurrence wrongly would have gone unseen at every viewport.
+    #
+    # ORDERED WITHIN EACH SCOPE BY CATALOG NUMBER, so the draw is deterministic
+    # and the first slot is still the lowest-numbered TEAM definition — which is
+    # the one the rollover below attaches to, and which several suites name.
+    # (Braces are doubled: this block is a `.format()` template.)
+    _by_scope = {{}}
+    for _d in (db.query(PoolDefinition)
+               .order_by(PoolDefinition.catalog_number).all()):
+        _by_scope.setdefault(_d.scope, []).append(_d.key)
+    slate_keys = (_by_scope.get('TEAM', [])[:3]
+                  + _by_scope.get('MATCHUP', [])[:1])
+    # FAIL LOUDLY RATHER THAN SEED A SHORT SLATE. A catalog that cannot supply
+    # the governed mix would otherwise produce a three-card week that every
+    # suite would read as normal.
+    assert len(slate_keys) == 4, (
+        'pool catalog cannot supply the governed 3 TEAM + 1 MATCHUP mix: '
+        + repr(sorted((k, len(v)) for k, v in _by_scope.items())))
 
     prior = PoolInstance(league_id=league.id, season=league.season,
                          week={prior_week},

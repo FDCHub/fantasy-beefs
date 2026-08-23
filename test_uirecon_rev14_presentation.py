@@ -120,8 +120,13 @@ _section("§1 · the OVERALL header names the right five things")
 
 _model_code = _without_comments(STANDINGS_MODEL)
 
-_assert("OVERALL declares RK / TEAM / MATCHUPS / POOLS / NET",
-        "['RK', 'TEAM', 'MATCHUPS', 'POOLS', 'NET']" in _model_code,
+# FINAL POR UI-2 §26 — SIX COLUMNS, and `NET` became `FS SCORE`. The claim is
+# unchanged: the OVERALL column set is LOCKED. Only the locked set moved, for
+# the reason WP-7 gives — a table showing two of three scoring terms and an
+# underivable total invites the reader to conclude the total is wrong.
+_assert("OVERALL declares RK / TEAM / MATCHUPS / POOLS / SKUNK / FS SCORE",
+        "'RK', 'TEAM', 'MATCHUPS', 'POOLS', 'SKUNK'" in _model_code
+        and "'FS SCORE'" in _model_code,
         (re.search(r"columns: Object\.freeze\(\[[^\]]*\]", _model_code) or [""])[0])
 _assert("`PROP POOLS` is gone from the column set",
         "'PROP POOLS'" not in _model_code)

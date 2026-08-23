@@ -204,8 +204,13 @@ await withPage({ port: 9463 }, async ({ evaluate, reload, setViewport }) => {
   check('the detail row carries the exact served display line',
     Number(spread.exactLine) === priced.acting_spread,
     `${spread.exactLine} vs ${priced.acting_spread}`);
+  /* FINAL POR UI-3D §27D — the sentence is now
+   * "{favourite} {signed line} must win by more than {magnitude} points."
+   * The claim is unchanged: the block says IN WORDS who is giving the points,
+   * so a reader is not left interpreting a signed number. §27D states it in
+   * the direction a reader asks it — what must happen for the wager to win. */
   check('and says which team is giving the points',
-    /gives [\d.]+ points to /.test(spread.detail), spread.detail);
+    /must win by more than [\d.]+ points/.test(spread.detail), spread.detail);
   check('there is no free-form line field anywhere',
     spread.hasLineInput === false);
 
@@ -477,15 +482,19 @@ await withPage({ port: 9463 }, async ({ evaluate, reload, setViewport }) => {
     };
   })();`);
 
-  // UIRECON WAVE 4A — MATCHUP BECAME ON OFFER, and the order is otherwise the
-  // one this suite locked. The old first block was a label/value pair naming the
-  // two teams, which the sheet subtitle already carried — two statements of one
-  // fact, and the second of them was the one a GM read first. That slot now
-  // carries the MARKET the GM is being offered, which is the thing the analysis
-  // below it explains and the thing the sheet could not previously name.
+  // UIRECON WAVE 4A — MATCHUP BECAME ON OFFER. The old first block was a
+  // label/value pair naming the two teams, which the sheet subtitle already
+  // carried — two statements of one fact, and the second was the one a GM read
+  // first. That slot carries the MARKET instead.
+  //
+  // FINAL POR UI-3E §27E — LINEUPS NOW LEADS. The claim is unchanged and is
+  // still the one worth holding: the sheet's order is LOCKED and is not
+  // something a later change may quietly reshuffle. §27E moved LINEUPS above
+  // ON OFFER because the reader's own roster is the fact the market and the
+  // analysis both rest on. Left behind by the run that implemented §27E.
   check('the locked analysis order is intact',
     preview.titles.join(' → ')
-      === 'ON OFFER → WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+      === 'LINEUPS → ON OFFER → WHY THE LINE LOOKS THIS WAY → THE READ',
     preview.titles.join(' → '));
   check('and it carries no market cells and no Over/Under control',
     preview.hasMarkets === false);

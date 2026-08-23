@@ -202,9 +202,19 @@ check('the spread cell is the SERVED sportsbook value',
 check('the total cell is the served total', body.includes('211.5'));
 check('the spread detail names the acting team and its signed line',
   body.includes('Gravy Train −3.5'), 'identity + line');
-check('and says in words who is giving the points',
-  body.includes('Gravy Train gives 3.5 points to Alpha'),
+/* FINAL POR UI-3D §27D — the spread sentence is now
+ *   "{favourite} {signed line} must win by more than {magnitude} points."
+ *
+ * The claim is unchanged and is still the one that matters: the block says IN
+ * WORDS who is giving the points, so a reader who does not read betting markets
+ * is not left with a signed number to interpret. §27D states the same fact in
+ * the direction a reader actually asks it — what has to happen for this wager
+ * to win — and names the favourite with its own signed line. */
+check('and says in words what must happen for the favourite to cover',
+  body.includes('Gravy Train −3.5 must win by more than 3.5 points'),
   'plain-language grammar');
+check('  · naming the team giving the points, not the reader’s side',
+  !/must not lose by/.test(body));
 check('the exact served line travels on the element, unrounded',
   body.includes('data-exact-line="-3.5"'));
 check('no free-form line input is offered',

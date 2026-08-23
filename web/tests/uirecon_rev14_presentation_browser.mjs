@@ -51,7 +51,11 @@ const VIEWPORTS = [
 ];
 
 /** The OVERALL header, exactly. `POOLS`, and `MATCHUPS` unabbreviated. */
-const OVERALL_COLUMNS = ['RK', 'TEAM', 'MATCHUPS', 'POOLS', 'NET'];
+/* FINAL POR UI-2 §26 — the locked OVERALL column set. `NET` became `FS SCORE`
+ * because the column no longer holds a net, and `SKUNK` is the third scoring
+ * term WP-7 added. Rev 1.4's own notes below about `POOLS` and about MATCHUPS
+ * not being abbreviated are untouched and still hold. */
+const OVERALL_COLUMNS = ['RK', 'TEAM', 'MATCHUPS', 'POOLS', 'SKUNK', 'FS SCORE'];
 
 /* Anything a reader would call a caret. The set is deliberately wider than the
  * one glyph that was removed, because the instruction was not "delete this
@@ -172,10 +176,23 @@ await withPage({ port: 9471 }, async ({ evaluate, setViewport, pressKey }) => {
       overall.columns.map((c) => c.text).join(' / '));
 
     for (const table of tables) {
-      const twoLine = table.columns.filter((c) => c.lines !== 1);
-      check(`no header cell takes a second line — ${table.key} — ${at}`,
-        twoLine.length === 0,
-        twoLine.map((c) => `${c.text}:${c.lines}`).join(', ') || 'all one line');
+      /* FINAL POR UI-2 §26 — A TWO-LINE HEADER IS PERMITTED ON OVERALL.
+       *
+       * Rev 1.4 forbade a second line outright, and for its five-column table
+       * that was right: a wrapped header there restood the row against two
+       * neighbouring tables that did not wrap, which is the collision this
+       * suite was written after. §26 adds a sixth column and explicitly permits
+       * a two-line header — and forbids a header ELLIPSIS, which is the trade
+       * being made and which is still asserted below, unchanged.
+       *
+       * THE TWO TABLES THAT DID NOT CHANGE ARE STILL HELD TO ONE LINE, so the
+       * relaxation is exactly as wide as §26 makes it and no wider. A header
+       * standing to three lines still fails everywhere. */
+      const lineCap = table.key === 'overall' ? 2 : 1;
+      const overLong = table.columns.filter((c) => c.lines > lineCap);
+      check(`no header cell exceeds ${lineCap} line(s) — ${table.key} — ${at}`,
+        overLong.length === 0,
+        overLong.map((c) => `${c.text}:${c.lines}`).join(', ') || 'within cap');
       check(`no two header cells overlap — ${table.key} — ${at}`,
         table.collision === null, table.collision || 'none');
       const clipped = table.columns.filter((c) => c.clipped);
@@ -184,12 +201,26 @@ await withPage({ port: 9471 }, async ({ evaluate, setViewport, pressKey }) => {
         clipped.map((c) => c.text).join(', ') || 'all whole');
     }
 
-    // ONE LINE MEANS ONE HEIGHT, and the three tables have to agree about it —
-    // the failure this replaces stood OVERALL's header at 45px against the
-    // 28px of the two tables below it.
-    const heights = tables.map((t) => t.headerHeight);
-    check(`the three header rows are the same height — ${at}`,
+    // ONE LINE MEANS ONE HEIGHT, and the tables that still draw one line have
+    // to agree about it — the failure this replaces stood OVERALL's header at
+    // 45px against the 28px of the two tables below it.
+    //
+    // FINAL POR UI-2 §26 — OVERALL IS EXEMPT, AND ONLY OVERALL. §26 adds a
+    // sixth column and explicitly permits a two-line header to carry it, so
+    // OVERALL's header row is legitimately taller than its two four-column
+    // neighbours. The original defect is still guarded: those two must agree
+    // with each other, and OVERALL is separately capped at two lines above.
+    // Dropping the check entirely would have let a three-line header through.
+    const others = tables.filter((t) => t.key !== 'overall');
+    const heights = others.map((t) => t.headerHeight);
+    check(`the four-column header rows are the same height — ${at}`,
       new Set(heights).size === 1, heights.join(' / '));
+    const overallHeight = (tables.find((t) => t.key === 'overall') || {})
+      .headerHeight;
+    check(`OVERALL's header is no more than one line taller — ${at}`,
+      overallHeight === undefined
+      || overallHeight <= heights[0] + 16,
+      `${overallHeight} vs ${heights[0]}`);
 
     /* ── 2 · The figures, and the name column ────────────────────────────── */
 
@@ -218,19 +249,36 @@ await withPage({ port: 9471 }, async ({ evaluate, setViewport, pressKey }) => {
     // A wider viewport spends every additional pixel here, because TEAM is the
     // table's only `width: auto` column.
     for (const table of tables) {
+      /* FINAL POR UI-2 §26 — OVERALL'S FLOOR IS LOWER, AND ONLY OVERALL'S.
+       *
+       * The 56px measure above was budgeted for a FIVE-column table. §26 adds a
+       * sixth and explicitly authorises compact responsive tracks and truncated
+       * TEAM names to carry it; at 320px the six columns leave TEAM 42px of
+       * content, which is the arithmetic consequence of the money floor, the
+       * §5.1 12px header floor and MATCHUPS needing its own line. The two
+       * four-column tables are unchanged and still hold 56px.
+       *
+       * A FLOOR IS STILL ASSERTED rather than removed: 40px is about five
+       * characters plus the ellipsis, which is what makes a name recognisable
+       * beside the reader's own highlighted row. At 375px and 390px OVERALL's
+       * TEAM measures 101px and 116px, so this floor binds at one width only. */
+      const teamFloor = table.key === 'overall' ? 40 : 56;
       check(`the team column keeps a legible measure — ${table.key} — ${at}`,
-        table.teamContentWidth === null || table.teamContentWidth >= 56,
-        `${table.teamContentWidth}px`);
+        table.teamContentWidth === null || table.teamContentWidth >= teamFloor,
+        `${table.teamContentWidth}px (floor ${teamFloor})`);
       check(`a long name ellipsizes rather than being cut — `
         + `${table.key} — ${at}`,
         table.teamEllipsis === null || table.teamEllipsis === 'ellipsis',
         String(table.teamEllipsis));
     }
-    // THE FIVE COLUMNS ACCOUNT FOR THE WHOLE TABLE AND NO MORE. If a figure
-    // column were ever sized past what is there, the surplus would come out of
-    // TEAM until TEAM ran out — and then out of the page.
-    check(`OVERALL's five columns fill the table exactly — ${at}`,
-      overall.columns.length === 5
+    // THE COLUMNS ACCOUNT FOR THE WHOLE TABLE AND NO MORE. If a figure column
+    // were ever sized past what is there, the surplus would come out of TEAM
+    // until TEAM ran out — and then out of the page.
+    //
+    // FINAL POR UI-2 §26 — SIX COLUMNS, NOT FIVE. The arithmetic is the claim
+    // and is unchanged; only the count moved.
+    check(`OVERALL's six columns fill the table exactly — ${at}`,
+      overall.columns.length === 6
       && Math.abs(overall.columns.reduce((sum, c) => sum + c.width, 0)
         - overall.tableWidth) <= 1,
       `${overall.columns.map((c) => c.width).join('+')} vs ${overall.tableWidth}`);
