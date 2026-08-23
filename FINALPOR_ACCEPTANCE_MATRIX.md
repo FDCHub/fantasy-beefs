@@ -3,7 +3,7 @@
 **Branch:** `postmvp/final-por-implementation`
 **Base:** `766ea37b076d49bbbb2abb513cf6848941fcf184`
 **HEAD:** see `git rev-parse HEAD` — updated per package.
-**Status:** PARTIAL — 20 of 25 work packages complete. Every backend package is done; UI-2 and UI-3A–D are done. Not pushed, not deployed, not tagged.
+**Status:** Every backend AND UI work package is COMPLETE and certified — see §2 and §6c, which this line previously contradicted. The outstanding items (WP-17, UI-5 GAP 4, PostgreSQL parity across 61 `*_pg.py` suites, and the Yahoo provider chain) are **BLOCKED on external dependencies** — `TEST_DATABASE_URL` and Yahoo runtime credentials — not on unwritten work. Nothing is MISSED / INCORRECT and nothing is a REGRESSION. Not pushed, not deployed, not tagged.
 
 Classification is `DONE` only where there is **executed test evidence**, not a
 change summary. Anything implemented but not certified is marked explicitly.
@@ -369,8 +369,14 @@ failure. Every suite below was re-run alone before its result was recorded.
 | Demo environment | `test_d1_demo_environment` | **cannot seed** — `near "FOR": syntax error`, reproduced at base `fc57288` |
 | PostgreSQL (61 suites) | `run_pg_suites.py` | **NOT RUN** — refuses cleanly, no `TEST_DATABASE_URL` |
 
-**Totals across the runnable set: 3162 PASS / 1 FAIL**, and the single failure is
+**Totals across the runnable set: 3096 PASS / 1 FAIL**, and the single failure is
 the PostgreSQL-blocked GAP 4.
+
+*Corrected by the independent audit.* The previous figure, 3162, DOUBLE-COUNTED
+66 assertions: `wp14_grand_route` (32) and `wp17_demo` (34) are both inside the
+19-suite "FINAL POR backend / 957" row **and** listed again as rows of their own.
+3162 − 66 = **3096 unique assertions**. The 957 subtotal was correct and is
+unchanged, and no pass/fail conclusion moves — the arithmetic was the only error.
 
 ### Final regression sweep — every FINAL POR backend suite, one run
 
@@ -405,7 +411,7 @@ Final sweep, this branch:
 | `test_finalpor_wp14_grand_championship.py` | **50 PASS / 0 FAIL** |
 | `test_finalpor_wp15_settle_reshape.py` | **59 PASS / 0 FAIL** |
 | `test_finalpor_wp16_retirements.py` | **55 PASS / 0 FAIL** |
-| `test_finalpor_wp18_spec_supersession.py` | **55 PASS / 0 FAIL** |
+| `test_finalpor_wp18_spec_supersession.py` | **56 PASS / 0 FAIL** |
 | `test_finalpor_wp17_demo.py` | **34 PASS / 0 FAIL, 4 NOT RUN** (the demo seed is blocked on SQLite) |
 | `test_finalpor_wp14_grand_route.py` | **32 PASS / 0 FAIL** |
 | `test_rc2_championship*` (5 suites) | **242 PASS / 0 FAIL** |

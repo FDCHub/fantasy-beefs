@@ -206,22 +206,43 @@ from economy.economy_events import (  # noqa: E402
     fantasystakes_championship_account, points_championship_account,
 )
 
+
+def _names_account(template: str) -> bool:
+    """The account name must appear DELIMITED, not merely as a substring.
+
+    A plain `in SPEC` CANNOT SEE A DROPPED TRAILING COMPONENT. Truncating
+    `…:{L}:{S}` to `…:{L}` leaves a string that is still a substring of the
+    spec's full name, so the guard passed while the code and the spec
+    disagreed — the exact drift this suite exists to refuse. Anchoring both
+    ends against the name alphabet (`:` included) makes a season-scope
+    regression fail here instead of ageing quietly.
+    """
+    for spelling in (template,
+                     template.replace("{L}:{S}", "{league}:{season}")):
+        if re.search(r"(?<![A-Za-z0-9_:])" + re.escape(spelling)
+                     + r"(?![A-Za-z0-9_:{])", SPEC):
+            return True
+    return False
+
+
 for fn, label in ((fantasystakes_championship_account, "FantasyStakes"),
                   (points_championship_account, "Points"),
                   (ff_championship_account, "Fantasy Football"),
                   (championship_issuance_account, "minted issuance")):
     template = fn("{L}", "{S}")
     _assert(f"  · the {label} account name appears verbatim",
-            template in SPEC or template.replace("{L}:{S}",
-                                                 "{league}:{season}") in SPEC,
+            _names_account(template),
             template)
 
 print("\nWP18-F9 · the spec's split matches the canonical implementation")
 from economy.championship_distribution import CHAMPIONSHIP_SPLIT  # noqa: E402
 
+# NO LITERAL FALLBACK. `or "60 / 30 / 10" in SPEC` made this vacuous: the
+# hardcoded spelling satisfied the assertion no matter what the code defined,
+# so a change to CHAMPIONSHIP_SPLIT left the guard green against a spec that
+# now contradicted it. The check must read the constant and nothing else.
 _assert("the split is stated as the code defines it",
-        " / ".join(str(p) for p in CHAMPIONSHIP_SPLIT) in SPEC
-        or "60 / 30 / 10" in SPEC,
+        " / ".join(str(p) for p in CHAMPIONSHIP_SPLIT) in SPEC,
         str(CHAMPIONSHIP_SPLIT))
 _assert("  · with §17's three worked dead-heat examples",
         all(token in SPEC for token in ("(60+30)/2", "(30+10)/2", "(10+0)/2")))
@@ -230,17 +251,28 @@ _assert("  · and the remainder convention",
 
 from economy.grand_championship import MINIMUM_FUNDED_PILLARS  # noqa: E402
 
+# Same defect, same repair: the `or "At least two FUNDED pillars"` fallback
+# held this green for any value of the constant. Both accepted spellings are
+# now DERIVED from MINIMUM_FUNDED_PILLARS, so raising it fails here.
+_PILLAR_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five"}
+_pillar_spellings = {str(MINIMUM_FUNDED_PILLARS)}
+if MINIMUM_FUNDED_PILLARS in _PILLAR_WORDS:
+    _pillar_spellings.add(_PILLAR_WORDS[MINIMUM_FUNDED_PILLARS])
+
 _assert("  · the Grand Championship's pillar minimum matches the code",
-        f"least {'two' if MINIMUM_FUNDED_PILLARS == 2 else MINIMUM_FUNDED_PILLARS}"
-        in SPEC.lower() or "At least two FUNDED pillars" in SPEC,
+        any(f"least {spelling} funded pillar" in SPEC.lower()
+            for spelling in _pillar_spellings),
         str(MINIMUM_FUNDED_PILLARS))
 
 
 # ── F10 · what is blocked, said plainly ────────────────────────────────────
 
 print("\nWP18-F10 · the spec states what is BLOCKED and what is OPEN")
+# `or "UNKNOWN" in SPEC` strictly subsumed the specific clause — any stray
+# UNKNOWN anywhere in the document satisfied it — so the precise statement
+# this asserts to exist was never actually required. Specific clause only.
 _assert("Yahoo authorization is stated UNKNOWN",
-        "authorization state: UNKNOWN" in SPEC or "UNKNOWN" in SPEC)
+        "authorization state: UNKNOWN" in SPEC)
 _assert("  · bracket classification is stated BLOCKED",
         "BLOCKED" in SPEC and "PROV-1" in SPEC)
 # OWNER RULING, LOCKED — the third-place question is no longer open, so the
@@ -255,8 +287,9 @@ _assert("  · and it says the exception keys on STRUCTURE, not missing data",
         and "fail-closed" in SPEC)
 _assert("  · PostgreSQL parity is stated NOT RUN",
         "NOT RUN" in SPEC and "TEST_DATABASE_URL" in SPEC)
+# Same subsumption as the UNKNOWN clause above.
 _assert("  · and nothing blocked is described as done",
-        "provider finality BLOCKED" in SPEC or "BLOCKED" in SPEC)
+        "provider finality BLOCKED" in SPEC)
 
 
 print()
