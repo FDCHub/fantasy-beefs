@@ -3,8 +3,11 @@
  *
  * THE RULING. The close control is UPPER-LEFT, visually attached to the active
  * card, sheet, modal or detail view, everywhere in the application including
- * Wrap Up. It supersedes every older upper-right reference — Rev 4.3 §25 and
- * Final POR §29 among them. It is a positional visual rule, not a redesign.
+ * Wrap Up. It supersedes every older upper-right reference. The one still
+ * standing is Final POR §29 — Rev 4.3 §25 already specifies upper-left and
+ * carries its own note recording that an earlier revision of it did not. So the
+ * ruling supersedes §29 and confirms §25. It is a positional visual rule, not a
+ * redesign.
  *
  * WHY A DEDICATED SUITE FOR ONE CSS RULE. Because "not a redesign" is the part
  * that has to be proved. An absolutely-positioned control in a corner is

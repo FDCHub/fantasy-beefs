@@ -435,6 +435,97 @@ Exact cents; indivisible remainder by ascending participant id.
 
 ---
 
+## 12b. Where the reader meets all of this (UI-7 / §23 / §24)
+
+Everything above is an accounting rule, and a rule nobody can read is a rule
+nobody can check. Two surfaces state them.
+
+### League Settings — the seven-row VC allocation table (§23)
+
+| VC ALLOCATION | RATIO TO WEEKLY MINIMUM |
+|---|---|
+| Weekly Minimum | the denominator, by definition |
+| Prop Pool Entry | league Pool setting ÷ minimum |
+| Weekly Skunk Fee | §3's fee, which may be 0 |
+| Projected Points Championship Pot | §9a's projection — display only, never posted |
+| FantasyStakes Championship Base Pot | §5's Weekly Minimum × regular-season weeks |
+| Fantasy Football Championship Pot | §14's one league-level amount |
+| Season Top-Off Limit | the frozen multiplier against the reserve |
+
+Beneath it, four **in-season read-only** figures — Unspent Minimum Sweeps,
+Top-Offs Added to FS Pot, Terminal Prop Pool Remainders, Current FS Championship
+Pot — and five **Season Rules**: Weekly Minimum and Skunk Fees are regular season
+only, postseason play is Wallet only, the championship split is 60 / 30 / 10, and
+wagers are Public.
+
+**THE RATIO IS DERIVED ON THE SERVER, and that is a rule rather than a
+preference.** An amount divided by the Weekly Minimum is one line of JavaScript,
+and it would be a second definition of a relationship this document already owns.
+It is an exact `Fraction`, rounded once for display, and it prints `≈` when the
+two decimals really are a rounding.
+
+**THE IN-SEASON FIGURES ARE SUMMED FROM THE POT'S OWN CREDIT LEGS, BY DOOR.**
+Nothing increments, so there is no tally that can drift from the ledger — the
+ledger IS the tally. The read touches one table and joins nothing, so the
+`posting_id` format divergence between raw-SQL and ORM writers cannot reach it.
+
+**NULL AND ZERO STAY APART ALL THE WAY TO THE SCREEN.** A commissioner who
+entered 0 for the Fantasy Football pot has made a choice; one who never saw the
+setting has not. Both leave the pillar unfunded and both would render as `$0` if
+the view flattened them, and the audit question *did the league decline the pot,
+or never see it?* would stop having an answer at the last possible step.
+
+- `economy/league_settings_view.py` — the whole derivation
+- `test_finalpor_ui7_settings_view.py` — 63 PASS / 0 FAIL
+- `test_finalpor_ui7_rules.py` — 215 PASS / 0 FAIL, three widths
+
+### Rules — four groups (§24)
+
+The Basics, Your Credits, Weekly Play, Season Play. Three paragraphs are approved
+copy and appear verbatim. Two rules are stated **exactly once** on purpose:
+
+- **60 / 30 / 10** governs all three championships (§10), so three copies would
+  be three chances to drift and a reader who found two would have to decide which
+  was authoritative. The two-team playoff exception (§9c) is stated beside it.
+- **The Skunk is ONE assessment and is never charged twice.** A GM who watches
+  the same fee reduce their Score *and* appear as an obligation will otherwise
+  reasonably conclude they were billed for it twice.
+
+- `web/js/data/rules-data.js::RULE_GROUPS`
+
+---
+
+## 12c. Two seam defects, and the shape they share
+
+Both were found while fixturing the demo, and neither was visible from the
+package that created it: **a Final POR engine was certified at the module level
+and the surface kept reading the retired one.** WP-14 and WP-15 were both correct;
+what had not been checked was whether their answers reached the wire.
+
+- **The reshaped Skunk obligation stopped at the module.** `CurrentSettle` gained
+  `skunk_cents` and `is_final_por`; the read model, its `as_dict`, the API model
+  and both browser models did not carry them, so a Final POR GM read a **Skunk
+  line of zero** while `obligations_cents` on the same response included the fee.
+  The total was right and the line item was blank — **the parts stopped summing
+  to the whole**, on the surface a commissioner reconciles against.
+- **The Grand Championship route still served the retired 3/2/1 model.** A Final
+  POR league read pooled recognition points from a competition its season never
+  ran, decided by a tiebreak §11 abolished.
+
+**The retired key is left null rather than reused.** Its `yahoo_points` /
+`fantasystakes_points` / `combined_points` describe pooled Fractions that no
+longer exist, and putting credit figures in them would let a client keep reading
+the old rule and get plausible numbers — the worst available outcome, because
+nothing would look wrong.
+
+The general lesson is recorded here because it will recur: **an era gate is only
+as good as its furthest consumer.** A module that answers correctly and a screen
+that asks the wrong question produce a wrong answer with a correct audit trail.
+
+- `test_finalpor_wp14_grand_route.py` — 32 PASS / 0 FAIL
+
+---
+
 ## 13. What is NOT settled by this document
 
 - **Yahoo provider authorization state: UNKNOWN.** No credentials in the
@@ -444,6 +535,18 @@ Exact cents; indivisible remainder by ascending participant id.
   two-team format pays 67/33; every other format stays fail-closed.
 - **PostgreSQL parity: NOT RUN.** No `TEST_DATABASE_URL`. Every `*_pg.py` suite is
   unexecuted; each refuses cleanly rather than falling back.
+- **A SETTLED FantasyStakes WAGER HAS NEVER BEEN CERTIFIED ANYWHERE, and the
+  demo has never been seeded.** Both have one cause:
+  `betting/settlement_engine.py::settle_week` takes a plain
+  `SELECT … FOR UPDATE`, SQLite does not implement it, and every disposable
+  database in this repository is SQLite. So §29's *FF Breakdown + Bet Market
+  Breakdown* requirement for the FantasyStakes Matchups section is **UNVERIFIED**
+  rather than passing or failing, and WP-17's demo is **BLOCKED**. Neither is a
+  UI or demo defect, and neither workaround was taken: stripping the lock would
+  weaken a concurrency guard to make a test pass, and hand-posting the settled
+  state would certify a surface against a shape the product never writes. **This
+  makes a PostgreSQL test database the single highest-value unblock on this
+  branch** — it is not only `*_pg.py` parity.
 
 ---
 

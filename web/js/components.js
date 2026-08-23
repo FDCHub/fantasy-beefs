@@ -313,7 +313,12 @@ export function note(text, options = {}) {
  * Owner ruling, re-confirmed after the Final POR addendum. The close control is
  * upper-left, visually attached to the active card, sheet, modal or detail view,
  * everywhere in the application including Wrap Up. It SUPERSEDES every older
- * upper-right reference, including Rev 4.3 §25 and Final POR §29.
+ * upper-right reference. THE ONE STILL STANDING IS FINAL POR §29; Rev 4.3 §25
+ * already specifies upper-left and already carries its own supersession note
+ * recording that an earlier revision of it required upper-right. So this ruling
+ * SUPERSEDES §29 and CONFIRMS §25 -- which is worth stating precisely, because
+ * "§25 says upper-right" is exactly the wrong thing for the next reader to
+ * carry away from a comment about not moving this control.
  *
  * IT IS A POSITIONAL RULE, NOT A REDESIGN. Nothing about the markup, the
  * accessible name, the focus order or the sheet's geometry follows from it; the
