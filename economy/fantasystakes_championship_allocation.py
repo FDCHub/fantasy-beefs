@@ -54,6 +54,8 @@ REASON_FROZEN = "FS_CHAMPIONSHIP_CONFIG_FROZEN"
 REASON_PARTIAL = "FS_CHAMPIONSHIP_ALLOCATION_PARTIAL"
 REASON_CONFLICT = "FS_CHAMPIONSHIP_ALLOCATION_CONFLICT"
 REASON_NO_TEAMS = "FS_CHAMPIONSHIP_ALLOCATION_NO_TEAMS"
+#: WP-5 — the per-GM contribution model is retired for RULESET_FINAL_POR.
+REASON_RETIRED_ERA = "FS_CHAMPIONSHIP_ALLOCATION_RETIRED_ERA"
 
 
 class FantasyStakesChampionshipConfig(Base):
@@ -256,6 +258,33 @@ def stage_allocation(db: Session, *, league_id: int, season: int,
     """
     if not team_ids:
         raise ValueError(f"[{REASON_NO_TEAMS}] league {league_id} has no teams")
+
+    # ── FINAL POR · WP-5 — THE PER-GM CONTRIBUTION MODEL IS RETIRED ──────────
+    #
+    # This function advances `reserve:{team}` to every GM and immediately
+    # commits it into the pot, which is the per-GM prepaid architecture §11
+    # replaces: it makes the pot's size scale with the field and makes its
+    # existence every GM's debt. Under the Final POR the FantasyStakes
+    # Championship Pot is MINTED at Weekly Minimum x Regular-Season Weeks by
+    # `economy.championship_pots.mint_fantasystakes_base_pot`, at activation,
+    # with no GM leg at all.
+    #
+    # REFUSES RATHER THAN NO-OPS, and rather than being deleted. Running it on a
+    # Final POR season would double the pot — once minted, once contributed —
+    # and open a real obligation against every GM for the second half. Deleting
+    # it would strand every legacy season that still needs to READ the
+    # allocation rows it wrote. Refusing is the only behaviour that is safe for
+    # both eras.
+    from ruleset import is_final_por
+
+    if is_final_por(db, league_id=league_id, season=season):
+        raise ValueError(
+            f"[{REASON_RETIRED_ERA}] league {league_id} season {season} is "
+            f"governed by the Final POR, whose FantasyStakes Championship Pot "
+            f"is a minted league-level allocation (Weekly Minimum x "
+            f"Regular-Season Weeks), not a per-GM contribution. Refusing to "
+            f"advance a per-GM championship reserve into it.")
+
     contribution = _validate_contribution(contribution_cents)
     state, rows = allocation_state(
         db, league_id=league_id, season=season, team_ids=team_ids,

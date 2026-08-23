@@ -92,13 +92,47 @@ APPROVED_BAB_TOPOFF_DOOR = "approved_bab_topoff"
 #   ("min_reserve:{team_id}", +M), ("reserve:{team_id}", +R)   with M + R == B.
 SEASON_ALLOCATION_DOOR = "season_allocation"
 
+# ── WP-5 canonical championship-pot minting door ──────────────────────────────
+#
+# A THIRD door-bound exemption, over a THIRD separate namespace. Final POR §11:
+# a championship pot is a LEAGUE-LEVEL virtual-credit allocation, not the sum of
+# per-GM prepaid contributions. Minting is how a league-level allocation comes
+# into existence without any GM's account being debited to fund it.
+#
+# WHY THAT IS THE POINT AND NOT A SHORTCUT. Under the retired architecture each
+# GM was advanced `reserve:{team}` at activation and that reserve was swept into
+# the pot at season close, so the pot's existence WAS a per-GM obligation: every
+# GM owed their share of it whether or not they ever competed for it. Model B
+# says the league allocates the pot. Minting it against a league-season issuance
+# tally is the ledger shape of exactly that sentence — no GM leg exists, so no
+# GM liability can be derived from one.
+#
+# A THIRD NAMESPACE RATHER THAN A THIRD EXEMPT DOOR ON AN EXISTING ONE, for the
+# same reason S5-P1 gave when it split season_issuance out of bab_issuance: the
+# three obligations must stay independently derivable from posted state, because
+# Current Settle counts two of them against the GM and MUST NOT count this one.
+#
+#     season_issuance:{league}:{season}       season-opening advance   (per GM)
+#     bab_issuance:{league}:{season}          approved Top-Off         (per GM)
+#     championship_issuance:{league}:{season} minted pots        (league-level)
+#
+# THE EXEMPTION IS DOOR-BOUND, NOT PREFIX-BOUND. Under any other door a
+# championship_issuance:* debit stays fully guarded and MUST fail. This door is
+# limited to minting a governed championship pot. It is NOT a generic mint, an
+# opening-allocation door, a Top-Off source, a correction door, a refund door
+# or a waiver door. Its only legal posting shape is the two legs
+#   ("championship_issuance:{league}:{season}", -P), ("<pot account>", +P)
+# where the pot is one of the three governed season-scoped pots.
+CHAMPIONSHIP_POT_MINT_DOOR = "championship_pot_mint"
+
 #: (door, account prefix) pairs that may debit from a zero balance. Kept as an
 #: explicit table so adding a third issuance source is a visible, reviewable
 #: edit rather than a condition quietly appended to a chain of `or`s. A prefix
 #: appearing here grants nothing on its own — the DOOR must match too.
 _ISSUANCE_EXEMPTIONS: tuple[tuple[str, str], ...] = (
-    (APPROVED_BAB_TOPOFF_DOOR, "bab_issuance:"),
-    (SEASON_ALLOCATION_DOOR,   "season_issuance:"),
+    (APPROVED_BAB_TOPOFF_DOOR,    "bab_issuance:"),
+    (SEASON_ALLOCATION_DOOR,      "season_issuance:"),
+    (CHAMPIONSHIP_POT_MINT_DOOR,  "championship_issuance:"),
 )
 
 

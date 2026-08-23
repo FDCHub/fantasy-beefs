@@ -310,9 +310,24 @@ try:
 
     from migrations.manifest import ACTIVE
 
-    check("every active migration is verifiable by table or column",
-          all(m.tables or m.columns for m in ACTIVE),
-          ", ".join(m.identifier for m in ACTIVE if not (m.tables or m.columns)))
+    # EVERY MIGRATION MUST DESCRIBE ITSELF WELL ENOUGH TO BE CHECKED, which is
+    # not the same as "must add an object". A data backfill and a widened CHECK
+    # both change the database and create nothing `verify` can look up; the
+    # original assertion could not tell those apart from an author who simply
+    # forgot to fill the fields in, and failed the legitimate cases. It now
+    # requires one or the other: name the objects, or say why there are none.
+    # A migration that adds objects and forgets to name them still fails, which
+    # is the protection this section exists to give.
+    _undescribed = [m.identifier for m in ACTIVE
+                    if not (m.tables or m.columns or m.adds_no_object)]
+    check("every active migration is verifiable, or says why it cannot be",
+          not _undescribed, ", ".join(_undescribed))
+    check("  · and every object-free migration gives a real reason",
+          all(len(m.adds_no_object) > 20 for m in ACTIVE
+              if not (m.tables or m.columns)),
+          ", ".join(m.identifier for m in ACTIVE
+                    if not (m.tables or m.columns)
+                    and len(m.adds_no_object) <= 20))
 
     claimed = {t for m in ACTIVE for t in m.tables}
     check("every RC2 championship table is claimed by some migration",

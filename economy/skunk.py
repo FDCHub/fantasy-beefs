@@ -109,6 +109,26 @@ CLASSIFICATION_NO_LOSER = "NO_LOSER"
 SKUNK_SCORING_EVENT_TYPES: tuple[str, ...] = (EVENT_SKUNK_ASSESSMENT,)
 
 
+def skunk_pot_account(db, *, league_id: int, season: int) -> str:
+    """Where this league-season's assessed Skunk accumulates (WP-5).
+
+    ONE RESOLUTION, SHARED BY THE WRITER AND EVERY READER. Assessment,
+    distribution and the Points Championship read model all call this, so the
+    account a fee was posted into and the account a distribution debits cannot
+    drift apart — which is the failure a second spelling would cause silently,
+    leaving the fees stranded and the pot reading empty.
+
+        RULESET_LEGACY     skunk:{league}
+        RULESET_FINAL_POR  points_championship:{league}:{season}
+    """
+    from economy.economy_events import points_championship_account
+    from ruleset import is_final_por
+
+    if is_final_por(db, league_id=league_id, season=season):
+        return points_championship_account(league_id, season)
+    return skunk_account(league_id)
+
+
 @dataclass(frozen=True)
 class SkunkAssessment:
     league_id: int
@@ -292,7 +312,19 @@ def assess_weekly_skunk(db, *, league_id: int, week: int,
     # configured contribution however many GMs tied.
     legs = [(receivable_account(team_id), -cents)
             for team_id, cents in sorted(allocation.items())]
-    legs.append((skunk_account(league_id), contribution_cents))
+    # ── WP-5 — WHERE THE FEE LANDS IS SEASON-SCOPED UNDER THE FINAL POR ──────
+    #
+    # `skunk:{league}` has no season in it, so a league playing a second season
+    # accumulates both seasons in one account and would distribute season one's
+    # Skunk at the end of season two. `points_championship:{league}:{season}`
+    # is the same pot, correctly scoped: §12 makes the Points Championship Pot
+    # the Skunk ACTUALLY ASSESSED this season, which is exactly this balance.
+    #
+    # The GM-facing half of the posting is IDENTICAL in both eras — the same
+    # `receivable:` legs, the same canonical split, the same amounts. Only the
+    # pot the fee lands in changes, so no GM's obligation moves by a cent.
+    legs.append((skunk_pot_account(db, league_id=league_id, season=season),
+                 contribution_cents))
     posting_id = ledger_post(legs, door=DOOR_SKUNK_ASSESSMENT, session=db)
 
     record_event(db, event_key=key, league_id=league_id, season=season,
@@ -457,8 +489,11 @@ def distribute_season_skunk(db, *, league_id: int,
     lets its idempotency be proven in isolation, before any ordering exists to
     confound the proof.
 
-    After a successful distribution `skunk:{league_id}` is exactly zero: the pot
-    is drained in one posting whose credit legs sum to the whole balance.
+    After a successful distribution the season's Skunk pot is exactly zero: it
+    is drained in one posting whose credit legs sum to the whole balance. WHICH
+    account that is depends on the era — `skunk_pot_account` decides, and both
+    the assessment above and this distribution ask it, so the account fees were
+    posted into and the account this debits cannot drift apart.
     """
     from db.schema import League, Wallet
 
@@ -469,11 +504,12 @@ def distribute_season_skunk(db, *, league_id: int,
     season = league.season
 
     db.flush()
-    pot = _balance_of_in_session(db, skunk_account(league_id))
+    pot_account = skunk_pot_account(db, league_id=league_id, season=season)
+    pot = _balance_of_in_session(db, pot_account)
     if pot <= 0:
         raise SkunkError(
             REASON_EMPTY_POT,
-            f"skunk:{league_id} holds {pot} cents; nothing to distribute.")
+            f"{pot_account} holds {pot} cents; nothing to distribute.")
 
     totals = season_points_for(db, league_id=league_id, league=league)
     if not totals:
@@ -490,7 +526,7 @@ def distribute_season_skunk(db, *, league_id: int,
                 f"subset of the winners.")
 
     allocation = split_by_canonical_id(pot, winners)
-    legs = [(skunk_account(league_id), -pot)]
+    legs = [(pot_account, -pot)]
     legs.extend((wallet_account(team_id), cents)
                 for team_id, cents in sorted(allocation.items()))
     posting_id = ledger_post(legs, door=DOOR_SKUNK_DISTRIBUTION, session=db)

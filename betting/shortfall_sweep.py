@@ -1,6 +1,13 @@
 """
 betting/shortfall_sweep.py — B2, Section 6: weekly shortfall-to-championship sweep.
 
+RETIRED FOR RULESET_FINAL_POR SEASONS (WP-4/WP-5). Under the Final POR the
+unspent Weekly Minimum is already forfeited to the FantasyStakes Championship
+Pot at week close and §5 makes that forfeiture the whole consequence; sweeping
+a shortfall as well would charge the same GM twice for the same week, against a
+Wallet the forfeiture already emptied. A legacy season is untouched and still
+sweeps exactly as it always did. See the era gate in `sweep_shortfall_for_team`.
+
 Trigger (already decided, not reopened here): each GM must wager at least
 the league's Weekly Bet Minimum across pool + versus bets combined, each
 REGULAR-SEASON week. Whatever portion goes unmet sweeps to championship, in
@@ -65,6 +72,7 @@ from payments.economy_config import (
     get_league_economy_stop, resolve_allocation_terms,
 )
 from ledger.ledger import post as ledger_post, balance_of
+from ruleset import is_final_por
 
 
 def _to_cents(amount: float) -> int:
@@ -88,6 +96,11 @@ class SweepResult:
     #: Reported rather than silently returning a zero shortfall, so a caller —
     #: or a wrap-up line — can say WHY nothing was swept.
     postseason:       bool = False
+    #: FINAL POR WP-4/WP-5 — True when the season's ruleset retired this
+    #: consequence entirely. Distinct from `postseason` and from a zero
+    #: shortfall: the caller can say "this era does not sweep shortfalls"
+    #: rather than "this GM happened to meet the minimum".
+    retired:          bool = False
 
 
 def _compute_wagered_cents(team_id: int, league_id: int, week: int, db: Session) -> int:
@@ -175,6 +188,31 @@ def sweep_shortfall_for_team(team_id: int, league_id: int, week: int, db: Sessio
             team_id=team_id, week=week, weekly_min_cents=0, wagered_cents=0,
             shortfall_cents=0, covered_cents=0, uncovered_cents=0,
             swept=False, already_run=False, postseason=True)
+
+    # ── FINAL POR · WP-4/WP-5 — RETIRED, AND FOR A SPECIFIC REASON ───────────
+    #
+    # Under the Final POR the unspent Weekly Minimum is ALREADY forfeited to the
+    # FantasyStakes Championship Pot at week close, and §5 says that forfeiture
+    # is the whole consequence. Running this sweep as well would punish the same
+    # GM twice for the same week: it debits their Wallet for the shortfall and
+    # opens a `receivable:` for whatever the Wallet cannot cover — money the GM
+    # no longer has, because the Minimum that was supposed to fund it has
+    # already left. The two mechanisms were never meant to coexist; this one is
+    # the retired half.
+    #
+    # RETIRED RATHER THAN LEFT DORMANT. Nothing currently calls this on a week
+    # close, which is exactly why it needed an explicit gate: a dormant path
+    # with no gate is one wiring change away from double-charging a whole
+    # league, and the change would look harmless.
+    #
+    # NO RECORD IS WRITTEN EITHER. A `ShortfallSweepRecord` asserts a shortfall
+    # was assessed; under this era none was.
+    if league is not None and is_final_por(db, league_id=league_id,
+                                           season=league.season):
+        return SweepResult(
+            team_id=team_id, week=week, weekly_min_cents=0, wagered_cents=0,
+            shortfall_cents=0, covered_cents=0, uncovered_cents=0,
+            swept=False, already_run=False, retired=True)
 
     existing = (
         db.query(ShortfallSweepRecord)

@@ -48,6 +48,22 @@ class Migration:
     tables: tuple = ()
     columns: tuple = ()
 
+    #: WHY THIS MIGRATION NAMES NO OBJECT — required when `tables` and `columns`
+    #: are both empty, and empty otherwise.
+    #:
+    #: NOT EVERY MIGRATION ADDS A DATABASE OBJECT. A data backfill and a widened
+    #: CHECK both change the database and neither creates anything `verify` can
+    #: look up, so the pair being empty is legitimate for them. It is ALSO what
+    #: an author who simply forgot to fill them in leaves behind, and those two
+    #: cases were indistinguishable: the readiness suite could only assert
+    #: "every migration names an object", which the legitimate cases failed.
+    #:
+    #: Declaring the reason makes the distinction explicit and checkable. A
+    #: migration that adds objects and forgets to name them still fails, which
+    #: is the protection B1 exists to give; one that genuinely adds none says so
+    #: once, here, in a sentence a reviewer can disagree with.
+    adds_no_object: str = ""
+
 
 ACTIVE: tuple = (
     Migration(
@@ -119,6 +135,10 @@ ACTIVE: tuple = (
         identifier="0009_pool_definition_public_question_backfill",
         module="migrations.backfill_pool_definition_public_question",
         summary="Pool Catalog Rev 1.4 §3 — carry the governed public_question onto pool_definition rows written before the revision",
+        adds_no_object=(
+            "a pure data backfill: it writes rows into a column 0008 already "
+            "created and guarantees, and is ordered after it. There is no new "
+            "object for `verify` to corroborate."),
     ),
     # FINAL POR · WP-1 — THE ERA GATE, AND IT RUNS BEFORE EVERY ECONOMY CHANGE.
     #
@@ -146,6 +166,26 @@ ACTIVE: tuple = (
         identifier="0011_skunk_fee_allows_zero",
         module="migrations.relax_skunk_fee_allows_zero",
         summary="Final POR §9D — league_season_economy_config.ck_lsec_skunk_fee widened to admit a 0 Weekly Skunk Fee",
+        adds_no_object=(
+            "it only WIDENS an existing CHECK. `verify` corroborates the "
+            "presence of objects, not the shape of constraints, so there is "
+            "nothing here for it to look up. The widening is asserted directly, "
+            "on both dialects, by test_finalpor_wp2_skunk_zero.py."),
+    ),
+    # FINAL POR §14 / WP-5 — the Fantasy Football Championship Pot amount.
+    #
+    # ADDITIVE AND NULLABLE, and it names its column so `verify` can corroborate
+    # it. A NEW column rather than a reinterpretation of
+    # `championship_contribution_cents`: that integer means "each GM contributes
+    # this" for every legacy season and would mean "the league's whole pot is
+    # this" for a Final POR one, with only the ruleset row to tell a reader
+    # which. §11 forbids silently repurposing a retired name, and a column is a
+    # name. Every existing row becomes NULL, which is true of all of them.
+    Migration(
+        identifier="0012_ff_championship_pot",
+        module="migrations.add_ff_championship_pot",
+        summary="Final POR §14 — league_season_economy_config.ff_championship_pot_cents; one commissioner-entered league-level Fantasy Football Championship Pot, may be 0, NULL where unconfigured",
+        columns=(("league_season_economy_config", "ff_championship_pot_cents"),),
     ),
 )
 

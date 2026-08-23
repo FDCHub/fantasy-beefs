@@ -80,6 +80,13 @@ MAX_CHAMPIONSHIP_CONTRIBUTION_CENTS = 100_000   # $1,000
 # consequence is the POR's and is derived from this number rather than from a
 # second flag that could disagree with it.
 MIN_SKUNK_FEE_CENTS = 0                     # Skunk Fees are optional (§9D)
+
+#: FINAL POR §14 / WP-5 — the Fantasy Football Championship Pot, as ONE
+#: LEAGUE-LEVEL AMOUNT. 0 is admissible: a league may deliberately play with no
+#: Fantasy Football pot. NOT the same field as the per-GM
+#: `championship_contribution_cents`, which governs every legacy season.
+MIN_FF_CHAMPIONSHIP_POT_CENTS = 0
+MAX_FF_CHAMPIONSHIP_POT_CENTS = 1_000_000   # $10,000
 MAX_SKUNK_FEE_CENTS = 10_000                # $100
 
 # ── Setup defaults ───────────────────────────────────────────────────────────
@@ -260,6 +267,11 @@ class EconomyDraft:
     skunk_fee_cents: int
     configured: bool
     frozen: bool
+    #: FINAL POR §14. None means NO COMMISSIONER HAS ENTERED AN AMOUNT — a
+    #: distinct state from 0, which is a deliberate choice to play with no
+    #: Fantasy Football pot. Both leave the pillar unfunded; a settings screen
+    #: renders them differently and an audit can tell them apart.
+    ff_championship_pot_cents: int | None = None
 
 
 def read_frozen(db, *, league_id: int, season: int,
@@ -308,19 +320,29 @@ def read_draft(db, *, league_id: int, season: int | None = None
             championship_contribution_cents=(
                 DEFAULT_CHAMPIONSHIP_CONTRIBUTION_CENTS),
             skunk_fee_cents=DEFAULT_SKUNK_FEE_CENTS,
-            configured=False, frozen=False)
+            configured=False, frozen=False,
+            ff_championship_pot_cents=None)
     return EconomyDraft(
         league_id=league_id, season=effective,
         weekly_bet_minimum_cents=row.weekly_bet_minimum_cents,
         championship_contribution_cents=row.championship_contribution_cents,
         skunk_fee_cents=row.skunk_fee_cents,
-        configured=True, frozen=row.frozen_at is not None)
+        configured=True, frozen=row.frozen_at is not None,
+        ff_championship_pot_cents=row.ff_championship_pot_cents)
 
 
 def set_draft(db, *, league_id: int, weekly_bet_minimum_cents,
               championship_contribution_cents, skunk_fee_cents,
-              season: int | None = None) -> EconomyDraft:
+              season: int | None = None,
+              ff_championship_pot_cents=None) -> EconomyDraft:
     """Validate and store the commissioner's configuration. Does NOT commit.
+
+    `ff_championship_pot_cents` (FINAL POR §14 / WP-5) is OPTIONAL and OMITTING
+    IT LEAVES THE STORED VALUE ALONE. It is not defaulted to 0, because 0 is a
+    real commissioner choice and a caller that simply did not mention the field
+    must not be taken to have made it. Every pre-WP-5 caller keeps its exact
+    three-input behaviour and writes NULL, which is the true statement about a
+    league that has never been shown the setting.
 
     REFUSES ONCE FROZEN (ECON-CONFIG-R4). After activation the configuration
     governs Credits that have already been issued, and rewriting it would leave
@@ -356,6 +378,11 @@ def set_draft(db, *, league_id: int, weekly_bet_minimum_cents,
     row.weekly_bet_minimum_cents = weekly
     row.championship_contribution_cents = championship
     row.skunk_fee_cents = skunk
+    if ff_championship_pot_cents is not None:
+        row.ff_championship_pot_cents = _validate_one(
+            ff_championship_pot_cents, field="ff_championship_pot_cents",
+            minimum=MIN_FF_CHAMPIONSHIP_POT_CENTS,
+            maximum=MAX_FF_CHAMPIONSHIP_POT_CENTS)
     db.flush()
     return read_draft(db, league_id=league_id, season=effective)
 

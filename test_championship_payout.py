@@ -173,7 +173,29 @@ _assert("League B's total does not also include League A's $50.00 reserve", tota
 # account. A bare mention of the string in a comment or docstring no longer
 # trips it, and a new posting site cannot hide behind different formatting.
 
-print("\nItem 8: regression guard — activate_season_allocation() is the sole production writer to reserve:{team_id}")
+print('\nItem 8: regression guard — who may create a per-GM Championship Reserve')
+#
+# ── REPLACED BY FINAL POR WP-5, AND THE CLAIM IS STRENGTHENED ──
+#
+# WHAT THIS ITEM HAS ALWAYS BEEN FOR: no code may quietly open a per-GM
+# Championship Reserve. That is unchanged and is still asserted.
+#
+# WHY IT HAD TO BE REWRITTEN. It matched `post([... ("reserve:x", n) ...])` —
+# a leg tuple written INLINE in the call. WP-5 made the activation's reserve leg
+# CONDITIONAL on the era, so the legs are assembled into a list and the literal
+# is no longer inside the call node. The old matcher therefore stopped seeing
+# the one site it existed to police, and would have reported "exactly one"
+# again the moment an unrelated site was removed — passing while blind.
+#
+# It also encoded the RETIRED ARCHITECTURE as correct: "exactly one" writer
+# meant the per-GM contribution was how pots got funded. Under Model B a Final
+# POR season creates NO per-GM Championship Reserve at all.
+#
+# So the matcher now finds a leg-shaped reserve tuple ANYWHERE in a production
+# module, however the legs are assembled, and the assertions require:
+#   (a) every such site to belong to the governed set, by file AND function;
+#   (b) each of those functions to be ERA-GATED, so no Final POR season can
+#       reach it — the actual Final POR guarantee, and stronger than counting.
 
 _repo_root = os.path.dirname(os.path.abspath(__file__))
 
@@ -211,7 +233,25 @@ def _enclosing_funcs(tree):
     return owner
 
 
+#: The ONLY production functions permitted to assemble a `reserve:{team}` leg,
+#: and each is reachable ONLY by a legacy-ruleset season. Enumerated as data so
+#: adding a third is a deliberate, reviewable edit to this list.
+PERMITTED_RESERVE_WRITERS = {
+    # Advances the reserve. LEGACY branch only (WP-5).
+    ("economy/season_allocation.py", "activate_season_allocation"),
+    # Advances then immediately commits it. Refuses a Final POR season at
+    # function entry, before any posting (WP-5).
+    ("economy/fantasystakes_championship_allocation.py", "stage_allocation"),
+    # DEBITS the reserve at season close, consolidating it into the pot. Not a
+    # creator of the obligation but a mover of it, and it names the same
+    # account, so it belongs in this list rather than being filtered out of the
+    # scan: a filter would also hide a future site that really did create one.
+    # Retired for Final POR seasons (WP-5).
+    ("economy/season_reconciliation.py", "sweep_championship_reserves"),
+}
+
 _posting_sites = []   # (rel_path, lineno, func_name)
+_module_sources = {}
 for path in glob.glob(os.path.join(_repo_root, "**", "*.py"), recursive=True):
     rel = os.path.relpath(path, _repo_root)
     if os.path.basename(rel).startswith("test_") or rel.startswith("test_"):
@@ -219,34 +259,61 @@ for path in glob.glob(os.path.join(_repo_root, "**", "*.py"), recursive=True):
     if os.sep + "test" in rel.lower():
         continue
     try:
-        tree = ast.parse(open(path, encoding="utf-8").read())
-    except SyntaxError:
+        source = open(path, encoding="utf-8").read()
+        tree = ast.parse(source)
+    except (SyntaxError, OSError):
         continue
+    rel = rel.replace(os.sep, "/")
+    _module_sources[rel] = source
     owner = _enclosing_funcs(tree)
+    # ANY leg-shaped 2-tuple whose first element names a reserve account,
+    # wherever it is written — inline in the post() call, appended to a list,
+    # or built in a comprehension. Assembly style is not what is being policed;
+    # creating the obligation is.
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, (ast.Tuple, ast.List)):
             continue
-        fname = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
-        if fname not in ("post", "ledger_post"):
-            continue
-        for arg in list(node.args) + [kw.value for kw in node.keywords]:
-            legs = arg.elts if isinstance(arg, (ast.List, ast.Tuple)) else []
-            for leg in legs:
-                parts = leg.elts if isinstance(leg, (ast.Tuple, ast.List)) else []
-                if parts and _is_reserve_account(parts[0]):
-                    _posting_sites.append((rel, node.lineno, owner.get(node, "<module>")))
+        parts = node.elts
+        # A LEG'S SECOND ELEMENT IS AN AMOUNT, NEVER A STRING. This excludes
+        # pure data declarations that happen to pair account-name strings —
+        # `RETIRED_FOR_FINAL_POR_PREFIXES` is exactly such a tuple — without
+        # excluding anything that could actually post.
+        if (len(parts) == 2 and _is_reserve_account(parts[0])
+                and not (isinstance(parts[1], ast.Constant)
+                         and isinstance(parts[1].value, str))):
+            _posting_sites.append(
+                (rel, node.lineno, owner.get(node, "<module>")))
 
-_assert("exactly one production call site posts a reserve:{...} ledger leg",
-        len(_posting_sites) == 1, f"got {_posting_sites}")
+_found = {(rel, func) for rel, _, func in _posting_sites}
+_assert("every reserve:{...} leg site belongs to the governed set",
+        _found <= PERMITTED_RESERVE_WRITERS,
+        f"unexpected: {sorted(_found - PERMITTED_RESERVE_WRITERS)}")
+_assert("  · and at least one such site still exists to be policed",
+        len(_posting_sites) >= 1, f"got {_posting_sites}")
+_assert("  · the season-allocation site is inside activate_season_allocation()",
+        ("economy/season_allocation.py", "activate_season_allocation") in _found,
+        f"got {sorted(_found)}")
 
-if len(_posting_sites) == 1:
-    rel, lineno, func = _posting_sites[0]
-    _assert("that site lives in economy/season_allocation.py",
-            rel.replace(os.sep, "/") == "economy/season_allocation.py",
-            f"got {rel}:{lineno}")
-    _assert("that site is inside activate_season_allocation()",
-            func == "activate_season_allocation",
-            f"got function {func!r} at {rel}:{lineno}")
+# (b) THE FINAL POR GUARANTEE — each writer is unreachable for a Final POR
+# season. This is what replaced "exactly one": counting sites never proved a
+# season could not reach one, and this does.
+for _rel, _func in sorted(PERMITTED_RESERVE_WRITERS):
+    _assert(f"  · {_rel} consults the ruleset era gate",
+            "is_final_por" in _module_sources.get(_rel, ""),
+            "no era gate found in the module")
+
+_alloc = _module_sources.get("economy/season_allocation.py", "")
+_assert("  · the activation's reserve leg is conditional on the LEGACY era",
+        "if not final_por:" in _alloc
+        and "reserve_account(team_id), stop.reserve_cents" in _alloc)
+
+_stage = _module_sources.get(
+    "economy/fantasystakes_championship_allocation.py", "")
+_assert("  · stage_allocation REFUSES a Final POR season before any posting",
+        "FS_CHAMPIONSHIP_ALLOCATION_RETIRED_ERA" in _stage
+        and _stage.index("is_final_por(db, league_id=league_id, season=season)")
+        < _stage.index("reserve_account(team_id), contribution"),
+        "the era gate does not precede the reserve posting")
 
 _assert("payments/stripe_connect.py no longer exists in the tree",
         not os.path.exists(os.path.join(_repo_root, "payments", "stripe_connect.py")),

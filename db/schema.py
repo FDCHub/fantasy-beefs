@@ -2685,6 +2685,12 @@ class LeagueSeasonEconomyConfig(Base):
         CheckConstraint(
             "active_team_count IS NULL OR active_team_count > 0",
             name="ck_lsec_active_team_count"),
+        # FINAL POR §14 — 0 is a governed choice: a league may play with no
+        # Fantasy Football pot. NULL is the separate "unconfigured" state.
+        CheckConstraint(
+            "ff_championship_pot_cents IS NULL "
+            "OR ff_championship_pot_cents BETWEEN 0 AND 1000000",
+            name="ck_lsec_ff_championship_pot"),
     )
 
     id        = Column(Integer, primary_key=True, autoincrement=True)
@@ -2697,6 +2703,20 @@ class LeagueSeasonEconomyConfig(Base):
     weekly_bet_minimum_cents        = Column(Integer, nullable=False)
     championship_contribution_cents = Column(Integer, nullable=False)
     skunk_fee_cents                 = Column(Integer, nullable=False)
+
+    #: FINAL POR §14 / WP-5 — the Fantasy Football Championship Pot, as ONE
+    #: LEAGUE-LEVEL AMOUNT. Deliberately NOT `championship_contribution_cents`,
+    #: which is the retired architecture's PER-GM contribution and remains the
+    #: governing input for every legacy season. The same integer cannot mean
+    #: both without every reader knowing the era first.
+    #:
+    #: NULL AND 0 ARE DIFFERENT GOVERNED STATES. NULL is "no commissioner has
+    #: entered an amount" — the pillar is unconfigured and mints at zero. 0 is
+    #: "this league deliberately plays with no Fantasy Football pot". Both leave
+    #: the pillar unfunded; a settings screen must render them differently, and
+    #: an audit asking whether the league declined the pot or never saw it has
+    #: an answer only because they are stored apart.
+    ff_championship_pot_cents = Column(Integer, nullable=True)
 
     #: Derived internal economic facts. NULL on a draft — they are computed at
     #: the freeze, from the connected league's own settings and its own teams,

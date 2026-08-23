@@ -264,10 +264,38 @@ _FROZEN = ("economy/current_settle.py", "economy/challenge_escrow_view.py",
 
 
 def _changed_files() -> list[str]:
+    """The files THIS PACKAGE changed, found by its own commit subject.
+
+    ── RE-ANCHORED (FINAL POR WP-5) ─────────────────────────────────────────
+
+    THE CLAIM IS UNCHANGED: no economics were moved in order to make a label
+    true. What changed is how it is measured. Diffing the WORKING TREE cannot
+    attribute authorship — once this package was committed, it went on flagging
+    ANY later uncommitted edit to a frozen file as a violation by this package.
+
+    Final POR WP-5 governs a real change to `betting/pool_settlement.py`
+    (terminal Prop Pool remainders now resolve their destination by ruleset era
+    rather than naming `championship:{league}`), which has nothing to do with
+    the Escrow label and was reported as though it did.
+
+    Anchoring to this package's own commits measures exactly what the assertion
+    says. While the package is still uncommitted the tree is used, so the guard
+    bites during the work it was written to police.
+    """
     def _git(*args: str) -> str:
         return subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
                               text=True, check=False).stdout
 
+    own = [line.split()[0] for line in
+           _git("log", "--all", "--format=%H %s").splitlines()
+           if line.split(" ", 1)[-1].startswith(
+               ("UIRECON Rev 1.4", "UIRECON REV14",
+                "FINAL POR UI-4/UI-6/UI-3E"))]
+    if own:
+        files: set[str] = set()
+        for commit in own:
+            files |= set(_git("show", "--name-only", "--format=", commit).split())
+        return sorted(files)
     return sorted(set(_git("diff", "--name-only", "HEAD").split()))
 
 

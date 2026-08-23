@@ -3,7 +3,7 @@
 **Branch:** `postmvp/final-por-implementation`
 **Base:** `766ea37b076d49bbbb2abb513cf6848941fcf184`
 **HEAD:** see `git rev-parse HEAD` — updated per package.
-**Status:** PARTIAL — 7 of 25 work packages complete. Not pushed, not deployed, not tagged.
+**Status:** PARTIAL — 8 of 25 work packages complete. Not pushed, not deployed, not tagged.
 
 Classification is `DONE` only where there is **executed test evidence**, not a
 change summary. Anything implemented but not certified is marked explicitly.
@@ -18,6 +18,7 @@ change summary. Anything implemented but not certified is marked explicitly.
 | **UI-1** | §31 shared shell/carousel; `mountApplication` → `goTo(DEFAULT)` defect; all 3 families at 3 widths | **DONE** | `web/js/shell.js` — `ACTIVE_DESTINATION_ID`, `captureRailScroll`/`restoreRailScroll`, `goTo(..., {keepSheet})`, `mountApplication({preserveContext})`; all 3 mutation call sites updated | `test_finalpor_ui1_shell_context.py` — 13 PASS / 0 FAIL **in real headless Chrome**. Reader stays on Play; carousel holds 371→371; no horizontal page scroll on any tab at 320×568 / 375×667 / 390×844; all 3 families present (Play 2 `.fs-carousel`, Status 4 `.fs-rail--carousel`, Wrap Up 3 `.fs-rescar`) |
 | **WP-10** | §17 one canonical 60/30/10 + dead heat for all pillars; retire rivals | **DONE** | `economy/championship_distribution.py` (new canonical); `reports/championship_read_model.py::tied_championship_distribution` delegates; `economy/season_reconciliation.py` switched off `economy/championship.py`'s tie-less arithmetic | `test_finalpor_wp10_distribution.py` — 43 PASS / 0 FAIL. §17's three worked examples verbatim (45%/20%/5%), ten pots 0→999,999 conserve, ascending-id remainder, bracket reports no tie |
 | **WP-4** | §5 unused Weekly Minimum → FantasyStakes Championship Pot at WEEK close; no Wallet return, no `expired_min:`, no receivable, no Score effect; retire the Frozen Return | **DONE** | `economy/economy_events.py` — `fantasystakes_championship_account`, `EVENT_WEEKLY_MINIMUM_SWEEP`, `DOOR_WEEKLY_MINIMUM_SWEEP`; `economy/weekly_minimum.py::expire_weekly_minimum` era-gated, `ExpiryResult.destination`; `economy/season_reconciliation.py::reconcile_expired_minimum` returns `retired=True` under Final POR and posts nothing; `economy/season_close_orchestrator.py` reports `expired_min_step_retired`; `api/main.py::WeekCloseOut.minimum_destination`; `economy/fantasystakes_championship_allocation.py::pot_account` now delegates | `test_finalpor_wp4_minimum_sweep.py` — **59 PASS / 0 FAIL**. All ten required proofs: full-consumption sweeps 0, 400-spent sweeps exactly 600, 999-spent sweeps exactly 1, zero-spend sweeps the whole Minimum, door legs sum to 0 and trial balance 0, no `wallet:` leg and every Wallet still 0, no `expired_min:`/`receivable:`/Skunk, Score moves 0 and the door is in neither scoring group by name, Current Settle falls by exactly 600 entirely out of `weekly_min_live` with obligations unchanged, replay grows the pot by 0, and a LEGACY season keeps the old account, event type, door, zero-settle-delta and season-close Wallet return |
+| **WP-5** | §11/§13/§14 league-level minted pots; three season-scoped accounts; retire `reserve:{team}`, `championship:{league}`, bare `championship`, season-less `skunk:`, and the per-GM FS contribution model; Pool terminal remainders → FS Pot | **DONE** | **New:** `economy/championship_pots.py` (mint, `pot_balances`, `funded_pillars`, `no_gm_liability`, `terminal_pool_destination`); `migrations/add_ff_championship_pot.py` + manifest `0012`. **Changed:** `ledger/ledger.py` third door-bound exemption `CHAMPIONSHIP_POT_MINT_DOOR`/`championship_issuance:`; `economy/economy_events.py` pillar registry, `points_championship:`/`ff_championship:`/`championship_issuance:`, `pillar_season_key`, `RETIRED_FOR_FINAL_POR_*`; `economy/season_allocation.py` two-leg advance + `mint_season_pots` + era-aware replay comparison; `economy/skunk.py::skunk_pot_account`; `betting/pool_settlement.py` ×2, `betting/pool_funding.py` ×1 through the resolver; `betting/pool_legacy_guard.py` ruleset marker; `betting/shortfall_sweep.py` retired; `economy/season_reconciliation.py` reserve sweep + legacy consolidation retired; `economy/fantasystakes_championship_allocation.py::stage_allocation` refuses; `db/schema.py` + `economy/league_economy_config.py` + `payments/economy_config.py` FF pot amount | `test_finalpor_wp5_pot_architecture.py` — **104 PASS / 0 FAIL**, F1–F14. Base Pot identical at 4 and 10 GMs (14000 both); `no_gm_liability` reads back every mint leg and finds no GM account; a GM's obligations are 0 and Current Settle 0 after the whole league's pots are minted; FF pot of 0 records its event and posts no leg; Points pot refuses minting and holds exactly the Skunk assessed; a real terminal remainder lands in the FS pot; **no Final POR ledger entry touches any retired namespace**; replay mints 0; a LEGACY season keeps `skunk:{league}`, its reserve sweep and `championship:{league}` unchanged. **F14 runs `activate_season_allocation` end to end on SQLite** — buyin == min_reserve, reserve 0, no `reserve:` account created, snapshot matches posting, Base Pot minted, trial balance 0, replay idempotent |
 | **WP-2 (part)** | §8/§9D Weekly Skunk Fee may be 0 at validator, DB CHECK and API | **DONE** | `economy/league_economy_config.py` `MIN_SKUNK_FEE_CENTS=0`; `db/schema.py` CHECK `BETWEEN 0`; `api/main.py` `Field(ge=0)`; `migrations/relax_skunk_fee_allows_zero.py`; manifest `0011` | `test_finalpor_wp2_skunk_zero.py` — 25 PASS / 0 FAIL. Plus a live SQLite rebuild proof: legacy frozen 2025 row survives byte-for-byte, replay is a no-op, negative still refused, other 4 CHECKs survive |
 | **WP-3** | §9 Skunk season-scoped per-team derivation | **DONE** | `economy/skunk.py::skunk_fees_by_team` / `cumulative_skunk_fees_cents`; `SKUNK_SCORING_EVENT_TYPES` enumerated by name | Same suite. Tied week attributes 2.5+2.5 not 5+5; season 2027 does not inherit 2026; `shortfall_sweep` receivable excluded; non-Skunk event excluded |
 | **WP-7** | §8 FS Score = Matchups + Pools − Skunk; era-gated; positive magnitude | **DONE** | `reports/standings_read_model.py` — `skunk_fees_cents` field, 3-term `net_cents`, `is_final_por` gate, `as_dict`; `api/main.py::StandingsRowOut` | `test_finalpor_wp7_fs_score.py` — 16 PASS / 0 FAIL. Same fixture under each ruleset gives 0 vs −500; Skunk changes *ranking*; Top-Off principal moves Score by exactly 0 while crediting Wallet |
@@ -45,11 +46,10 @@ change summary. Anything implemented but not certified is marked explicitly.
 Each is **NOT IMPLEMENTED**. None was partially applied; there is no half-converted
 account model and no half-applied migration on this branch.
 
-**WP-4 is complete and is no longer listed here.** The next package is **WP-5**.
+**WP-4 and WP-5 are complete and are no longer listed here.** The next package is **WP-6** (Top-Off third leg → FS Pot), which WP-5 has already prepared: the pot account, its mint door and `pot_balances` all exist.
 
 | WP | Requirement | Why it matters |
 |---|---|---|
-| **WP-5** | §11/§13/§14 league-level minted pots; `ff_championship:{L}:{S}`; season-scope `skunk:`; retire `reserve:{team}` and `championship:{league}` new writes; Pool terminal remainders → FS Pot | The pot architecture is unchanged. `championship:{league}` still accretes from 5 paths. |
 | **WP-6** | §15 Top-Off third leg → FS Pot | Top-Off still posts 2 legs. Certified that the Wallet-leg-only cap and obligation derivations remain correct (WP-7 F6), so the leg can be added safely. |
 | **WP-9** | §12 Points Championship pot = actual Skunk assessed, 60/30/10, settles at regular-season end | Still `distribute_season_skunk` → 100% to Points For leader. |
 | **WP-12** | §10 Skunk reverse/re-derive/re-post corrections | `SKUNK_SCORING_EVENT_TYPES` is the seam and is documented for it; correction event types not yet added. |
@@ -107,6 +107,20 @@ originally making** and states why in a comment at the site.
 | `web/tests/e2e_package2.mjs` / `e2e_package3.mjs` | rail wording, preview order, `FANTASYSTAKES ADVANCES`, `Held` | Final POR equivalents |
 | `wp3c_*`, `p4b2_gm`, `p4c5_integration`, `package3_component`, `uirecon_rev14_presentation_browser` | `Held` label | `Escrow` |
 
+### Replaced during WP-4/WP-5 (this continuation) — four more
+
+| File | Encoded | Replaced with |
+|---|---|---|
+| `test_championship_payout.py` Item 8 | "**exactly one** production call site posts a `reserve:{...}` leg" — the RETIRED architecture stated as correct, matched only when the leg tuple was written INLINE in the `post()` call. WP-5 made the leg conditional, so the matcher stopped seeing the very site it existed to police and would have passed while blind. | The claim is kept and strengthened: a leg-shaped reserve tuple is found **however the legs are assembled**; every site must belong to an enumerated governed set by file AND function; and each of those functions must be **era-gated**, so no Final POR season can reach one. A second-element-is-a-string filter excludes pure data declarations without excluding anything that could post. |
+| `test_b1_schema_readiness.py` §5 | "every active migration is verifiable by table or column" — which a data backfill and a widened CHECK legitimately cannot satisfy, so it could not tell a legitimate object-free migration from an author who forgot to fill the fields in. | "verifiable, **or says why it cannot be**", backed by a new required `Migration.adds_no_object` rationale, plus a second assertion that the reason is substantive. A migration that adds objects and forgets to name them still fails — the protection B1 exists to give. |
+| `test_uirecon_wave5.py`, `test_uirecon_rev14_presentation.py` | Scope guards that unioned `git diff --name-only HEAD` — the **working tree** — into "the files this package changed". Once the package was committed this could not attribute authorship, so it flagged **any** later uncommitted edit to a frozen file as a violation by that package. Both fired on WP-5's governed `betting/pool_settlement.py` change. | Re-anchored to each package's **own commits**, found by commit subject, which measures exactly what the assertion says and keeps doing so. If those commits are not reachable the working tree is used as before, so the guard still bites while the package is genuinely in progress. `test_uirecon_wave5.py` additionally asserts the guard really examined a non-empty file set, so it cannot pass by looking at nothing. |
+| `web/tests/uirecon_wave4_browser.mjs` | `titles[0] === 'ON OFFER'` or `'RESULT'` — the pre-UI-3E order. **The previous run replaced this in `e2e_package2.mjs`, `e2e_package3.mjs` and `package2_component_tests.mjs` and missed this file**; it did not surface then because WP-5 is what made the surrounding suite run to that point. | §27E's order asserted directly — LINEUPS leads, the market block is still present, and it sits below LINEUPS — which keeps the original claim (the sheet must not lead with a second copy of the two team names) whole. `test_uirecon_wave4.py` → 186 PASS / 0 FAIL. |
+
+`test_uirecon_wave4.py` also gained an entry in its **existing** `_AUTHORISED_LATER`
+table — the mechanism that file already provides so an exception must be *written
+down* rather than discovered as a silent pass — recording exactly what WP-5 was
+authorised to change in `betting/pool_settlement.py` and which suite pins it.
+
 ---
 
 ## 5. TEST EXECUTION RESULTS
@@ -116,6 +130,7 @@ Final sweep, this branch:
 | Suite | Result |
 |---|---|
 | `test_finalpor_wp4_minimum_sweep.py` | **59 PASS / 0 FAIL** |
+| `test_finalpor_wp5_pot_architecture.py` | **104 PASS / 0 FAIL** |
 | `test_finalpor_wp1_ruleset.py` | 22 PASS / 0 FAIL |
 | `test_finalpor_wp2_skunk_zero.py` | 25 PASS / 0 FAIL |
 | `test_finalpor_wp7_fs_score.py` | 16 PASS / 0 FAIL |
@@ -137,12 +152,17 @@ Final sweep, this branch:
 | `test_s7_p4_rules_commissioner.py` | 367 PASS / 0 FAIL (re-run for WP-4) |
 | `test_wp3b_rev43_foundation.py` / `test_wp3b_standings_read_model.py` | 282 / 66 PASS, 0 FAIL (re-run for WP-4) |
 
+### Previously-known failures — BOTH NOW RESOLVED BY WP-5
+
+| Suite | Was | Now |
+|---|---|---|
+| `test_championship_payout.py` | "exactly one production call site posts a `reserve:{...}` leg" — 3 sites. Predicted to resolve at WP-5. | **17 PASS / 0 FAIL.** Resolved as predicted, and the guard was REPLACED rather than relaxed — see §4. |
+| `test_b1_schema_readiness.py` | `0009_pool_definition_public_question_backfill` declared no verifiable object (pre-existing at base). WP-2 silently added a second offender, `0011_skunk_fee_allows_zero`, which the previous matrix did not record. | **33 PASS / 0 FAIL.** `Migration.adds_no_object` now carries a required written reason; the check demands an object OR a stated reason. A migration that adds objects and forgets to name them still fails. |
+
 ### Known failures NOT caused by this branch (verified at base `766ea37`)
 
 | Suite | Failure | Verification |
 |---|---|---|
-| `test_b1_schema_readiness.py` | `0009_pool_definition_public_question_backfill` declares no verifiable object | Reproduced at base by stash |
-| `test_championship_payout.py` | "exactly one production call site posts a `reserve:{...}` leg" — 3 sites | Reproduced at base. **Resolves when WP-5 retires `stage_allocation`'s reserve legs.** |
 | `test_s7_p1_ui_shell.py` → `e2e_shell.mjs` | `Cannot read properties of null` | Reproduced at base. One of the "known carousel/UI regressions" at 766ea37. |
 
 ### Certification NOT performed
@@ -158,11 +178,21 @@ Final sweep, this branch:
   5433 is made available via `TEST_DATABASE_URL`, PostgreSQL parity becomes runnable
   immediately** — this is the single highest-value unblock available on this branch.
   Until then every PG claim stays NOT RUN.
-- **Browser suites are timing-sensitive** when run in rapid succession — one WP3B run in a back-to-back sweep failed and passed cleanly twice when run alone. Treat isolated browser failures as suspect until re-run.
+- **Browser suites are timing-sensitive** when run in rapid succession — reconfirmed this run: `test_s7_p4_rules_commissioner.py` failed inside a back-to-back sweep and passed cleanly (367 PASS / 0 FAIL) when run alone. Treat isolated browser failures as suspect until re-run.
+- **`test_wp3d_provider_attribution.py` is NOT a usable signal in this environment, and is NOT attributable to WP-4/WP-5.** Measured on four trees: base `766ea37` → 2 failing browser modes / 387 PASS; `6b576c1` (WP-1, a pure backend change touching no `web/js`) → 5 modes / 169 PASS; `604f2b9` (UI-1) → 4 modes / 241 PASS; `fc57288` (previous HEAD, before any of this continuation's work) → 5 modes / 289 PASS. The PASS count swings from 169 to 387 across identical trees, so the suite is non-deterministic here — most likely headless-Chrome resource contention. **WP-4 and WP-5 changed no file under `web/js` at all** (verified by `git diff --name-only fc57288 -- web/js/*` → empty), so no runtime UI behaviour moved. The degradation between base and `fc57288` predates this continuation and is flagged for the UI packages to investigate on a quiet machine.
+- **`test_s4_pool_engine_unit.py` fails on console encoding, not on code.** Windows `cp1252` stdout cannot encode a box-drawing character the suite prints. `PYTHONIOENCODING=utf-8 python test_s4_pool_engine_unit.py` → **53 PASS / 0 FAIL, exit 0**. `betting/pool_engine.py` was not modified by this continuation.
 
 ---
 
 ## 6. DEFECTS FOUND DURING IMPLEMENTATION
+
+### Found and fixed during WP-5
+
+4. **A Final POR season could not be re-activated idempotently.** `activate_season_allocation`'s replay path compares each stored `SeasonAllocation` row against `(stop.buyin_cents, stop.min_reserve_cents, stop.reserve_cents)`. WP-5 makes a Final POR season store `(min_reserve, min_reserve, 0)`, so **every** replay raised `ConflictingAllocationError` — the season's own correct rows read as a conflict with itself. Fixed by computing the expected tuple the way the posting does, from the season's stamped era; a legacy season keeps the original comparison byte for byte. **Found only because WP-5's certification runs a real activation end to end on SQLite (F14)** — the PostgreSQL-only allocation suites that normally cover this function cannot run in this environment, and the source-level assertion in F7 would never have caught it.
+
+5. **`stage_allocation`'s two `reserve:` postings were unreachable-but-ungated.** They were the second and third of the three sites `test_championship_payout` had been failing on. Now refused at function entry for a Final POR season, before any posting, with the era gate asserted to *precede* the posting in source order.
+
+
 
 1. **`posting_id` does not join across `economy_event` and `ledger_entries` on SQLite.** Both are declared `Uuid`; `record_event` inserts `str(uuid)` through raw SQL (dashed, 36 chars) while `ledger.post` inserts through the ORM (dashless, 32 chars). A plain equality join returns **zero rows on SQLite and every row on PostgreSQL**. Nothing had ever joined these two tables, so it had never surfaced. Worked around by normalising both sides at read time; the write format is deliberately unchanged, because normalising it would orphan every `economy_event` row already written on a SQLite deployment. **This remains a latent trap for any future cross-table posting join.**
 

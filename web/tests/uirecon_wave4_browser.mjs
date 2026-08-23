@@ -191,10 +191,27 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
     `${view.title} / ${view.sub}`);
   check('no MATCHUP block restates it',
     !view.titles.includes('MATCHUP'), view.titles.join(' / '));
-  // The identity section is now the SELECTED MARKET, not a second team listing.
-  check('the first section is the market on offer',
-    view.titles[0] === 'ON OFFER' || view.titles[0] === 'RESULT',
-    view.titles[0]);
+  // The identity section is the SELECTED MARKET, not a second team listing.
+  //
+  // FINAL POR UI-3E RESTATED THIS, AND THE ORIGINAL CLAIM IS KEPT WHOLE.
+  // This asserted `titles[0] === 'ON OFFER' || 'RESULT'` at a time when the
+  // market block WAS first. Final POR §27E puts LINEUPS above ON OFFER, so the
+  // literal was stale — the previous run replaced it in e2e_package2.mjs,
+  // e2e_package3.mjs and package2_component_tests.mjs and missed this file.
+  //
+  // What this check has always been for is that the sheet leads with real
+  // content rather than a second copy of the two team names. That is now
+  // asserted directly — the market block must still be PRESENT, LINEUPS must
+  // lead per §27E, and neither may be the pairing restated.
+  check('LINEUPS leads the sheet, per Final POR §27E',
+    view.titles[0] === 'LINEUPS', view.titles.join(' / '));
+  check('the market on offer is still one of the sections',
+    view.titles.includes('ON OFFER') || view.titles.includes('RESULT'),
+    view.titles.join(' / '));
+  check('and it sits below LINEUPS, not above it',
+    view.titles.indexOf('LINEUPS')
+      < Math.max(view.titles.indexOf('ON OFFER'), view.titles.indexOf('RESULT')),
+    view.titles.join(' / '));
   const teamName = ((view.sub || '').split(' vs ')[1] || '').split(' · ')[0].trim();
   check('the opponent name is not repeated as a bare identity row',
     !view.identityRows.some((r) => r.includes(teamName)),

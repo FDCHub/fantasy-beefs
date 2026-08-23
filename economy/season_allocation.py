@@ -159,6 +159,7 @@ import config
 from db.schema import League, LeagueSeasonTopoffConfig, SeasonAllocation, Team
 # ECONCFG-F1 — the activation freeze. Imported for the audit row only; it
 # supplies no number to any posting in this module.
+from economy.championship_pots import mint_season_pots
 from economy.league_economy_config import freeze_economy_config
 from payments.economy_config import (
     ResolvedAllocationTerms, resolve_allocation_terms,
@@ -172,7 +173,7 @@ from economy.economy_events import (
     reserve_account,
 )
 from ledger.ledger import SEASON_ALLOCATION_DOOR, post as ledger_post
-from ruleset import stamp_ruleset
+from ruleset import is_final_por, stamp_ruleset
 
 #: Re-exported for callers/tests; the literal lives in ledger.ledger
 #: beside the funded-balance exemption it activates.
@@ -236,15 +237,26 @@ def _result(
     stop: ResolvedAllocationTerms,
     created: bool,
     posting_ids: tuple[uuid.UUID, ...],
+    final_por: bool = False,
 ) -> SeasonAllocationResult:
+    """The result REPORTS WHAT WAS POSTED, not what the terms priced.
+
+    WP-5: under the Final POR the per-GM Championship Reserve leg is not posted
+    at all, so reporting `stop.reserve_cents` here would tell a commissioner
+    each GM had been advanced a reserve that no ledger entry exists for — and
+    `total_buyin_cents` would overstate the season's whole advance by the
+    retired contribution times the field. The terms still carry the configured
+    championship figure; this object carries the posting."""
+    advance = stop.min_reserve_cents if final_por else stop.buyin_cents
+    reserve = 0 if final_por else stop.reserve_cents
     return SeasonAllocationResult(
         league_id         = league_id,
         season            = config.ALLOCATION_SEASON,
         team_ids          = team_ids,
-        buyin_cents       = stop.buyin_cents,
+        buyin_cents       = advance,
         min_reserve_cents      = stop.min_reserve_cents,
-        reserve_cents     = stop.reserve_cents,
-        total_buyin_cents = stop.buyin_cents * len(team_ids),
+        reserve_cents     = reserve,
+        total_buyin_cents = advance * len(team_ids),
         created           = created,
         posting_ids       = posting_ids,
     )
@@ -447,6 +459,32 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
                     f"an unknown one. Investigate, do not complete."
                 )
 
+            # ── THE COMPARISON IS AGAINST WHAT THIS SEASON'S ERA WOULD POST ──
+            #
+            # WP-5: a Final POR season stores `(min_reserve, min_reserve, 0)`,
+            # because its Championship Reserve leg is never posted. Comparing
+            # that against the terms' un-era-adjusted `(buyin, min_reserve,
+            # reserve)` made EVERY replay of a Final POR season raise
+            # `ConflictingAllocationError` — the season's own correct rows read
+            # as a conflict with itself, and idempotent re-activation was lost.
+            # Caught by the end-to-end activation case in
+            # `test_finalpor_wp5_pot_architecture.py`, which is exactly the
+            # coverage the PostgreSQL-only allocation suites could not give.
+            #
+            # THE GUARANTEE IS UNWEAKENED. It still refuses a stored allocation
+            # that disagrees with what this league-season would issue today; it
+            # simply computes that expectation the way the posting does. The era
+            # is read from the STAMP, which an already-activated season always
+            # has, so a legacy season keeps the original three-value comparison
+            # byte for byte.
+            existing_final_por = is_final_por(
+                db, league_id=league_id, season=config.ALLOCATION_SEASON)
+            expected_tuple = (
+                (stop.min_reserve_cents, stop.min_reserve_cents, 0)
+                if existing_final_por
+                else (stop.buyin_cents, stop.min_reserve_cents,
+                      stop.reserve_cents))
+
             conflicts = [
                 (
                     row.team_id,
@@ -454,14 +492,17 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
                 )
                 for row in existing
                 if (row.buyin_cents, row.min_reserve_cents, row.reserve_cents)
-                != (stop.buyin_cents, stop.min_reserve_cents, stop.reserve_cents)
+                != expected_tuple
             ]
             if conflicts:
                 raise ConflictingAllocationError(
                     f"League {league_id}'s stored "
                     f"season-{config.ALLOCATION_SEASON} allocation "
-                    f"disagrees with its current economy stop. Current stop "
-                    f"(buyin, wallet, reserve) = "
+                    f"disagrees with what its economy would issue today. "
+                    f"Expected (buyin, weekly minimum reserve, championship "
+                    f"reserve) = {expected_tuple} under ruleset "
+                    f"{'FINAL_POR' if existing_final_por else 'LEGACY'}; "
+                    f"current stop is "
                     f"({stop.buyin_cents}, {stop.min_reserve_cents}, {stop.reserve_cents}). "
                     f"Stored, by team: {conflicts}. Refusing to mutate — "
                     f"reposting would split one season across two stops."
@@ -494,7 +535,14 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
             # against that. Only the read transaction opened by the checks above
             # is discarded; there is nothing else to lose.
             db.rollback()
-            return _result(league_id, team_ids, stop, created=False, posting_ids=())
+            # The era is read from the STAMP, which a replay always has: this
+            # season really was activated, so the row records which rules it
+            # was activated under and the result reports that season's shape.
+            return _result(league_id, team_ids, stop, created=False,
+                           posting_ids=(),
+                           final_por=is_final_por(
+                               db, league_id=league_id,
+                               season=config.ALLOCATION_SEASON))
 
         # ── Neither exists: create BOTH atomically. ──
         # The config row goes first, following §2.4's enumeration. Ordering is no
@@ -522,15 +570,41 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
         # raises on a contradiction rather than restamping.
         stamp_ruleset(db, league_id=league_id, season=config.ALLOCATION_SEASON)
 
+        # ── FINAL POR · WP-5 — MODEL B RETIRES THE PER-GM CHAMPIONSHIP LEG ───
+        #
+        # Read through the one gate immediately after stamping, so this branch
+        # and the stamp cannot disagree about which era just began.
+        #
+        # WHAT CHANGES, AND WHY IT IS THE WHOLE POINT. Under the retired
+        # architecture every GM was advanced `reserve:{team}` at activation and
+        # that reserve was swept into the pot at season close, which made the
+        # pot's EXISTENCE a per-GM obligation: each GM carried their share as
+        # debt from day one whether or not they ever competed for it, and
+        # Current Settle counted it. §11 says a championship pot is a
+        # LEAGUE-LEVEL allocation. So the reserve leg is not posted, the
+        # advance is the Weekly Minimum Reserve alone, and the pots are minted
+        # separately against a league-season issuance tally that no GM owes.
+        #
+        # THE SNAPSHOT FOLLOWS THE POSTING, NEVER DIVERGES FROM IT.
+        # `reserve_cents` is recorded as 0 because 0 is what was posted, and
+        # `buyin_cents` becomes the Weekly Minimum Reserve because that is the
+        # whole advance. The documented invariant
+        # `buyin == min_reserve + reserve` still holds exactly.
+        final_por = is_final_por(db, league_id=league_id,
+                                 season=config.ALLOCATION_SEASON)
+        advance_cents = (stop.min_reserve_cents if final_por
+                         else stop.buyin_cents)
+        reserve_cents = 0 if final_por else stop.reserve_cents
+
         posting_ids: list[uuid.UUID] = []
         for team_id in team_ids:
             db.add(SeasonAllocation(
                 league_id     = league_id,
                 team_id       = team_id,
                 season        = config.ALLOCATION_SEASON,
-                buyin_cents   = stop.buyin_cents,
+                buyin_cents   = advance_cents,
                 min_reserve_cents  = stop.min_reserve_cents,
-                reserve_cents = stop.reserve_cents,
+                reserve_cents = reserve_cents,
             ))
             # Three legs, integer cents, summing to zero by economy_config's
             # import-time invariant. session=db keeps these entries inside THIS
@@ -556,13 +630,20 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
             # Zero-sum holds by economy_config's import-time invariant
             # min_reserve_cents + reserve_cents == buyin_cents; it is never
             # recomputed or rounded here.
+            # WP-5: two legs under the Final POR, three under the legacy era.
+            # The reserve leg is OMITTED, not zeroed — a zero leg would be a
+            # posting claiming `reserve:{team}` participated in an advance it
+            # took no part in, which is the same objection S5-P1 made to a zero
+            # Wallet leg. Zero-sum holds in both shapes by construction.
+            legs = [
+                (season_issuance_account(league_id, config.ALLOCATION_SEASON),
+                 -advance_cents),
+                (min_reserve_account(team_id), stop.min_reserve_cents),
+            ]
+            if not final_por:
+                legs.append((reserve_account(team_id), stop.reserve_cents))
             posting_ids.append(ledger_post(
-                [
-                    (season_issuance_account(league_id, config.ALLOCATION_SEASON),
-                     -stop.buyin_cents),
-                    (min_reserve_account(team_id), stop.min_reserve_cents),
-                    (reserve_account(team_id),     stop.reserve_cents),
-                ],
+                legs,
                 door    = SEASON_ALLOCATION_DOOR,
                 session = db,
             ))
@@ -580,9 +661,26 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
                 season    = config.ALLOCATION_SEASON,
                 team_id   = team_id,
                 event_type= EVENT_OPENING_ALLOCATION,
-                amount_cents = stop.buyin_cents,
+                amount_cents = advance_cents,
                 posting_id   = posting_ids[-1],
             )
+
+        # ── WP-5 — THE LEAGUE-LEVEL POTS, MINTED IN THIS SAME TRANSACTION ────
+        #
+        # After every GM's advance, so a season that fails to allocate has no
+        # pots either, and inside the activation transaction for the same reason
+        # the ruleset stamp is: a league with pots really was activated with
+        # them. Each pillar is exactly-once on its own key.
+        #
+        # THE FANTASY FOOTBALL AMOUNT IS THE COMMISSIONER'S OR IT IS ZERO. A
+        # season whose configuration predates the setting, or that never had a
+        # configuration at all, resolves None — which means no amount was
+        # entered, and §14 mints that pillar at 0 rather than inventing a
+        # figure from the per-GM contribution.
+        if final_por:
+            mint_season_pots(
+                db, league_id=league_id, season=config.ALLOCATION_SEASON,
+                fantasy_football_cents=(stop.ff_championship_pot_cents or 0))
 
         # Force the INSERTs (and therefore both final race guards,
         # uq_lstc_league_season and uq_season_allocation_league_team_season) to
@@ -593,7 +691,8 @@ def activate_season_allocation(league_id: int, db: Session) -> SeasonAllocationR
         # posting for every team has succeeded.
         db.commit()
 
-        return _result(league_id, team_ids, stop, created=True, posting_ids=tuple(posting_ids))
+        return _result(league_id, team_ids, stop, created=True,
+                       posting_ids=tuple(posting_ids), final_por=final_por)
 
     except Exception:
         # Covers domain refusals (which wrote nothing anyway), IntegrityError

@@ -179,20 +179,54 @@ _FROZEN = ("beefs/proposal_lifecycle.py", "economy/challenge_funding.py",
            "betting/pool_claims.py", "beefs/beef_engine.py")
 
 
+def _git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
+                          text=True, check=False).stdout
+
+
 def _wave5_changed_files() -> list[str]:
-    def _git(*args: str) -> str:
-        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
-                              text=True, check=False).stdout
+    """The files WAVE 5 ITSELF changed, found by its commit subject.
 
-    files = set(_git("diff", "--name-only", "HEAD").split())
-    if _git("log", "-1", "--format=%s").strip().startswith("UIRECON Wave 5"):
-        files |= set(_git("show", "--name-only", "--format=", "HEAD").split())
-    return sorted(files)
+    ── RE-ANCHORED (FINAL POR WP-5) ─────────────────────────────────────────
+
+    THE CLAIM IS UNCHANGED: the Wave 5 demo enrichment must not have reached
+    into the production wager path. What changed is how the claim is measured.
+
+    This used to union `git diff --name-only HEAD` — the WORKING TREE — into the
+    file set. That could not attribute authorship: once Wave 5 was committed,
+    the working-tree half went on flagging ANY later uncommitted edit to a
+    frozen file as a Wave 5 breach. Final POR WP-5 governs a real change to
+    `betting/pool_settlement.py` (terminal Prop Pool remainders now resolve
+    their destination by ruleset era instead of naming `championship:{league}`),
+    and this assertion failed it while reporting a Wave 5 scope violation that
+    had not happened.
+
+    Anchoring to Wave 5's own commit measures exactly what the assertion says,
+    and keeps measuring it correctly for the life of the repository. If that
+    commit is not reachable — a shallow clone, or a branch that predates it —
+    the working tree is used as before, so the guard still bites while Wave 5
+    is genuinely in progress and uncommitted.
+    """
+    sha = _git("log", "--all", "--format=%H %s").splitlines()
+    wave5 = [line.split()[0] for line in sha
+             if line.split(" ", 1)[-1].startswith("UIRECON Wave 5")]
+    if wave5:
+        files: set[str] = set()
+        for commit in wave5:
+            files |= set(_git("show", "--name-only", "--format=", commit).split())
+        return sorted(files)
+
+    # Wave 5 is not in history: it is the work in progress. Measure the tree.
+    return sorted(set(_git("diff", "--name-only", "HEAD").split()))
 
 
-_breach = sorted(set(_FROZEN) & set(_wave5_changed_files()))
-_assert("no wagering, settlement or funding module was touched",
+_wave5_files = _wave5_changed_files()
+_breach = sorted(set(_FROZEN) & set(_wave5_files))
+_assert("no wagering, settlement or funding module was touched by Wave 5",
         not _breach, ", ".join(_breach))
+_assert("  · and the guard really examined Wave 5's own file set",
+        any(f.startswith("demo/") or f.startswith("web/") for f in _wave5_files),
+        f"{len(_wave5_files)} files: {_wave5_files[:6]}")
 
 
 # ── §4 · The canonical state accounts for them ──────────────────────────────

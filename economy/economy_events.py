@@ -22,6 +22,8 @@ no invariant covers. One definition each, imported everywhere.
 
 from __future__ import annotations
 
+from ledger.ledger import CHAMPIONSHIP_POT_MINT_DOOR
+
 # ── Account names ─────────────────────────────────────────────────────────────
 
 def wallet_account(team_id: int) -> str:
@@ -123,8 +125,90 @@ def fantasystakes_championship_account(league_id: int, season: int) -> str:
     return f"fantasystakes_championship:{league_id}:{season}"
 
 
+def points_championship_account(league_id: int, season: int) -> str:
+    """The league-season Points Championship Pot (Final POR §12).
+
+    THE SEASON-SCOPED SUCCESSOR TO `skunk:{league}`. Its balance is the Skunk
+    ACTUALLY ASSESSED this season and nothing else — not a projection, not a
+    minted allocation. That is why it has no mint door: a Points pot that could
+    be minted could disagree with the fees the league really paid.
+
+    A LEAGUE PLAYING A SECOND SEASON IS THE WHOLE REASON FOR THE SCOPE.
+    `skunk:{league}` accumulates across seasons, so season two would distribute
+    season one's unpaid Skunk. Every other Final POR pot is season-scoped for
+    the same reason: a pot that outlives its season cannot be distributed at
+    the end of one."""
+    return f"points_championship:{league_id}:{season}"
+
+
+def ff_championship_account(league_id: int, season: int) -> str:
+    """The league-season Fantasy Football Championship Pot (Final POR §14).
+
+    ONE COMMISSIONER-ENTERED LEAGUE AMOUNT, WHICH MAY BE ZERO, minted at
+    activation and frozen there. It NEVER accretes: no sweep, no remainder, no
+    Top-Off and no forfeiture is ever credited here. A pot that grows from
+    unrelated sources is a pot whose size no commissioner ever agreed to, and
+    this is the one pillar whose settlement is gated on provider finality — a
+    balance that moved after activation could not be reconciled against the
+    amount the league was told it was playing for."""
+    return f"ff_championship:{league_id}:{season}"
+
+
+def championship_issuance_account(league_id: int, season: int) -> str:
+    """The league-season MINTED-POT issuance tally (Final POR §11, Model B).
+
+    NOT A GM OBLIGATION, AND THAT IS ITS ENTIRE PURPOSE. `season_issuance:` and
+    `bab_issuance:` are both counted against GMs by Current Settle. This third
+    namespace exists so a minted league-level pot is derivable from posted state
+    WITHOUT being derivable as anybody's debt — the distinction Model B rests on.
+
+    Its debit balance is the tally of every Credit this league-season has minted
+    into a championship pot. Exempt from the funded-balance guard under
+    `CHAMPIONSHIP_POT_MINT_DOOR` and under no other door."""
+    return f"championship_issuance:{league_id}:{season}"
+
+
 #: The pre-league-scoping global account. READ for consolidation, never written.
 LEGACY_CHAMPIONSHIP_ACCOUNT = "championship"
+
+#: The three governed Final POR championship pots, by pillar. ENUMERATED so a
+#: reader, a conservation assertion and the Grand Championship's funded-pillar
+#: test all consult ONE list rather than three independent spellings.
+PILLAR_FANTASYSTAKES = "fantasystakes"
+PILLAR_POINTS = "points"
+PILLAR_FANTASY_FOOTBALL = "fantasy_football"
+
+CHAMPIONSHIP_PILLARS: tuple[str, ...] = (
+    PILLAR_FANTASYSTAKES, PILLAR_POINTS, PILLAR_FANTASY_FOOTBALL,
+)
+
+
+def championship_pot_account(pillar: str, league_id: int, season: int) -> str:
+    """The governed pot account for one pillar of one league-season."""
+    if pillar == PILLAR_FANTASYSTAKES:
+        return fantasystakes_championship_account(league_id, season)
+    if pillar == PILLAR_POINTS:
+        return points_championship_account(league_id, season)
+    if pillar == PILLAR_FANTASY_FOOTBALL:
+        return ff_championship_account(league_id, season)
+    raise ValueError(
+        f"{pillar!r} is not a governed championship pillar "
+        f"(known: {CHAMPIONSHIP_PILLARS}).")
+
+
+#: Account namespaces RETIRED for Final POR seasons (WP-5). Kept as data so the
+#: retirement is testable by enumeration rather than by remembering every site.
+#: READABLE FOREVER — every posting already made to these is real history and is
+#: still read by legacy-season close, Current Settle and the Week Ledger. What is
+#: retired is NEW WRITES BY A FINAL POR SEASON, nothing else.
+RETIRED_FOR_FINAL_POR_PREFIXES: tuple[str, ...] = (
+    "reserve:",          # the per-GM Championship Reserve contribution
+    "championship:",     # the season-less league championship pot
+)
+RETIRED_FOR_FINAL_POR_ACCOUNTS: tuple[str, ...] = (
+    LEGACY_CHAMPIONSHIP_ACCOUNT,   # the bare pre-league-scoping account
+    "skunk:",                      # season-less; superseded by points_championship:
+)
 
 
 # ── Event types ───────────────────────────────────────────────────────────────
@@ -147,6 +231,11 @@ EVENT_LEGACY_CHAMPIONSHIP_CONSOLIDATION = "LEGACY_CHAMPIONSHIP_CONSOLIDATION"
 EVENT_CHAMPIONSHIP_DISTRIBUTION = "CHAMPIONSHIP_DISTRIBUTION"
 EVENT_EXPIRED_MINIMUM_RECONCILIATION = "EXPIRED_MINIMUM_RECONCILIATION"
 
+#: WP-5 — one minted league-level pot allocation. The pillar is carried in the
+#: event key, not in three separate event types, so "what did this league-season
+#: mint?" is one query rather than a union of three.
+EVENT_CHAMPIONSHIP_POT_MINT = "CHAMPIONSHIP_POT_MINT"
+
 
 # ── Doors ─────────────────────────────────────────────────────────────────────
 
@@ -159,6 +248,12 @@ DOOR_RESERVE_SWEEP = "championship_reserve_sweep"
 DOOR_LEGACY_CHAMPIONSHIP_CONSOLIDATION = "legacy_championship_consolidation"
 DOOR_CHAMPIONSHIP_DISTRIBUTION = "championship_distribution"
 DOOR_EXPIRED_MINIMUM_RECONCILIATION = "expired_minimum_reconciliation"
+
+#: WP-5. Re-exported from `ledger.ledger`, which OWNS it because the
+#: funded-balance exemption is keyed on it (imported at the top of this file).
+#: Named here by convention with every other door; the literal has ONE
+#: definition, in the module whose guard reads it.
+DOOR_CHAMPIONSHIP_POT_MINT = CHAMPIONSHIP_POT_MINT_DOOR
 
 
 # ── Key builders ──────────────────────────────────────────────────────────────
@@ -180,6 +275,16 @@ def gm_season_key(event_type: str, league_id: int, season: int,
 
 def league_season_key(event_type: str, league_id: int, season: int) -> str:
     return f"{event_type}:{league_id}:{season}"
+
+
+def pillar_season_key(event_type: str, pillar: str, league_id: int,
+                      season: int) -> str:
+    """One league-season event that happens once PER PILLAR (WP-5).
+
+    A fifth key shape, and a necessary one: three pots are minted for the same
+    league-season, so `league_season_key` would make the second and third mint
+    collide with the first and silently mint nothing."""
+    return f"{event_type}:{pillar}:{league_id}:{season}"
 
 
 # ── Recording ─────────────────────────────────────────────────────────────────

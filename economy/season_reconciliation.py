@@ -5,7 +5,9 @@ Four operations, each exactly-once, each its own callable so the close
 orchestrator sequences them rather than hiding them:
 
     sweep_championship_reserves    reserve:{team}    -> championship:{league}
+                                   LEGACY-ERA ONLY; retired by WP-5
     consolidate_legacy_championship  "championship"  -> championship:{league}
+                                   LEGACY-ERA ONLY; retired by WP-5
     distribute_championship        championship:{league} -> winner Wallets
     reconcile_expired_minimum      expired_min:{team}  -> wallet:{team}
                                    LEGACY-ERA ONLY; retired by WP-4 for
@@ -93,6 +95,10 @@ class SweepResult:
     season: int
     swept: tuple[tuple[int, int], ...]
     total_cents: int
+    #: WP-5 — True when the era retired this step. A Final POR season never
+    #: advanced a `reserve:{team}` at all, so a zero total here means two very
+    #: different things across the two eras and the flag is what separates them.
+    retired: bool = False
 
 
 @dataclass(frozen=True)
@@ -139,10 +145,23 @@ def sweep_championship_reserves(db, *, league_id: int,
     """
     from db.schema import League
 
+    from ruleset import is_final_por
+
     now = now or datetime.now(timezone.utc)
     league = db.query(League).filter(League.id == league_id).first()
     season = league.season
     db.flush()
+
+    if is_final_por(db, league_id=league_id, season=season):
+        # RETIRED FOR THIS ERA (WP-5). Model B never advanced a per-GM
+        # Championship Reserve, so there is nothing to consolidate — and the
+        # account it would consolidate INTO, `championship:{league}`, is itself
+        # retired for Final POR writes. Returning empty rather than recording a
+        # zero RESERVE_SWEEP event keeps the season's event log free of a claim
+        # that a sweep happened, which is the same rule WP-4 applied to the
+        # expired-Minimum return.
+        return SweepResult(league_id=league_id, season=season, swept=(),
+                           total_cents=0, retired=True)
 
     legs: list[tuple[str, int]] = []
     swept: list[tuple[int, int]] = []
@@ -191,8 +210,25 @@ def consolidate_legacy_championship(db, *, league_id: int,
     """
     from db.schema import League
 
+    from ruleset import is_final_por
+
     now = now or datetime.now(timezone.utc)
     db.flush()
+
+    league_row = db.query(League).filter(League.id == league_id).first()
+    if league_row is not None and is_final_por(db, league_id=league_id,
+                                               season=league_row.season):
+        # RETIRED FOR THIS ERA (WP-5). This step's only effect is to WRITE to
+        # `championship:{league}`, which is a retired namespace for a Final POR
+        # season. Consolidating into it would create exactly the posting §11
+        # retires, and would do so in the name of tidying up.
+        #
+        # THE LEGACY BALANCE IS LEFT WHERE IT IS, DELIBERATELY. It is a legacy
+        # season's money; nothing here has the authority to re-home it into a
+        # different era's pot, and in practice it is zero — the bare account was
+        # written only by the shortfall sweep, which WP-5 also retires.
+        return 0
+
     legacy = _balance_of_in_session(db, LEGACY_CHAMPIONSHIP_ACCOUNT)
     if legacy == 0:
         return 0

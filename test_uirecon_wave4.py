@@ -213,6 +213,18 @@ _AUTHORISED_LATER = {
     # `test_uirecon_wave4_demo_visibility.py` asserts it is ONLY that: no odds,
     # stake, payout or economic expression may be added to that file.
     "beefs/beef_engine.py",
+    # FINAL POR WP-5 — league-level minted championship pots. Four sites moved
+    # terminal Prop Pool money by naming `championship:{league}` as a literal;
+    # §13 makes a terminal remainder a FantasyStakes Championship Pot addition,
+    # so all four now ask one resolver,
+    # `economy.championship_pots.terminal_pool_destination`, which answers by
+    # ruleset era. The authorised change is the DESTINATION of an already
+    # existing posting and nothing else: no new sweep, no new trigger, no
+    # amount recomputed, and the legacy era resolves the identical account it
+    # always did. `test_finalpor_wp5_pot_architecture.py` F8 pins it — it
+    # requires the literal to be absent from this module, requires the resolver
+    # to be imported, and posts a real remainder end to end under both eras.
+    "betting/pool_settlement.py",
 }
 
 try:
