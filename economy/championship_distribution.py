@@ -33,6 +33,13 @@ the two to agree.
 
     1st 60%   2nd 30%   3rd 10%
 
+ONE STRUCTURAL EXCEPTION, AND ONLY ONE. A Fantasy Football playoff format with
+exactly two teams has no third-place game to win, so it pays 67/33 —
+`TWO_TEAM_PLAYOFF_SPLIT` below. Everything else in this module is unchanged by
+it: the same flooring, the same remainder-to-first rule and the same dead-heat
+pooling apply to a two-place split, because `split` has always been a parameter
+and none of the arithmetic below counts to three.
+
 Percentage flooring leaves a remainder; it goes IN FULL to the first ordinal
 slot, so the pot is conserved exactly. That is the accepted rule and is
 unchanged from both predecessors.
@@ -73,6 +80,29 @@ from itertools import groupby
 
 #: The product's championship split. NOT a commissioner setting (Final POR §17).
 CHAMPIONSHIP_SPLIT: tuple[int, int, int] = (60, 30, 10)
+
+#: THE TWO-TEAM PLAYOFF SPLIT — owner ruling, Fantasy Football Championship.
+#:
+#: A playoff format containing EXACTLY TWO teams has one round, one game and
+#: therefore no official third-place game to win. There is no third place to
+#: pay, so the three-place split cannot apply: 60/30 of a pot leaves 10% with
+#: nobody to give it to, and this module conserves the pot exactly rather than
+#: stranding a tenth of it.
+#:
+#: 67/33 IS THE RULING, NOT A DERIVATION. It is close to 60/30 re-normalised
+#: (66.67/33.33) but it is not that number, and nothing here computes it —
+#: writing it as arithmetic would invite a future edit to "correct" the
+#: rounding and quietly change a payout.
+#:
+#: THIS IS NOT A FALLBACK FOR MISSING DATA, and that distinction is the whole
+#: of the ruling. It applies only when the official playoff STRUCTURE has no
+#: third-place game. A three-or-more-team format whose third-place result is
+#: missing, unavailable or ambiguous stays FAIL-CLOSED and must never be paid
+#: as 67/33 — see `economy/ff_championship_settlement.py`, which is the only
+#: caller and states the test in one place.
+#:
+#: NOT A COMMISSIONER SETTING, exactly as CHAMPIONSHIP_SPLIT is not.
+TWO_TEAM_PLAYOFF_SPLIT: tuple[int, int] = (67, 33)
 
 
 @dataclass(frozen=True)

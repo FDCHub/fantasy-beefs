@@ -276,11 +276,36 @@ infers no winner from a score. Finality is three-valued — `AVAILABLE`,
 `NOT_COMPLETE`, `BLOCKED` — because "nobody has won yet" and "we cannot see the
 bracket" are different operational situations and only the second needs action.
 
-**OPEN PRODUCT QUESTION:** a bracket with **no decided third-place game** cannot
-settle. §17 requires the pot to be conserved exactly, so a two-name podium cannot
-go through the canonical splitter at all. Neither a redistribution rule nor a
-stranding rule is stated anywhere, so this fails closed with a named reason
-rather than one being invented here. **A ruling is required.**
+### The two-team playoff exception — OWNER RULING, LOCKED
+
+| Official playoff field | Split |
+|---|---|
+| 3 or more teams | **60 / 30 / 10**, and the third-place game is REQUIRED |
+| exactly 2 teams | **67 / 33**, and there is no third place |
+
+A two-team format has one round, one game and no semifinal, so §19's third-place
+game cannot exist and there is no third place to pay. 67/33 is the ruling, not a
+re-normalisation of 60/30 — nothing computes it, because arithmetic would invite
+a later "correction" that quietly changes a payout. Both splits sum to 100, so
+the canonical flooring, remainder-to-first and dead-heat pooling conserve the pot
+exactly either way.
+
+**THE EXCEPTION KEYS ON THE STRUCTURE, NEVER ON MISSING DATA.** This is the whole
+of the ruling. A 3+ team format whose third-place result is missing, unavailable
+or ambiguous **must not** be paid 67/33 — that would turn a provider outage into
+a permanent 33% raise for the runner-up, and the GM who earned third would never
+be paid. Such a format stays **fail-closed** until the official third-place
+result can be determined.
+
+So the test is `official_field_size(state) == 2`, read from the provider's own
+declared championship field, and the structure is decided **before** any
+third-place game is consulted. A state that cannot state its field size is
+`FF_FIELD_SIZE_UNKNOWN` — BLOCKED, never assumed to be either shape.
+
+Neither percentage is commissioner-editable.
+
+- `economy/championship_distribution.py::TWO_TEAM_PLAYOFF_SPLIT`
+- `economy/ff_championship_settlement.py::official_field_size` / `is_two_team_playoff`
 
 - `economy/ff_championship_settlement.py` — `test_finalpor_wp11_ff_championship.py` — 49 PASS
 
@@ -290,6 +315,11 @@ rather than one being invented here. **A ruling is required.**
 
 **60 / 30 / 10**, one implementation, all three pillars. Not a commissioner
 setting.
+
+**ONE STRUCTURAL EXCEPTION**, and only one: a Fantasy Football playoff format
+with exactly two teams pays **67 / 33**, because it has no third-place game to
+win. See §9c. Nothing else in this section changes — `split` has always been a
+parameter and none of the arithmetic below counts to three.
 
 Percentage flooring leaves a remainder; it goes **in full to the first ordinal
 slot**, so the pot is conserved exactly.
@@ -410,7 +440,8 @@ Exact cents; indivisible remainder by ascending participant id.
 - **Yahoo provider authorization state: UNKNOWN.** No credentials in the
   environment. UNKNOWN fails closed everywhere.
 - **Yahoo postseason bracket classification: BLOCKED** (PROV-1 / PROV-2). See §9c.
-- **A bracket with no third-place game: OPEN.** See §9c. A ruling is required.
+- **A bracket with no third-place game: RULED AND IMPLEMENTED.** See §9c — a
+  two-team format pays 67/33; every other format stays fail-closed.
 - **PostgreSQL parity: NOT RUN.** No `TEST_DATABASE_URL`. Every `*_pg.py` suite is
   unexecuted; each refuses cleanly rather than falling back.
 

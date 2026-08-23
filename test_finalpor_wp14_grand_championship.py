@@ -94,6 +94,12 @@ class _Bracket:
     champion_team_key: str = KEYS[4]
     finalist_team_keys: tuple = (KEYS[4], KEYS[3])
     third_place_matchup: object = _Game(winner_team_key=KEYS[2])
+    # A FOUR-TEAM OFFICIAL FIELD, so this bracket takes the standard 60/30/10.
+    # Required since the two-team playoff ruling: the settlement decides the
+    # structure from the declared field size BEFORE it looks for a third-place
+    # game, precisely so a missing field cannot be read as a two-team format.
+    championship_field_team_keys: frozenset = frozenset(
+        {KEYS[1], KEYS[2], KEYS[3], KEYS[4]})
 
 
 def _build(*, final_por: bool = True, postseason_played: bool = True):

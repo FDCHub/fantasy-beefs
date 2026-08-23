@@ -40,21 +40,27 @@ certified in `season.championship_track._identify_third_place` — admits only a
 game between exactly the two championship semifinal losers, affirmatively
 classified NON_CHAMPIONSHIP, and refuses ambiguity rather than picking.
 
-A BRACKET WITH NO DECIDED THIRD PLACE REFUSES, AND DOES NOT PARTIALLY PAY.
-That is not a preference; it is what the surrounding rules leave available.
-§17 fixes the split at 60/30/10 and requires the pot to be conserved exactly —
-`distribute_championship` asserts it and raises on a shortfall — so a two-name
-podium cannot be paid through the canonical splitter at all. The alternatives
-were to redistribute the 10% or to leave it stranded in the pot, and the POR
-states neither: §19's whole posture is fail-closed, and the POR's instruction
-for this pillar is to keep settlement fail-closed and mark provider finality
-BLOCKED rather than invent. Inventing a redistribution rule here would be
-deciding a product question in code.
+── THE TWO-TEAM PLAYOFF EXCEPTION — OWNER RULING ───────────────────────────
 
-SO A LEAGUE THAT PLAYS NO THIRD-PLACE GAME CANNOT SETTLE THIS PILLAR YET, and
-that is reported as `FINALITY_NOT_COMPLETE` with the exact reason rather than as
-a silent zero. It is a flagged open product question, not a defect to be papered
-over: the governed answer for a two-place bracket has not been stated.
+    official playoff field of 3+ teams   60 / 30 / 10, third place REQUIRED
+    official playoff field of exactly 2  67 / 33, and there is no third place
+
+A two-team format has one round, one game and no semifinal, so there is no
+official third-place game to win and no third place to pay. It is not that the
+third-place result is missing — it is that the structure does not contain one.
+
+THE EXCEPTION KEYS ON THE STRUCTURE, NEVER ON THE ABSENCE OF DATA, and that
+distinction is the entire ruling. A four-team format whose third-place game is
+unplayed, unreported or ambiguously classified MUST NOT be paid 67/33: that
+would convert a provider outage into a permanent 33% raise for the runner-up
+and a GM who earned third would never be paid at all. Such a format stays
+FAIL-CLOSED until the official third-place result can be determined, exactly as
+before.
+
+So the test is `official_field_size(state) == 2`, read from the provider's own
+declared championship field — not "did we find a third-place game?", which is
+the question that cannot tell the two situations apart. A state that cannot
+state its field size is BLOCKED rather than assumed to be either shape.
 
 ── A KNOCKOUT PRODUCES NO DEAD HEAT, AND THAT IS ASSERTED RATHER THAN ASSUMED ─
 
@@ -78,7 +84,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from economy.championship_distribution import (
-    distribute_championship, podium_standings,
+    CHAMPIONSHIP_SPLIT, TWO_TEAM_PLAYOFF_SPLIT, distribute_championship,
+    podium_standings,
 )
 from economy.economy_events import (
     DOOR_CHAMPIONSHIP_DISTRIBUTION,
@@ -107,6 +114,12 @@ REASON_EMPTY_POT = "FF_EMPTY_POT"
 REASON_UNRESOLVED_TEAM = "FF_UNRESOLVED_TEAM"
 REASON_NO_WALLET = "FF_NO_WALLET"
 REASON_LEAGUE_NOT_FOUND = "FF_LEAGUE_NOT_FOUND"
+REASON_FIELD_SIZE_UNKNOWN = "FF_FIELD_SIZE_UNKNOWN"
+
+#: The two governed playoff structures, named so a result, a log line and a
+#: settings screen can all say which one paid without re-deriving it.
+STRUCTURE_STANDARD = "STANDARD_WITH_THIRD_PLACE"
+STRUCTURE_TWO_TEAM = "TWO_TEAM_PLAYOFF"
 
 #: The provider-finality verdict. Deliberately three-valued rather than a bool:
 #: "the bracket says nobody won yet" and "we cannot see the bracket at all" are
@@ -132,21 +145,40 @@ class ProviderFinality:
 
 @dataclass(frozen=True)
 class FFPodium:
-    """The bracket's podium, in provider team keys. Always exactly three.
+    """The bracket's podium, in provider team keys, best first.
 
-    THREE, NEVER TWO. §17's split must conserve the pot exactly, so a podium
-    that cannot name a third place cannot be paid at all — `podium()` refuses
-    before constructing one. Making the field non-optional is what stops a
-    partial podium from reaching the splitter and failing there instead."""
+    THREE NAMES, OR EXACTLY TWO UNDER THE TWO-TEAM PLAYOFF RULING. `third_team_
+    key` is None only when `structure` is `STRUCTURE_TWO_TEAM` — a format that
+    HAS no third-place game — and never because a third-place result could not
+    be read. `podium()` enforces that pairing; nothing downstream has to
+    re-derive which situation it is in, and a podium object cannot represent
+    "we could not find third place", which is the state that must fail closed
+    rather than be paid."""
 
     champion_team_key: str
     runner_up_team_key: str
-    third_team_key: str
+    third_team_key: str | None
+    structure: str
+    #: The official playoff field size the structure was decided from.
+    field_size: int
 
     @property
-    def ordered_keys(self) -> tuple[str, str, str]:
-        return (self.champion_team_key, self.runner_up_team_key,
-                self.third_team_key)
+    def ordered_keys(self) -> tuple[str, ...]:
+        keys = [self.champion_team_key, self.runner_up_team_key]
+        if self.third_team_key is not None:
+            keys.append(self.third_team_key)
+        return tuple(keys)
+
+    @property
+    def split(self) -> tuple[int, ...]:
+        """The governed split for this structure. Never computed from a count.
+
+        Chosen from `structure` rather than from `len(ordered_keys)` so a podium
+        that somehow lost a name cannot silently promote itself into the
+        two-team ruling."""
+        return (TWO_TEAM_PLAYOFF_SPLIT
+                if self.structure == STRUCTURE_TWO_TEAM
+                else CHAMPIONSHIP_SPLIT)
 
 
 @dataclass(frozen=True)
@@ -158,6 +190,11 @@ class FFSettlementResult:
     #: (team_id, place, award_cents)
     placements: tuple[tuple[int, int, int], ...]
     replayed: bool
+    #: Which governed structure paid, and the split it used. Reported so a
+    #: reader never has to infer 67/33 from the amounts.
+    structure: str = STRUCTURE_STANDARD
+    split: tuple = CHAMPIONSHIP_SPLIT
+    field_size: int = 0
 
 
 def pot_cents(db, *, league_id: int, season: int) -> int:
@@ -204,6 +241,37 @@ def provider_finality(state) -> ProviderFinality:
     return ProviderFinality(FINALITY_AVAILABLE, ())
 
 
+def official_field_size(state) -> int | None:
+    """How many teams the provider says entered the official playoff.
+
+    THE STRUCTURE'S OWN NUMBER, not a count of anything this module found.
+    `championship_field_team_keys` is the provider's declaration of WHICH teams
+    entered — the same field `season.championship_track` refuses to infer from
+    round-one matchups, because a bye team appears in none of them. Counting
+    matchups, or counting the names on a podium, would answer a different
+    question and would make a two-team ruling reachable by data loss.
+
+    None means the field cannot be stated. That is BLOCKED, not "assume two":
+    a format whose size is unknown might be a four-team bracket whose
+    third-place game simply has not been read yet.
+    """
+    keys = getattr(state, "championship_field_team_keys", None)
+    if not keys:
+        return None
+    return len(keys)
+
+
+def is_two_team_playoff(state) -> bool:
+    """Whether the OFFICIAL format contains exactly two playoff teams.
+
+    A two-team field is one round and one game, so it has no semifinal and
+    therefore no official third-place game — which is the condition the owner
+    ruling names. Derived from the declared field size and from nothing else,
+    so an absent third-place game can never make this true on its own.
+    """
+    return official_field_size(state) == 2
+
+
 def podium(state) -> FFPodium:
     """The bracket podium, or a named refusal. Reads only the track state.
 
@@ -229,25 +297,67 @@ def podium(state) -> FFPodium:
             "the bracket's finalists do not include a team other than the "
             "champion; a runner-up cannot be identified without guessing.")
 
+    # ── THE STRUCTURE IS DECIDED FIRST, FROM THE FIELD SIZE ─────────────────
+    #
+    # Before asking anything about a third-place game, establish whether the
+    # official format HAS one. Asking in the other order is exactly the mistake
+    # the ruling forbids: "no third-place game found" would then mean both "the
+    # format has none" and "we could not read it", and only the first may pay.
+    field_size = official_field_size(state)
+    if field_size is None:
+        raise FFChampionshipError(
+            REASON_FIELD_SIZE_UNKNOWN,
+            "the provider states no championship field, so the official "
+            "playoff size is unknown. The two-team ruling applies only to a "
+            "format that HAS no third-place game, and an unknown size cannot "
+            "be assumed to be one — a four-team bracket whose third-place "
+            "result has simply not been read yet looks identical from here.")
+
+    if field_size == 2:
+        # THE ONE EXCEPTION. One round, one game, no semifinal, so §19's
+        # third-place game cannot exist and 67/33 pays the whole pot.
+        #
+        # A THIRD-PLACE GAME IS NOT EVEN CONSULTED HERE, because a two-team
+        # format that somehow reported one would be describing a structure it
+        # does not have, and reading it would be treating that contradiction as
+        # data.
+        return FFPodium(champion_team_key=champion,
+                        runner_up_team_key=runner_up,
+                        third_team_key=None,
+                        structure=STRUCTURE_TWO_TEAM,
+                        field_size=field_size)
+
+    # ── EVERY OTHER FORMAT REQUIRES A DECIDED THIRD PLACE ───────────────────
+    #
+    # Unchanged, and deliberately: this is the fail-closed path the ruling
+    # explicitly preserves. Three or more playoff teams means the format has a
+    # third-place game; a missing, unread or ambiguous result is a reason to
+    # wait, never a reason to pay 67/33.
     game = getattr(state, "third_place_matchup", None)
     if game is None:
         raise FFChampionshipError(
             REASON_PROVIDER_BLOCKED,
-            "the bracket identifies no official third-place game (§19 admits "
-            "only a game between exactly the two championship semifinal "
-            "losers, affirmatively classified NON_CHAMPIONSHIP). §17's split "
-            "must conserve the pot exactly, so a two-name podium cannot be "
-            "paid; refusing rather than inventing a third finisher or a "
-            "redistribution rule the POR does not state.")
+            f"the official playoff field is {field_size} teams, so this format "
+            f"HAS an official third-place game, and the bracket identifies "
+            f"none (§19 admits only a game between exactly the two "
+            f"championship semifinal losers, affirmatively classified "
+            f"NON_CHAMPIONSHIP). Refusing rather than paying the two-team "
+            f"67/33 split, which would convert a provider gap into a "
+            f"permanent raise for the runner-up and would never pay the GM "
+            f"who earned third.")
     if not getattr(game, "is_decided", False):
         raise FFChampionshipError(
             REASON_PROVIDER_BLOCKED,
-            "the official third-place game is identified but not decided "
-            "(final AND carrying a provider-declared winner). A tie is an "
-            "undecided game, not a dead heat.")
+            f"the official third-place game is identified but not decided "
+            f"(final AND carrying a provider-declared winner). A tie is an "
+            f"undecided game, not a dead heat. The {field_size}-team format "
+            f"has a third place to pay and it stays fail-closed until the "
+            f"provider declares it.")
 
     return FFPodium(champion_team_key=champion, runner_up_team_key=runner_up,
-                    third_team_key=game.winner_team_key)
+                    third_team_key=game.winner_team_key,
+                    structure=STRUCTURE_STANDARD,
+                    field_size=field_size)
 
 
 def settle(db, *, league_id: int, state, season: int | None = None,
@@ -308,8 +418,16 @@ def settle(db, *, league_id: int, state, season: int | None = None,
 
     # A KNOCKOUT HAS NO DEAD HEAT. Descending ordinals give each finisher a
     # distinct rank value, so the canonical split reports no tie — which is
-    # correct: a bracket produces one champion, one runner-up and one third.
-    placements = distribute_championship(pot, podium_standings(team_ids))
+    # correct: a bracket produces one champion, one runner-up and (unless the
+    # format is two teams) one third.
+    #
+    # THE SPLIT COMES FROM THE PODIUM'S STRUCTURE, not from how many names it
+    # happens to carry. Both splits sum to 100, so the canonical arithmetic
+    # conserves the pot exactly either way — the flooring, the
+    # remainder-to-first rule and the dead-heat pooling are unchanged and none
+    # of them counts to three.
+    placements = distribute_championship(pot, podium_standings(team_ids),
+                                         split=board.split)
 
     for placement in placements:
         if placement.amount_cents <= 0:
@@ -341,4 +459,6 @@ def settle(db, *, league_id: int, state, season: int | None = None,
         league_id=league_id, season=season, pot_cents=pot, paid_cents=paid,
         placements=tuple((p.team_id, p.place, p.amount_cents)
                          for p in placements),
-        replayed=False)
+        replayed=False,
+        structure=board.structure, split=board.split,
+        field_size=board.field_size)

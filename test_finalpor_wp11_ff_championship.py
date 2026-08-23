@@ -11,6 +11,8 @@
     F8  an unresolvable provider team key refuses rather than paying a guess
     F9  exactly-once, and the legacy era is refused
     F10 nothing here reads a provider payload or classifies a matchup
+    F11 the TWO-TEAM PLAYOFF exception pays 67/33 and conserves
+    F12 a missing third place in a 3+ team format NEVER triggers 67/33
 
 WHAT IS AND IS NOT CERTIFIED HERE. Everything downstream of the seam — the pot,
 the podium arithmetic, exactly-once payment, conservation, the era gate and
@@ -38,9 +40,14 @@ import ledger.ledger as ledger_module
 from db.schema import Base, League, Team, Wallet
 from economy.championship_pots import mint_fantasy_football_pot
 from economy.economy_events import ff_championship_account
+from economy.championship_distribution import (
+    CHAMPIONSHIP_SPLIT, TWO_TEAM_PLAYOFF_SPLIT,
+)
 from economy.ff_championship_settlement import (
     FINALITY_AVAILABLE, FINALITY_BLOCKED, FINALITY_NOT_COMPLETE,
-    FFChampionshipError, podium, pot_cents, provider_finality, settle,
+    STRUCTURE_STANDARD, STRUCTURE_TWO_TEAM, FFChampionshipError,
+    is_two_team_playoff, official_field_size, podium, pot_cents,
+    provider_finality, settle,
 )
 from ruleset import RULESET_FINAL_POR, stamp_ruleset
 
@@ -88,6 +95,11 @@ class _State:
     champion_team_key: str | None = KEYS[1]
     finalist_team_keys: tuple = (KEYS[1], KEYS[2])
     third_place_matchup: object = None
+    # THE OFFICIAL PLAYOFF FIELD. Four teams by default, which is the format
+    # that HAS a third-place game -- so every pre-existing case in this suite
+    # still exercises the fail-closed path it was written for.
+    championship_field_team_keys: frozenset = frozenset(
+        {KEYS[1], KEYS[2], KEYS[3], KEYS[4]})
 
 
 DECIDED_THIRD = _Game(winner_team_key=KEYS[3], is_decided=True)
@@ -201,8 +213,14 @@ try:
 except FFChampionshipError as exc:
     _assert("a bracket naming no third-place game refuses",
             exc.reason == "FF_PROVIDER_FINALITY_BLOCKED", exc.reason)
-    _assert("  · and explains that §17 must conserve the pot exactly",
-            "conserve the pot exactly" in str(exc), str(exc)[:100])
+    # THE REFUSAL'S REASON CHANGED UNDER THE OWNER RULING, and the change is
+    # the point. It used to say "a two-name podium cannot be paid because §17
+    # must conserve the pot"; a two-name podium CAN now be paid, at 67/33, but
+    # only when the FORMAT has no third-place game. A four-team format that
+    # cannot show one is a provider gap, and the message now says exactly that
+    # -- naming the field size, so an operator can tell the two apart.
+    _assert("  · and explains that this FORMAT has a third place to pay",
+            "HAS an official third-place game" in str(exc), str(exc)[:140])
 
 # The reason this refuses rather than paying 60/30: the canonical splitter
 # itself will not conserve a two-name podium. Demonstrated directly.
@@ -357,6 +375,158 @@ _assert("  · and the decided predicate is the track's, not a local one",
         "is_decided" in src and "def is_decided" not in src)
 _assert("  · finality is derived from the supplied state alone",
         "def provider_finality(state)" in src)
+
+
+# -- F11 . the two-team playoff exception ------------------------------------
+
+print("\nWP11-F11 " + chr(0x00b7) + " a TWO-TEAM playoff pays 67/33")
+
+TWO_TEAM = _State(
+    championship_field_team_keys=frozenset({KEYS[1], KEYS[2]}),
+    third_place_matchup=None)
+
+_assert("the official field size is read from the provider's declaration",
+        official_field_size(TWO_TEAM) == 2,
+        str(official_field_size(TWO_TEAM)))
+_assert("  . and a two-team format is recognised as one",
+        is_two_team_playoff(TWO_TEAM) is True)
+_assert("  . while a four-team format is not",
+        is_two_team_playoff(_State()) is False)
+
+two = podium(TWO_TEAM)
+_assert("a two-team podium names exactly two finishers",
+        two.ordered_keys == (KEYS[1], KEYS[2]), str(two.ordered_keys))
+_assert("  . with no third place at all", two.third_team_key is None)
+_assert("  . declared as the two-team structure",
+        two.structure == STRUCTURE_TWO_TEAM, two.structure)
+_assert("  . and it takes the 67/33 split",
+        two.split == TWO_TEAM_PLAYOFF_SPLIT, str(two.split))
+_assert("  . which is a governed constant summing to 100",
+        sum(TWO_TEAM_PLAYOFF_SPLIT) == 100
+        and TWO_TEAM_PLAYOFF_SPLIT == (67, 33), str(TWO_TEAM_PLAYOFF_SPLIT))
+
+two_db = _build()
+two_result = settle(two_db, league_id=LEAGUE, state=TWO_TEAM, now=NOW)
+two_db.commit()
+two_by = {t: (place, amount) for t, place, amount in two_result.placements}
+
+_assert("the champion takes 67% of a 10000 pot",
+        two_by[1][1] == 6_700, str(two_by[1][1]))
+_assert("  . the runner-up takes 33%", two_by[2][1] == 3_300,
+        str(two_by[2][1]))
+_assert("  . nobody else is paid",
+        all(t not in two_by for t in (3, 4)), str(sorted(two_by)))
+_assert("  . the whole pot is conserved", two_result.paid_cents == POT,
+        f"{two_result.paid_cents} of {POT}")
+_assert("  . the pot account is drained",
+        _bal(two_db, ACCOUNT) == 0, str(_bal(two_db, ACCOUNT)))
+_assert("  . the trial balance is zero",
+        ledger_module.trial_balance() == 0)
+_assert("  . and the result SAYS which structure paid, so nobody infers it",
+        two_result.structure == STRUCTURE_TWO_TEAM
+        and tuple(two_result.split) == TWO_TEAM_PLAYOFF_SPLIT
+        and two_result.field_size == 2,
+        f"{two_result.structure} {two_result.split} field={two_result.field_size}")
+
+# An indivisible pot still conserves, and the remainder goes to first.
+from economy.championship_distribution import (  # noqa: E402
+    distribute_championship as _dist, podium_standings as _pods,
+)
+
+for odd_pot in (999, 1, 3, 12_345):
+    parts = _dist(odd_pot, _pods([1, 2]), split=TWO_TEAM_PLAYOFF_SPLIT)
+    _assert(f"  . a pot of {odd_pot} conserves exactly under 67/33",
+            sum(p.amount_cents for p in parts) == odd_pot,
+            str([p.amount_cents for p in parts]))
+_assert("  . and an exact two-way dead heat pools 67+33 and splits it",
+        [p.amount_cents for p in _dist(1_000, ((7, 5), (8, 5)),
+                                       split=TWO_TEAM_PLAYOFF_SPLIT)]
+        == [500, 500])
+
+
+# -- F12 . the exception is NOT a fallback for missing data ------------------
+
+print("\nWP11-F12 " + chr(0x00b7) + " missing third-place data NEVER triggers 67/33")
+
+for label, state in (
+    ("a four-team format with NO third-place game",
+     _State(third_place_matchup=None)),
+    ("a four-team format whose third-place game is UNDECIDED",
+     _State(third_place_matchup=TIED_THIRD)),
+    ("a six-team format with no third-place game",
+     _State(championship_field_team_keys=frozenset(
+         {KEYS[1], KEYS[2], KEYS[3], KEYS[4], "k5", "k6"}),
+        third_place_matchup=None)),
+    ("a THREE-team format with no third-place game",
+     _State(championship_field_team_keys=frozenset(
+         {KEYS[1], KEYS[2], KEYS[3]}), third_place_matchup=None)),
+):
+    guard = _build()
+    try:
+        settle(guard, league_id=LEAGUE, state=state, now=NOW)
+        _assert(f"{label} is refused", False, "accepted -- it paid something")
+    except FFChampionshipError as exc:
+        guard.rollback()
+        _assert(f"{label} is refused",
+                exc.reason == "FF_PROVIDER_FINALITY_BLOCKED", exc.reason)
+    _assert("  . and paid nobody",
+            all(_bal(guard, f"wallet:{t}") == 0 for t in TEAMS)
+            and _bal(guard, ACCOUNT) == POT,
+            f"pot={_bal(guard, ACCOUNT)}")
+
+# THE REFUSAL SAYS WHY, naming the field size, so an operator can tell a
+# structural exception apart from a provider gap without reading the code.
+gap = _build()
+try:
+    settle(gap, league_id=LEAGUE, state=_State(third_place_matchup=None),
+           now=NOW)
+except FFChampionshipError as exc:
+    gap.rollback()
+    _assert("the refusal names the field size that requires a third place",
+            "4 teams" in str(exc), str(exc)[:120])
+    _assert("  . and says paying 67/33 would be a permanent raise",
+            "permanent raise" in str(exc), str(exc)[:200])
+
+# An UNKNOWN field size is BLOCKED, and is a DIFFERENT refusal from a gap.
+unknown_field = _build()
+try:
+    settle(unknown_field, league_id=LEAGUE,
+           state=_State(championship_field_team_keys=frozenset()), now=NOW)
+    _assert("an unknown field size is refused", False, "accepted")
+except FFChampionshipError as exc:
+    unknown_field.rollback()
+    _assert("an unknown field size is refused",
+            exc.reason == "FF_FIELD_SIZE_UNKNOWN", exc.reason)
+    _assert("  . by its own reason code, not the third-place one",
+            exc.reason != "FF_PROVIDER_FINALITY_BLOCKED")
+
+_assert("the standard split is untouched at 60/30/10",
+        CHAMPIONSHIP_SPLIT == (60, 30, 10), str(CHAMPIONSHIP_SPLIT))
+_assert("  . and a four-team settlement still reports it",
+        settle(_build(), league_id=LEAGUE,
+               state=_State(third_place_matchup=DECIDED_THIRD),
+               now=NOW).structure == STRUCTURE_STANDARD)
+
+import economy.ff_championship_settlement as _ffs  # noqa: E402
+
+_src = inspect.getsource(_ffs)
+_assert("the structure is decided BEFORE any third-place game is read",
+        _src.index("field_size = official_field_size(state)")
+        < _src.index('game = getattr(state, "third_place_matchup"'),
+        "the third-place question is asked first")
+# WALKED AS AN AST, NOT GREPPED. The module's own docstring explains that the
+# split is chosen from `structure` RATHER than from `len(ordered_keys)`, so a
+# text search finds the explanation and not a call -- which is how this first
+# failed while the code was correct.
+_ff_tree = ast.parse(_src)
+_len_args = [
+    getattr(n.args[0], "attr", getattr(n.args[0], "id", ""))
+    for n in ast.walk(_ff_tree)
+    if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "len" and n.args
+]
+_assert("  . neither split is derived from a count of podium names",
+        not any(a in ("ordered_keys", "team_ids") for a in _len_args),
+        str(_len_args))
 
 
 print()

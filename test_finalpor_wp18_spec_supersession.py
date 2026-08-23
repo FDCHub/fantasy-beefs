@@ -243,8 +243,16 @@ _assert("Yahoo authorization is stated UNKNOWN",
         "authorization state: UNKNOWN" in SPEC or "UNKNOWN" in SPEC)
 _assert("  · bracket classification is stated BLOCKED",
         "BLOCKED" in SPEC and "PROV-1" in SPEC)
-_assert("  · the third-place question is stated OPEN, not implied settled",
-        "OPEN PRODUCT QUESTION" in SPEC and "A ruling is required" in SPEC)
+# OWNER RULING, LOCKED — the third-place question is no longer open, so the
+# spec must now state the RULING rather than the question. The claim is
+# unchanged in kind: the spec must not imply a settled answer it does not have,
+# and must not leave a ruled answer unstated either.
+_assert("  · the two-team playoff ruling is stated, with both splits",
+        "67 / 33" in SPEC and "60 / 30 / 10" in SPEC
+        and "exactly 2 teams" in SPEC)
+_assert("  · and it says the exception keys on STRUCTURE, not missing data",
+        "NEVER ON MISSING DATA" in SPEC.upper()
+        and "fail-closed" in SPEC)
 _assert("  · PostgreSQL parity is stated NOT RUN",
         "NOT RUN" in SPEC and "TEST_DATABASE_URL" in SPEC)
 _assert("  · and nothing blocked is described as done",
