@@ -214,9 +214,16 @@ _assert("aligned to the same gutter as the tab header",
 # then the standings.
 _assert("the CHAMPIONSHIP CHASE subheading is kept",
         "'CHAMPIONSHIP CHASE'" in STANDINGS_JS)
+# FINAL POR UI-2 §26 restated the sentence. The claim is unchanged — the
+# explanation is KEPT and is still rendered by `championshipExplainer` between
+# the subheading and the tables, which the next assertion still proves — and
+# only the words moved, to the ones §26 approves.
 _assert("the championship explanation is kept",
         "championshipExplainer" in STANDINGS_JS
-        and "Championship Score is your net winnings" in STANDINGS_JS)
+        and "Your FantasyStakes Score determines your championship standing."
+        in STANDINGS_JS)
+_assert("  · and states the three-term identity (§26)",
+        "FantasyStakes Score = Matchups + Prop Pools" in STANDINGS_JS)
 _assert("it is rendered between the subheading and the standings",
         STANDINGS_JS.index("championshipSubheading()")
         < STANDINGS_JS.index("championshipExplainer()")
@@ -272,11 +279,16 @@ _assert("Current Settle renders through ledgerSection()",
 _settle_src = _ledger_code.split("function currentSettleSection")[1]
 _assert("it is numbered 4", "number: '4'" in _settle_src)
 _assert("and titled CURRENT SETTLE", "title: 'CURRENT SETTLE'" in _settle_src)
-# §14.2 — the figure the tab exists to derive may not require expansion. Same
-# affordance as its siblings; different starting state, for the reason the POR
-# gives.
-_assert("it opens by default, so the figure needs no tap",
-        "open: true" in _settle_src)
+# FINAL POR UI-6 §30 — ALL FOUR ACCOUNT CARDS START CLOSED.
+#
+# §14.2 excepted this one section so Current Settle needed no tap. §30 removed
+# the exception: the four cards are one set and behave identically, because a
+# single card that opens when its three identical siblings do not reads as a
+# bug rather than as an affordance. The claim here is unchanged in kind — the
+# section declares its starting state explicitly rather than inheriting one —
+# and only the state moved. Left behind by the run that implemented §30.
+_assert("it starts closed, like all four Account cards (§30)",
+        "open: false" in _settle_src and "open: true" not in _settle_src)
 _assert("the panel assembles four sections in order",
         re.search(r"advancesSection\(r\)\s*\+\s*\n?\s*wageringSection\(r\)\s*\+"
                   r"\s*\n?\s*adjustmentsSection\(r\)\s*\+\s*\n?\s*"

@@ -252,8 +252,19 @@ await withPage({ port: 9441 }, async ({ evaluate, setViewport }) => {
     check(`the subheading is CHAMPIONSHIP CHASE with the week — ${at}`,
       /^CHAMPIONSHIP CHASE/.test(st.subText || '')
       && /Week \d+/.test(st.subText || ''), String(st.subText));
+    /* FINAL POR UI-2 §26 renamed the concept. The claim is unchanged — the
+     * explanation is KEPT, it is body text, and it sits above the tables — but
+     * `Championship Score` became `FantasyStakes Score`, because §8 gave the
+     * figure a third term and §26 states the identity in the reader's own
+     * column names. Both spellings are admissible so a legacy surface still
+     * satisfies it; what is asserted is that the explanation is there. */
     check(`the championship explanation is kept — ${at}`,
-      /Championship Score/.test(st.exText || ''), (st.exText || '').slice(0, 48));
+      /FantasyStakes Score/.test(st.exText || '')
+      || /Championship Score/.test(st.exText || ''),
+      (st.exText || '').slice(0, 60));
+    check(`  · and it states the scoring identity — ${at}`,
+      /Matchups \+ Prop Pools/.test(st.exText || ''),
+      (st.exText || '').slice(0, 90));
     check(`it is body text, with no card ground — ${at}`,
       st.bg === 'rgba(0, 0, 0, 0)' || st.bg === 'transparent', st.bg);
     check(`no card edge and no radius — ${at}`,
@@ -412,17 +423,24 @@ await withPage({ port: 9441 }, async ({ evaluate, setViewport }) => {
       const total = settle
         ? Number(settle.querySelector('.fs-settle__total').dataset.exactCents) : null;
       // Toggling section 4 must behave exactly like toggling section 1.
+      //
+      // FINAL POR UI-6 §30 — SECTION 4 NOW STARTS CLOSED like its three
+      // siblings, so the round trip runs OPEN-then-CLOSE rather than
+      // close-then-reopen. The affordance under test is identical; only the
+      // state it starts from moved, and the snapshots are named for what they
+      // actually capture rather than for the old starting state.
       const t4 = sections[3].querySelector('[data-lsec-toggle]');
-      t4.click();
-      const afterClose = {
+      const snap = () => ({
         open: sections[3].classList.contains('is-open'),
         aria: t4.getAttribute('aria-expanded'),
         bodyH: Math.round(
           sections[3].querySelector('.fs-lsec__body').getBoundingClientRect().height),
-      };
+      });
       t4.click();
-      const afterReopen = { open: sections[3].classList.contains('is-open') };
-      return { sections: out, rows, total, afterClose, afterReopen,
+      const afterOpen = snap();
+      t4.click();
+      const afterClose = snap();
+      return { sections: out, rows, total, afterOpen, afterClose,
                settleInside: settle ? Boolean(settle.closest('.fs-lsec')) : null };
     `);
 
@@ -467,18 +485,34 @@ await withPage({ port: 9441 }, async ({ evaluate, setViewport }) => {
     check(`all four carry a chevron and a real toggle button — ${at}`,
       S.every((s) => s.hasChevron && s.toggleIsButton && s.isDisclosure));
 
-    // §14.2 — the figure the tab exists to derive may not require expansion, so
-    // section 4 starts open. The AFFORDANCE is identical; only the state is.
-    check(`sections 1–3 start collapsed — ${at}`,
-      S.slice(0, 3).every((s) => s.open === false && s.aria === 'false'),
-      S.slice(0, 3).map((s) => s.aria).join(' '));
-    check(`section 4 starts open, so Current Settle needs no tap — ${at}`,
-      S[3].open === true && S[3].aria === 'true', String(S[3].aria));
-    check(`section 4 collapses like any other section — ${at}`,
+    /* ── FINAL POR UI-6 §30 — ALL FOUR ACCOUNT CARDS START CLOSED ─────────
+     *
+     * §14.2 used to except section 4 so Current Settle needed no tap, and this
+     * block asserted that exception. §30 removed it: the four cards are one
+     * set and open the same way, because a single card that behaves
+     * differently from its three identical-looking siblings reads as a bug
+     * rather than as an affordance.
+     *
+     * THE CLAIM THAT MATTERS IS UNCHANGED AND IS STILL ASSERTED: the four are
+     * real disclosures, they start in a known state, and each one opens and
+     * closes. Only the expected starting state moved, and it moved for all
+     * four together. That is why the disclosure round-trip below is now run on
+     * section 4 from CLOSED rather than from open — the same affordance,
+     * exercised from the state it actually starts in.
+     *
+     * This assertion was left behind by the run that implemented §30 and is
+     * replaced here rather than relaxed. */
+    check(`all four sections start collapsed — ${at}`,
+      S.every((s) => s.open === false && s.aria === 'false'),
+      S.map((s) => s.aria).join(' '));
+    check(`section 4 opens like any other section — ${at}`,
+      acct.afterOpen.open === true && acct.afterOpen.aria === 'true'
+      && acct.afterOpen.bodyH > 0,
+      JSON.stringify(acct.afterOpen));
+    check(`and collapses again — ${at}`,
       acct.afterClose.open === false && acct.afterClose.aria === 'false'
       && acct.afterClose.bodyH === 0,
       JSON.stringify(acct.afterClose));
-    check(`and reopens — ${at}`, acct.afterReopen.open === true);
 
     check(`the reconciliation still shows its three inputs — ${at}`,
       acct.rows.length === 3, String(acct.rows.length));

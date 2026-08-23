@@ -4,7 +4,9 @@
 
 import { attributionFooter } from './attribution.js';
 import { creditsDisclaimer, escapeHtml } from './components.js';
-import { creditsTone, exactCentsAttr, formatSignedCredits } from './credits.js';
+import {
+  creditsTone, exactCentsAttr, formatCredits, formatSignedCredits,
+} from './credits.js';
 import {
   STANDINGS_STATE_LOADING,
   STANDINGS_STATE_NOT_ACTIVATED,
@@ -51,6 +53,26 @@ function moneyCell(cents) {
   );
 }
 
+/* SKUNK IS A FEE, NOT A RESULT — Final POR UI-2 §26.
+ *
+ * Drawn without the signed grammar and without the positive/negative tone the
+ * three money columns carry. A Skunk is always an amount assessed AGAINST a GM,
+ * so `+$5.00` in green would say the opposite of what happened, and `-$5.00` in
+ * red would double-state a subtraction the FS SCORE column has already made.
+ *
+ * ZERO IS DRAWN AS A DASH. Most GMs are never skunked, and a column of `$0.00`
+ * would make the exceptions harder to find rather than easier — which is the
+ * only thing this column is for. The exact cents stay on the element for a
+ * reader who needs them. */
+function skunkCell(cents) {
+  const amount = Math.abs(Number(cents) || 0);
+  const text = amount === 0 ? '—' : formatCredits(amount);
+  return (
+    `<td class="fs-st__num fs-st__skunk${amount === 0 ? ' is-none' : ''}"`
+    + `${exactCentsAttr(amount)}>${escapeHtml(text)}</td>`
+  );
+}
+
 function tableRows(table) {
   const me = actingTeamId();
   return rowsFor(table.key).map((row) => {
@@ -60,11 +82,11 @@ function tableRows(table) {
     // nothing here compares cents, because the payout splits on the server's
     // answer and a second opinion would eventually disagree with it.
     const tied = table.key === 'overall' && isTiedRow(row);
-    const cells = view.cells.map((cell) => (
-      cell.kind === 'cents'
-        ? moneyCell(cell.value)
-        : `<td class="fs-st__num">${escapeHtml(String(cell.value))}</td>`
-    )).join('');
+    const cells = view.cells.map((cell) => {
+      if (cell.kind === 'cents') return moneyCell(cell.value);
+      if (cell.kind === 'skunk') return skunkCell(cell.value);
+      return `<td class="fs-st__num">${escapeHtml(String(cell.value))}</td>`;
+    }).join('');
 
     return (
       `<tr class="fs-st__row${isMe ? ' is-me' : ''}" `
@@ -157,14 +179,37 @@ function championshipSubheading() {
  * confusable — a wallet full of Credits is not a lead — and leaves the rest to
  * Rules, which is where long-form reading belongs.
  */
+/* THE APPROVED EXPLANATORY COPY — Final POR UI-2 §26, verbatim.
+ *
+ * Three sentences, and each does one job the other two cannot:
+ *
+ *   1. what the Score IS FOR — it decides championship standing;
+ *   2. what it IS — the identity, spelled out in the same words the six column
+ *      headers use, so a reader can add the columns up and get the total;
+ *   3. what it is NOT — Wallet balance, which is the single most common
+ *      misreading and the reason the identity is stated at all.
+ *
+ * Sentence 2 exists BECAUSE the table now shows three terms and a total. The
+ * reader who could previously see two of three terms had no way to check the
+ * arithmetic; now they can, and the copy tells them the rule they are checking
+ * against. */
+export const STANDINGS_EXPLAINER_LINES = Object.freeze([
+  'Your FantasyStakes Score determines your championship standing.',
+  'FantasyStakes Score = Matchups + Prop Pools − Skunk Fees',
+  'Wallet balance does not affect championship position.',
+]);
+
 function championshipExplainer() {
-  const base = 'Championship Score is your net winnings from FantasyStakes '
-    + 'matchups and prop pools. Highest score wins. Wallet balance does not count.';
+  const base = STANDINGS_EXPLAINER_LINES.join(' ');
   switch (championshipLifecycle()) {
     case 'PAID':
       return `${base} Pot paid.`;
     case 'FINAL':
       return `${base} Scoring closed.`;
+    // FROZEN IS A LEGACY-ERA STATE ONLY. WP-8 retired the playoff-boundary
+    // freeze, so a Final POR season never reports it; the case is kept because
+    // a legacy season's snapshot still does and its sentence is still true
+    // for one.
     case 'FROZEN':
       return `${base} Scoring closed; postseason play no longer changes it.`;
     default:

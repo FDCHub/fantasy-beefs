@@ -35,7 +35,24 @@ export const STANDINGS_TABLES = Object.freeze([
     // column that names a different thing than the table it sits in would cost
     // more than the pixels it saved. The width it needs is bought in
     // `standings.css` instead — see the column-width contract there.
-    columns: Object.freeze(['RK', 'TEAM', 'MATCHUPS', 'POOLS', 'NET']),
+    // ── FINAL POR UI-2 §26 — SIX COLUMNS, AND THE LAST TWO ARE NEW ─────────
+    //
+    // `SKUNK` and `FS SCORE` replace the single `NET`. The Score gained a third
+    // term in WP-7 (`Matchups + Prop Pools - Skunk Fees`), and a table that
+    // shows two of the three terms and then a total the reader cannot derive
+    // from them is worse than one that shows none: it invites the reader to
+    // add the two columns they CAN see and conclude the total is wrong.
+    //
+    // `NET` BECAME `FS SCORE` because the column no longer holds a net. It
+    // holds the FantasyStakes Score, which is the thing the championship is
+    // decided on, and naming it after the concept is what lets the explanatory
+    // copy below the table state the identity in the reader's own vocabulary.
+    //
+    // SKUNK IS A POSITIVE MAGNITUDE and the Score has already subtracted it.
+    // The server says so on the field and this shows what the server sent; the
+    // one thing a client must never do here is subtract it again.
+    columns: Object.freeze(['RK', 'TEAM', 'MATCHUPS', 'POOLS', 'SKUNK',
+                            'FS SCORE']),
   }),
   Object.freeze({
     key: 'versus',
@@ -70,6 +87,10 @@ function normalizedFrozenOverall(championship) {
     versus_net_cents: Number(row.matchup_net_cents),
     pool_net_cents: Number(row.prop_pool_net_cents),
     net_cents: Number(row.championship_score_cents),
+    // A FROZEN RC2 SNAPSHOT CARRIES NO SKUNK, and that is correct rather than
+    // a gap: the snapshot belongs to a legacy season, whose Score is the
+    // two-term identity, and WP-7's era gate reports 0 for one either way.
+    skunk_fees_cents: 0,
     championship_tied: Boolean(row.tied),
   }));
 }
@@ -195,6 +216,12 @@ export function cellsFor(key, row) {
       cells: [
         { kind: 'cents', value: Number(row.versus_net_cents) },
         { kind: 'cents', value: Number(row.pool_net_cents) },
+        // SKUNK IS ITS OWN KIND. It is a positive magnitude — a fee assessed,
+        // never a gain — so it must not be drawn with the signed +/- grammar
+        // and the positive/negative colouring the three money columns use. A
+        // green `+$5.00` in the Skunk column would say the opposite of what
+        // happened. `0` is the common case and is drawn plainly.
+        { kind: 'skunk', value: Number(row.skunk_fees_cents || 0) },
         { kind: 'cents', value: Number(row.net_cents) },
       ],
     };

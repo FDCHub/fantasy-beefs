@@ -187,9 +187,20 @@ _assert("the standings view never draws a wallet figure",
         not re.search(r"wallet[^.!?\n]{0,40}(formatCredits|formatSignedCredits"
                       r"|_cents|\$)", STANDINGS_JS, re.I))
 _STANDINGS_WALLET_WORDS = re.findall(r"[^\n]*wallet[^\n]*", STANDINGS_JS, re.I)
+# FINAL POR UI-2 §26 — the ruled denial is now "Wallet balance does not affect
+# championship position." The CLAIM is unchanged and is still the one that
+# matters: the view may say the word only to DENY it, never attached to a
+# figure and never read off a served row. Both of those are asserted directly
+# above and neither is relaxed here. What is restated is the sentence, and the
+# comment prefixes are widened to the block-comment body a longer rationale
+# actually uses.
+_RULED_DENIALS = (
+    "Wallet balance does not affect championship position",
+    "Wallet balance does not count",          # the pre-§26 sentence, for legacy
+)
 _assert("every wallet mention in the view is the ruled denial or a comment",
-        all("Wallet balance does not count" in line or line.lstrip().startswith("*")
-            or line.lstrip().startswith("//")
+        all(any(d in line for d in _RULED_DENIALS)
+            or line.lstrip().startswith(("*", "//", "/*"))
             for line in _STANDINGS_WALLET_WORDS),
         str(_STANDINGS_WALLET_WORDS))
 _assert("the ranking figure is read from the served row, never recomputed",

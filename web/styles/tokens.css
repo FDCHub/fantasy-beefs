@@ -96,6 +96,24 @@
   --fs-r43-strip-value:    23px;   /* §5.1 summary-strip values 22–24 */
   --fs-r43-nav-label:      11px;   /* §5.1 bottom-nav labels    11–12 */
 
+  /* FINAL POR UI-2 §26 — the six-column OVERALL header, and ONLY that header.
+   *
+   * §26 permits the standings header typography to shrink so all six columns
+   * can be drawn at 320px. §5.1 sets the metadata floor at 12px and the WP3B
+   * browser suite enforces it, so 12px is where this stops — one step down from
+   * the 13px metadata size, and NOT the 11px the bottom-nav labels use.
+   *
+   * THE TWO RULES WERE TESTED AGAINST EACH OTHER RATHER THAN RANKED. 11px was
+   * tried first, fit comfortably, and broke the §5.1 floor. 12px was then
+   * measured at all three certified widths: every header still draws unclipped
+   * and TEAM is unchanged. A permission to shrink is not a reason to shrink
+   * past a legibility floor when the layout does not need it.
+   *
+   * THE BODY DOES NOT SHRINK AT ALL. The figures and the team names keep their
+   * §5.1 sizes; shrinking the data to fit a label is the wrong trade in the
+   * other direction. */
+  --fs-st-head-6col:       12px;
+
   /* §5.1 and §31 — the practical minimum for anything tappable. */
   --fs-r43-touch:          44px;
 

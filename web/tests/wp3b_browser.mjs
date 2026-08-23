@@ -205,9 +205,22 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
     standings.disclaimerText
       === 'VIRTUAL CREDITS · $ IS DISPLAY ONLY · NO CASH VALUE',
     String(standings.disclaimerText));
-  check('every table declares its NET column',
-    (standings.moneyCols.match(/NET/g) || []).length === 3,
+  /* FINAL POR UI-2 §26 — the claim is "every table ends in its money column",
+   * and OVERALL's is now `FS SCORE` rather than `NET`.
+   *
+   * WHY THE COUNT CHANGED FROM 3 TO 2. `NET` still heads the last column of
+   * MATCHUP STANDINGS and PROP POOL STANDINGS, which really are nets. OVERALL's
+   * last column holds the FantasyStakes Score — three terms, not a net — and
+   * naming it `NET` was what made the table's own arithmetic unreadable once
+   * WP-7 added the Skunk term. Both halves are asserted, so a table losing its
+   * money column still fails. */
+  check('the two net tables still declare their NET column',
+    (standings.moneyCols.match(/NET/g) || []).length === 2,
     standings.moneyCols);
+  check('and OVERALL declares FS SCORE',
+    /FS SCORE/.test(standings.moneyCols), standings.moneyCols);
+  check('  · alongside its SKUNK column',
+    /SKUNK/.test(standings.moneyCols), standings.moneyCols);
 
   if (standings.rows > 0) {
     check('the acting GM’s row is marked in all three tables',
@@ -239,8 +252,15 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
      section is named for: the word may occur only inside that denial, and no
      amount may be attached to it. */
   const walletMentions = wallet.text.match(/[^.!?]*wallet[^.!?]*[.!?]?/gi) || [];
-  check('the only mention of a Wallet is the ruled denial',
-    walletMentions.every((s) => /Wallet balance does not count/i.test(s)),
+  /* FINAL POR UI-2 §26 restated the denial as "Wallet balance does not affect
+   * championship position." The invariant is unchanged: the word may occur ONLY
+   * inside a ruled denial, and `no Wallet figure of any kind is drawn` below is
+   * untouched and is what actually keeps an amount off this page. The earlier
+   * sentence stays admissible so a legacy surface still satisfies it. */
+  check('the only mention of a Wallet is a ruled denial',
+    walletMentions.every((s) =>
+      /Wallet balance does not affect championship position/i.test(s)
+      || /Wallet balance does not count/i.test(s)),
     JSON.stringify(walletMentions));
   check('no Wallet figure of any kind is drawn',
     !/wallet[^.!?]{0,40}[$\d]/i.test(wallet.text),

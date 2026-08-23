@@ -165,9 +165,23 @@ check('their headings are the locked ones, in order',
 // `MATCHUPS` IS NOT ABBREVIATED. `Matches` was considered and refused: Matchups
 // is the established product term and a standings column is exactly where a
 // reader would take a different word to mean a different thing.
-check('Overall carries RK | TEAM | MATCHUPS | POOLS | NET',
-  STANDINGS_TABLES[0].columns.join(' | ') === 'RK | TEAM | MATCHUPS | POOLS | NET',
+// FINAL POR UI-2 §26 — SIX COLUMNS, and `NET` is now `FS SCORE`.
+//
+// The claim is unchanged and is still the whole point of this check: OVERALL's
+// column set is LOCKED and is not something a later change may quietly extend.
+// What changed is the locked set. WP-7 gave the Score a third term, so a table
+// showing two of three terms and an underivable total was worse than one
+// showing none — it invited the reader to add what they could see and conclude
+// the total was wrong. `NET` became `FS SCORE` because the column no longer
+// holds a net; it holds the figure the championship is decided on, which is
+// what lets the explainer state the identity in the reader's own words.
+check('Overall carries RK | TEAM | MATCHUPS | POOLS | SKUNK | FS SCORE',
+  STANDINGS_TABLES[0].columns.join(' | ')
+    === 'RK | TEAM | MATCHUPS | POOLS | SKUNK | FS SCORE',
   STANDINGS_TABLES[0].columns.join(' | '));
+check('  · and it is six columns, not five',
+  STANDINGS_TABLES[0].columns.length === 6,
+  String(STANDINGS_TABLES[0].columns.length));
 check('Versus carries RK | TEAM | W-L | NET',
   STANDINGS_TABLES[1].columns.join(' | ') === 'RK | TEAM | W-L | NET',
   STANDINGS_TABLES[1].columns.join(' | '));
@@ -250,11 +264,18 @@ section('G · Overall ranks on the served competitive NET, never on Wallet');
 const walletMentions = (panel.match(/wallet/gi) || []).length;
 check('wallet is mentioned exactly once in the standings panel',
   walletMentions === 1, String(walletMentions));
-// A3.2 — the owner shortened the explainer. The COUNTED invariant above is
-// unchanged and is what keeps `<td>Wallet</td><td>$140</td>` out; only the
-// sentence it must be is restated, to the one the product now ships.
-check('and that once is the locked explanatory sentence',
-  /Wallet balance does not count/i.test(panel), panel.match(/[^.>]*wallet[^.]*\./i));
+// FINAL POR UI-2 §26 — the approved sentence is now
+// "Wallet balance does not affect championship position."
+//
+// The COUNTED invariant above is untouched and is what keeps
+// `<td>Wallet</td><td>$140</td>` out. Only the sentence the one mention must
+// BE is restated, to the one §26 approves. It says the same thing at more
+// length, and the extra length is doing work: the reader who now sees three
+// scoring terms and a total needs to be told that a fourth number they can see
+// elsewhere is not among them.
+check('and that once is the approved §26 sentence',
+  /Wallet balance does not affect championship position\./i.test(panel),
+  panel.match(/[^.>]*wallet[^.]*\./i));
 check('Overall is descending in combined NET, as served',
   rowsFor('overall').every((r, i, a) => i === 0
     || rankingCents('overall', a[i - 1]) >= rankingCents('overall', r)));

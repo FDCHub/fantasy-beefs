@@ -173,6 +173,138 @@
   width: var(--fs-st-wide);
 }
 
+/* ══ FINAL POR UI-2 §26 — THE SIX-COLUMN OVERALL TABLE ═══════════════════════
+ *
+ * OVERALL now carries RK · TEAM · MATCHUPS · POOLS · SKUNK · FS SCORE. Two of
+ * those are new and the Rev 1.4 contract above was budgeted for five, so this
+ * block re-budgets that ONE table. MATCHUP STANDINGS and PROP POOL STANDINGS
+ * are untouched and keep the four-column widths they were certified at.
+ *
+ * ── WHAT THE SIXTH COLUMN COSTS, AND WHERE IT COMES FROM ──────────────────
+ *
+ * At 320px there are ~304px of usable row. The five-column table spent them as
+ * 32 rank + 80 MATCHUPS + 60 POOLS + 60 NET + ~64 TEAM. A sixth column at the
+ * old figure width would have left TEAM at ~4px, which is not a column.
+ *
+ * So the four tracks are re-cut, each by something real:
+ *
+ *   --fs-st6-rank  two rank digits and the tie marker. Narrower than the
+ *                  five-column rank because a digit pair does not need 32px.
+ *   --fs-st6-fig   THE MONEY STILL SETS THIS FLOOR. A four-digit signed figure
+ *                  `+$1,250` is ~54px in the 14px money face and money may not
+ *                  be the thing that truncates. This is the smallest the three
+ *                  money columns can be, not a width chosen for the headers.
+ *   --fs-st6-skunk NARROWER THAN THE MONEY COLUMNS, ON PURPOSE. A Skunk total
+ *                  is a fee times weeks — `$140` at the default stop — never a
+ *                  four-digit signed figure, and it is drawn unsigned. Giving
+ *                  it the money width would take ~12px from TEAM to hold a
+ *                  digit that cannot occur.
+ *   --fs-st6-wide  MATCHUPS, the one header wider than its own figures. Same
+ *                  role the five-column `--fs-st-wide` plays, re-cut smaller.
+ *
+ * TEAM TAKES WHAT IS LEFT and truncates, exactly as before. At 320px that is
+ * ~55px — a little under the five-column table's ~64px, and still the two or
+ * three characters plus ellipsis that make a name recognisable next to the
+ * reader's own highlighted row.
+ *
+ * ── THE HEADER MAY TAKE TWO LINES HERE, AND MUST NEVER ELLIPSE ────────────
+ *
+ * §26 permits a two-line header and FORBIDS a header ellipsis. Those two rules
+ * point the same way: `FS SCORE` is two words and cannot fit one line beside
+ * three other figure columns at 320px, so it wraps — which is legible, keeps
+ * the whole label, and costs one row of header height that every table on the
+ * page absorbs together.
+ *
+ * The five-column contract above chose the opposite trade (`white-space:
+ * nowrap` plus ellipsis) because THERE a wrapped header restood the row
+ * against two neighbouring tables that did not wrap. Here all six labels are
+ * in one table and the header row is allowed to be two lines, so the ellipsis
+ * — which would hide part of a label and is explicitly forbidden — is turned
+ * off rather than relied on.
+ *
+ * `MATCHUPS` IS ONE WORD AND CANNOT WRAP, which is why it keeps a dedicated
+ * wide track rather than being left to `white-space: normal` to solve. A
+ * single long word given too little width does not wrap; it overflows, or it
+ * breaks mid-word, and a broken `MATCH-UPS` is the ellipsis problem wearing a
+ * different hat.
+ *
+ * ── WHY THE HEADER TYPE SHRINKS SLIGHTLY, AND ONLY HERE ───────────────────
+ *
+ * §26 permits it. One step down buys `MATCHUPS` its line at 320px without
+ * spending TEAM's characters on it. The BODY type does not shrink: the figures
+ * and the team names stay at the §5.1 sizes, because shrinking the data to fit
+ * a label is the wrong trade in the other direction. */
+[data-standings-table="overall"] .fs-st__table {
+  --fs-st6-rank:  min(1.5rem,  7.5vw);
+  --fs-st6-fig:   min(3.5rem, 17.5vw);
+  --fs-st6-skunk: min(2.75rem, 13.7vw);
+  --fs-st6-wide:  min(4.4rem, 21.8vw);
+}
+
+[data-standings-table="overall"] .fs-st__table th,
+[data-standings-table="overall"] .fs-st__table td {
+  padding-left: var(--fs-space-1);
+  padding-right: var(--fs-space-1);
+}
+
+/* A FIGURE HEADER PAYS NO LEFT INSET — the same reclaim the five-column
+ * contract makes above, and it has to be repeated here because the rule
+ * directly above re-establishes a symmetric inset for the six-column table's
+ * BODY cells. The label is right-aligned, so a left inset protects nothing and
+ * is 4px the column cannot spare: `MATCHUPS` at the 12px header size needs 69px
+ * of content and the track gives 66px, and this is where the missing 3px comes
+ * from. Widening the track instead would have taken those pixels out of TEAM. */
+[data-standings-table="overall"] .fs-st__table th.fs-st__num {
+  padding-left: 0;
+}
+
+[data-standings-table="overall"] .fs-st__table th {
+  /* NO ELLIPSIS, EVER (§26). Two lines are permitted; a hidden label is not. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: var(--fs-st-head-6col);
+  line-height: 1.15;
+  /* A single long word must not be broken mid-word to fit; the tracks below
+   * are cut so it does not have to be. */
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
+}
+
+[data-standings-table="overall"] .fs-st__rank { width: var(--fs-st6-rank); }
+[data-standings-table="overall"] .fs-st__num  { width: var(--fs-st6-fig); }
+
+/* MATCHUPS — the third column, and the only one-word header wider than its
+ * own figures. Overrides the five-column `--fs-st-wide` rule above, which
+ * targets the same cells at the same specificity and is written earlier. */
+[data-standings-table="overall"] .fs-st__table th:nth-child(3),
+[data-standings-table="overall"] .fs-st__table td:nth-child(3) {
+  width: var(--fs-st6-wide);
+}
+
+/* SKUNK — the fifth column. Narrower than money because its figure is. */
+[data-standings-table="overall"] .fs-st__table th:nth-child(5),
+[data-standings-table="overall"] .fs-st__table td:nth-child(5) {
+  width: var(--fs-st6-skunk);
+}
+
+/* THE SKUNK FIGURE IS NOT MONEY-TONED. It is an amount assessed against a GM,
+ * never a gain, so it carries neither the signed grammar nor the green/red the
+ * three money columns use — see `skunkCell` in `standings.js`. It keeps the
+ * tabular money FACE so the column scans as figures beside its neighbours. */
+[data-standings-table="overall"] .fs-st__skunk {
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+}
+
+/* A GM who was never skunked — the common case — is a dash, held back so the
+ * exceptions are what the eye finds. */
+[data-standings-table="overall"] .fs-st__skunk.is-none {
+  color: var(--fs-r43-tertiary);
+}
+
 /* Money keeps the tabular monospace grammar the POR fixes for it. */
 .fs-st__num.fs-money {
   font-family: var(--fs-font-money);

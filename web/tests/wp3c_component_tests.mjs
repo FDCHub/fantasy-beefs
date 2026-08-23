@@ -256,17 +256,33 @@ const prevTitles = [...prev.body.matchAll(/fs-prev__title">([^<]*)/g)].map((m) =
 // market on offer (`ON OFFER`) for a live pairing, or the final score
 // (`RESULT`) for a settled one. An UNBOUND preview has neither, so it
 // renders no second block at all — which is what these fixtures are.
+/* FINAL POR UI-3E §27E — LINEUPS LEADS THE PREVIEW SHEET.
+ *
+ * The locked order is now LINEUPS → WHY THE LINE LOOKS THIS WAY → THE READ.
+ * The claim is unchanged and is still the one worth holding: the sheet's
+ * section order is LOCKED and is not something a later change may quietly
+ * reshuffle. Only the locked order moved.
+ *
+ * WHY IT MOVED. §27E puts the reader's own roster first: LINEUPS is the fact
+ * the two analysis modules rest on, and a reader deciding whether to accept a
+ * wager looks at who is playing before they read why the line sits where it
+ * does. Left behind by the run that implemented §27E and replaced here rather
+ * than relaxed. */
 check('the section order is the locked one',
   prevTitles.join(' → ')
-    === 'WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+    === 'LINEUPS → WHY THE LINE LOOKS THIS WAY → THE READ',
   prevTitles.join(' → '));
 check('there is no SPORTSBOOK VIEW block',
   !prev.body.includes('SPORTSBOOK VIEW'));
 check('and no market cell of any kind',
   !/data-market|fs-market__label/.test(prev.body));
-check('analysis precedes the lineups',
-  prev.body.indexOf('WHY THE LINE') < prev.body.indexOf('LINEUPS')
-  && prev.body.indexOf('THE READ') < prev.body.indexOf('LINEUPS'));
+/* §27E — the lineups precede the analysis, which is the same claim inverted.
+ * Kept as a SEPARATE check from the order above because it is the one a future
+ * change is most likely to break by accident: the titles array can be right
+ * while the rendered body is not, if a section is emitted out of band. */
+check('the lineups precede the analysis',
+  prev.body.indexOf('LINEUPS') < prev.body.indexOf('WHY THE LINE')
+  && prev.body.indexOf('LINEUPS') < prev.body.indexOf('THE READ'));
 check('both analysis sections are open by default',
   (prev.body.match(/aria-expanded="true"/g) || []).length === 2);
 check('the lineups are collapsed',
@@ -393,16 +409,27 @@ check('Current Settle is visible without expanding anything',
       account.indexOf('fs-current-settle'))
       .split('</section>').pop()));
 // UIRECON WAVE 2 — FOUR SECTIONS, ONE CONSTRUCTION. Current Settle stopped
-// being a bespoke card and became section 4, so the count is four and three of
-// them start collapsed. Section 4 opens by default because Rev 4.3 §14.2 says
-// the figure the tab exists to derive may not require expansion — the
-// affordance is identical, only the starting state differs.
+// being a bespoke card and became section 4.
+//
+// FINAL POR UI-6 §30 — ALL FOUR NOW START CLOSED. Rev 4.3 §14.2 excepted
+// section 4 so the figure the tab derives needed no tap; §30 removed the
+// exception, because one card behaving differently from three
+// identical-looking siblings reads as a bug rather than as an affordance. The
+// claim here is unchanged — four real disclosures, each with a real toggle
+// button carrying an accessible expanded state — and only the expected state
+// moved, for all four together. Left behind by the run that implemented §30.
 check('the four accounting sections are disclosures',
   (account.match(/data-disclosure/g) || []).length === 4);
 check('each has a real button with aria-expanded',
   (account.match(/data-lsec-toggle/g) || []).length === 4
-  && (account.match(/aria-expanded="false"/g) || []).length >= 3
-  && (account.match(/aria-expanded="true"/g) || []).length === 1);
+  // `>=` ON THE FALSE COUNT, `===` ON THE TRUE ONE. The panel also contains
+  // expandable ROWS inside the sections, which carry their own collapsed
+  // `aria-expanded`, so the false count is a floor rather than an exact number
+  // — the original assertion used `>= 3` for exactly this reason. The true
+  // count is exact and is the one carrying §30's claim: nothing on this panel
+  // starts expanded.
+  && (account.match(/aria-expanded="false"/g) || []).length >= 4
+  && (account.match(/aria-expanded="true"/g) || []).length === 0);
 check('no accounting row was deleted — the detail is in the DOM',
   account.includes('Season-Opening FantasyStakes')
   && account.includes('MATCHUP ACTIVITY')

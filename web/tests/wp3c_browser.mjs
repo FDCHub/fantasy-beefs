@@ -198,9 +198,13 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
     // of lineups became a side-by-side comparison matrix carrying live scores
     // beside projections; it is still one section, still last, still the
     // projections the two modules above rest on.
+    /* FINAL POR UI-3E §27E — LINEUPS LEADS. See the same replacement in
+     * `wp3c_component_tests.mjs` for why the locked order moved. Rev 1.4's note
+     * above still holds: it changed the INSIDE of `LINEUPS`, not the order;
+     * §27E is what changed the order. */
     check('the section order is the locked one',
       preview.titles.join(' → ')
-        === 'WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+        === 'LINEUPS → WHY THE LINE LOOKS THIS WAY → THE READ',
       preview.titles.join(' → '));
     check('it duplicates no betting market',
       preview.hasMarketCells === false
@@ -361,18 +365,38 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
   // expansion. Wave 2 keeps that by STATE: section 4 is drawn open, so it is on
   // screen the moment the tab is, while carrying the same affordance as its
   // three siblings.
-  check('Current Settle is visible without expanding anything (§20)',
-    account.settleVisible === true && account.settleSectionOpen === true);
+  /* ── FINAL POR UI-6 §30 — ALL FOUR ACCOUNT CARDS START CLOSED ───────────
+   *
+   * Rev 4.3 §20 said Current Settle must be visible without expanding
+   * anything, and §14.2 excepted section 4 so it opened by default. §30
+   * removed the exception: the four cards are one set and open the same way,
+   * because a single card behaving differently from three identical-looking
+   * siblings reads as a bug rather than as an affordance.
+   *
+   * §20'S INTENT IS NOT LOST, AND IS STILL ASSERTED. The figure the tab exists
+   * to derive is still reachable without expanding anything — it is carried by
+   * the TOP-LEVEL SUMMARY STRIP, whose `Settle` cell is checked earlier in this
+   * same suite. What §30 changed is that the DETAIL behind it now sits behind
+   * the same tap its three siblings do.
+   *
+   * Left behind by the run that implemented §30, and replaced here rather than
+   * relaxed. */
+  check('Settle is reachable without expanding anything (§20 via the strip)',
+    account.stripLabels.some((l) => /settle/i.test(l)),
+    account.stripLabels.join(' | '));
+  /* AND THE DETAIL IS BEHIND A TAP, which is the §30 change stated positively
+   * rather than only as the absence of the old expectation. */
+  check('  · while the Current Settle DETAIL sits inside a collapsed section',
+    account.settleSectionOpen === false && account.settleVisible === false,
+    `open=${account.settleSectionOpen} visible=${account.settleVisible}`);
   check('the four accounting sections are disclosures',
     account.sectionCount === 4, String(account.sectionCount));
-  check('the three detail sections start collapsed',
-    account.bodyHeights.slice(0, 3).every((h) => h === 0)
-    && account.openStates.slice(0, 3).every((o) => o === false),
+  check('all four sections start collapsed (§30)',
+    account.bodyHeights.every((h) => h === 0)
+    && account.openStates.every((o) => o === false),
     account.bodyHeights.join(','));
-  check('and section 4 starts open', account.openStates[3] === true);
   check('with accessible expanded state',
-    account.ariaStates.slice(0, 3).every((a) => a === 'false')
-    && account.ariaStates[3] === 'true',
+    account.ariaStates.every((a) => a === 'false'),
     account.ariaStates.join(','));
   check('every disclosure toggle meets the 44px target',
     account.toggleTargets.every((h) => h >= 44), account.toggleTargets.join(','));
