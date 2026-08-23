@@ -1,6 +1,47 @@
+> # ⚠ SUPERSEDED FOR FINAL POR SEASONS
+>
+> **Superseded by:** `spec/FANTASYSTAKES_FINAL_POR.md`
+> **Scope of supersession:** league-seasons stamped `RULESET_FINAL_POR` (2).
+> **Still fully governing:** every `RULESET_LEGACY` season — which is every
+> season activated before WP-1, and is the state represented by the ABSENCE of a
+> `league_season_ruleset` row.
+>
+> This document is **preserved as historical evidence and is not edited below
+> this header.** It remains the correct and complete description of the seasons
+> it governed: their championships really were frozen at the playoff boundary,
+> really were scored on the regular season alone, really were funded by per-GM
+> contributions, and really were recognised on 3/2/1. Those seasons were played,
+> settled and in some cases paid out on exactly these rules, and nothing in the
+> Final POR is retroactive.
+>
+> **What the Final POR changes, section by section:**
+>
+> | Below | Final POR |
+> |---|---|
+> | §1 Score = matchup net + pool net | **three terms** — minus Skunk Fees (§2 there) |
+> | §2 scoring window closes at `playoff_start_week`; postseason results excluded; standings must be frozen | **no boundary and no freeze** — scoring runs through the postseason; LIVE → FINAL → PAID (§8 there). `REASON_POSTSEASON_CONTAMINATED` becomes unreachable: a postseason result is not contamination, it is the competition |
+> | §4 pot is per-GM contributions, fixed at activation, funded only by them | **league-level MINTED allocation**; Base = Weekly Minimum × Regular-Season Weeks, **not × GM count**; and it **grows** — sweeps, Top-Offs, terminal Pool remainders (§5 there) |
+> | §4 "Weekly Minimum shortfalls … are returned to the originating GM at season end" | **forfeited to the FantasyStakes Championship Pot at WEEK close**; never returned, never re-entering `expired_min:` (§4 there) |
+> | §6 Grand Champion on 3/2/1 points | **finalized championship VC across funded pillars**, at least two funded; PLACEHOLDER / LIVE / FINAL (§11 there) |
+> | §6 Regular Season Points Champion excluded from Grand Champion | **the Points Championship is one of the three pillars** and counts when funded |
+> | §7 "standings are final/frozen even though postseason play may continue" | the first tab stays **live through the postseason** |
+>
+> **What is NOT superseded and remains in force verbatim:**
+>
+> - §1's product principle — *Credits determine how much you can play;
+>   competitive results determine whether you are winning.* Wallet balance is
+>   still not Championship Score, and the list of noncompetitive movements that
+>   never increase it is still correct.
+> - §3's tie rule — exact equal scores are **real ties**, and no team-id,
+>   wallet-balance, wager-count or win-count breaks one. Stable id ordering is
+>   for display and for indivisible one-cent remainders only.
+> - §5's distribution arithmetic — 60/30/10, pooled-and-split dead heats, integer
+>   cents conserved, remainder by ascending canonical team id. The Final POR
+>   makes this the **one** implementation for all three pillars.
+
 # FantasyStakes 1.0 RC2 — Championship POR
 
-Status: **LOCKED PRODUCT OWNER RULING**  
+Status: **LOCKED PRODUCT OWNER RULING — SUPERSEDED FOR FINAL POR SEASONS**
 Release line: `release/fantasystakes-1.0.0-rc2`  
 RC1 remains immutable at `fantasystakes-1.0.0-rc1`.
 

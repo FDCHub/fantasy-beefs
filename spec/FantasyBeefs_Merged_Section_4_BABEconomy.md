@@ -1,3 +1,33 @@
+> # ⚠ PARTIALLY SUPERSEDED FOR FINAL POR SEASONS
+>
+> **Superseded by:** `spec/FANTASYSTAKES_FINAL_POR.md`
+> **Scope:** league-seasons stamped `RULESET_FINAL_POR` (2) only. Every
+> `RULESET_LEGACY` season — the state represented by the ABSENCE of a
+> `league_season_ruleset` row — is governed by this document unchanged.
+>
+> **PARTIALLY, and the parts matter.** Most of this section is untouched: 4.2
+> issuance, 4.3 availability, 4.4 escrow, 4.5's definition of what counts toward
+> the Weekly Minimum and when it is evaluated, 4.6's non-negative Wallet law, and
+> the whole of 4.9 season close except where named below. This document is
+> **preserved as historical evidence and is not edited below this header.**
+>
+> **The rules the Final POR supersedes, by identifier:**
+>
+> | Rule | Said | Final POR |
+> |---|---|---|
+> | **BAB-401/402** Championship Pot funding | one League-season pot accumulating from Weekly Minimum shortfalls, Pool remainders, rollover sweeps, periodic contributions and season-end `reserve:{team_id}` sweeps | **three season-scoped pots**, each funded differently and none from a per-GM reserve. `reserve:{team}` is retired; `championship:{league}` is retired. FantasyStakes is **minted** at Weekly Minimum × Regular-Season Weeks and grows from sweeps, Top-Offs and terminal Pool remainders; Points is **never minted** and is the Skunk actually assessed; Fantasy Football is one commissioner-entered amount, may be 0, and **never accretes** (§5 there) |
+> | **BAB-404/405** distribution rule and eligibility | League Configuration defines recipients and percentages; the Yahoo season result determines them | 60/30/10 is a **product rule, not a commissioner setting**, and it is one implementation for all three pillars. Only the Fantasy Football pillar is decided by the Yahoo result; FantasyStakes is decided by FantasyStakes Score and Points by regular-season Points For (§9, §10 there) |
+> | **BAB-407** remainder in final Yahoo standing order | | remainder to the **first ordinal slot**, and an indivisible cent inside a dead heat by **ascending canonical team id** (§10 there) |
+> | **BAB-506** Skunk Pot awarded whole to the highest Points For | | the Points Championship pays **60/30/10** with the dead-heat rule (§9a there) |
+> | **BAB-508** distributed after regular-season finalization | | unchanged in timing, but the gate is now every regular-season week being **economically final** by `finalized_at`, since a provider correction lands as a re-finalised matchup (§9a there) |
+> | **BAB-607** Top-Off posting sequence | balanced issuance to the Wallet | a **third leg**: `bab_issuance −2X`, `wallet +X`, `fantasystakes_championship +X`. The GM's obligation remains **X** (§6 there) |
+> | **4.5 [HYBRID]** Weekly Minimum shortfall handling and the Reserve/Frozen mechanic | shortfall swept, remainder becomes a collected obligation; unspent Minimum out of circulation and returned at season end | the unspent Weekly Minimum is **forfeited to the FantasyStakes Championship Pot at WEEK close** and never returned. The shortfall sweep is **retired** for this era — it would charge the same GM twice for the same week (§4 there) |
+>
+> **BAB-503's tie rule is NOT superseded** and is in force verbatim: a tied
+> weekly Skunk is divided equally, remainder one cent at a time in ascending GM
+> identifier order. **BAB-501's optionality is likewise unchanged** and is what
+> the Final POR builds on when it admits a Skunk Fee of 0.
+
 # Fantasy Beefs — Merged Hybrid · Section 4 — BAB Economy
 
 *Issuance, availability, escrow, minimum participation, pots, top-offs, and
