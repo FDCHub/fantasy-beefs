@@ -150,6 +150,7 @@ from db.schema import (
     User,
     Wallet,
 )
+from economy.economy_events import fantasystakes_championship_account
 from economy.season_close import is_season_closed
 from ledger.ledger import (
     APPROVED_BAB_TOPOFF_DOOR,
@@ -157,6 +158,7 @@ from ledger.ledger import (
     _dollars_to_cents,
     post as ledger_post,
 )
+from ruleset import is_final_por
 
 # The one request type B6 governs. Legacy topup_waiver rows are dormant history
 # (§11.5) and are never reachable from any function here.
@@ -943,17 +945,56 @@ def approve_top_off(
                 f"any commissioner who still holds authority."
             )
 
-        # ── 15. The canonical two-leg posting (§3.2, §3.3). ──
+        # ── 15. The canonical posting (§3.2, §3.3) — TWO LEGS, OR THREE. ──
+        #
         # session=db is MANDATORY: on the session=None path post() opens its own
         # SessionLocal, elevates to REPEATABLE READ and commits internally, which
         # would put the posting outside this transaction and destroy the single
-        # commit boundary. Both accounts are derived server-side from the
+        # commit boundary. Every account is derived server-side from the
         # persisted row; no caller-supplied account text exists on this path.
+        #
+        # ── FINAL POR · WP-6 — AN APPROVED TOP-OFF ALSO GROWS THE POT ────────
+        #
+        #     bab_issuance:{L}:{S}                -2X
+        #     wallet:{team}                        +X
+        #     fantasystakes_championship:{L}:{S}   +X
+        #
+        # §15: an approved Top-Off grows the FantasyStakes Championship Pot by
+        # the same amount it credits the Wallet. The issuance tally therefore
+        # carries 2X, because 2X really was put into circulation by this
+        # approval — X spendable by the GM and X added to what the league is
+        # playing for.
+        #
+        # THE GM'S OBLIGATION IS X, NOT 2X, AND THAT IS STRUCTURAL RATHER THAN
+        # A SUBTRACTION SOMEWHERE. Both derivations that turn this posting into
+        # a number read the WALLET LEG ONLY:
+        #
+        #   · `_issued_from_ledger` (the cap) sums `wallet:{team}` legs under
+        #     this door whose sibling leg is this league-season's issuance
+        #     account — the pot leg is a third sibling and is not summed;
+        #   · `economy.current_settle.topoff_issued_cents` (the obligation)
+        #     sums `wallet:{team}` legs under this door.
+        #
+        # So a 20-Credit Top-Off consumes 20 of the cap and adds 20 to what the
+        # GM owes, exactly as before, while 20 more reaches the pot that nobody
+        # owes. WP-7 F6 certified in advance that these two derivations are
+        # wallet-leg-only, which is what made this leg safe to add.
+        #
+        # THE POT LEG IS OMITTED ENTIRELY FOR A LEGACY SEASON, not posted as
+        # zero: under RULESET_LEGACY the FantasyStakes Championship Pot is a
+        # closed per-GM-contribution pot and a Top-Off has nothing to do with
+        # it. A zero leg would claim it participated.
+        legs = [
+            (f"bab_issuance:{request.league_id}:{season}", -amount_cents),
+            (f"wallet:{team_id}",                           amount_cents),
+        ]
+        if is_final_por(db, league_id=request.league_id, season=season):
+            legs[0] = (f"bab_issuance:{request.league_id}:{season}",
+                       -amount_cents * 2)
+            legs.append((fantasystakes_championship_account(
+                request.league_id, season), amount_cents))
         posting_id = ledger_post(
-            [
-                (f"bab_issuance:{request.league_id}:{season}", -amount_cents),
-                (f"wallet:{team_id}",                           amount_cents),
-            ],
+            legs,
             door    = APPROVED_BAB_TOPOFF_DOOR,
             session = db,
         )
