@@ -25,9 +25,11 @@ import { LEGAL_LINE, RULE_GROUPS, SETTINGS, SETTINGS_SEAM } from './data/rules-d
 import {
   SETTINGS_MODE_AUTHORITATIVE,
   SETTINGS_MODE_UNAVAILABLE,
+  allocationAmountText,
   poolEntryEditable,
   settingsMode,
   settingsRows,
+  vcAllocation,
 } from './settings-model.js';
 import { explainRefusal, updatePoolEntry } from './settings-command.js';
 import { LEAGUE_IDENTITY } from './demo-state.js';
@@ -112,31 +114,135 @@ function settingRow(setting) {
   );
 }
 
-function settingsRegion() {
+/**
+ * FINAL POR §23's VC ALLOCATION table.
+ *
+ * THREE COLUMNS, AND THE THIRD IS THE POINT. `VC ALLOCATION | AMOUNT | RATIO TO
+ * WEEKLY MINIMUM` — the ratio is what makes the table readable as an economy
+ * rather than as seven unrelated amounts, because every figure in this product
+ * is ultimately priced off the Weekly Minimum. It is the SERVER's ratio: §16.2
+ * forbids reimplementing the economic formula in the browser, and a division
+ * here would be a second definition of the relationship.
+ *
+ * A REAL <table>, NOT A GRID OF DIVS. Three labelled columns of related figures
+ * is what a table is for, and a screen reader announcing "Prop Pool Entry, $1,
+ * 0.1 times" is only possible if the header cells are header cells.
+ *
+ * @returns {string}
+ */
+function vcAllocationTable(view) {
+  const row = (r) => (
+    `<tr class="fs-vcrow" data-alloc="${escapeHtml(r.id)}" ` +
+    `data-state="${escapeHtml(r.state)}">` +
+    `<th scope="row" class="fs-vcrow__label">${escapeHtml(r.label)}</th>` +
+    `<td class="fs-vcrow__amount fs-money">${escapeHtml(allocationAmountText(r))}</td>` +
+    `<td class="fs-vcrow__ratio">${escapeHtml(r.ratio ?? '—')}</td>` +
+    '</tr>'
+  );
+
   return (
-    `<section class="fs-rulesec" data-region="settings" ` +
-    `data-state="${escapeHtml(settingsMode())}">` +
+    '<table class="fs-vctable" id="fs-vc-allocation">' +
+    '<thead><tr>' +
+    '<th scope="col" class="fs-vctable__h">VC ALLOCATION</th>' +
+    '<th scope="col" class="fs-vctable__h fs-vctable__h--fig">AMOUNT</th>' +
+    '<th scope="col" class="fs-vctable__h fs-vctable__h--fig">' +
+    'RATIO TO WEEKLY MINIMUM</th>' +
+    '</tr></thead>' +
+    `<tbody>${view.allocation.map(row).join('')}</tbody>` +
+    '</table>'
+  );
+}
+
+/**
+ * §23's four in-season read-only figures.
+ *
+ * SEPARATED FROM THE SEVEN ABOVE BECAUSE THEY ARE A DIFFERENT KIND OF FACT. The
+ * seven are what the league SET; these four are what has since HAPPENED. Mixing
+ * them into one table would invite a reader to think the pot additions are
+ * something a commissioner configured.
+ */
+function inSeasonRegion(view) {
+  if (!view.inSeason.length) return '';
+  return (
+    '<div class="fs-vcseason" id="fs-vc-in-season">' +
+    '<div class="fs-vcseason__head">IN SEASON</div>' +
+    view.inSeason.map((r) => (
+      `<div class="fs-vcseason__row" data-in-season="${escapeHtml(r.id)}">` +
+      `<span class="fs-vcseason__label">${escapeHtml(r.label)}</span>` +
+      `<span class="fs-vcseason__value fs-money">${escapeHtml(
+        allocationAmountText({ ...r, state: 'CONFIGURED' }))}</span>` +
+      '</div>'
+    )).join('') +
+    '<div class="fs-note">Read-only. These are what the season has produced, ' +
+    'not settings — each is summed from the ledger rather than counted.</div>' +
+    '</div>'
+  );
+}
+
+/**
+ * §23's five Season Rules.
+ *
+ * PRODUCT RULES, AND NOT COMMISSIONER-EDITABLE. They are stated here so a GM
+ * reading their league's settings can see which terms their commissioner chose
+ * and which the product fixes, without having to infer the difference from the
+ * absence of a control.
+ */
+function seasonRulesRegion(view) {
+  if (!view.seasonRules.length) return '';
+  return (
+    '<div class="fs-vcrules" id="fs-season-rules">' +
+    '<div class="fs-vcseason__head">SEASON RULES</div>' +
+    view.seasonRules.map((r) => (
+      '<div class="fs-vcrules__row">' +
+      `<span class="fs-vcrules__label">${escapeHtml(r.label)}</span>` +
+      `<span class="fs-vcrules__value">${escapeHtml(r.value)}</span>` +
+      '</div>'
+    )).join('') +
+    '<div class="fs-note">Set by FantasyStakes, not by your commissioner.</div>' +
+    '</div>'
+  );
+}
+
+function settingsRegion() {
+  const view = vcAllocation();
+
+  if (!view.available) {
+    return (
+      '<section class="fs-rulesec" data-region="settings" ' +
+      `data-state="${escapeHtml(settingsMode())}" ` +
+      `data-alloc-state="unavailable">` +
+      sectionHeading('LEAGUE SETTINGS') +
+      note(view.unavailableReason === 'SETTINGS_LEGACY_SEASON'
+        // A LEGACY SEASON IS NOT A FAILURE, and saying "could not be read"
+        // would be false. It played under the retired economy, which has no VC
+        // allocation table to show, and the reader is told that instead.
+        ? 'This season was played under the previous economy, which has no VC '
+          + 'allocation table. Its own settings are unchanged and its results '
+          + 'stand; the table below applies from the current season onward.'
+        : 'League settings could not be read for this session. The figures are '
+          + 'not shown rather than shown wrongly — a league’s rules '
+          + 'are not something to guess at.',
+        { pending: true }) +
+      '</section>'
+    );
+  }
+
+  return (
+    '<section class="fs-rulesec" data-region="settings" ' +
+    `data-state="${escapeHtml(settingsMode())}" data-alloc-state="available">` +
     sectionHeading('LEAGUE SETTINGS',
-                   settingsMode() === SETTINGS_MODE_UNAVAILABLE ? '' : 'read-only') +
-    (settingsMode() === SETTINGS_MODE_UNAVAILABLE
-      ? note('League settings could not be read for this session. The figures '
-             + 'below are not shown rather than shown wrongly — a league’s '
-             + 'rules are not something to guess at.', { pending: true })
-      : `<div class="fs-settings" id="fs-settings">` +
-        `${settingsRows().map(settingRow).join('')}</div>`) +
+                   settingsMode() === SETTINGS_MODE_AUTHORITATIVE
+                     ? 'read-only' : 'example') +
+    vcAllocationTable(view) +
+    inSeasonRegion(view) +
+    seasonRulesRegion(view) +
     // Stated on the surface, not only in the model: a row that looks editable
     // and is not should say why.
-    // S8-P4 CORRECTION. This said no governed configuration command existed.
-    // One does now — Standard Pool Bet, per the B2 ruling — so the sentence
-    // became false, and false in the place a commissioner reads to find out
-    // what they may change. The other three rows are still read-only, and the
-    // reason is the ruling rather than a missing route.
-    '<div class="fs-note">Current league configuration. The Standard Pool Bet ' +
-    'is set by the commissioner and freezes once the first Pool week of the ' +
-    'season is collected. '
-    + 'The economy stop, Skunk amount and payout split are fixed ' +
-    'for the season — changing any of them would re-price obligations GMs have ' +
-    'already funded.</div>' +
+    '<div class="fs-note">Your league’s configuration. The Prop Pool '
+    + 'Entry is set by the commissioner and freezes once the first Pool week '
+    + 'of the season is collected. Everything else is fixed for the season '
+    + '— changing any of it would re-price obligations GMs have already '
+    + 'funded.</div>' +
     '</section>'
   );
 }
@@ -159,6 +265,51 @@ export function settingSheet(setting) {
       `<div class="fs-rule__body">${escapeHtml(setting.detail)}</div>` +
       `<div class="fs-rule__src">${escapeHtml(setting.source)}</div>` +
       settingControl(setting),
+  };
+}
+
+/**
+ * The detail sheet for a VC ALLOCATION row that carries no control.
+ *
+ * IT SAYS WHERE THE FIGURE CAME FROM AND WHY IT CANNOT BE CHANGED. Six of the
+ * seven rows are fixed for the season, and the reason is a rule rather than a
+ * missing feature: changing any of them mid-season would re-price obligations
+ * GMs have already funded. A sheet that simply repeated the number would leave
+ * a reader to conclude the control was forgotten.
+ *
+ * @param {{id: string, label: string, amountCents: number|null, state: string,
+ *          ratio: string|null, source: string}} row
+ * @returns {{title: string, sub: string, body: string}}
+ */
+export function allocationSheet(row) {
+  const unset = row.state === 'UNCONFIGURED';
+  return {
+    title: row.label,
+    sub: 'League configuration',
+    body:
+      '<div class="fs-prev__row"><span class="fs-prev__label">Amount</span>' +
+      `<span class="fs-prev__value fs-money">${escapeHtml(
+        allocationAmountText(row))}</span></div>` +
+      (row.ratio
+        ? '<div class="fs-prev__row"><span class="fs-prev__label">Ratio to '
+          + 'Weekly Minimum</span>'
+          + `<span class="fs-prev__value">${escapeHtml(row.ratio)}</span></div>`
+        : '') +
+      '<div class="fs-rule__body">' +
+      (unset
+        // UNCONFIGURED IS NOT ZERO, and the sheet is where that distinction
+        // becomes words rather than a dash in a cell.
+        ? 'No amount has been entered for this. It is not the same as a league '
+          + 'that has deliberately set it to zero — nobody has chosen '
+          + 'either way yet, and this pillar opens unfunded until someone does.'
+        : row.state === 'DECLINED'
+          ? 'This league has deliberately set this to zero and plays without '
+            + 'it. That is a governed choice, not a missing setting.'
+          : 'Fixed for the season. Changing it would re-price obligations GMs '
+            + 'have already funded, so no command exists to change it '
+            + 'mid-season.') +
+      '</div>' +
+      `<div class="fs-rule__src">${escapeHtml(row.source)}</div>`,
   };
 }
 
@@ -326,6 +477,37 @@ export function bindRules(panel, api) {
     el.addEventListener('click', () => {
       const group = RULE_GROUPS.find((g) => g.id === el.dataset.rule);
       if (group) api.openSheet(ruleSheet(group));
+    });
+  });
+
+  /* THE ONE EDITABLE SETTING KEEPS ITS PATH ACROSS §23's RENAME.
+   *
+   * §23 calls the row Prop Pool Entry; the settings response, the command and
+   * the server's bound all call it `pool-bet`, and renaming those would rename
+   * a governed mutation to make a table read better. So the table's row id is
+   * mapped to the settings row it opens, in ONE place, and every other row
+   * opens the plain detail sheet built from the figure itself.
+   *
+   * A row with no mapping is not inert: it opens its own sheet naming the
+   * source the figure came from, because "where does this number come from" is
+   * the question a settings table exists to answer. */
+  const OPENS_SETTING = { 'prop-pool-entry': 'pool-bet' };
+
+  panel.querySelectorAll('[data-alloc]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const view = vcAllocation();
+      const row = view.allocation.find((r) => r.id === el.dataset.alloc);
+      if (!row) return;
+
+      const mapped = OPENS_SETTING[row.id];
+      if (mapped) {
+        const setting = settingsRows().find((s) => s.id === mapped);
+        if (setting) {
+          api.openSheet(settingSheet(setting));
+          return;
+        }
+      }
+      api.openSheet(allocationSheet(row));
     });
   });
 

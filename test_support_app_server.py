@@ -336,6 +336,56 @@ _SEED_SKUNK_WEEK = """
 """
 
 
+#: FINAL POR — the fixture league as a FINAL POR season with a frozen economy.
+#:
+#: WHY THIS IS OPT-IN. The certification league is a LEGACY season, and every
+#: earlier suite was certified against that fixture. Stamping the whole fixture
+#: Final POR would change what Standings, the Ledger and Current Settle report
+#: for every one of them at once — the Score gains its Skunk term, the pots
+#: change namespace, the expired-minimum asset disappears. That is a fixture
+#: migration, not a UI-7 change, and it is not this package's to make.
+#:
+#: WHAT IT SEEDS, AND WHY EACH PART IS NEEDED. §23's table cannot be derived
+#: from a legacy stop: the ratio column is taken against the Weekly Minimum, and
+#: a legacy stop carries constants rather than a weekly figure. So the season
+#: needs a FROZEN economy configuration (which supplies the minimum, the Skunk
+#: fee, the week count and the Fantasy Football pot), a frozen top-off
+#: multiplier (which anchors the Season Top-Off Limit), and the ruleset stamp
+#: that makes the season Final POR at all.
+#:
+#: THE FANTASY FOOTBALL POT IS DELIBERATELY 0, not NULL. Zero is the governed
+#: "this league plays without one" state, and seeding it means the certification
+#: exercises a DECLINED row rather than only CONFIGURED ones — the distinction
+#: §23 exists to preserve is then actually on the screen being measured.
+_SEED_FINAL_POR_ECONOMY = """
+    from db.schema import (
+        LeagueSeasonEconomyConfig, LeagueSeasonTopoffConfig, PoolConfig,
+    )
+    from ruleset import RULESET_FINAL_POR, stamp_ruleset
+
+    _naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.add(LeagueSeasonEconomyConfig(
+        league_id=league.id, season=league.season,
+        weekly_bet_minimum_cents=1000,
+        championship_contribution_cents=8000,
+        skunk_fee_cents=1000,
+        ff_championship_pot_cents=0,
+        regular_season_week_count=14,
+        active_team_count=2,
+        start_week_used=1, playoff_start_week_used=15,
+        frozen_at=_naive))
+    db.add(LeagueSeasonTopoffConfig(league_id=league.id, season=league.season,
+                                    topoff_cap_multiplier_bps=5000))
+    if db.query(PoolConfig).filter(PoolConfig.league_id == league.id).first() is None:
+        db.add(PoolConfig(league_id=league.id, pool_weekly_entry_cents=200))
+    db.flush()
+    db.commit()
+    stamp_ruleset(db, league_id=league.id, season=league.season,
+                  version=RULESET_FINAL_POR)
+    db.commit()
+"""
+
+
 _SEED_FROZEN_POOL_ENTRY = """
     # The governed frozen state: `pool_weekly_entry_frozen_at` is written once,
     # by the season's first Rev1.3 collection, and `configure_pool_weekly_entry`
@@ -452,6 +502,7 @@ class AppServer:
                  seed_priceable_versus: bool = False,
                  provider_binding: str = "yahoo",
                  server_env: dict | None = None,
+                 seed_final_por: bool = False,
                  provider_week: int | None = 5) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
@@ -499,6 +550,11 @@ class AppServer:
         # refreshed, which is the state a real deployment without Yahoo
         # credentials actually has.
         self._provider_week = provider_week
+        # UI-7 / FINAL POR: off by default, so every existing suite runs
+        # against the byte-identical LEGACY fixture it was certified on. On,
+        # the league becomes a Final POR season with a frozen economy — which
+        # is the only state §23's VC allocation table can be derived from.
+        self._seed_final_por = seed_final_por
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -619,6 +675,11 @@ class AppServer:
         # LAST, so it finalizes whichever matchup the blocks above created.
         if self._seed_skunk_week:
             extra += _SEED_SKUNK_WEEK.format(slate_week=slate_week)
+        # AFTER the Pool config blocks, so it does not overwrite a frozen entry
+        # one of them seeded, and after the Skunk week for the same reason the
+        # Skunk block goes last: it reads whatever the blocks above built.
+        if self._seed_final_por:
+            extra += _SEED_FINAL_POR_ECONOMY
 
         binding = {
             "yahoo": ("yahoo", "461.l.certification"),

@@ -75,14 +75,28 @@ await withPage({ port: 9363, settleMs: 1400 }, async ({ evaluate }) => {
   // Current Settle below is unchanged at −$69: the money moved between two
   // asset terms, so the total cannot move. That is the check that this whole
   // revision is a reallocation and not a gain.
+  // REVISED AGAIN BY UI-6, AND THE CONTEXT IS WHY. §30 renamed Held to Escrow
+  // and gave the cell a context line -- "included in In Play" -- because the
+  // paragraph above is exactly the confusion a reader has when two cells both
+  // count the same $25 and neither says so. The cell's VALUE now carries that
+  // context, so an equality against the bare figure fails on a cell that is
+  // more correct than the one it was written for.
+  //
+  // The figure and its exact cents are asserted as strictly as before, and the
+  // context is asserted too rather than tolerated: dropping it would silently
+  // undo §30.
   const WEEK = [['Available', '$40', '4000'], ['In Play', '$53', '5300'],
                 ['Escrow', '$25', '2500'], ['Min Left', '$10', '1000']];
   for (const [i, [label, value, exact]] of WEEK.entries()) {
     report.check(`My Week ${label} draws ${value}`,
-      ledger.week[i].label === label && ledger.week[i].value === value
+      ledger.week[i].label === label
+      && ledger.week[i].value.startsWith(value)
       && ledger.week[i].exact === exact,
       `${ledger.week[i].label} ${ledger.week[i].value} (${ledger.week[i].exact})`);
   }
+  report.check('  · and Escrow says it is included in In Play, not beside it',
+    ledger.week[2].value === '$25 · included in In Play',
+    ledger.week[2].value);
 
   // UIRECON WAVE 1 — the cell is labelled `Season Adj`; same cell, same rule.
   report.check('Season Adj uses the unresolved treatment, not a number',

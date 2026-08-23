@@ -214,358 +214,146 @@ export const SETTINGS_SEAM = Object.freeze({
   needs: 'a governed, commissioner-authorised configuration command before any row can be edited',
 });
 
-/* ── The five rule groups ───────────────────────────────────────────────────*/
+/* ── FINAL POR §24 · the four rule groups ──────────────────────────────────*/
 
 /**
- * The locked top-level groups, in the locked order.
+ * §24's four top-level groups, in §24's order.
+ *
+ * THIS REPLACED SIX RC2 GROUPS, and the replacement is a reorganisation rather
+ * than a rewrite of the league's rules: what was scattered across The Money,
+ * Weekly Grind, The Championships, Big Money, The Bets and The Fine Print is
+ * now The Basics, Your Credits, Weekly Play and Season Play, which is how a GM
+ * actually encounters the game. The rules themselves are the Final POR's, and
+ * several of them could not have been stated under the old structure at all --
+ * there was no Points Championship, no Grand Championship and no accepted-wager
+ * void to describe.
+ *
+ * THREE PARAGRAPHS ARE APPROVED COPY AND APPEAR VERBATIM: what FantasyStakes
+ * does, what a virtual credit is, and the Team/Matchup Prop Pool distinction.
+ * They are marked at their sites. Do not paraphrase them for length.
  *
  * @type {ReadonlyArray<{id: string, title: string, blurb: string,
  *   rules: ReadonlyArray<{heading: string, body: string, source: string}>}>}
  */
 export const RULE_GROUPS = Object.freeze([
   Object.freeze({
-    id: 'money',
-    title: 'The Money',
-    blurb: 'What you are advanced, what you owe, and what a Credit is.',
+    id: 'basics',
+    title: 'The Basics',
+    blurb: 'What FantasyStakes is, and what it does with your league.',
     rules: Object.freeze([
       Object.freeze({
-        heading: 'You are advanced virtual stakes, not given them',
+        heading: 'What FantasyStakes does',
+        // APPROVED COPY, VERBATIM. This paragraph is the product's own
+        // description of itself and is not paraphrased here.
         body:
-          'At season open every GM is advanced their Season-Opening Allocation: ' +
-          'the league’s Weekly Bet Minimum across its regular-season weeks, held ' +
-          'as the Weekly Play Reserve, plus its Yahoo Championship ' +
-          'Contribution and its FantasyStakes Championship Contribution, each ' +
-          'held as a committed championship reserve. The commissioner ' +
-          'configures all three before activation and the server derives the ' +
-          'total — ' +
-          'see League Settings for your league’s own figures. That advance is an ' +
-          'obligation for the whole season. It is subtracted in Current Settle, ' +
-          'so a GM who has wagered nothing sits at a deficit rather than at zero.',
-        source: 'Season-Opening Allocation rules',
+          'FantasyStakes uses your league settings, scoring and projections to ' +
+          'simulate matchups and generate real probabilities and Vegas-style ' +
+          'odds. You use those odds to wager virtual credits on your team ' +
+          'against other players.',
+        source: 'Product definition',
       }),
       Object.freeze({
-        heading: 'The championship reserve is committed from the moment it lands',
+        heading: 'Your fantasy league is unchanged',
         body:
-          'The championship reserve is never spendable and ' +
-          'never releasable. It is economically committed to the championship pot ' +
-          'from activation, which is why it is not counted as one of your ' +
-          'settlement-relevant assets — counting it would overstate every GM all season.',
-        source: 'Current Settle rules',
-      }),
-      Object.freeze({
-        heading: 'Current Settle is derived, never stored',
-        body:
-          'Your position is recomputed from posted ledger entries every time it ' +
-          'is asked for: settlement-relevant assets minus obligations. Positive ' +
-          'means the league owes you, negative means you owe. There is no ' +
-          'Current Settle column anywhere and no cached total that could disagree ' +
-          'with the money.',
-        source: 'Current Settle rules',
-      }),
-      Object.freeze({
-        heading: 'More stakes come from a Top-Off, and a Top-Off is approved',
-        body:
-          'A GM asks for additional virtual stakes; an authorised league ' +
-          'commissioner approves or rejects; approval posts a balanced issuance ' +
-          'to the ledger and the Credits land in the GM’s wallet. A Top-Off ' +
-          'raises Total Virtual Stakes, so it lowers Current Settle by the same ' +
-          'amount — it is an advance, not winnings.',
-        source: 'Top-Off rules',
-      }),
-      Object.freeze({
-        heading: 'Credits are virtual',
-        body:
-          'Credits display as dollars for legibility. They are not money, carry ' +
-          'no cash value, and cannot be deposited, withdrawn or redeemed. There ' +
-          'is no funding path into this league and none is planned.',
-        source: 'League economy rules',
-      }),
-    ]),
-  }),
-
-  Object.freeze({
-    id: 'weekly',
-    title: 'Weekly Grind',
-    blurb: 'The weekly minimum, how it is spent, and the Skunk.',
-    rules: Object.freeze([
-      Object.freeze({
-        heading: 'Your Weekly Bet Minimum is released to you each week',
-        body:
-          'Each week the league releases your configured Weekly Bet Minimum ' +
-          'from your minimum reserve into that week’s minimum — once per team ' +
-          'per week, for each of the league’s regular-season weeks. A release ' +
-          'can never exceed what remains in the reserve, so a release beyond the ' +
-          'season’s last week posts nothing rather than driving the account ' +
-          'negative. There is no Weekly Minimum in the postseason.',
-        source: 'Weekly Minimum rules',
-      }),
-      Object.freeze({
-        heading: 'Wagers fund from the weekly minimum first, then your wallet',
-        body:
-          'Spending draws down the week’s minimum before it touches your wallet. ' +
-          'That order is fixed, and it is why Weekly Min Left falls before ' +
-          'Available does.',
-        source: 'Weekly Minimum rules',
-      }),
-      Object.freeze({
-        heading: 'Unspent minimum leaves circulation — it is not taken from you',
-        body:
-          'At week close whatever remains in that week’s minimum moves out of ' +
-          'circulation. Both accounts are your own settlement-relevant assets, ' +
-          'so your Current Settle moves by exactly zero. The Ledger shows it as ' +
-          'Weekly Min · out of circulation.',
-        source: 'Weekly Minimum rules',
-      }),
-      Object.freeze({
-        heading: 'The Skunk is charged to the week’s widest loss',
-        body:
-          'Every completed regular-season week, the team that lost its Yahoo ' +
-          'matchup by the largest margin owes one Skunk Fee at the amount the ' +
-          'commissioner configured. Tied largest losers split one fee between ' +
-          'them — the league is charged one fee per week, never one per loser. ' +
-          'There is no Skunk in the postseason, and no enforced season maximum.',
-        source: 'Skunk rules',
-      }),
-      Object.freeze({
-        heading: 'An assessment is an obligation, not a seizure',
-        body:
-          'A Skunk posts as a ledger obligation against the GM rather than ' +
-          'taking Credits out of their Wallet, so it can be assessed whatever ' +
-          'their balance is and it lowers Current Settle without touching what ' +
-          'they can spend. Nothing collects a Skunk receivable automatically. ' +
-          'The Skunk Fee is contingent and is not part of the Season-Opening ' +
-          'Allocation.',
-        source: 'Skunk rules',
-      }),
-      Object.freeze({
-        heading: 'The whole Skunk Pot goes to the Points For leader',
-        body:
-          'Every Skunk Fee assessed during the regular season accumulates into ' +
-          'one Skunk Pot. At regular-season close the entire Pot is awarded to ' +
-          'the team with the highest cumulative Yahoo regular-season Points For ' +
-          '— not the best record, not the champion, not a seed. Postseason ' +
-          'points are excluded. A Points For tie is split by the governed ' +
-          'deterministic rule.',
-        source: 'Skunk rules',
-      }),
-    ]),
-  }),
-
-  Object.freeze({
-    id: 'championships',
-    title: 'The Championships',
-    blurb: 'How the two championships are won, scored and paid.',
-    rules: Object.freeze([
-      Object.freeze({
-        heading: 'Championship Score is what you have WON, not what you hold',
-        body:
-          'Your FantasyStakes Championship Score is your total realized net ' +
-          'winnings from championship-counting FantasyStakes competition: ' +
-          'matchups against other GMs and prop pools. Your wallet balance is ' +
-          'not your Championship Score. Credits you were advanced at season ' +
-          'open, a Top-Off, a released Weekly Minimum, a refund or a ' +
-          'championship payout all move your wallet without anybody winning ' +
-          'anything, so none of them move your Championship Score. Credits ' +
-          'decide how much you can play; results decide whether you are winning.',
-        source: 'FantasyStakes Championship POR',
-      }),
-      Object.freeze({
-        heading: 'Scoring ends with the final Yahoo regular-season week',
-        body:
-          'The FantasyStakes Championship race runs through the Yahoo regular ' +
-          'season. At the playoff boundary the standings freeze: the field and ' +
-          'the scoring window are closed and neither reopens. FantasyStakes ' +
-          'play continues in the postseason and those wagers still move real ' +
-          'Credits — they simply no longer change Championship Score or the ' +
-          'Grand Champion.',
-        source: 'FantasyStakes Championship POR',
-      }),
-      Object.freeze({
-        heading: 'A regular-season contest still counts if it settles late',
-        body:
-          'Eligibility belongs to the contest, not to the clock. A matchup or ' +
-          'prop pool from the regular season counts even if its result lands ' +
-          'after the freeze. That is why the championship is FROZEN before it ' +
-          'is FINAL: frozen means the field is closed, final means every ' +
-          'eligible result is in. The pot is never paid before FINAL.',
-        source: 'FantasyStakes Championship POR',
-      }),
-      Object.freeze({
-        heading: 'The FantasyStakes Championship pot is fixed and pays 60 / 30 / 10',
-        body:
-          'The pot is fixed at activation and funded only by the FantasyStakes ' +
-          'Championship Contributions. It never grows from Top-Offs, Weekly ' +
-          'Minimum amounts, pool remainders or anything else. It pays 60 to ' +
-          'the champion, 30 to the runner-up and 10 to third. Exact ties are ' +
-          'real ties: the shares for the places a tied group occupies are ' +
-          'pooled and split evenly, and no wallet balance, wager count or team ' +
-          'id ever breaks a tie for money.',
-        source: 'FantasyStakes Championship POR',
-      }),
-      Object.freeze({
-        heading: 'How the Grand Champion is selected',
-        body:
-          'The Grand Champion combines each GM’s Yahoo Championship and ' +
-          'FantasyStakes Championship finish. 1st = 3 points, 2nd = 2, and ' +
-          '3rd = 1. Highest total wins. If tied, the higher FantasyStakes ' +
-          'Championship Score wins — that is your realized net winnings from ' +
-          'FantasyStakes matchups and prop pools, not your wallet balance. If ' +
-          'still tied, they are co-Grand Champions. Grand Champion rewards ' +
-          'overall performance across both championships, not combined dollars ' +
-          'or credits won. It is a season-ending recognition: there is no ' +
-          'Grand Champion pot and it moves no Credits.',
-        source: 'Grand Champion POR',
-      }),
-      Object.freeze({
-        heading: 'An authoritative correction can restate a result, never a score',
-        body:
-          'If an eligible regular-season contest was settled on the wrong ' +
-          'result, the commissioner can file an authoritative correction. The ' +
-          'correction names the contest and its corrected result — who won, or ' +
-          'that it was a push — and the server derives the Credits from that ' +
-          'contest’s own economics. Nobody types an amount, and no championship ' +
-          'score is ever edited directly. Corrections are append-only and ' +
-          'visible to the whole league. Postseason contests can never be ' +
-          'corrected into the championship, and once the pot has been paid a ' +
-          'correction is refused outright — there is no clawback and no second ' +
-          'distribution.',
-        source: 'FantasyStakes Championship POR',
-      }),
-    ]),
-  }),
-  Object.freeze({
-    id: 'big-money',
-    title: 'Big Money',
-    blurb: 'Prop Pools and the championship.',
-    rules: Object.freeze([
-      Object.freeze({
-        heading: `Exactly ${POOLS_PER_WEEK} FantasyStakes Prop Pools run every fantasy week`,
-        body:
-          'Not three, not a variable count. Each is a governed definition from ' +
-          'the Prop Pool catalog with its own settling rule, and each is scoped to ' +
-          'either one league team or one scheduled matchup.',
-        source: 'Prop Pool rules',
-      }),
-      Object.freeze({
-        heading: 'A Prop Pool that finds no qualifier carries its pot forward',
-        body:
-          'Rolling over is a modifier on a Prop Pool, never a different kind of ' +
-          'Prop Pool. ' +
-          'A continuation occupies one of the week’s four slots and carries its ' +
-          'accumulated pot into it.',
-        source: 'Prop Pool rules',
-      }),
-      Object.freeze({
-        heading: 'Prop Pool entry is set by the commissioner and then frozen',
-        body:
-          `Between ${formatCredits(POOL_ENTRY.minCents)} and ${formatCredits(POOL_ENTRY.maxCents)} a week, ` +
-          'fixed for the season once the first week is built. Entering a Prop Pool ' +
-          'genuinely reduces your Current Settle: the contribution has left you ' +
-          'and funds an outcome that is not yet yours.',
-        source: 'Prop Pool entry rules',
-      }),
-      Object.freeze({
-        heading: `The championship pot pays ${CHAMPIONSHIP_SPLIT.split.join(' / ')} by place`,
-        body:
-          'Every GM’s Yahoo Championship Contribution sweeps into the Yahoo ' +
-          'championship pot ' +
-          'at season close. It pays the champion, the runner-up and the official ' +
-          'third place. Payouts are integer cents: each ordinary place takes the ' +
-          'floor of its share and first place takes the remainder, so the pot ' +
-          'distributes exactly with nothing stranded.',
-        source: 'Championship rules',
-      }),
-      Object.freeze({
-        heading: 'Yahoo decides the podium, and nothing else does',
-        body:
-          'Champion, runner-up and official third place are Yahoo’s postseason ' +
-          'result. There is no commissioner override, no standings-based ' +
-          'fallback and no FantasyStakes tiebreaker. If the official third place ' +
-          'cannot be classified, the payout does not proceed on a guess — it ' +
-          'waits.',
-        source: 'Championship rules',
-      }),
-      Object.freeze({
-        heading: 'Who can play in the postseason',
-        body:
-          'FantasyStakes Matchups are limited to teams still alive on the ' +
-          'championship track, plus the official third-place participants ' +
-          'during championship week. A team playing a consolation or placement ' +
-          'game is not a Matchup subject, however many fixtures it has left. ' +
-          'Prop Pools are different: every league member keeps entering them ' +
-          'after their own team is eliminated, subject to the ordinary Prop ' +
-          'Pool rules.',
-        source: 'Prop Pool rules',
-      }),
-    ]),
-  }),
-
-  Object.freeze({
-    id: 'bets',
-    title: 'The Bets',
-    blurb: 'Challenges, markets, stakes and terms.',
-    rules: Object.freeze([
-      Object.freeze({
-        heading: 'Three markets: ML, Spread and O/U',
-        body:
-          'Every wager is one of the three. They persist as straight, spread and ' +
-          'over_under respectively — ML is the display label for straight, not a ' +
-          'fourth kind of bet.',
-        source: 'Matchup wager rules',
-      }),
-      Object.freeze({
-        heading: `The minimum stake is ${formatCredits(MIN_STAKE_CENTS)}`,
-        body:
-          'Stakes are whole cents. A stake below the minimum, or one you cannot ' +
-          'fund, is refused before it is offered — the composer applies the same ' +
-          'rules in the same order the engine does.',
-        source: 'Stake rules',
-      }),
-      Object.freeze({
-        heading: `${MODE_COPY[MODE_LOCKED].label} — ${MODE_COPY[MODE_LOCKED].headline}`,
-        // Quoted from the adopted ruling through wager-model, so this sheet and
-        // the composer cannot drift apart.
-        body: MODE_COPY[MODE_LOCKED].body,
-        source: 'Locked and Dynamic wager rules',
-      }),
-      Object.freeze({
-        heading: `${MODE_COPY[MODE_DYNAMIC].label} — ${MODE_COPY[MODE_DYNAMIC].headline}`,
-        body: MODE_COPY[MODE_DYNAMIC].body,
-        source: 'Locked and Dynamic wager rules',
-      }),
-      Object.freeze({
-        heading: 'One counter, and then a decision',
-        body:
-          'A challenge holds at most the initial proposal and one counter. The ' +
-          'counter may set its own stake and quote, but not the market, the ' +
-          'terms, the participants or the week — and the issuer keeps the Anchor ' +
-          'role. Once countered, the issuer accepts or declines; there is no ' +
-          're-counter.',
-        source: 'Matchup lifecycle rules',
-      }),
-      Object.freeze({
-        heading: 'An offer holds your Credits without spending them',
-        body:
-          'A pending offer reduces what you can spend while it is outstanding. ' +
-          'It is not counted again in Current Settle until a proposal is ' +
-          'accepted and the funds become escrow.',
-        source: 'Matchup funding rules',
-      }),
-    ]),
-  }),
-
-  Object.freeze({
-    id: 'fine-print',
-    title: 'The Fine Print',
-    blurb: 'Sources of truth, and what this is not.',
-    rules: Object.freeze([
-      Object.freeze({
-        heading: 'Yahoo decides what happened on the field',
-        body:
-          'Lineups, scoring and matchup results come from your Yahoo league ' +
+          'Lineups, scoring and matchup results come from your fantasy league ' +
           'through the provider gateway. FantasyStakes reads them and never ' +
-          'writes to them: nothing here changes a fantasy result.',
+          'writes to them: nothing here changes a fantasy result, a roster or ' +
+          'a standing in the league you already play.',
         source: 'Provider rules',
+      }),
+      Object.freeze({
+        heading: 'Wagers are public',
+        body:
+          'Every GM in the league can see the wagers you offer, accept and ' +
+          'settle. There is no private betting and no quiet ledger — a ' +
+          'league where some results are visible and others are not is not a ' +
+          'league anyone can check.',
+        source: 'League rules',
+      }),
+      Object.freeze({
+        heading: 'The specifications win',
+        body:
+          'Where anything on a screen disagrees with the governing game, ' +
+          'wager, accounting, settlement, economy or provider protocols, the ' +
+          'protocol is right and the screen is wrong. This manual transcribes ' +
+          'those rules; it does not create them.',
+        source: 'Protocol safety',
+      }),
+    ]),
+  }),
+
+  Object.freeze({
+    id: 'credits',
+    title: 'Your Credits',
+    blurb: 'What a Credit is, what you are advanced, and what you owe.',
+    rules: Object.freeze([
+      Object.freeze({
+        heading: 'What a virtual credit is',
+        // APPROVED COPY, VERBATIM.
+        body:
+          'FantasyStakes uses virtual credits to create its own differentiated ' +
+          'scoring and accounting system, separate from the fantasy points ' +
+          'used by your underlying league. Virtual credits have no real-world ' +
+          'economic value outside FantasyStakes.',
+        source: 'Credits display rules',
+      }),
+      Object.freeze({
+        heading: 'There is no way to buy in and no way to cash out',
+        // THE FUNDING DENIAL, KEPT WORD FOR WORD FROM THE RETIRED FINE PRINT
+        // GROUP. It is the load-bearing sentence of the whole Credits model
+        // and the one a regulator would read first; §24 reorganised where the
+        // rules live and did not licence softening this one.
+        body:
+          'Credits cannot be deposited, withdrawn or redeemed. They are not ' +
+          'currency, not tokens and not a stake in anything: they have no cash ' +
+          'value inside FantasyStakes or outside it. There is no funding path ' +
+          'into this league and none is planned.',
+        source: 'Credits display rules',
+      }),
+      Object.freeze({
+        heading: 'You are advanced credits, not given them',
+        body:
+          'At season open every GM is advanced their Season-Opening ' +
+          'Allocation. It is an advance against the season, not a gift and not ' +
+          'a purchase, and your Current Settle is the running answer to what ' +
+          'you have been advanced against what you have earned.',
+        source: 'League economy configuration',
+      }),
+      Object.freeze({
+        heading: 'Current Settle: what you would owe if the season stopped now',
+        // THE DEFINITION AND THE NEVER-STORED PROPERTY, both transcribed from
+        // `economy/current_settle.py`. The second half is not a footnote: a
+        // figure that were stored could drift from the ledger it describes, and
+        // "derived on every read" is the reason this one cannot.
+        body:
+          'Current Settle is your settlement-relevant assets minus ' +
+          'obligations. It is derived from the ledger on every read and is ' +
+          'never stored, never incremented and never taken from a wallet ' +
+          'balance — there is no Current Settle column anywhere, because a ' +
+          'stored figure could disagree with the postings it describes.',
+        source: 'Current Settle',
+      }),
+      Object.freeze({
+        heading: 'Your FantasyStakes Score is what wins championships',
+        // THE FORMULA, STATED ONCE AND IN THE SAME THREE TERMS THE STANDINGS
+        // TABLE DRAWS. A rules sheet that phrased it differently from the
+        // column headings would read as a second, slightly different rule.
+        body:
+          'FantasyStakes Score = Matchups + Prop Pools − Skunk Fees. Your ' +
+          'Wallet balance is not part of it: a GM who holds credits and a GM ' +
+          'who has wagered them stand in the same place until the wagers ' +
+          'settle. The Score decides your championship standing; the Wallet ' +
+          'decides what you can stake next.',
+        source: 'FantasyStakes Score',
+      }),
+      Object.freeze({
+        heading: 'Displayed dollars are rounded; the accounting is not',
+        body:
+          'FantasyStakes draws Credit values as whole Credits. The underlying ' +
+          'figures are exact integer cents throughout, and every drawn figure ' +
+          'carries its exact cents alongside it — the rounded string is ' +
+          'never the accounting value.',
+        source: 'Credits display rules',
       }),
       Object.freeze({
         heading: 'The ledger balances, always',
@@ -575,23 +363,232 @@ export const RULE_GROUPS = Object.freeze([
           'continuous integrity check the league rests on.',
         source: 'Ledger integrity',
       }),
+    ]),
+  }),
+
+  Object.freeze({
+    id: 'weekly',
+    title: 'Weekly Play',
+    blurb: 'Matchups, Prop Pools, the Skunk and Top-Offs.',
+    rules: Object.freeze([
       Object.freeze({
-        heading: 'Displayed dollars are rounded; the accounting is not',
+        heading: 'Matchups',
         body:
-          'FantasyStakes draws Credit values as whole Credits. The underlying figures ' +
-          'are exact integer cents throughout, and every drawn figure carries its ' +
-          'exact cents alongside it — the rounded string is never the accounting ' +
-          'value.',
-        source: 'Credits display rules',
+          'Each week you may challenge another GM on your own matchup at the ' +
+          'odds FantasyStakes generates. Both stakes are held in escrow until ' +
+          'the fantasy result is final, and the Weekly Minimum is the least ' +
+          'you must put into play across the week. The Weekly Minimum applies ' +
+          'in the regular season only.',
+        source: 'Wager rules',
       }),
       Object.freeze({
-        heading: 'The specifications win',
+        heading: 'How the Weekly Minimum is released and spent',
+        // MIN-FIRST, AND THE RELEASE CEILING. Both transcribed from
+        // `economy/weekly_minimum.py`. A GM who does not know the spending
+        // order cannot reconcile their own Wallet against their Min Left.
         body:
-          'Where anything in this app disagrees with the governing game, wager, ' +
-          'accounting, settlement, economy or provider protocols, the protocol is ' +
-          'right and the screen is wrong. This manual transcribes those rules; it ' +
-          'does not create them.',
-        source: 'Protocol safety',
+          'Your Weekly Play Reserve is released one week at a time, and a ' +
+          'release can never exceed what is left of the reserve — a league ' +
+          'cannot release more weeks than it bought. ' +
+          'When you stake, the released minimum is spent first and your ' +
+          'Wallet only after it: minimum first, then wallet. Whatever is left ' +
+          'unspent at week close goes to the FantasyStakes Championship Pot ' +
+          'rather than back to you.',
+        source: 'Weekly Minimum rules',
+      }),
+      Object.freeze({
+        heading: 'The three markets',
+        // THE BETTING VOCABULARY IS INTENTIONAL (Rev 4.2 §2) -- wagers, bets,
+        // stake, pot, ML, Spread, O/U. The Virtual Credits distinction is
+        // carried by the disclaimer and by Your Credits above, not by
+        // sanitising the language a bettor already knows.
+        body:
+          'Every matchup offers the same three bets. ML is the moneyline \u2014 ' +
+          'who wins outright, priced by win probability rather than by margin. ' +
+          'Spread gives one team a handicap in fantasy points, and your bet is ' +
+          'whether they beat it. O/U is the total: whether the two teams ' +
+          'combined finish over or under a posted number. Your stake goes into ' +
+          'escrow when the wager is accepted and the pot settles when the ' +
+          'fantasy result is final. The engine knows them as straight, spread ' +
+          'and over_under, and there are no others.',
+        source: 'Wager rules',
+      }),
+      Object.freeze({
+        heading: 'A voided wager still counted as play',
+        // THE ACCEPTED-WAGER VOID RULE. The half a GM cares about is the half
+        // that is easy to get wrong in their favour and against them at once:
+        // the stake comes back, and the week still counts as played.
+        body:
+          'If an accepted wager has to be voided, both stakes return to their ' +
+          'Wallets in full and the wager scores nothing for either GM. The ' +
+          'week still counts as played: accepting the wager satisfied your ' +
+          'Weekly Minimum, and voiding it does not put that obligation back. ' +
+          'A void is recorded as its own event, so it is always visible as a ' +
+          'void rather than as a wager that quietly disappeared.',
+        source: 'Wager rules',
+      }),
+      // THE TWO WAGER MODES, QUOTED FROM THE ADOPTED RULING. These bodies are
+      // `MODE_COPY`'s own text, imported rather than transcribed, so ONE copy
+      // of the ruling exists in this build and the rules sheet shows that copy.
+      // They moved here from the retired "The Bets" group; the ruling itself is
+      // unchanged and is not restated in this file.
+      Object.freeze({
+        heading: `${MODE_COPY[MODE_LOCKED].label} — ${
+          MODE_COPY[MODE_LOCKED].headline}`,
+        body: MODE_COPY[MODE_LOCKED].body,
+        source: 'Locked vs Dynamic wager model ruling',
+      }),
+      Object.freeze({
+        heading: `${MODE_COPY[MODE_DYNAMIC].label} — ${
+          MODE_COPY[MODE_DYNAMIC].headline}`,
+        body: MODE_COPY[MODE_DYNAMIC].body,
+        source: 'Locked vs Dynamic wager model ruling',
+      }),
+      Object.freeze({
+        heading: 'One counter, and no re-counter',
+        body:
+          `The least you may stake on a wager is ${formatCredits(
+            MIN_STAKE_CENTS)}. An offer may be countered once; the original ` +
+          'GM then accepts or declines, and there is no re-counter. A wager ' +
+          'that is neither accepted nor declined simply expires.',
+        source: 'Wager rules',
+      }),
+      Object.freeze({
+        heading: 'Prop Pools',
+        // APPROVED COPY, VERBATIM. Both sentences.
+        body:
+          'Team Prop Pools are based on the performance of individual fantasy ' +
+          'teams or players across the league. Matchup Prop Pools are based on ' +
+          'the combined results or performance of a specific fantasy football ' +
+          'matchup.',
+        source: 'Prop Pool rules',
+      }),
+      Object.freeze({
+        heading: 'What a Prop Pool pays, and what happens when nobody wins',
+        body:
+          'Every GM who enters pays the same Prop Pool Entry, and the pot goes ' +
+          'to whoever answers the Pool best. A Pool that nobody wins carries ' +
+          'to the next week where its question allows it; where it cannot ' +
+          'carry, or where the season runs out, the remainder goes to the ' +
+          'FantasyStakes Championship Pot rather than back to the GMs who ' +
+          'entered it.',
+        source: 'Prop Pool rules',
+      }),
+      Object.freeze({
+        heading: 'Skunk',
+        // ONE ASSESSMENT, NOT CHARGED TWICE. Stated as a rule rather than as
+        // an implementation note, because a GM who sees the fee reduce their
+        // Score and also sees it as an obligation will otherwise reasonably
+        // conclude they were charged for it twice.
+        body:
+          'Each completed regular-season week, the GM who lost their fantasy ' +
+          'matchup by the largest margin is assessed the Weekly Skunk Fee. ' +
+          'Tied largest losers split one fee between them. It is ONE ' +
+          'assessment and you are never charged twice for it: the same fee ' +
+          'that reduces your FantasyStakes Score is the fee you owe, not a ' +
+          'second one. There is no postseason Skunk, and a league may set the ' +
+          'fee to zero and play without it.',
+        source: 'Skunk rules',
+      }),
+      Object.freeze({
+        heading: 'Top-Offs',
+        body:
+          'If you run short, you may request a Top-Off from your commissioner ' +
+          'up to your Season Top-Off Limit. An approved Top-Off adds credits ' +
+          'to your Wallet and the same amount to the FantasyStakes ' +
+          'Championship Pot — the pot you might win grows with the ' +
+          'credits you took. What you owe rises by the Top-Off itself and not ' +
+          'by twice it.',
+        source: 'Top-Off rules',
+      }),
+      Object.freeze({
+        heading: 'The postseason is Wallet only',
+        // THE POSTSEASON WALLET-ONLY RULE. Placed here rather than under
+        // Season Play because it is a rule about how you wager, and this is
+        // the group a GM opens to find out how wagering works.
+        body:
+          'Once the fantasy postseason begins there is no Weekly Minimum and ' +
+          'no Skunk. You wager from your Wallet alone, and those wagers score ' +
+          'exactly as regular-season wagers do — the FantasyStakes ' +
+          'Championship is still live and postseason results still move it.',
+        source: 'Season phase rules',
+      }),
+    ]),
+  }),
+
+  Object.freeze({
+    id: 'season',
+    title: 'Season Play',
+    blurb: 'The three championships, and the Grand Championship over them.',
+    rules: Object.freeze([
+      Object.freeze({
+        heading: 'How every championship pot pays',
+        // 60 / 30 / 10 IS STATED EXACTLY ONCE IN THIS MANUAL, here, because it
+        // is one rule governing all three championships. Restating it under
+        // each would invite the three copies to drift apart, and a reader who
+        // found two of them would have to work out which was authoritative.
+        body:
+          'Every championship pot divides the same way: 60 to the champion, ' +
+          '30 to the runner-up, 10 to third. Exact ties share the places they ' +
+          'tie for and split the credits those places would have paid, to the ' +
+          'cent, with the whole pot always paid out. Neither the split nor the ' +
+          'tie rule is a commissioner setting.',
+        source: 'Championship rules',
+      }),
+      Object.freeze({
+        heading: 'Points Championship',
+        body:
+          'Funded by the Skunk Fees your league actually assessed, and it ' +
+          'exists only if your league charges a Skunk Fee at all. It is won on ' +
+          'total fantasy Points For across the regular season, and it settles ' +
+          'once the regular season is final and any provider corrections have ' +
+          'landed. The figure shown before then is a projection of what the ' +
+          'pot could reach, not credits anyone holds.',
+        source: 'Points Championship',
+      }),
+      Object.freeze({
+        heading: 'Fantasy Football Championship',
+        // THE TWO-TEAM PLAYOFF EXCEPTION -- OWNER RULING. The reason the copy
+        // spends a sentence on WHY it is 67/33 rather than simply stating the
+        // numbers is that a reader who works out 60/30 renormalised would get
+        // a different answer, and would be right to ask which one their league
+        // pays.
+        body:
+          'Funded by one league-level pot your commissioner sets, and won on ' +
+          'your fantasy league’s own playoff bracket — champion, ' +
+          'runner-up, and the winner of the official third-place game. Your ' +
+          'fantasy provider is authoritative for all three; there is no ' +
+          'commissioner override and no standings-based fallback. A league ' +
+          'whose playoff format has exactly two teams has no third-place game ' +
+          'to win, and that pot pays 67 to the champion and 33 to the ' +
+          'runner-up instead. That exception is about the SHAPE of your ' +
+          'playoff, never about missing information: a bracket that should ' +
+          'have a third-place game and cannot show one waits until it can ' +
+          'rather than paying the two-team split.',
+        source: 'Fantasy Football Championship',
+      }),
+      Object.freeze({
+        heading: 'FantasyStakes Championship',
+        body:
+          'The big one, and the only championship won on FantasyStakes play ' +
+          'itself. Its Championship Base Pot opens at your league’s ' +
+          'Weekly Minimum across the regular season, and it grows all year — every unspent Weekly ' +
+          'Minimum, every approved Top-Off and every Prop Pool remainder that ' +
+          'cannot carry goes into it. It is won on FantasyStakes Score across ' +
+          'the whole season, postseason wagers included, and it pays once the ' +
+          'season is final.',
+        source: 'FantasyStakes Championship',
+      }),
+      Object.freeze({
+        heading: 'Grand Championship',
+        body:
+          'Won on the credits you finish with across the championships your ' +
+          'league actually funded — not on placings, and not on a points ' +
+          'table. It needs at least two funded championships to exist at all: ' +
+          'with only one, it would be that championship under another name. ' +
+          'An exact tie on total credits makes co-champions, and there is no ' +
+          'tiebreak beyond it.',
+        source: 'Grand Championship',
       }),
     ]),
   }),
@@ -599,3 +596,81 @@ export const RULE_GROUPS = Object.freeze([
 
 /** The locked legal line, shown once, at the bottom of this tab. */
 export const LEGAL_LINE = '© 2026 Fraser D. Coleman. All Rights Reserved. FantasyStakes™.';
+/* ── FINAL POR §23 · the VC ALLOCATION table, illustratively ────────────────*/
+
+/**
+ * §23's seven rows as the DEMO fixture holds them.
+ *
+ * ILLUSTRATIVE, AND SAID SO. Every figure here belongs to one example league;
+ * a bound session reads its own through `settings-model.js` and never sees
+ * these. They exist so the component suites and an unbound reviewer have a
+ * table to look at, for the same reason `ECONOMY_STOP` exists above.
+ *
+ * THE RATIOS ARE WRITTEN OUT, NOT COMPUTED. §16.2 forbids reimplementing the
+ * economic formula in the browser, and that applies to the demo copy of it too
+ * — a division here would be exactly the second definition the server-side
+ * `format_ratio` exists to prevent. These are transcribed from the arithmetic
+ * beside them, and the certification suite checks them against it.
+ */
+export const VC_ALLOCATION_DEMO = Object.freeze({
+  available: true,
+  weeklyMinimumCents: ECONOMY_STOP.weeklyMinCents,
+  allocation: Object.freeze([
+    Object.freeze({
+      id: 'weekly-minimum', label: 'Weekly Minimum',
+      amountCents: 1000, state: 'CONFIGURED', ratio: '1\u00d7',
+      source: 'League economy configuration',
+    }),
+    Object.freeze({
+      id: 'prop-pool-entry', label: 'Prop Pool Entry',
+      amountCents: 100, state: 'CONFIGURED', ratio: '0.1\u00d7',
+      source: 'League Pool settings',
+    }),
+    Object.freeze({
+      id: 'weekly-skunk-fee', label: 'Weekly Skunk Fee',
+      amountCents: 1000, state: 'CONFIGURED', ratio: '1\u00d7',
+      source: 'Skunk rules',
+    }),
+    Object.freeze({
+      id: 'projected-points-pot', label: 'Projected Points Championship Pot',
+      amountCents: 14000, state: 'CONFIGURED', ratio: '14\u00d7',
+      source: 'Projected \u2014 Skunk Fee across the regular season',
+    }),
+    Object.freeze({
+      id: 'fantasystakes-base-pot', label: 'FantasyStakes Championship Base Pot',
+      amountCents: 14000, state: 'CONFIGURED', ratio: '14\u00d7',
+      source: 'Weekly Minimum across the regular season',
+    }),
+    Object.freeze({
+      id: 'ff-championship-pot', label: 'Fantasy Football Championship Pot',
+      amountCents: 8000, state: 'CONFIGURED', ratio: '8\u00d7',
+      source: 'League economy configuration',
+    }),
+    Object.freeze({
+      id: 'season-top-off-limit', label: 'Season Top-Off Limit',
+      amountCents: 7000, state: 'CONFIGURED', ratio: '7\u00d7',
+      source: 'Frozen top-off multiplier',
+    }),
+  ]),
+  inSeason: Object.freeze([
+    Object.freeze({ id: 'unspent-minimum-sweeps',
+      label: 'Unspent Minimum Sweeps', amountCents: 0,
+      source: 'Swept at week close' }),
+    Object.freeze({ id: 'topoffs-added-to-fs-pot',
+      label: 'Top-Offs Added to FS Pot', amountCents: 0,
+      source: 'Added when a Top-Off is approved' }),
+    Object.freeze({ id: 'terminal-pool-remainders',
+      label: 'Terminal Prop Pool Remainders', amountCents: 0,
+      source: 'Swept when a Pool cannot carry' }),
+    Object.freeze({ id: 'current-fs-pot',
+      label: 'Current FS Championship Pot', amountCents: 14000,
+      source: 'Ledger balance' }),
+  ]),
+  seasonRules: Object.freeze([
+    Object.freeze({ label: 'Weekly Minimum', value: 'Regular season only' }),
+    Object.freeze({ label: 'Skunk Fees', value: 'Regular season only' }),
+    Object.freeze({ label: 'Postseason play', value: 'Wallet only' }),
+    Object.freeze({ label: 'Championship split', value: '60 / 30 / 10' }),
+    Object.freeze({ label: 'Wagers', value: 'Public' }),
+  ]),
+});

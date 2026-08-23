@@ -6451,6 +6451,52 @@ class SettingsChampionshipSplitOut(BaseModel):
     editable: bool
 
 
+class SettingsAllocationRowOut(BaseModel):
+    """One row of FINAL POR §23's seven-row VC ALLOCATION table.
+
+    `amount_cents` IS OPTIONAL AND `state` IS NOT. An absent amount and a zero
+    amount are different governed facts -- nobody entered one, against a league
+    that deliberately plays without it -- and a client that received only the
+    number would have to guess which it was holding. The state says.
+    """
+    id:           str
+    label:        str
+    amount_cents: int | None
+    state:        str
+    ratio:        str | None
+    source:       str
+
+
+class SettingsInSeasonRowOut(BaseModel):
+    """One of §23's four in-season read-only figures. Always an amount."""
+    id:           str
+    label:        str
+    amount_cents: int
+    source:       str
+
+
+class SettingsSeasonRuleOut(BaseModel):
+    """One of §23's five Season Rules. Product rules; none is editable."""
+    label: str
+    value: str
+
+
+class SettingsVcAllocationOut(BaseModel):
+    """FINAL POR §23, whole. Absent on a legacy season -- see `unavailable`.
+
+    THE REFUSAL TRAVELS WITH THE PAYLOAD rather than as a 4xx on the whole
+    settings read. §23's table is one region of a surface that still has four
+    other regions to draw, and failing the entire response would blank a
+    commissioner's page because one section does not apply to their season.
+    """
+    available:              bool
+    unavailable_reason:     str | None = None
+    weekly_minimum_cents:   int | None = None
+    allocation:             list[SettingsAllocationRowOut] = []
+    in_season:              list[SettingsInSeasonRowOut] = []
+    season_rules:           list[SettingsSeasonRuleOut] = []
+
+
 class LeagueSettingsOut(BaseModel):
     """The four governed settings, read from their real sources.
 
@@ -6465,6 +6511,12 @@ class LeagueSettingsOut(BaseModel):
     pool_entry:         SettingsPoolEntryOut
     skunk:              SettingsSkunkOut
     championship_split: SettingsChampionshipSplitOut
+
+    #: FINAL POR §23 / UI-7. The seven-row VC ALLOCATION table, its four
+    #: in-season figures and its five Season Rules. Carries its own
+    #: availability, because a legacy season has no such table and must be told
+    #: so rather than shown seven blank rows.
+    vc_allocation:      SettingsVcAllocationOut
 
 
 def _assert_league_member(current_user: User, league_id: int, db: Session) -> None:
@@ -6558,6 +6610,39 @@ def _league_settings(db: Session, league_id: int) -> LeagueSettingsOut:
             editable=False,
         ),
         championship_split=SettingsChampionshipSplitOut(split=split, editable=False),
+        vc_allocation=_vc_allocation(db, league_id, league.season),
+    )
+
+
+def _vc_allocation(db: Session, league_id: int,
+                   season: int) -> SettingsVcAllocationOut:
+    """FINAL POR §23's table, or a named reason why this season has none.
+
+    EVERY FIGURE IS THE VIEW'S. This function shapes a response and derives
+    nothing -- the ratios in particular are the server-side ones, because §16.2
+    forbids reimplementing the economic formula anywhere else and a division
+    performed here would be a second definition of it.
+    """
+    from economy.league_settings_view import LeagueSettingsError, view
+
+    try:
+        derived = view(db, league_id=league_id, season=season)
+    except LeagueSettingsError as refusal:
+        return SettingsVcAllocationOut(available=False,
+                                       unavailable_reason=refusal.reason)
+
+    return SettingsVcAllocationOut(
+        available=True,
+        weekly_minimum_cents=derived.weekly_minimum_cents,
+        allocation=[SettingsAllocationRowOut(
+            id=row.id, label=row.label, amount_cents=row.amount_cents,
+            state=row.state, ratio=row.ratio, source=row.source)
+            for row in derived.allocation],
+        in_season=[SettingsInSeasonRowOut(
+            id=row.id, label=row.label, amount_cents=row.amount_cents,
+            source=row.source) for row in derived.in_season],
+        season_rules=[SettingsSeasonRuleOut(label=label, value=value)
+                      for label, value in derived.season_rules],
     )
 
 

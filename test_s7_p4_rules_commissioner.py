@@ -337,12 +337,12 @@ CURRENT_SETTLE_PY = _read_root("economy", "current_settle.py")
 WEEKLY_MIN_PY = _read_root("economy", "weekly_minimum.py")
 
 groups = APP.get("groups", [])
-# RC2 adds one group: the two championships, their scoring, the 60/30/10 payout,
-# Grand Champion and authoritative corrections.
-LOCKED_ORDER = ["The Money", "Weekly Grind", "The Championships", "Big Money",
-                "The Bets", "The Fine Print"]
+# REPLACED BY UI-7 / FINAL POR §24. The six RC2 groups -- The Money, Weekly
+# Grind, The Championships, Big Money, The Bets, The Fine Print -- became four.
+# The rules did not get fewer; they got organised the way a GM meets them.
+LOCKED_ORDER = ["The Basics", "Your Credits", "Weekly Play", "Season Play"]
 
-_assert("exactly six top-level rule groups", len(groups) == 6, str(len(groups)))
+_assert("exactly four top-level rule groups", len(groups) == 4, str(len(groups)))
 _assert("in the locked order",
         [g["title"] for g in groups] == LOCKED_ORDER,
         " / ".join(g["title"] for g in groups))
@@ -368,9 +368,18 @@ _assert("no re-counter, as §8 rules",
 _assert("the Anchor role staying with the issuer is stated",
         "Anchor role stays with the original issuer" in LIFECYCLE_PY
         and "Anchor" in all_copy)
+# BOTH NAMES FOR THE SAME THREE MARKETS. The engine's identifiers are what a
+# reader would grep for and are named in the copy, and the product's own names
+# -- ML, Spread, O/U -- are what a GM actually reads. Requiring only the
+# identifiers would have let the rules describe three markets under names the
+# product does not use; requiring only the product names would let the copy
+# drift from the engine.
 _assert("the three markets match VALID_WAGER_TYPES",
         'VALID_WAGER_TYPES = ("straight", "spread", "over_under")' in LIFECYCLE_PY
         and "straight, spread and over_under" in all_copy)
+_assert("  . and are named to the reader as ML, Spread and O/U",
+        all(term in all_copy for term in ("ML is the moneyline", "Spread gives",
+                                          "O/U is the total")))
 _assert("the minimum stake matches the wallet minimum",
         re.search(r"^MIN_BET\s*=\s*5\.00", _read_root("wallet", "wallet_manager.py"),
                   re.MULTILINE) is not None
@@ -381,14 +390,39 @@ _assert("Current Settle is described exactly as the module defines it",
         or ("settlement-relevant assets minus obligations" in all_copy))
 _assert("the never-stored property is carried into the rules",
         "NEVER STORED" in CURRENT_SETTLE_PY and "never stored" in all_copy.lower())
-_assert("the committed championship reserve is described as never spendable",
-        "never spendable, never releasable" in _flat(CURRENT_SETTLE_PY)
-        and "never spendable and" in all_copy)
+# REPLACED BY UI-7. This required the rules to describe a COMMITTED PER-GM
+# CHAMPIONSHIP RESERVE that is "never spendable, never releasable". WP-5
+# retired that model outright: under Model B the championship pots are minted
+# league-level allocations and no GM carries a championship obligation at all.
+# The phrase is gone from `current_settle.py` too, so the assertion's own first
+# half no longer holds -- it was testing that the rules still described an
+# architecture the product had already replaced.
+#
+# What is asserted instead is the fact that replaced it, and it is checked
+# against the module that now owns it.
+# CHECKED AGAINST THE MODULE THAT OWNS THE FINAL POR FACT, not against the
+# absence of the legacy one. `current_settle.py` still documents
+# `reserve:{team}` as "never spendable, never releasable" and correctly so --
+# LEGACY seasons still hold that account, and deleting the explanation would
+# leave the exclusion unexplained for every season that predates Model B.
+# What changed is which model a CURRENT season plays under, and
+# `championship_pots.no_gm_liability` is the function that decides it.
+_assert("the pots are stated to be the league's, not a charge on each GM",
+        "Championship Base Pot" in all_copy
+        and "def no_gm_liability" in _read_root("economy", "championship_pots.py"),
+        "Model B: no per-GM championship liability")
 _assert("weekly release cannot exceed the reserve, as the module states",
         "RELEASE CANNOT EXCEED THE REMAINING RESERVE" in WEEKLY_MIN_PY
         and "never exceed what" in all_copy)
-_assert("expiry is described as leaving circulation, not being lost",
-        "expired_min" in WEEKLY_MIN_PY and "out of circulation" in all_copy.lower())
+# REPLACED BY UI-7. This required the rules to say that an unused Weekly
+# Minimum leaves circulation. WP-4 changed where it goes: it is swept into the
+# FantasyStakes Championship Pot at week close, which is the opposite of
+# leaving circulation -- it stays in the league and becomes something a GM can
+# win. Telling a GM their unspent minimum vanishes would now be false, and
+# false in the direction that makes them play less.
+_assert("an unspent Weekly Minimum is stated to reach the championship pot",
+        "goes to the FantasyStakes Championship Pot" in all_copy
+        and "rather than back to you" in all_copy)
 _assert("min-first spending order is stated",
         "min-first, then wallet" in WEEKLY_MIN_PY
         and "minimum first" in all_copy.lower())
@@ -406,7 +440,9 @@ def _plain(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-bets = next((g for g in groups if g["id"] == "bets"), {"rules": []})
+# THE WAGER-MODE RULES MOVED TO WEEKLY PLAY with §24's reorganisation. The
+# ruling's own copy is unchanged, which is what the assertions below check.
+bets = next((g for g in groups if g["id"] == "weekly"), {"rules": []})
 dynamic_rule = next((r for r in bets["rules"] if r["heading"].startswith("DYNAMIC")), None)
 locked_rule = next((r for r in bets["rules"] if r["heading"].startswith("LOCKED")), None)
 

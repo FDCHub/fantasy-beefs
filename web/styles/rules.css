@@ -616,3 +616,130 @@
   border-left-color: var(--red);
   color: var(--red);
 }
+
+/* ── FINAL POR §23 · the VC ALLOCATION table ───────────────────────────────
+ *
+ * THREE COLUMNS THAT MUST ALL SURVIVE AT 320px. The label is the only one that
+ * may wrap or truncate, because the two figure columns carry the meaning: an
+ * AMOUNT clipped to "$14" when it is "$140" is worse than a label clipped to
+ * "FantasyStakes Championship Base…". So the figures are sized to their content
+ * and the label takes what is left.
+ *
+ * THE HEADER WRAPS RATHER THAN ELLIPSING. "RATIO TO WEEKLY MINIMUM" does not
+ * fit one line at any certified width, and a header ellipsed to "RATIO TO…"
+ * would leave the column unnamed — which is exactly the failure UI-2 spent a
+ * whole track contract avoiding on Standings.
+ */
+
+.fs-vctable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.fs-vctable__h {
+  padding: 0 var(--fs-space-2) var(--fs-space-2);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .04em;
+  color: var(--g2);
+  text-align: left;
+  text-transform: uppercase;
+  /* NO `text-overflow: ellipsis` AND NO `white-space: nowrap`, deliberately.
+   * See the block comment above. */
+  word-break: normal;
+  overflow-wrap: anywhere;
+  vertical-align: bottom;
+}
+
+.fs-vctable__h--fig { text-align: right; }
+
+/* The two figure columns are budgeted; the label takes the remainder. */
+.fs-vctable__h:first-child            { width: auto; }
+.fs-vctable__h--fig:nth-child(2)      { width: 4.5rem; }
+.fs-vctable__h--fig:nth-child(3)      { width: 4rem; }
+
+.fs-vcrow {
+  border-top: var(--fs-border);
+  cursor: pointer;
+}
+
+.fs-vcrow:active { background: #1a1610; }
+
+.fs-vcrow__label,
+.fs-vcrow__amount,
+.fs-vcrow__ratio {
+  padding: var(--fs-space-3) var(--fs-space-2);
+  font-size: var(--fs-size-body);
+  vertical-align: top;
+}
+
+.fs-vcrow__label {
+  font-weight: var(--fs-weight-normal);
+  color: var(--bone);
+  text-align: left;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.fs-vcrow__amount,
+.fs-vcrow__ratio {
+  font-family: var(--fs-font-money);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fs-vcrow__ratio { color: var(--g1); }
+
+/* AN UNCONFIGURED AMOUNT IS TONED DOWN, NOT HIDDEN. "Not set" is a real answer
+ * and the row still occupies its place; muting it keeps it from reading as a
+ * figure at a glance. */
+.fs-vcrow[data-state="UNCONFIGURED"] .fs-vcrow__amount { color: var(--g2); }
+
+/* ── In-season figures, and the Season Rules ───────────────────────────────*/
+
+.fs-vcseason,
+.fs-vcrules { margin-top: var(--fs-space-4); }
+
+.fs-vcseason__head {
+  padding-bottom: var(--fs-space-2);
+  font-size: 10px;
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: .04em;
+  color: var(--g2);
+  text-transform: uppercase;
+}
+
+.fs-vcseason__row,
+.fs-vcrules__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fs-space-3);
+  padding: var(--fs-space-2) var(--fs-space-2);
+  border-top: var(--fs-border);
+}
+
+.fs-vcseason__label,
+.fs-vcrules__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-size-body);
+  color: var(--bone);
+  overflow-wrap: anywhere;
+}
+
+.fs-vcseason__value {
+  flex: 0 0 auto;
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-size-body);
+  color: var(--bone);
+  white-space: nowrap;
+}
+
+.fs-vcrules__value {
+  flex: 0 0 auto;
+  font-size: var(--fs-size-body);
+  color: var(--g1);
+  text-align: right;
+}

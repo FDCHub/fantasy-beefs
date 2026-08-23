@@ -111,7 +111,9 @@ export function menuEntries() {
 
   entries.push({
     id: 'provider',
-    label: 'Provider information',
+    // TITLE CASE, matching §23's own listing of the gear menu and the three
+    // entries beside it. It was the only one in sentence case.
+    label: 'Provider Information',
     help: 'Yahoo connection detail arrives with the provider package.',
     kind: 'pending',
   });

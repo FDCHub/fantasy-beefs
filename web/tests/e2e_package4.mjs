@@ -61,7 +61,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
 
   /* ── Rules ────────────────────────────────────────────────────────────── */
 
-  section('The six rule groups render in the locked order');
+  section('§24 · the four rule groups render in the locked order');
 
   const rules = await evaluate(`
     const rows = [...document.querySelectorAll('#fs-rule-groups .fs-rulerow')];
@@ -73,17 +73,20 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
       clipped: rows.filter(r => r.scrollWidth > r.clientWidth + 1).length,
     };
   `);
-  check('exactly six groups', rules.count === 6, String(rules.count));
+  // §24 REPLACED THE SIX RC2 GROUPS WITH FOUR. See `rules-data.js`.
+  check('exactly four groups', rules.count === 4, String(rules.count));
   check('the order is locked',
-    rules.titles.join(' / ') === 'The Money / Weekly Grind / The Championships / '
-      + 'Big Money / The Bets / The Fine Print',
+    rules.titles.join(' / ')
+      === 'The Basics / Your Credits / Weekly Play / Season Play',
     rules.titles.join(' / '));
   check('every group is a tappable row', rules.allButtons === true);
   check('every row shows a disclosure affordance', rules.allChevrons === true);
   check('no row clips its own content', rules.clipped === 0);
 
   const ruleSheetState = await evaluate(`
-    document.querySelector('[data-rule="bets"]').click();
+    // §24 -- the wager-mode rules live in Weekly Play now. The ruling's own
+    // copy is unchanged, which is what the assertions below actually check.
+    document.querySelector('[data-rule="weekly"]').click();
     const sheet = document.getElementById('fs-sheet');
     const close = sheet.querySelector('[data-fs-close]');
     const s = sheet.getBoundingClientRect();
@@ -101,7 +104,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     };
   `);
   check('a rule group opens the shared sheet', ruleSheetState.open === true);
-  check('the sheet is titled with the group', ruleSheetState.title === 'The Bets');
+  check('the sheet is titled with the group', ruleSheetState.title === 'Weekly Play');
   check('every rule in the group renders', ruleSheetState.ruleCount >= 6,
     String(ruleSheetState.ruleCount));
   check('every rule shows its governing source',
@@ -147,69 +150,128 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     };
   })();`);
 
+  /* ── §23 · the VC ALLOCATION table, bound to a real league ──────────────
+   *
+   * REPLACED BY UI-7. This block measured the four RC2 settings ROWS --
+   * Season-Opening Allocation, Standard Pool Bet, Skunk Fee, Championship
+   * split -- rendered as `.fs-setrow` buttons. §23 replaces that list with a
+   * seven-row three-column table, so there are no `.fs-setrow`s left to count
+   * and the four labels are no longer on the surface at all.
+   *
+   * The claim being made is the same one, and it is made against the served
+   * body exactly as before: the FIGURES are this bound league's own, compared
+   * against `/league/{id}/settings` rather than against a literal. What
+   * changed is which rows carry them.
+   *
+   * A LEGACY LEAGUE HAS NO SUCH TABLE, and this fixture is one, so the
+   * assertions below branch on availability rather than assuming it. That is
+   * not a softening: the unavailable path is a governed state with its own
+   * required copy, and it is asserted just as strictly. `finalpor_ui7_rules`
+   * certifies the seven rows themselves, against a Final POR fixture. */
   const settings = await evaluate(`
     const panel = document.getElementById('panel-rules');
-    const rows = [...panel.querySelectorAll('#fs-settings .fs-setrow')];
+    const table = document.getElementById('fs-vc-allocation');
+    const rows = table ? [...table.querySelectorAll('tbody tr')] : [];
+    const region = panel.querySelector('[data-region="settings"]');
     return {
+      available: region ? region.dataset.allocState : null,
       count: rows.length,
-      labels: rows.map(r => r.querySelector('.fs-setrow__label').textContent),
-      values: rows.map(r => r.querySelector('.fs-setrow__value').textContent),
+      labels: rows.map(r => r.querySelector('.fs-vcrow__label').textContent),
+      values: rows.map(r => r.querySelector('.fs-vcrow__amount').textContent),
+      ratios: rows.map(r => r.querySelector('.fs-vcrow__ratio').textContent),
+      inSeason: [...panel.querySelectorAll('[data-in-season]')].length,
+      seasonRules: [...panel.querySelectorAll('#fs-season-rules .fs-vcrules__row')].length,
       inputs: panel.querySelectorAll('input, select, textarea, [type=checkbox]').length,
       readOnlyStated: /read-only/i.test(panel.textContent),
+      text: panel.textContent,
     };
   `);
-  check('exactly four settings', settings.count === 4, String(settings.count));
-  // WP3C — Rev 4.3 §22: `Economy Stop` becomes Season-Opening Allocation, and
-  // §24 removes the Skunk cap from the row. The FIGURES are this bound league's
-  // own, served by `/league/{id}/settings`, so they are compared against the
-  // served body rather than a literal — a stronger claim than the constant was.
-  check('the labels are the locked labels',
-    settings.labels.join(' / ')
-      === 'Season-Opening Allocation / Standard Pool Bet / Skunk Fee / Championship split',
-    settings.labels.join(' / '));
-  check('Season-Opening Allocation shows the served allocation',
-    settings.values[0] === `$${Math.round(served.settings.economy_stop.buyin_cents / 100)}`,
-    settings.values[0]);
-  check('Standard Pool Bet shows the served entry',
-    settings.values[1] === `$${Math.round(served.settings.pool_entry.cents / 100)}`,
-    settings.values[1]);
-  check('Skunk Fee shows the served fee and no cap',
-    settings.values[2] === `$${Math.round(served.settings.skunk.weekly_cents / 100)}`,
-    settings.values[2]);
-  check('and no settings row shows a Skunk maximum',
-    !settings.values.some((v) => /max/i.test(v)), settings.values.join(' | '));
-  check('Championship split shows the governed split',
-    settings.values[3] === '60 / 30 / 10', settings.values[3]);
+
+  check('the settings region declares whether §23’s table applies',
+    settings.available === 'available' || settings.available === 'unavailable',
+    String(settings.available));
+
+  if (settings.available === 'available') {
+    check('exactly seven allocation rows', settings.count === 7,
+      String(settings.count));
+    check('the labels are §23’s labels, in §23’s order',
+      settings.labels.join(' / ') === 'Weekly Minimum / Prop Pool Entry / '
+        + 'Weekly Skunk Fee / Projected Points Championship Pot / '
+        + 'FantasyStakes Championship Base Pot / '
+        + 'Fantasy Football Championship Pot / Season Top-Off Limit',
+      settings.labels.join(' / '));
+    check('the Weekly Minimum row shows the served minimum',
+      settings.values[0] === `$${Math.round(
+        served.settings.vc_allocation.allocation[0].amount_cents / 100)}`,
+      settings.values[0]);
+    check('the Prop Pool Entry row shows the served entry',
+      settings.values[1] === `$${Math.round(
+        served.settings.pool_entry.cents / 100)}`,
+      settings.values[1]);
+    check('the Weekly Skunk Fee row shows the served fee',
+      settings.values[2] === `$${Math.round(
+        served.settings.skunk.weekly_cents / 100)}`,
+      settings.values[2]);
+    check('and no row shows a Skunk maximum',
+      !settings.values.some((v) => /max/i.test(v)), settings.values.join(' | '));
+    check('every row states a ratio to the Weekly Minimum',
+      settings.ratios.length === 7
+      && settings.ratios.every((r) => r.endsWith('×')),
+      settings.ratios.join(' '));
+    check('the four in-season figures render', settings.inSeason === 4,
+      String(settings.inSeason));
+    check('the five Season Rules render', settings.seasonRules === 5,
+      String(settings.seasonRules));
+    check('the Season Rules state the governed split',
+      /60 \/ 30 \/ 10/.test(settings.text));
+    // ONLY MEANINGFUL WHERE THERE IS A TABLE. A legacy season shows the
+    // "previous economy" note instead, and has no rows to declare read-only.
+    check('the surface states these are read-only',
+      settings.readOnlyStated === true);
+  } else {
+    // THE UNAVAILABLE PATH IS A GOVERNED STATE, not an absence. A legacy
+    // season must be TOLD it played under the previous economy -- saying the
+    // settings "could not be read" would be false, and would send a
+    // commissioner looking for a fault that is not there.
+    check('a legacy season is told why it has no VC allocation table',
+      /played under the previous economy/.test(settings.text),
+      settings.text.slice(0, 200));
+    check('  · and is not told the read failed',
+      !/could not be read/.test(settings.text));
+    check('  · and no table is drawn', settings.count === 0,
+      String(settings.count));
+  }
+
   check('the tab renders no editable control at all', settings.inputs === 0,
     String(settings.inputs));
-  check('the surface states these are read-only', settings.readOnlyStated === true);
 
+  /* A ROW OPENS ITS DETAIL. Which row is available depends on the branch
+   * above, so this picks whichever the surface actually drew. */
   const settingSheetState = await evaluate(`
-    document.querySelector('[data-setting="economy-stop"]').click();
+    const row = document.querySelector('[data-alloc="weekly-minimum"]')
+      || document.querySelector('[data-setting="economy-stop"]');
+    if (!row) return { skipped: true };
+    row.click();
     const sheet = document.getElementById('fs-sheet');
     const text = sheet.textContent;
     const inputs = sheet.querySelectorAll('input, select, [data-save]').length;
     document.querySelector('#fs-sheet [data-fs-close]').click();
-    return { text, inputs };
+    return { text, inputs, skipped: false };
   `);
-  check('a setting opens its detail', /League configuration/.test(settingSheetState.text));
-  // WP3B — Rev 4.3 §2.1 removes internal file citations from user-visible copy,
-  // so a setting's provenance line now names the governing RULES rather than
-  // the Python module that implements them. The claim is unchanged: the detail
-  // still has to say where the value comes from.
-  check('the detail names its governing source',
-    /League economy configuration/.test(settingSheetState.text),
-    settingSheetState.text.slice(0, 160));
-  check('and it names no internal module or file path',
-    !/\.py\b|web\/js\//.test(settingSheetState.text));
-  check('the detail offers no editor', settingSheetState.inputs === 0);
-  // GOVERNED REVISION, S8-P4B-3. Bound to real settings, a row says WHY it
-  // cannot change rather than that no command exists — the B2 ruling, not a
-  // missing implementation. This session is an ordinary GM, so even the one
-  // mutable row offers no editor, which the assertion above still checks.
-  check('the detail says why the row cannot be changed',
-    /Read-only|Fixed for the season|commissioner authority|Frozen/
-      .test(settingSheetState.text), settingSheetState.text.slice(0, 140));
+  if (!settingSheetState.skipped) {
+    check('a setting opens its detail',
+      /League configuration/.test(settingSheetState.text),
+      settingSheetState.text.slice(0, 120));
+    check('the detail names its governing source',
+      /League economy configuration/.test(settingSheetState.text),
+      settingSheetState.text.slice(0, 160));
+    check('and it names no internal module or file path',
+      !/\.py\b|web\/js\//.test(settingSheetState.text));
+    check('the detail offers no editor', settingSheetState.inputs === 0);
+    check('the detail says why the row cannot be changed',
+      /Read-only|Fixed for the season|commissioner authority|Frozen|re-price/
+        .test(settingSheetState.text), settingSheetState.text.slice(0, 140));
+  }
 
   /* ── Commissioner order ───────────────────────────────────────────────── */
 

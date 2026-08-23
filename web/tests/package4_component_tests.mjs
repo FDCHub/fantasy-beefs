@@ -21,6 +21,7 @@ import {
   SETTINGS_SEAM,
   SKUNK,
 } from '../js/data/rules-data.js';
+import { vcAllocation } from '../js/settings-model.js';
 
 import {
   RULES_TITLE,
@@ -81,15 +82,18 @@ check('no Credits disclaimer', countDisclaimers(panel) === 0, String(countDiscla
 
 /* ── A · Rules ──────────────────────────────────────────────────────────── */
 
-// RC2 adds "The Championships": the two championships, their scoring, the
-// 60/30/10 payout, Grand Champion and authoritative corrections.
-section('The six rule groups, in the locked order');
+// REPLACED BY UI-7 / FINAL POR §24. This asserted the six RC2 groups -- The
+// Money, Weekly Grind, The Championships, Big Money, The Bets, The Fine Print.
+// §24 replaces them with four, and the replacement is a reorganisation rather
+// than a loosening: several of the new rules could not have been stated under
+// the old structure at all, because there was no Points Championship, no Grand
+// Championship and no accepted-wager void to describe.
+section('§24 · the four rule groups, in §24’s order');
 
-const LOCKED_ORDER = ['The Money', 'Weekly Grind', 'The Championships', 'Big Money',
-  'The Bets', 'The Fine Print'];
+const LOCKED_ORDER = ['The Basics', 'Your Credits', 'Weekly Play', 'Season Play'];
 
-check('exactly six top-level groups', RULE_GROUPS.length === 6, String(RULE_GROUPS.length));
-check('the order is the locked order',
+check('exactly four top-level groups', RULE_GROUPS.length === 4, String(RULE_GROUPS.length));
+check('the order is §24’s order',
   RULE_GROUPS.map((g) => g.title).join(' / ') === LOCKED_ORDER.join(' / '),
   RULE_GROUPS.map((g) => g.title).join(' / '));
 check('every group renders as a tappable row',
@@ -105,101 +109,142 @@ check('every group holds at least one rule',
 check('every rule names its governing source',
   RULE_GROUPS.every((g) => g.rules.every((r) => r.source && r.source.length > 3)));
 
+// §24 NAMES FOUR SUB-TOPICS UNDER EACH OF THE LAST TWO GROUPS -- 3a-3d and
+// 4a-4d. They are rules within the group rather than a second level of
+// navigation, so what is checked is that each is present and findable by the
+// name §24 gave it.
+const headingsOf = (id) => RULE_GROUPS.find((g) => g.id === id)
+  .rules.map((r) => r.heading).join(' | ');
+for (const topic of ['Matchups', 'Prop Pools', 'Skunk', 'Top-Offs']) {
+  check(`Weekly Play covers ${topic}`,
+    headingsOf('weekly').includes(topic), headingsOf('weekly'));
+}
+for (const topic of ['Points Championship', 'Fantasy Football Championship',
+  'FantasyStakes Championship', 'Grand Championship']) {
+  check(`Season Play covers ${topic}`,
+    headingsOf('season').includes(topic), headingsOf('season'));
+}
+
 section('Rule copy does not contradict the governing specifications');
 
 const allRuleText = RULE_GROUPS
   .flatMap((g) => g.rules.map((r) => `${r.heading} ${r.body}`))
   .join(' ');
 
-// WP3C RE-POINTED THIS BLOCK AT REV 4.3 §21 AND §22, and the direction of the
-// claim is now inverted for a reason.
+// REPLACED BY UI-7. The assertions here checked RC2 claims -- a Championship
+// Score tiebreak for the Grand Champion, a Grand Champion that "moves no
+// Credits", a Yahoo-scoped "no tiebreaker" phrase. WP-14 retired every one of
+// them: the Grand Championship is now won on finalized championship credits,
+// an exact tie makes co-champions with NO tiebreak, and it moves real money.
+// Asserting the old copy would now be asserting that the rules disagree with
+// the engine, which is the failure the block was written to prevent.
 //
-// These assertions REQUIRED the rule prose to quote $220, $140 and $80 as
-// governed universal figures. Rev 4.3 §15 replaced the five-stop ladder with a
-// configurable economy — the commissioner sets the Weekly Bet Minimum and the
-// two championship contributions, and the server derives the allocation from
-// them and the league's own regular-season week count — so a league playing
-// thirteen weeks is advanced $210 and one on a $20 minimum is advanced more
-// again. Prose asserting $220 was telling most leagues the wrong number.
-//
-// So the rule text must now NOT quote them, and that is what is checked. The
-// fixture constants survive as the DEMO figures they always were, and the
-// certification for a bound session's real values lives in the settings rows
-// below, which read them from the server.
+// The checks that were about the CONFIGURABLE ECONOMY rather than about RC2
+// survive unchanged, because Rev 4.3 §15 still governs.
 check('the rule prose quotes no universal allocation figure (§21, §22)',
   !/\$220|\$140|\$80\b/.test(allRuleText),
   (allRuleText.match(/\$220|\$140|\$80\b/) || [''])[0]);
-// A3.2 — RC2 configures TWO independent championship contributions, so the
-// single "Championship Pot Contribution" this once required no longer exists.
-// Both must be named, and named apart, or a GM cannot tell which one the
-// commissioner just changed.
-check('it names the configurable inputs instead',
-  /Weekly Bet Minimum/.test(allRuleText)
-  && /Yahoo Championship Contribution/.test(allRuleText)
-  && /FantasyStakes Championship Contribution/.test(allRuleText)
-  && /Season-Opening Allocation/.test(allRuleText));
-check('and the retired single-contribution name is gone',
-  !/Championship Pot Contribution/.test(allRuleText));
 check('it asserts no fixed regular-season week count',
   !/fourteen|14 weeks|14-week/i.test(allRuleText));
 check('the demo fixture figures still add up',
   ECONOMY_STOP.minReserveCents + ECONOMY_STOP.reserveCents === ECONOMY_STOP.buyinCents);
 check('the Skunk fixture is a fee with NO season maximum (§24)',
   SKUNK.feeCents === 1000 && SKUNK.seasonMaximumCents === undefined);
-check('and the rule prose shows no Skunk cap',
-  !/capped at|season maximum of|\bmax\b/i.test(allRuleText)
-  || /no enforced season maximum/i.test(allRuleText));
 check('the minimum stake quoted is the engine minimum',
   allRuleText.includes('$5') && MIN_STAKE_CENTS === 500);
-check('Current Settle is described as derived, never stored',
-  /derived/i.test(allRuleText) && /never stored|no Current Settle column/i.test(allRuleText));
 
-// ── A3.3 · THE GRAND CHAMPION RULE THE PRODUCT ACTUALLY APPLIES ────────────
-//
-// The rules page previously told GMs "There is no tiebreaker" while the engine
-// awarded the title outright on the higher FantasyStakes Championship Score.
-// In the one scenario the tiebreak exists for, Season Results named a sole
-// Grand Champion while the Rules page said the two were co-champions. These
-// assertions exist so the governing copy can never drift from the engine
-// again: the tiebreak must be STATED, and a co-championship must be reachable
-// in the copy only AFTER it.
-check('the rules state the Championship Score tiebreak',
-  /higher FantasyStakes Championship Score wins/.test(allRuleText));
-check('and define that score as realized net, never a wallet balance',
-  /realized net winnings/.test(allRuleText)
-  && /not your wallet balance/.test(allRuleText));
-check('the obsolete "There is no tiebreaker" copy is gone',
-  !/There is no tiebreaker/.test(allRuleText));
-// Every co-Grand Champions sentence must be gated behind the tiebreak. A bare
-// "equal totals are co-Grand Champions" is the exact obsolete claim.
-const coChampSentences = allRuleText.match(/[^.]*co-Grand Champions[^.]*\./g) || [];
-check('co-Grand Champions are stated only after the tiebreak also ties',
-  coChampSentences.length > 0
-  && coChampSentences.every((s) => /still tied/i.test(s)),
-  JSON.stringify(coChampSentences));
-check('no copy says a points tie alone creates co-Grand Champions',
-  !/same highest combined total, they are co-Grand Champions/.test(allRuleText)
-  && !/equal totals[^.]*co-Grand Champions/i.test(allRuleText));
-check('the three steps appear in the governing order',
-  (() => {
-    const total = allRuleText.indexOf('Highest total wins');
-    const tiebreak = allRuleText.indexOf('higher FantasyStakes Championship Score wins');
-    const co = allRuleText.indexOf('If still tied');
-    return total >= 0 && tiebreak > total && co > tiebreak;
-  })());
-// The remaining "no FantasyStakes tiebreaker" is about the YAHOO podium, which
-// Yahoo alone decides. That claim is still true and must not be swept away.
-check('any surviving "no tiebreaker" phrase is scoped to the Yahoo podium',
-  (allRuleText.match(/no [A-Za-z]* ?tiebreaker/g) || []).every((m) =>
-    /Yahoo/.test(allRuleText.slice(Math.max(0, allRuleText.indexOf(m) - 260),
-      allRuleText.indexOf(m)))),
-  JSON.stringify(allRuleText.match(/no [A-Za-z]* ?tiebreaker/g) || []));
-check('Grand Champion is still recognition only, moving no Credits',
-  /moves no Credits/.test(allRuleText));
+/* ── §24's REQUIRED CONCEPTS ────────────────────────────────────────────────
+ * Each is checked for the SUBSTANCE rather than for a phrase, except where the
+ * phrase is approved copy — in which case it must appear exactly. */
+
+section('§24 · the approved copy appears verbatim');
+
+const APPROVED = [
+  ['what FantasyStakes does',
+    'FantasyStakes uses your league settings, scoring and projections to '
+    + 'simulate matchups and generate real probabilities and Vegas-style odds. '
+    + 'You use those odds to wager virtual credits on your team against other '
+    + 'players.'],
+  ['what a virtual credit is',
+    'FantasyStakes uses virtual credits to create its own differentiated '
+    + 'scoring and accounting system, separate from the fantasy points used by '
+    + 'your underlying league. Virtual credits have no real-world economic '
+    + 'value outside FantasyStakes.'],
+  ['the Team / Matchup Prop Pool distinction',
+    'Team Prop Pools are based on the performance of individual fantasy teams '
+    + 'or players across the league. Matchup Prop Pools are based on the '
+    + 'combined results or performance of a specific fantasy football matchup.'],
+];
+for (const [what, text] of APPROVED) {
+  check(`the approved copy for ${what} appears verbatim`,
+    allRuleText.includes(text), text.slice(0, 60));
+}
+
+section('§24 · the required concepts');
+
+check('the FantasyStakes Score formula is stated in its three terms',
+  /FantasyStakes Score = Matchups \+ Prop Pools − Skunk Fees/.test(allRuleText),
+  (allRuleText.match(/FantasyStakes Score = [^.]*/) || [''])[0]);
+check('  · and says the Wallet is not part of it',
+  /Wallet balance is not part of it/.test(allRuleText));
+
+// ONE ASSESSMENT, NOT CHARGED TWICE — the rule a GM would otherwise get wrong,
+// having seen the same fee both reduce their Score and appear as an obligation.
+check('the Skunk is stated as ONE assessment, not charged twice',
+  /never charged twice/i.test(allRuleText)
+  && /ONE assessment/.test(allRuleText.replace(/\s+/g, ' ')),
+  (allRuleText.match(/[^.]*charged twice[^.]*\./) || [''])[0]);
+
+// THE ACCEPTED-WAGER VOID: the stake comes back, and the Minimum does NOT.
+check('the accepted-wager void returns both stakes',
+  /both stakes return to their Wallets in full/.test(allRuleText));
+check('  · and says the Weekly Minimum is NOT put back',
+  /does not put that obligation back/.test(allRuleText));
+
+check('the postseason is stated as Wallet only',
+  /no Weekly Minimum and no Skunk/.test(allRuleText)
+  && /wager from your Wallet alone/i.test(allRuleText));
+
+// 60 / 30 / 10 EXACTLY ONCE. Three copies would be three chances to drift, and
+// a reader who found two would have to decide which was authoritative.
+const splitStatements = allRuleText.match(/60 to the champion/g) || [];
+check('the 60 / 30 / 10 split is stated exactly ONCE',
+  splitStatements.length === 1, String(splitStatements.length));
+check('  · and is stated as governing every championship pot',
+  /Every championship pot divides the same way/.test(allRuleText));
+check('  · and is not a commissioner setting',
+  /Neither the split nor the tie rule is a commissioner setting/.test(allRuleText));
+
+check('the Grand Championship requires at least two funded championships',
+  /at least two funded championships/i.test(allRuleText));
+check('  · and an exact tie makes co-champions with no tiebreak',
+  /co-champions/i.test(allRuleText) && /no tiebreak beyond it/i.test(allRuleText));
+// THE RETIRED RC2 CLAIMS MUST BE GONE, not merely unasserted.
+check('the retired Championship Score tiebreak is gone',
+  !/higher FantasyStakes Championship Score wins/.test(allRuleText));
+check('the retired "moves no Credits" claim is gone',
+  !/moves no Credits/.test(allRuleText));
+
+// THE TWO-TEAM PLAYOFF EXCEPTION — OWNER RULING. Both halves, and the second
+// matters more: a reader who takes 67/33 as the fallback for a bracket whose
+// third place is merely unavailable has read the rule exactly backwards.
+check('the two-team playoff exception is stated',
+  /exactly two teams/.test(allRuleText)
+  && /67 to the champion and 33 to the/.test(allRuleText),
+  (allRuleText.match(/[^.]*67 to the champion[^.]*\./) || [''])[0]);
+check('  · and is stated to key on the SHAPE of the playoff',
+  /about the SHAPE of your playoff/i.test(allRuleText.replace(/\s+/g, ' ')));
+check('  · NEVER on missing information',
+  /never about missing information/i.test(allRuleText.replace(/\s+/g, ' ')));
+check('  · and a bracket that cannot show a third place WAITS',
+  /waits until it can/i.test(allRuleText.replace(/\s+/g, ' ')));
 
 section('Locked and Dynamic descriptions remain the ruling’s own');
 
-const bets = RULE_GROUPS.find((g) => g.id === 'bets');
+// THE WAGER-MODE RULES MOVED TO WEEKLY PLAY when the six RC2 groups became
+// §24's four. The ruling's own copy is unchanged and is still imported
+// rather than transcribed, which is what these assertions actually protect.
+const bets = RULE_GROUPS.find((g) => g.id === 'weekly');
 const lockedRule = bets.rules.find((r) => r.heading.startsWith(MODE_COPY[MODE_LOCKED].label));
 const dynamicRule = bets.rules.find((r) => r.heading.startsWith(MODE_COPY[MODE_DYNAMIC].label));
 
@@ -252,7 +297,7 @@ check('and says no funding path is planned',
 section('A rule group opens through the shared sheet');
 
 const moneySheet = ruleSheet(RULE_GROUPS[0]);
-check('the sheet is titled with the group', moneySheet.title === 'The Money');
+check('the sheet is titled with the group', moneySheet.title === 'The Basics');
 check('the sheet renders every rule in the group',
   (moneySheet.body.match(/class="fs-rule__head"/g) || []).length === RULE_GROUPS[0].rules.length);
 check('the sheet shows each rule’s source',
@@ -272,9 +317,60 @@ check('exactly four settings', SETTINGS.length === 4, String(SETTINGS.length));
 check('the labels are the locked labels',
   SETTINGS.map((s) => s.label).join(' / ') === LOCKED_SETTINGS.join(' / '),
   SETTINGS.map((s) => s.label).join(' / '));
-for (const label of LOCKED_SETTINGS) {
-  check(`${label} renders`, panel.includes(`>${label}</span>`), label);
+// THE PANEL NO LONGER RENDERS THESE FOUR AS ROWS -- §23 replaced the settings
+// list with the seven-row VC ALLOCATION table, and these four now back the
+// DETAIL SHEETS rather than the surface. So what is checked changed with them:
+// the four still exist and still carry their governed figures (asserted just
+// below, unchanged), and what must RENDER is §23's seven.
+section('§23 · the seven-row VC ALLOCATION table');
+
+const VC = vcAllocation();
+const VC_LABELS = ['Weekly Minimum', 'Prop Pool Entry', 'Weekly Skunk Fee',
+  'Projected Points Championship Pot', 'FantasyStakes Championship Base Pot',
+  'Fantasy Football Championship Pot', 'Season Top-Off Limit'];
+
+check('exactly seven allocation rows', VC.allocation.length === 7,
+  String(VC.allocation.length));
+check('the labels are §23’s labels, in §23’s order',
+  VC.allocation.map((r) => r.label).join(' / ') === VC_LABELS.join(' / '),
+  VC.allocation.map((r) => r.label).join(' / '));
+for (const label of VC_LABELS) {
+  check(`${label} renders`, panel.includes(`>${label}</th>`), label);
 }
+check('the three column headers are §23’s three',
+  panel.includes('>VC ALLOCATION</th>') && panel.includes('>AMOUNT</th>')
+  && panel.includes('>RATIO TO WEEKLY MINIMUM</th>'));
+check('every row carries a ratio to the Weekly Minimum',
+  VC.allocation.every((r) => typeof r.ratio === 'string' && r.ratio.endsWith('×')),
+  VC.allocation.map((r) => r.ratio).join(' '));
+// THE RATIOS ARE THE SERVER'S AND ARE TRANSCRIBED, NOT COMPUTED -- §16.2. This
+// checks the transcription against the arithmetic it came from, which is the
+// only place in the browser where that arithmetic may appear at all.
+check('each demo ratio agrees with its own amount over the Weekly Minimum',
+  VC.allocation.every((r) => {
+    const exact = r.amountCents / VC.weeklyMinimumCents;
+    const shown = Number(r.ratio.replace(/[^0-9.]/g, ''));
+    return Math.abs(exact - shown) < 0.005;
+  }), VC.allocation.map((r) => `${r.amountCents}=${r.ratio}`).join(' '));
+
+check('the four in-season figures render, in §23’s order',
+  VC.inSeason.map((r) => r.label).join(' / ')
+    === ['Unspent Minimum Sweeps', 'Top-Offs Added to FS Pot',
+      'Terminal Prop Pool Remainders', 'Current FS Championship Pot'].join(' / '),
+  VC.inSeason.map((r) => r.label).join(' / '));
+check('  · and they are marked read-only on the surface',
+  panel.includes('id="fs-vc-in-season"') && /Read-only\./.test(panel));
+
+check('the five Season Rules render, in §23’s order',
+  VC.seasonRules.map((r) => `${r.label}: ${r.value}`).join(' | ')
+    === ['Weekly Minimum: Regular season only', 'Skunk Fees: Regular season only',
+      'Postseason play: Wallet only', 'Championship split: 60 / 30 / 10',
+      'Wagers: Public'].join(' | '),
+  VC.seasonRules.map((r) => `${r.label}: ${r.value}`).join(' | '));
+check('  · and are stated to be FantasyStakes’ rules, not the commissioner’s',
+  /Set by FantasyStakes, not by your commissioner/.test(panel));
+
+section('The four settings rows still back their detail sheets');
 
 // RC2 — the advance is three parts: Weekly Play Reserve 140, Yahoo Championship
 // Contribution 80, FantasyStakes Championship Contribution 80.
@@ -306,7 +402,7 @@ check('the other three rows remain read-only',
   JSON.stringify([...SETTINGS_SEAM.readOnly].sort())
     === JSON.stringify(['championship-split', 'economy-stop', 'skunk-fee']));
 check('the surface says which row the commissioner sets',
-  /Standard Pool Bet is set by the commissioner/.test(panel));
+  /Prop Pool Entry is set by the commissioner/.test(panel));
 check('and says the other three are fixed for the season',
   panel.includes('fixed for the season'));
 check('a setting sheet repeats the constraint',

@@ -25,6 +25,7 @@
 import { formatCredits } from './credits.js';
 import {
   CHAMPIONSHIP_SPLIT, ECONOMY_STOP, POOL_ENTRY, SETTINGS, SKUNK,
+  VC_ALLOCATION_DEMO,
 } from './data/rules-data.js';
 
 export const SETTINGS_MODE_DEMO = 'demo';
@@ -226,3 +227,92 @@ export function poolEntryEditable(isCommissioner) {
   if (MODE !== SETTINGS_MODE_AUTHORITATIVE) return false;
   return Boolean(isCommissioner) && SERVED.pool_entry.editable === true;
 }
+
+/* ── FINAL POR §23 · the VC ALLOCATION table ────────────────────────────────*/
+
+/**
+ * §23's table for the bound league, or the illustrative one.
+ *
+ * IT CARRIES ITS OWN AVAILABILITY, and that is not the same question as
+ * `settingsMode()`. A settings read can succeed completely and still return no
+ * VC allocation table — a LEGACY season has none, because four of the seven
+ * rows describe pots the retired architecture does not have. The server says
+ * `available: false` with a named reason and the surface states it, rather than
+ * drawing seven blank rows or failing the whole page.
+ *
+ * @returns {{available: boolean, unavailableReason: string|null,
+ *            weeklyMinimumCents: number|null, allocation: Array<object>,
+ *            inSeason: Array<object>, seasonRules: Array<object>}}
+ */
+export function vcAllocation() {
+  if (MODE !== SETTINGS_MODE_AUTHORITATIVE) {
+    return MODE === SETTINGS_MODE_UNAVAILABLE
+      // PRODUCTION, AND THE READ FAILED. The illustrative table is NOT shown
+      // here, for the same reason the Ledger does not show prototype money: a
+      // signed-in GM must never read another league's economy as their own.
+      ? { available: false, unavailableReason: 'SETTINGS_UNAVAILABLE',
+          weeklyMinimumCents: null, allocation: [], inSeason: [],
+          seasonRules: [] }
+      : { available: true,
+          unavailableReason: null,
+          weeklyMinimumCents: VC_ALLOCATION_DEMO.weeklyMinimumCents,
+          allocation: VC_ALLOCATION_DEMO.allocation,
+          inSeason: VC_ALLOCATION_DEMO.inSeason,
+          seasonRules: VC_ALLOCATION_DEMO.seasonRules };
+  }
+
+  const served = SERVED && SERVED.vc_allocation;
+  if (!served || served.available !== true) {
+    return {
+      available: false,
+      unavailableReason: (served && served.unavailable_reason)
+        || 'SETTINGS_NOT_SERVED',
+      weeklyMinimumCents: null, allocation: [], inSeason: [], seasonRules: [],
+    };
+  }
+
+  // SHAPED, NOT DERIVED. Every figure — the ratio above all — is the server's
+  // own. §16.2 forbids reimplementing the economic formula here, and a division
+  // in this function would be exactly that.
+  return {
+    available: true,
+    unavailableReason: null,
+    weeklyMinimumCents: served.weekly_minimum_cents,
+    allocation: (served.allocation || []).map((row) => ({
+      id: row.id, label: row.label, amountCents: row.amount_cents,
+      state: row.state, ratio: row.ratio, source: row.source,
+    })),
+    inSeason: (served.in_season || []).map((row) => ({
+      id: row.id, label: row.label, amountCents: row.amount_cents,
+      source: row.source,
+    })),
+    seasonRules: (served.season_rules || []).map((rule) => ({
+      label: rule.label, value: rule.value,
+    })),
+  };
+}
+
+/**
+ * How one VC ALLOCATION amount is drawn.
+ *
+ * THE THREE STATES DRAW DIFFERENTLY, WHICH IS THE WHOLE REASON THEY EXIST. The
+ * schema keeps "nobody entered an amount" apart from "this league plays without
+ * one" so an audit can tell them apart; rendering both as `$0` would discard
+ * that at the last possible step. UNCONFIGURED has no figure to show and says
+ * so in words; DECLINED shows a real zero, because the league really did choose
+ * zero.
+ *
+ * @param {{amountCents: number|null, state: string}} row
+ * @returns {string}
+ */
+export function allocationAmountText(row) {
+  if (row.state === STATE_UNCONFIGURED || row.amountCents === null
+      || row.amountCents === undefined) {
+    return 'Not set';
+  }
+  return formatCredits(row.amountCents);
+}
+
+export const STATE_CONFIGURED = 'CONFIGURED';
+export const STATE_DECLINED = 'DECLINED';
+export const STATE_UNCONFIGURED = 'UNCONFIGURED';
