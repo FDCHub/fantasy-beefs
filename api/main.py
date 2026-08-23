@@ -7142,6 +7142,14 @@ class WeekCloseOut(BaseModel):
     #: week with no matchups scheduled. Both exclusions are the season-close
     #: orchestrator's own, not new rules — see the route.
     skunk:               Optional[WeeklySkunkOut] = None
+    #: WP-4 — where the unspent Weekly Minimum went, named rather than implied.
+    #: `fantasystakes_championship_pot` under RULESET_FINAL_POR (forfeited to
+    #: the league-season pot, never returned to any Wallet); `expired_min`
+    #: under RULESET_LEGACY. A commissioner closing a week is told which,
+    #: because the two are economically opposite for every GM in the league.
+    minimum_destination: str = Field(
+        ..., description="Where each team's unspent Weekly Minimum went: "
+                         "'fantasystakes_championship_pot' or 'expired_min'.")
 
 
 @app.post("/league/{league_id}/week/{week}/open", response_model=WeekOpenOut)
@@ -7302,7 +7310,9 @@ def close_week(
     """
     from economy.economy_events import DuplicateEconomyEvent
     from economy.skunk import SkunkError, assess_weekly_skunk
-    from economy.weekly_minimum import WeeklyMinimumError, expire_week
+    from economy.weekly_minimum import (
+        DESTINATION_EXPIRED_MIN, WeeklyMinimumError, expire_week,
+    )
     from reports.weekly_skunk import weekly_skunk_result
 
     if not 1 <= week <= 17:
@@ -7357,6 +7367,10 @@ def close_week(
         total_expired_cents=sum(r.expired_cents for r in results),
         already_closed=bool(results) and all(r.replayed for r in results),
         skunk=skunk_out,
+        # Read off the results rather than re-resolving the era here, so the
+        # route cannot report a destination the postings did not use.
+        minimum_destination=(results[0].destination if results
+                             else DESTINATION_EXPIRED_MIN),
     )
 
 

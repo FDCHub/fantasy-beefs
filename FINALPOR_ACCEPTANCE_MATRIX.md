@@ -2,8 +2,8 @@
 
 **Branch:** `postmvp/final-por-implementation`
 **Base:** `766ea37b076d49bbbb2abb513cf6848941fcf184`
-**HEAD:** `abb4d66e5e43bd8427e23780facd8e71acb58d21`
-**Status:** PARTIAL — 6 of 25 work packages complete. Not pushed, not deployed, not tagged.
+**HEAD:** see `git rev-parse HEAD` — updated per package.
+**Status:** PARTIAL — 7 of 25 work packages complete. Not pushed, not deployed, not tagged.
 
 Classification is `DONE` only where there is **executed test evidence**, not a
 change summary. Anything implemented but not certified is marked explicitly.
@@ -17,6 +17,7 @@ change summary. Anything implemented but not certified is marked explicitly.
 | **WP-1** | §4 season-level `ruleset_version`; historical seasons keep original rules; absence explicitly governed; PG/SQLite parity | **DONE** | `ruleset.py`; `db/schema.py::LeagueSeasonRuleset`; `migrations/add_season_ruleset.py`; stamped inside `economy/season_allocation.py` activation txn; manifest `0010_season_ruleset` | `test_finalpor_wp1_ruleset.py` — 22 PASS / 0 FAIL. Absence→LEGACY, replay no-op, contradiction refuses, unknown version refuses on read *and* write, DB uniqueness, Base-metadata registration |
 | **UI-1** | §31 shared shell/carousel; `mountApplication` → `goTo(DEFAULT)` defect; all 3 families at 3 widths | **DONE** | `web/js/shell.js` — `ACTIVE_DESTINATION_ID`, `captureRailScroll`/`restoreRailScroll`, `goTo(..., {keepSheet})`, `mountApplication({preserveContext})`; all 3 mutation call sites updated | `test_finalpor_ui1_shell_context.py` — 13 PASS / 0 FAIL **in real headless Chrome**. Reader stays on Play; carousel holds 371→371; no horizontal page scroll on any tab at 320×568 / 375×667 / 390×844; all 3 families present (Play 2 `.fs-carousel`, Status 4 `.fs-rail--carousel`, Wrap Up 3 `.fs-rescar`) |
 | **WP-10** | §17 one canonical 60/30/10 + dead heat for all pillars; retire rivals | **DONE** | `economy/championship_distribution.py` (new canonical); `reports/championship_read_model.py::tied_championship_distribution` delegates; `economy/season_reconciliation.py` switched off `economy/championship.py`'s tie-less arithmetic | `test_finalpor_wp10_distribution.py` — 43 PASS / 0 FAIL. §17's three worked examples verbatim (45%/20%/5%), ten pots 0→999,999 conserve, ascending-id remainder, bracket reports no tie |
+| **WP-4** | §5 unused Weekly Minimum → FantasyStakes Championship Pot at WEEK close; no Wallet return, no `expired_min:`, no receivable, no Score effect; retire the Frozen Return | **DONE** | `economy/economy_events.py` — `fantasystakes_championship_account`, `EVENT_WEEKLY_MINIMUM_SWEEP`, `DOOR_WEEKLY_MINIMUM_SWEEP`; `economy/weekly_minimum.py::expire_weekly_minimum` era-gated, `ExpiryResult.destination`; `economy/season_reconciliation.py::reconcile_expired_minimum` returns `retired=True` under Final POR and posts nothing; `economy/season_close_orchestrator.py` reports `expired_min_step_retired`; `api/main.py::WeekCloseOut.minimum_destination`; `economy/fantasystakes_championship_allocation.py::pot_account` now delegates | `test_finalpor_wp4_minimum_sweep.py` — **59 PASS / 0 FAIL**. All ten required proofs: full-consumption sweeps 0, 400-spent sweeps exactly 600, 999-spent sweeps exactly 1, zero-spend sweeps the whole Minimum, door legs sum to 0 and trial balance 0, no `wallet:` leg and every Wallet still 0, no `expired_min:`/`receivable:`/Skunk, Score moves 0 and the door is in neither scoring group by name, Current Settle falls by exactly 600 entirely out of `weekly_min_live` with obligations unchanged, replay grows the pot by 0, and a LEGACY season keeps the old account, event type, door, zero-settle-delta and season-close Wallet return |
 | **WP-2 (part)** | §8/§9D Weekly Skunk Fee may be 0 at validator, DB CHECK and API | **DONE** | `economy/league_economy_config.py` `MIN_SKUNK_FEE_CENTS=0`; `db/schema.py` CHECK `BETWEEN 0`; `api/main.py` `Field(ge=0)`; `migrations/relax_skunk_fee_allows_zero.py`; manifest `0011` | `test_finalpor_wp2_skunk_zero.py` — 25 PASS / 0 FAIL. Plus a live SQLite rebuild proof: legacy frozen 2025 row survives byte-for-byte, replay is a no-op, negative still refused, other 4 CHECKs survive |
 | **WP-3** | §9 Skunk season-scoped per-team derivation | **DONE** | `economy/skunk.py::skunk_fees_by_team` / `cumulative_skunk_fees_cents`; `SKUNK_SCORING_EVENT_TYPES` enumerated by name | Same suite. Tied week attributes 2.5+2.5 not 5+5; season 2027 does not inherit 2026; `shortfall_sweep` receivable excluded; non-Skunk event excluded |
 | **WP-7** | §8 FS Score = Matchups + Pools − Skunk; era-gated; positive magnitude | **DONE** | `reports/standings_read_model.py` — `skunk_fees_cents` field, 3-term `net_cents`, `is_final_por` gate, `as_dict`; `api/main.py::StandingsRowOut` | `test_finalpor_wp7_fs_score.py` — 16 PASS / 0 FAIL. Same fixture under each ruleset gives 0 vs −500; Skunk changes *ranking*; Top-Off principal moves Score by exactly 0 while crediting Wallet |
@@ -44,9 +45,10 @@ change summary. Anything implemented but not certified is marked explicitly.
 Each is **NOT IMPLEMENTED**. None was partially applied; there is no half-converted
 account model and no half-applied migration on this branch.
 
+**WP-4 is complete and is no longer listed here.** The next package is **WP-5**.
+
 | WP | Requirement | Why it matters |
 |---|---|---|
-| **WP-4** | §5 unused Weekly Minimum → FS Championship Pot at week close; retire `expired_min:` writes and `reconcile_expired_minimum` | Still `min:` → `expired_min:` → Wallet at season close. This is the largest single behavioural gap remaining. |
 | **WP-5** | §11/§13/§14 league-level minted pots; `ff_championship:{L}:{S}`; season-scope `skunk:`; retire `reserve:{team}` and `championship:{league}` new writes; Pool terminal remainders → FS Pot | The pot architecture is unchanged. `championship:{league}` still accretes from 5 paths. |
 | **WP-6** | §15 Top-Off third leg → FS Pot | Top-Off still posts 2 legs. Certified that the Wallet-leg-only cap and obligation derivations remain correct (WP-7 F6), so the leg can be added safely. |
 | **WP-9** | §12 Points Championship pot = actual Skunk assessed, 60/30/10, settles at regular-season end | Still `distribute_season_skunk` → 100% to Points For leader. |
@@ -113,6 +115,7 @@ Final sweep, this branch:
 
 | Suite | Result |
 |---|---|
+| `test_finalpor_wp4_minimum_sweep.py` | **59 PASS / 0 FAIL** |
 | `test_finalpor_wp1_ruleset.py` | 22 PASS / 0 FAIL |
 | `test_finalpor_wp2_skunk_zero.py` | 25 PASS / 0 FAIL |
 | `test_finalpor_wp7_fs_score.py` | 16 PASS / 0 FAIL |
@@ -129,7 +132,10 @@ Final sweep, this branch:
 | `test_s8_p3_read_models.py` | 73 PASS / 0 FAIL |
 | `test_rc2_championship*` (4 suites) | 112 PASS / 0 FAIL |
 | `test_championship_distribution.py` | 300 PASS / 0 FAIL |
-| `test_ledger.py` / `test_economy_config.py` | 47 / 30 PASS, 0 FAIL |
+| `test_ledger.py` / `test_economy_config.py` | 48 / 31 PASS, 0 FAIL |
+| `test_shortfall_sweep.py` / `test_shortfall_reporting.py` | 46 / 23 PASS, 0 FAIL (re-run for WP-4) |
+| `test_s7_p4_rules_commissioner.py` | 367 PASS / 0 FAIL (re-run for WP-4) |
+| `test_wp3b_rev43_foundation.py` / `test_wp3b_standings_read_model.py` | 282 / 66 PASS, 0 FAIL (re-run for WP-4) |
 
 ### Known failures NOT caused by this branch (verified at base `766ea37`)
 
@@ -141,7 +147,17 @@ Final sweep, this branch:
 
 ### Certification NOT performed
 
-- **PostgreSQL parity: NOT RUN.** No `TEST_DATABASE_URL` in this environment. Every `*_pg.py` suite is unexecuted. The SQLite half of the constraint migration is proven; the PostgreSQL half is written but unexecuted.
+- **PostgreSQL parity: NOT RUN.** No `TEST_DATABASE_URL` in this environment. Every
+  `*_pg.py` suite is unexecuted, and each refuses cleanly rather than falling back to
+  `DATABASE_URL`. The SQLite half of the constraint migration is proven; the
+  PostgreSQL half is written but unexecuted.
+- **A PostgreSQL server IS listening on `127.0.0.1:5433`** (verified by protocol
+  handshake — it answers an SSLRequest with `N`; port 5432 is closed and `psql` is
+  not on PATH). No credentials for it exist in this environment and I did not attempt
+  authentication against an unidentified server. **If a disposable `*_test` database on
+  5433 is made available via `TEST_DATABASE_URL`, PostgreSQL parity becomes runnable
+  immediately** — this is the single highest-value unblock available on this branch.
+  Until then every PG claim stays NOT RUN.
 - **Browser suites are timing-sensitive** when run in rapid succession — one WP3B run in a back-to-back sweep failed and passed cleanly twice when run alone. Treat isolated browser failures as suspect until re-run.
 
 ---

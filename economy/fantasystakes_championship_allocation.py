@@ -12,10 +12,14 @@ advance. A second balanced posting immediately commits exactly that contribution
 from the reserve into the isolated FantasyStakes Championship Pot. Both postings
 and the allocation row live in one caller-owned transaction.
 
-The FantasyStakes Championship Pot is CLOSED after activation: its only normal
-funding source is the per-GM contribution frozen here. Top-offs, Weekly Minimum
-shortfalls/returns, pool remainders, wallet remnants and postseason play never
-fund this pot.
+THE "CLOSED POT" RULE IS LEGACY-ERA DOCTRINE AND IS SCOPED AS SUCH. Under
+`RULESET_LEGACY` the pot's only funding source is the per-GM contribution frozen
+here, and top-offs, Weekly Minimum returns, pool remainders, wallet remnants and
+postseason play never fund it. Under `RULESET_FINAL_POR` the pot is deliberately
+OPEN and grows during the season: WP-4 sweeps each unspent Weekly Minimum into it
+at week close. The per-GM contribution architecture in this module is itself
+retired for Final POR seasons by WP-5; nothing here is deleted, because the
+contributions already posted under the legacy era are real and still read.
 """
 from __future__ import annotations
 
@@ -27,7 +31,9 @@ from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, U
 from sqlalchemy.orm import Session, relationship
 
 from db.schema import Base, League
-from economy.economy_events import reserve_account
+from economy.economy_events import (
+    fantasystakes_championship_account, reserve_account,
+)
 from economy.league_economy_config import (
     DEFAULT_CHAMPIONSHIP_CONTRIBUTION_CENTS,
     MAX_CHAMPIONSHIP_CONTRIBUTION_CENTS,
@@ -115,7 +121,13 @@ class FantasyStakesChampionshipAllocationResult:
 
 
 def pot_account(league_id: int, season: int) -> str:
-    return f"fantasystakes_championship:{league_id}:{season}"
+    """The league-season FantasyStakes Championship Pot.
+
+    DELEGATES rather than re-spelling the name. WP-4 gave this pot a second
+    writer (the Week-Close Weekly Minimum sweep) in a module that must not
+    import this one, so the literal moved to `economy.economy_events`, which is
+    where every shared account name lives. Same string, one definition."""
+    return fantasystakes_championship_account(league_id, season)
 
 
 def issuance_account(league_id: int, season: int) -> str:

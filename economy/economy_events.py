@@ -39,13 +39,23 @@ def min_account(team_id: int, week: int) -> str:
 
 
 def expired_min_account(team_id: int) -> str:
-    """Weekly Minimum that expired unspent at Week Close.
+    """LEGACY-ERA ONLY (RULESET_LEGACY). Weekly Minimum that expired unspent.
 
-    LEAVES CIRCULATION BUT REMAINS THE GM'S ASSET. It is not swept to
-    championship, does not return to Wallet during the season, and is credited
-    back to the GM only at season-end reconciliation. It stays inside the
-    settlement-relevant asset set throughout, which is why `min: -> expired_min:`
-    moves Current Settle by exactly zero."""
+    NO FINAL POR SEASON EVER WRITES HERE. WP-4 replaced the destination: under
+    `RULESET_FINAL_POR` an unspent Weekly Minimum is swept at WEEK close to
+    `fantasystakes_championship:{league}:{season}` and is gone from the GM's
+    asset position for good. This account name survives because the postings
+    already made under the legacy era are real, are still read by Current
+    Settle and the Week Ledger, and are still returned to Wallet at legacy
+    season close. It is a READ surface for those seasons, not a write target
+    for new ones.
+
+    WHAT IT MEANT UNDER THE LEGACY ERA. Money that left circulation but remained
+    the GM's asset: not swept to championship, not returned to Wallet during the
+    season, credited back only at season-end reconciliation. It stayed inside
+    the settlement-relevant asset set throughout, which is why the legacy
+    `min: -> expired_min:` moved Current Settle by exactly zero — and precisely
+    what the Final POR sweep changes, deliberately and once."""
     return f"expired_min:{team_id}"
 
 
@@ -95,6 +105,24 @@ def championship_account(league_id: int) -> str:
     return f"championship:{league_id}"
 
 
+def fantasystakes_championship_account(league_id: int, season: int) -> str:
+    """The league-season FantasyStakes Championship Pot.
+
+    THE ONE DEFINITION OF THIS NAME. `economy.fantasystakes_championship_
+    allocation.pot_account` was where it lived and now delegates here, because
+    WP-4 made a second module post into it and this file's contract is one
+    definition per account family. Two spellings of a league-season pot would
+    be two real, balanced, permanently-divergent pots.
+
+    SEASON-SCOPED, UNLIKE `championship:{league}`. A pot that accumulates
+    across seasons cannot be distributed at the end of any one of them.
+
+    NOT A GM ACCOUNT. It is deliberately outside the settlement-relevant asset
+    set, which is the whole mechanism by which a Weekly Minimum swept here
+    reduces that GM's Current Settle exactly once and permanently (WP-4)."""
+    return f"fantasystakes_championship:{league_id}:{season}"
+
+
 #: The pre-league-scoping global account. READ for consolidation, never written.
 LEGACY_CHAMPIONSHIP_ACCOUNT = "championship"
 
@@ -104,6 +132,13 @@ LEGACY_CHAMPIONSHIP_ACCOUNT = "championship"
 EVENT_OPENING_ALLOCATION = "OPENING_ALLOCATION"
 EVENT_WEEKLY_MINIMUM_RELEASE = "WEEKLY_MINIMUM_RELEASE"
 EVENT_WEEKLY_MINIMUM_EXPIRY = "WEEKLY_MINIMUM_EXPIRY"
+
+#: WP-4. Week close under `RULESET_FINAL_POR`: the unspent Weekly Minimum is
+#: swept to the FantasyStakes Championship Pot. A DISTINCT event type from
+#: `EVENT_WEEKLY_MINIMUM_EXPIRY`, not a reuse of it, because the two move the
+#: same cents to economically opposite places and an audit that cannot tell
+#: them apart cannot answer "where did this GM's Week 3 Minimum go?".
+EVENT_WEEKLY_MINIMUM_SWEEP = "WEEKLY_MINIMUM_SWEEP"
 EVENT_SKUNK_ASSESSMENT = "SKUNK_ASSESSMENT"
 EVENT_SKUNK_OBLIGATION = "SKUNK_OBLIGATION"
 EVENT_SKUNK_DISTRIBUTION = "SKUNK_DISTRIBUTION"
@@ -117,6 +152,7 @@ EVENT_EXPIRED_MINIMUM_RECONCILIATION = "EXPIRED_MINIMUM_RECONCILIATION"
 
 DOOR_WEEKLY_MINIMUM_RELEASE = "weekly_minimum_release"
 DOOR_WEEKLY_MINIMUM_EXPIRY = "weekly_minimum_expiry"
+DOOR_WEEKLY_MINIMUM_SWEEP = "weekly_minimum_sweep"
 DOOR_SKUNK_ASSESSMENT = "skunk_assessment"
 DOOR_SKUNK_DISTRIBUTION = "skunk_distribution"
 DOOR_RESERVE_SWEEP = "championship_reserve_sweep"

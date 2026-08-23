@@ -8,6 +8,8 @@ orchestrator sequences them rather than hiding them:
     consolidate_legacy_championship  "championship"  -> championship:{league}
     distribute_championship        championship:{league} -> winner Wallets
     reconcile_expired_minimum      expired_min:{team}  -> wallet:{team}
+                                   LEGACY-ERA ONLY; retired by WP-4 for
+                                   RULESET_FINAL_POR seasons
 
 WHY THE RESERVE SWEEP CHANGES NO GM'S CURRENT SETTLE. `reserve:{team}` is
 GM-keyed for provenance but was economically committed to the Championship pot
@@ -18,10 +20,17 @@ opening Season Allocation obligation — the 22000 was advanced regardless of
 where the 8000 later sits. A close that quietly netted the sweep against the
 advance would forgive a real obligation.
 
-WHY THE EXPIRED-MINIMUM RETURN ALSO CHANGES NOTHING. `expired_min:{team}` and
-`wallet:{team}` are both settlement-relevant assets of the SAME GM, so the
-return is a reclassification. Current Settle moves by exactly zero, which is the
-same reason expiry itself did in S5-P1.
+WHY THE EXPIRED-MINIMUM RETURN ALSO CHANGES NOTHING, AND WHY IT NO LONGER RUNS.
+`expired_min:{team}` and `wallet:{team}` are both settlement-relevant assets of
+the SAME GM, so the return is a reclassification: Current Settle moves by
+exactly zero, the same reason expiry itself did in S5-P1. That is the LEGACY
+era. WP-4 replaced it — under `RULESET_FINAL_POR` an unspent Weekly Minimum is
+forfeited to the FantasyStakes Championship Pot at WEEK close, so there is no
+`expired_min:` balance at season end and no return to make. This step is
+therefore RETIRED for Final POR seasons rather than left to run as a harmless
+no-op: a retired path that still executes is a path that can be re-armed by a
+future edit, and running it would also record a season-close event asserting a
+return that the Final POR does not make.
 
 RECEIVABLES ARE NOT COLLECTED HERE, DELIBERATELY. Skunk is ledger-only by owner
 ruling S5-R1, and no controlling non-superseded authority requires an automatic
@@ -100,6 +109,12 @@ class ExpiredMinResult:
     season: int
     returned: tuple[tuple[int, int], ...]
     total_cents: int
+    #: True when the era retired this step (WP-4, `RULESET_FINAL_POR`). A caller
+    #: can then tell "no GM had an expired balance" apart from "this era does
+    #: not have expired balances", which the totals alone cannot distinguish.
+    retired: bool = False
+    #: (team_id, cents) that a retired run found and deliberately did not move.
+    stranded: tuple[tuple[int, int], ...] = ()
 
 
 def _teams(db, league_id: int):
@@ -360,7 +375,11 @@ def distribute_championship(db, *, league_id: int,
 
 def reconcile_expired_minimum(db, *, league_id: int,
                               now: datetime | None = None) -> ExpiredMinResult:
-    """Credit each GM's `expired_min:` back to their own Wallet.
+    """Credit each GM's `expired_min:` back to their own Wallet. LEGACY ERA ONLY.
+
+    RETIRED UNDER `RULESET_FINAL_POR` (WP-4) — see the module docstring. A Final
+    POR season returns immediately with `retired=True`, having posted nothing
+    and recorded no event.
 
     PER-GM EVENT KEYS, not one league key. A GM added mid-close, or a partially
     completed run, must be able to converge without re-crediting the GMs already
@@ -372,11 +391,36 @@ def reconcile_expired_minimum(db, *, league_id: int,
     commissioner-selectable destination.
     """
     from db.schema import League
+    from ruleset import is_final_por
 
     now = now or datetime.now(timezone.utc)
     league = db.query(League).filter(League.id == league_id).first()
     season = league.season
     db.flush()
+
+    if is_final_por(db, league_id=league_id, season=season):
+        # RETIRED FOR THIS ERA (WP-4). Nothing was ever written to
+        # `expired_min:` this season, so there is nothing to return; the whole
+        # unspent Weekly Minimum already left the GM at week close. Returning an
+        # empty result rather than raising keeps the close orchestrator's step
+        # sequence intact and lets it report the retirement, and writing no
+        # event keeps the season's economy_event log free of a claim that a
+        # return happened.
+        #
+        # A STRANDED BALANCE IS SURFACED, NOT SILENTLY SWEPT. The one way a
+        # Final POR season can hold `expired_min:` cents is a season whose
+        # weeks closed while unstamped and which was stamped afterwards. Those
+        # cents are the GM's under the era that posted them, and this retired
+        # path is not the authority to move them, so they are reported and left
+        # in place for the close's own conservation assertion to catch.
+        stranded = tuple(
+            (team.id, bal) for team, bal in
+            ((t, _balance_of_in_session(db, expired_min_account(t.id)))
+             for t in _teams(db, league_id))
+            if bal != 0)
+        return ExpiredMinResult(league_id=league_id, season=season,
+                                returned=(), total_cents=0,
+                                retired=True, stranded=stranded)
 
     returned: list[tuple[int, int]] = []
     total = 0
