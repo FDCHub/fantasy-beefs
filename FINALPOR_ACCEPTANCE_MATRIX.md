@@ -342,6 +342,24 @@ became something else would be a silent rewrite of a result.
 
 ## 5. TEST EXECUTION RESULTS
 
+### Final regression sweep — every FINAL POR backend suite, one run
+
+**957 PASS / 0 FAIL**, run consecutively at the end of this continuation:
+
+| Suite | | Suite | |
+|---|---|---|---|
+| `wp1_ruleset` | 22 | `wp11_ff_championship` | 85 |
+| `wp2_skunk_zero` | 25 | `wp12_skunk_correction` | 64 |
+| `wp4_minimum_sweep` | 59 | `wp13_wager_void` | 50 |
+| `wp5_pot_architecture` | 104 | `wp14_grand_championship` | 50 |
+| `wp6_topoff_pot_leg` | 49 | `wp14_grand_route` | 32 |
+| `wp7_fs_score` | 16 | `wp15_settle_reshape` | 59 |
+| `wp8_lifecycle` | 42 | `wp16_retirements` | 55 |
+| `wp9_points_championship` | 49 | `wp17_demo` | 34 |
+| `wp10_distribution` | 43 | `wp18_spec_supersession` | 56 |
+| `ui7_settings_view` | 63 | | |
+
+
 Final sweep, this branch:
 
 | Suite | Result |
