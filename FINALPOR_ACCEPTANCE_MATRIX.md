@@ -36,6 +36,7 @@ change summary. Anything implemented but not certified is marked explicitly.
 | **WP-7** | §8 FS Score = Matchups + Pools − Skunk; era-gated; positive magnitude | **DONE** | `reports/standings_read_model.py` — `skunk_fees_cents` field, 3-term `net_cents`, `is_final_por` gate, `as_dict`; `api/main.py::StandingsRowOut` | `test_finalpor_wp7_fs_score.py` — 16 PASS / 0 FAIL. Same fixture under each ruleset gives 0 vs −500; Skunk changes *ranking*; Top-Off principal moves Score by exactly 0 while crediting Wallet |
 | **UI-4** | §28 four locked Status category names + `LABEL · N · SWIPE` | **DONE** | `web/js/action.js::RAIL_WORDS` + `railHeading`; `web/js/data/action-data.js::railHeading` (second builder aligned) | `test_uirecon_rev14_status.py` 38 PASS, `test_uirecon_wave5.py` 37 PASS, `test_s8_p4c2_action.py` all PASS, `package2_component_tests.mjs` all PASS |
 | **UI-6** | §30 all four Account cards closed; HELD→ESCROW; Opening FantasyStakes Allocation | **DONE** | `web/js/ledger.js` — `open: false`, `{label:'Escrow', context:'included in In Play'}`, `OPENING FANTASYSTAKES ALLOCATION` | `test_s7_p3_week_ledger.py` 452 PASS / 0 FAIL; `test_uirecon_rev14_presentation.py` 319 PASS / 0 FAIL (incl. 3 viewports) |
+| **UI-CLOSE-X** | **Owner ruling (addendum), LOCKED** — the close control is upper-left, visually attached to the active card / sheet / modal / detail view, everywhere including Wrap Up, superseding every older upper-right reference. A positional visual rule, not a redesign — so it must be proven to change nothing else | **DONE** | **No markup changed**, because the control was already upper-left. What changed: `web/js/components.js::closeControl` and `web/styles/components.css .fs-sheet__close` now carry the ruling as a LOCKED rationale block naming what it supersedes (Rev 4.3 §25, Final POR §29), so the next reader cannot "fix" it back. `.fs-sheet` `max-height` tightened **80% → 75%**, which is the one behavioural change and is a *correction toward* §29's stated `~75vh` bound, not a consequence of the ruling — the sheet already scrolled internally, so nothing became unreachable. `finalpor_ui5_wrapup.mjs` W8 flipped to UPPER LEFT and its bound to 0.76 | **`test_finalpor_closex.py` → `web/tests/finalpor_closex.mjs` — 170 PASS / 0 FAIL in real headless Chrome**, X1–X8 across **Play, Status and Wrap Up** at **320×568 / 375×667 / 390×844** — the three surfaces and three widths the ruling names. Every regression the addendum asked to be excluded is **measured, not assumed**: no title overlap, no subtitle overlap, **no badge overlap** (badges counted per sheet so the check cannot pass vacuously); **no card-width shift and no page-width shift**, taken as a before/after pair around the open rather than as a single reading; **no horizontal overflow** (`docScrollW <= docClientW`) and the sheet fits its viewport; **no bottom-nav collision**; **no expanded-card height regression**. **X8 is what makes "everywhere" checkable** — all nine measurements agree on one class, one accessible name and one corner inset (`left+14 / top+8`), so a per-surface variant fails here rather than being noticed later. Non-regression of the shared shell re-certified after the CSS change: `test_uirecon_wave2.py` **1016 PASS / 0 FAIL**, `test_uirecon_wave3.py` **813 PASS / 0 FAIL**, `test_finalpor_ui1_shell_context.py` **13 PASS / 0 FAIL**, `test_finalpor_ui3_play.py` **122 PASS / 0 FAIL** |
 | **UI-3E** | §27E LINEUPS above ON OFFER | **DONE** | `web/js/preview.js::previewSheet` body order | `test_s7_p2_league_action.py` 484 PASS / 0 FAIL; `e2e_package2.mjs`, `e2e_package3.mjs` order assertions replaced and green |
 
 ### Verified-as-already-correct (no change required)
@@ -97,17 +98,18 @@ letter and break the rule.
 Its only titled section is the pool's own name. §29 asks for *concise FF drivers
 + Pool/market analysis*; the Pool/market half is present, the FF half is not.
 
-**GAP 3 — the close control is UPPER-LEFT, and this is an AUTHORITY CONFLICT,
-not a defect.** `web/js/components.js::closeControl` and
-`web/styles/components.css` place it upper-left, and the code states: *"The
-FantasyStakes owner ruling supersedes Rev 4.3 FINAL POR §25, which had required
-upper-right."* §29 of this POR says *X upper-right*. A recorded owner ruling
-already considered and overrode exactly that requirement, so **this was NOT
-flipped**: reversing a documented owner ruling on the strength of one line in a
-later UI spec is a product decision, not an implementation one. It is also the
-ONLY close control in the product — `sheet()` renders every dismissible
-overlay — so the change is one CSS rule and is trivially reversible once ruled
-on. **A ruling is required.**
+**GAP 3 — RESOLVED BY OWNER RULING (addendum). The close control is
+UPPER-LEFT, everywhere, and that is now the governing rule.** The conflict this
+gap recorded was real: `components.js` placed the control upper-left on the
+strength of an earlier owner ruling, while §29 of this POR said upper-right. The
+addendum settles it in favour of upper-left and states the rule in full — *upper
+left, visually attached to the active card, sheet, modal or detail view,
+throughout the application including Wrap Up, superseding every older
+upper-right reference*. No code moved, because the code was already correct;
+what changed is that the position is now **locked and certified** rather than
+merely implemented. §29's own wording is superseded, and W8 in the UI-5 suite
+now asserts UPPER LEFT. See the UI-CLOSE-X row in §1 for the regression
+evidence the ruling required.
 
 **GAP 4 — the FantasyStakes Matchups section is EMPTY in the certification
 fixture**, so its expansion could not be exercised at all. `AppServer` seeds no
@@ -239,6 +241,7 @@ Final sweep, this branch:
 | Suite | Failure | Verification |
 |---|---|---|
 | `test_s7_p1_ui_shell.py` → `e2e_shell.mjs` | `Cannot read properties of null` | Reproduced at base. One of the "known carousel/UI regressions" at 766ea37. |
+| `test_s7_p1_ui_shell.py` — **current failure mode, MOVED** | Now mounts and reaches **300 PASS / 2 FAIL**: `fs-strip-ledger: no cell clips its own content` and `each drawn figure is its exact value rounded to whole dollars`. The null read is gone. | **NOT caused by the close-X ruling — isolated by experiment, not by argument.** The suite was re-run with `.fs-sheet` `max-height` reverted to its old 80% and produced **the identical two failures**, so the one behavioural change on this branch is excluded. Neither assertion concerns a sheet. Open, and owned by no current package — carried into the closeout list rather than folded into UI-CLOSE-X. |
 
 ### Certification NOT performed
 

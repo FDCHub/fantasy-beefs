@@ -297,7 +297,19 @@
 .fs-sheet {
   position: relative;
   width: 100%;
-  max-height: 80%;
+  /* FINAL POR §29 — AN EXPANSION IS BOUNDED AT ~75% AND SCROLLS INSIDE ITSELF.
+   *
+   * This was 80%, which measured 80.06vh at 375x667 and is the one width where
+   * the bound actually binds. §29 asks for ~75vh, and tightening it costs
+   * nothing that was not already paid for: `overflow-y: auto` below means the
+   * content that no longer fits scrolls rather than being clipped, which is the
+   * behaviour §29 specifies in the same sentence.
+   *
+   * THE BOUND IS THE POINT, not the exact number. A sheet that can grow to fill
+   * the viewport stops reading as an overlay on top of a surface and starts
+   * reading as a new page — and the reader loses the context they expanded FROM,
+   * which is the whole reason the card expands in place. */
+  max-height: 75%;
   overflow-y: auto;
   background: var(--card);
   border: var(--fs-border);
@@ -342,6 +354,15 @@
  * `right: auto` is explicit rather than merely omitted, because the shorthand
  * this replaced set it and a half-applied override would leave the control
  * stretched across the whole sheet. */
+/* THE UNIVERSAL CLOSE-X — LOCKED UPPER-LEFT by owner ruling, re-confirmed
+ * after the Final POR addendum. It supersedes every older upper-right
+ * reference, including Rev 4.3 §25 and Final POR §29, and it applies to every
+ * dismissible overlay in the product because `sheet()` renders all of them.
+ *
+ * `top` and `left` are small on purpose: the ruling asks for a control visually
+ * ATTACHED to the active card, sheet or detail view rather than floated in a
+ * corner of the viewport. `.fs-sheet` is the positioning context, so these are
+ * insets from the sheet's own edge and follow it at every width. */
 .fs-sheet__close {
   position: absolute;
   top: 8px;

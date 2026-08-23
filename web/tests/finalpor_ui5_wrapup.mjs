@@ -4,7 +4,13 @@
  * WHY THIS RUNS IN A BROWSER. §29 is almost entirely geometry: three sections
  * that FIT, collapsed cards that are the SAME width and height, an expansion
  * bounded at ~75vh with its own internal scroll, and a close control in the
- * upper right. None of that is readable from source.
+ * upper LEFT. None of that is readable from source.
+ *
+ * W8 SAYS UPPER LEFT BECAUSE THE OWNER RULED IT SO, superseding this section's
+ * own older wording. The corner is certified in depth by `finalpor_closex.mjs`,
+ * across three surfaces and three widths; W8 remains here so that Wrap Up --
+ * the surface the ruling calls out by name -- carries the check itself rather
+ * than inheriting it from a suite somebody could run separately.
  *
  * WHAT IS ASSERTED, AND WHY EACH CASE EXISTS:
  *
@@ -15,7 +21,7 @@
  *   W5  no page-level horizontal scroll
  *   W6  no bottom-navigation collision
  *   W7  an expansion is bounded at ~75vh and scrolls internally
- *   W8  its close control is in the UPPER RIGHT
+ *   W8  its close control is in the UPPER LEFT                 owner ruling
  *   W9  the Yahoo expansion carries a Fantasy Football breakdown ONLY
  *   W10 the FantasyStakes expansion carries FF *and* Bet Market breakdowns
  *   W11 the Prop Pool expansion carries FF drivers and Pool/market analysis
@@ -237,13 +243,15 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
       s.opened === true, s.reason || 'opened');
     if (!s.opened) continue;
 
+    /* 0.76, not 0.80: `.fs-sheet` was tightened from a 80% max-height to the
+     * 75% this section actually asks for. The tolerance is on the "~". */
     report.check(`${label} — bounded at about 75vh`,
-      s.ratio <= 0.80,
+      s.ratio <= 0.76,
       `${s.h}px of ${s.viewportH}px = ${(s.ratio * 100).toFixed(0)}vh`);
     report.check(`${label} — it scrolls internally rather than growing`,
       s.hasInternalScroll === true, String(s.hasInternalScroll));
-    report.check(`${label} — the close control is in the UPPER RIGHT`,
-      s.closeInUpperRight === true,
+    report.check(`${label} — the close control is in the UPPER LEFT`,
+      s.closeInUpperLeft === true,
       `upperRight=${s.closeInUpperRight} upperLeft=${s.closeInUpperLeft}`);
 
     /* WORD BOUNDARIES, NOT SUBSTRINGS. The first version matched `rain` inside

@@ -308,9 +308,25 @@ export function note(text, options = {}) {
  * rendered through `sheet()` below, so there is one implementation to change
  * and no per-surface variant to keep in step.
  *
- * The FantasyStakes owner ruling supersedes Rev 4.3 FINAL POR §25, which had
- * required upper-right. Position lives in `.fs-sheet__close`; this function
- * decides the markup and the accessible name and nothing else.
+ * ── THE UNIVERSAL CLOSE-X IS LOCKED: UPPER-LEFT ─────────────────────────────
+ *
+ * Owner ruling, re-confirmed after the Final POR addendum. The close control is
+ * upper-left, visually attached to the active card, sheet, modal or detail view,
+ * everywhere in the application including Wrap Up. It SUPERSEDES every older
+ * upper-right reference, including Rev 4.3 §25 and Final POR §29.
+ *
+ * IT IS A POSITIONAL RULE, NOT A REDESIGN. Nothing about the markup, the
+ * accessible name, the focus order or the sheet's geometry follows from it; the
+ * control keeps its own band above the title, which is why `.fs-sheet__title`
+ * needs no side inset and why the position costs the title no width.
+ *
+ * ONE PLACE TO CHANGE IT. Position lives in `.fs-sheet__close`; this function
+ * decides the markup and the accessible name and nothing else. Because `sheet()`
+ * renders every dismissible overlay in the product, there is no per-surface
+ * variant that could drift out of step — which is what makes "everywhere"
+ * checkable rather than aspirational, and is asserted directly by
+ * `test_finalpor_closex.py` on Play, Status and Wrap Up at all three certified
+ * widths.
  *
  * @returns {string}
  */
