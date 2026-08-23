@@ -520,8 +520,72 @@ def championship_results(
     # places 1, 2, 3. The FantasyStakes podium is where real ties occur, and its
     # frozen rows already carry competition-style places (1, 1, 3), which is the
     # shape the calculator expects.
+    # ── WP-14 · THE FINAL POR GRAND CHAMPIONSHIP, WHERE THAT ERA GOVERNS ─────
+    #
+    # Everything below this block is the RETIRED model and it is deliberately
+    # left standing: it still governs every legacy season, exactly as
+    # `reserve:{team}` still does in `current_settle.py`. What was wrong is that
+    # it governed BOTH, so a Final POR league read its Grand Championship as
+    # 3/2/1 recognition points -- a competition that season did not run.
+    #
+    # §20 replaced it: the Grand Championship is won on the finalized
+    # championship CREDITS a GM holds across the pillars their league actually
+    # funded, it needs at least two funded pillars to exist at all, and an exact
+    # tie on the total makes co-champions with NO tiebreak. The three states are
+    # PLACEHOLDER, LIVE and FINAL, and PLACEHOLDER returns no rows rather than
+    # rows of zeros -- a table of GMs on nothing is a claim they are level, and
+    # during the regular season there is nothing to be level about.
+    #
+    # THE SHAPE IS DELIBERATELY NOT THE OLD ONE. The retired payload's
+    # `yahoo_points` / `fantasystakes_points` / `combined_points` describe
+    # pooled Fractions that no longer exist; emitting them with credit figures
+    # inside would let a client keep reading the old rule and get plausible
+    # numbers. A Final POR season carries `by_pillar` credits and its state
+    # instead, and `model` says which rule produced the payload so no client has
+    # to infer it.
     grand_champion = None
-    if frozen is not None and yahoo_podium:
+    grand_final_por = None
+    try:
+        from ruleset import is_final_por as _is_final_por
+
+        _final_por_season = _is_final_por(db, league_id=league_id, season=season)
+    except Exception:
+        _final_por_season = False
+
+    if _final_por_season:
+        from economy.grand_championship import (
+            GrandChampionshipError, view as _grand_view,
+        )
+
+        try:
+            _g = _grand_view(db, league_id=league_id, season=season)
+            grand_final_por = {
+                "model": "FINAL_POR",
+                "state": _g.state,
+                "funded_pillars": list(_g.funded_pillars),
+                "finalized_pillars": list(_g.finalized_pillars),
+                "meets_pillar_minimum": _g.meets_pillar_minimum,
+                "champion_team_ids": list(_g.champion_team_ids),
+                "co_champions": _g.co_champions,
+                # NO TIEBREAK EXISTS UNDER §20, and the field is reported as
+                # false rather than omitted so a client that still reads it
+                # cannot mistake its absence for "we did not check".
+                "tiebreak_used": False,
+                "rows": [
+                    {"team_id": row.team_id,
+                     "by_pillar": dict(row.by_pillar),
+                     "total_cents": row.total_cents}
+                    for row in _g.rows
+                ],
+            }
+        except GrandChampionshipError as _refusal:
+            # A NAMED REFUSAL TRAVELS, rather than the whole response failing.
+            # The podiums beside it are still readable and still correct.
+            grand_final_por = {"model": "FINAL_POR", "state": None,
+                               "unavailable_reason": _refusal.reason,
+                               "rows": [], "champion_team_ids": []}
+
+    elif frozen is not None and yahoo_podium:
         from reports.grand_champion import (
             ChampionshipFinish, calculate_grand_champion,
         )
@@ -549,6 +613,9 @@ def championship_results(
             result = None
         if result is not None:
             grand_champion = {
+                # STATED, NOT INFERRED. A client must be able to tell which
+                # rule produced the payload it is holding.
+                "model": "LEGACY_3_2_1",
                 "champion_team_ids": list(result.champion_team_ids),
                 "co_champions": result.co_champions,
                 # True only when the Championship Score actually decided it, so
@@ -588,6 +655,13 @@ def championship_results(
                            if run is not None else None),
         "awards": awards,
         "yahoo_podium": yahoo_podium,
+        # BOTH KEYS, AND ONLY ONE IS EVER POPULATED. A Final POR season fills
+        # `grand_championship` and leaves `grand_champion` null; a legacy season
+        # does the reverse. Keeping the retired key rather than overloading it
+        # means an existing client reading `grand_champion` gets null on a
+        # season the retired rule never ran -- which is correct -- instead of a
+        # payload whose fields it recognises and whose meaning has changed.
         "grand_champion": grand_champion,
+        "grand_championship": grand_final_por,
         "allocation": _season_opening_allocation(db, league),
     }

@@ -255,6 +255,27 @@ authorised to change in `betting/pool_settlement.py` and which suite pins it.
 
 ---
 
+## 4b. TWO SEAM DEFECTS FOUND WHILE FIXTURING THE DEMO
+
+Both are the same shape, and neither was visible from the package that created
+it: **a Final POR engine was certified at the module level and the surface kept
+reading the retired one.** WP-15 and WP-14 were both DONE and both correct; what
+had not been checked was whether their answers reached the wire.
+
+| Defect | What a user actually saw | Fix | Evidence |
+|---|---|---|---|
+| **WP-15 — the reshaped Skunk obligation stopped at the module.** `CurrentSettle` gained `skunk_cents` and `is_final_por`; `GmLedger` did not carry them, its `as_dict` did not emit them, `GmLedgerOut` had no field for them, and both browser models itemised the row as `-receivable_cents` | A Final POR GM who had really been assessed read a **Skunk line of zero**. The total beside it was right, because `obligations_cents` on the same response already included the fee — which is the worse half: **the parts stopped summing to the whole** for exactly the seasons the Final POR governs, on the surface a commissioner reconciles against | Both fields carried through `GmLedger` → `as_dict` → `GmLedgerOut` → `ledger-model.js`. New `skunkObligationCents(model)` picks the source **from the era**, not from whichever figure happens to be non-zero — that heuristic works until a GM legitimately owes nothing and then silently takes the wrong branch. It returns `0` rather than `-0`, which formats with a minus sign | `test_s7_p3_week_ledger.py` **455 PASS / 0 FAIL**, `test_s8_p4b2_binding.py` **70 PASS / 0 FAIL**, `test_s8_p3_read_models.py` all PASS, `test_finalpor_wp15_settle_reshape.py` **59 PASS / 0 FAIL** |
+| **WP-14 — the Grand Championship route still served the retired 3/2/1 model.** `api/championship_routes.py` called `reports.grand_champion` for every season | A Final POR league read its Grand Championship as **pooled recognition points from a competition that season never ran** — 3/2/1 per component, with a Championship Score tiebreak §20 abolished | Era-gated: a Final POR season is served by `economy.grand_championship.view()` under a **new** `grand_championship` key; a legacy season keeps `grand_champion`, untouched. **The retired key is left null rather than reused** — its `yahoo_points` / `fantasystakes_points` / `combined_points` describe pooled Fractions that no longer exist, and putting credit figures in them would let a client keep reading the old rule and get plausible numbers, which is the worst available outcome because nothing would look wrong. Each payload states its own `model` | `test_finalpor_wp14_grand_route.py` — **32 PASS / 0 FAIL** (G1–G6). Source walked **with comments stripped**, because this file explains the retired fields at length and a plain text search would find the explanation and call it a usage. Non-regression: `test_finalpor_wp14_grand_championship.py` 50, `test_finalpor_wp16_retirements.py` 55, all five `test_rc2_championship*` suites and `test_championship_payout.py` — **0 FAIL** |
+
+**Both retired implementations are still standing and still reachable**, which
+is the half that makes these routing fixes rather than removals. `current_settle`
+still documents `reserve:{team}` as *never spendable, never releasable* — legacy
+seasons still hold that account — and `reports.grand_champion` still runs and
+still decides on 3/2/1. A legacy season whose finished competition quietly
+became something else would be a silent rewrite of a result.
+
+---
+
 ## 5. TEST EXECUTION RESULTS
 
 Final sweep, this branch:
@@ -273,6 +294,9 @@ Final sweep, this branch:
 | `test_finalpor_wp15_settle_reshape.py` | **59 PASS / 0 FAIL** |
 | `test_finalpor_wp16_retirements.py` | **55 PASS / 0 FAIL** |
 | `test_finalpor_wp18_spec_supersession.py` | **55 PASS / 0 FAIL** |
+| `test_finalpor_wp14_grand_route.py` | **32 PASS / 0 FAIL** |
+| `test_rc2_championship*` (5 suites) | **242 PASS / 0 FAIL** |
+| `test_championship_payout.py` | **17 PASS / 0 FAIL** |
 | `test_finalpor_ui5_wrapup.py` | **48 PASS / 1 FAIL** — the one failure is GAP 4, blocked on PostgreSQL |
 | `test_s7_p3_week_ledger.py` | **455 PASS / 0 FAIL** (was 449/3 — the GAP 1 inversion) |
 | `test_s7_p2_league_action.py` | **484 PASS / 0 FAIL** |
