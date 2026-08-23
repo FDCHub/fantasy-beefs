@@ -212,9 +212,20 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
       const cs = getComputedStyle(el);
       return /auto|scroll/.test(cs.overflowY);
     });
+    // THE PRODUCT'S REAL SECTION-TITLE SELECTORS, and NOT the sheet's own
+    // title. The first version of this listed .fs-psec__title and
+    // .fs-sheet__sectitle -- neither of which exists anywhere in this build --
+    // plus h3, which matches .fs-sheet__title. So "its sections are named"
+    // passed on every sheet that had a TITLE, whether or not it had a single
+    // named section, which is the vacuous pass W9-W11 rest on.
+    // .fs-prev__title is what collapsible() draws and .fs-rule__head is what a
+    // flat titled block draws; between them they are every section head in the
+    // product.
+    // (No backticks in here: this comment lives inside a template literal.)
     const titles = [...sheet.querySelectorAll(
-      '.fs-psec__title, .fs-sheet__sectitle, h3')]
-      .map((h) => h.textContent.replace(/\\s+/g, ' ').trim());
+      '.fs-prev__title, .fs-rule__head')]
+      .map((h) => h.textContent.replace(/\\s+/g, ' ').trim())
+      .filter(Boolean);
     return {
       opened: true,
       h: Math.round(sr.height),
@@ -258,8 +269,18 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
      * the team name "Gravy Train" and reported fabricated weather analysis on a
      * clean sheet — a false positive that would have sent someone hunting a
      * defect that was not there. */
+    const B_B = '\\b';
+    const B_S = '\\s+';
     const used = FABRICATED.filter((w) =>
-      new RegExp('\b' + w.replace(/ /g, '\s+') + '\b').test(s.text));
+      // DOUBLED, AND THIS CHECK HAS NEVER RUN UNTIL NOW. In an ordinary JS
+      // string a single backslash-b is the BACKSPACE character and a single
+      // backslash-s is a bare s, so the pattern built here was
+      // <backspace>word s+<backspace> -- which matches nothing, ever. The
+      // assertion below therefore reported a clean sheet on every sheet,
+      // including one that fabricated every word in the list. It is the
+      // §29 assertion that matters most, and it was the one silently
+      // switched off.
+      new RegExp(B_B + w.replace(/ /g, B_S) + B_B, 'i').test(s.text));
     report.check(`${label} — fabricates no analysis it has no source for`,
       used.length === 0, used.join(', ') || 'clean');
     report.check(`${label} — its sections are named`,
@@ -278,12 +299,24 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
       report.check(`${label} — AND a bet-market breakdown`,
         hasMarket, JSON.stringify(s.titles));
     } else {
-      report.check(`${label} — carries Fantasy Football drivers`,
-        hasFF || /project|starter|points/i.test(s.text),
-        JSON.stringify(s.titles));
+      // UI-5 GAP 2 CLOSED. This accepted a bare mention of "points" anywhere
+      // in the sheet as evidence of a drivers section, which the Pool sheet
+      // satisfied without having one. §29 asks for a SECTION, so a section is
+      // what is required -- named, and carrying the two facts that make it a
+      // football section rather than a market one.
+      report.check(`${label} — carries a named Fantasy Football drivers section`,
+        s.titles.some((t) => /DRIVERS/i.test(t)), JSON.stringify(s.titles));
+      report.check(`${label} — which says what on the field decides it`,
+        /measured across/i.test(s.text), s.text.slice(0, 120));
       report.check(`${label} — and Pool/market analysis`,
         hasMarket || /pool|entr|pot/i.test(s.text),
         JSON.stringify(s.titles));
+      // NO RUNNING ORDER WHILE OPEN, and it says so. A standing computed in
+      // the browser would be a second evaluation of a metric the Pool engine
+      // evaluates once, at settlement.
+      report.check(`${label} — states no running order for an open Pool`,
+        /evaluated once, at settlement/i.test(s.text)
+        || /winner/i.test(s.text), s.text.slice(0, 160));
     }
   }
 });

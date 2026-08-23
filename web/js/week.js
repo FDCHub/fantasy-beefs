@@ -334,10 +334,96 @@ function providerMatchupCard(m) {
       ? (winner ? `FINAL · ${winner} won` : 'FINAL')
       : 'IN PROGRESS',
     footValue: '',
-    tapAction: '',
+    // UI-5 GAP 1 CLOSED. This was '' -- the card carried no `data-card-action`
+    // and nothing bound to it, so §29's Fantasy Football Breakdown existed for
+    // the DEMO card and not for the real one. The gap was recorded rather than
+    // guessed at because the honest question was what a breakdown may contain
+    // when the provider gateway captures no lineups and no projections, and
+    // §29 forbids fabricating analysis in the same breath as it asks for the
+    // section. `providerMatchupSheet` answers it: everything below is a fact
+    // the provider stated or arithmetic on two figures it stated, and the one
+    // thing it cannot say it says outright.
+    tapAction: 'provider',
     tapId: `provider-${m.matchupId}`,
     className: 'fs-wcard--yahoo',
   });
+}
+
+/**
+ * §29's Fantasy Football Breakdown for a PROVIDER-BACKED matchup.
+ *
+ * WHAT IT MAY CONTAIN IS DECIDED BY WHAT THE PROVIDER SAID. The gateway
+ * captures team names, owners, points, finality, the winner and a refresh
+ * timestamp. It captures no lineups, no projections, no per-player scoring and
+ * no betting lines. So this sheet draws those seven facts and the margin
+ * between the two figures -- which is subtraction on provider numbers, not
+ * analysis -- and nothing else.
+ *
+ * AND IT SAYS WHAT IT CANNOT SAY. §29 asks for a breakdown and forbids
+ * fabricating one, and a sheet that quietly stopped after the score would leave
+ * a reader assuming the per-player detail is coming. Stating the absence is the
+ * only treatment that is both complete and true; inventing "drivers" from the
+ * two team totals would be exactly the fabrication the section forbids.
+ *
+ * A NULL SCORE IS NOT ZERO. `normaliseSide` keeps them apart deliberately -- a
+ * provider that reported no points has not said the team scored none -- so the
+ * margin is withheld rather than computed from a stand-in.
+ *
+ * @param {object} m a normalised WeekMatchupOut
+ * @returns {{title: string, sub: string, body: string}}
+ */
+export function providerMatchupSheet(m) {
+  const figure = (side) => (side.points === null
+    ? PENDING_FIGURE : side.points.toFixed(1));
+
+  const row = (label, value, extra = '') => (
+    '<div class="fs-prev__row">' +
+    `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
+    `<span class="fs-prev__value ${extra}">${escapeHtml(value)}</span></div>`
+  );
+
+  const bothScored = m.home.points !== null && m.away.points !== null;
+  const margin = bothScored
+    ? Math.abs(m.home.points - m.away.points).toFixed(1) : null;
+  const leader = bothScored && m.home.points !== m.away.points
+    ? (m.home.points > m.away.points ? m.home : m.away) : null;
+
+  const winner = m.winnerTeamId === m.home.teamId ? m.home
+    : (m.winnerTeamId === m.away.teamId ? m.away : null);
+
+  return {
+    title: `${m.home.name} vs ${m.away.name}`,
+    sub: m.final ? `Week ${m.week} · Final` : `Week ${m.week} · In progress`,
+    body:
+      '<div class="fs-rule__head">FANTASY FOOTBALL BREAKDOWN</div>' +
+      row(m.home.name, figure(m.home), 'fs-money') +
+      row(m.away.name, figure(m.away), 'fs-money') +
+      // THE MARGIN IS SUBTRACTION, NOT A READ. Withheld outright when either
+      // side has no figure, because a margin against a missing score would be
+      // a number nobody stated.
+      (margin === null
+        ? row('Margin', PENDING_FIGURE)
+        : row('Margin', leader === null
+          ? 'Level' : `${margin} · ${leader.name}`, 'fs-money')) +
+      row('Result', m.final
+        ? (winner ? `${winner.name} won` : 'Final')
+        : 'Not final yet') +
+      (m.involvesActingTeam && m.actingSide
+        ? row('Your side', m.actingSide)
+        : '') +
+      (m.home.owner || m.away.owner
+        ? row('Managers', `${m.home.owner || '\u2014'} vs ${m.away.owner || '\u2014'}`)
+        : '') +
+      (m.refreshedAt
+        ? `<div class="fs-rule__src">Provider figures as at ${
+          escapeHtml(String(m.refreshedAt))}</div>`
+        : '') +
+      // THE HONEST LIMIT, stated rather than left to be inferred from silence.
+      '<div class="fs-note">Your fantasy provider publishes team totals for ' +
+      'this matchup and not per-player scoring, so there is no lineup ' +
+      'breakdown to show. FantasyStakes will not estimate one from the team ' +
+      'figures.</div>',
+  };
 }
 
 /* ── Module 2 · FantasyStakes bets ──────────────────────────────────────────*/
@@ -733,6 +819,19 @@ export function bindWeek(panel, api) {
     onActivate(el, () => {
       const m = matchups.find((x) => x.id === el.dataset.cardId);
       if (m) api.openSheet(previewSheet(m));
+    });
+  });
+
+  // UI-5 GAP 1 -- the provider-backed cards, bound from the SERVED rows.
+  // Deliberately separate from the `yahoo` binding above: that one looks the
+  // matchup up in the demo fixture, which knows only two weeks and THROWS for
+  // any other, and a production league in week 9 must never reach it.
+  const providerRows = demo ? [] : (weekMatchups(activeWeek()) || []);
+  panel.querySelectorAll('[data-card-action="provider"]').forEach((el) => {
+    onActivate(el, () => {
+      const m = providerRows.find(
+        (x) => `provider-${x.matchupId}` === el.dataset.cardId);
+      if (m) api.openSheet(providerMatchupSheet(m));
     });
   });
 

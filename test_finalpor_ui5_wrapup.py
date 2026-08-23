@@ -75,6 +75,17 @@ print("=" * 70)
 print("FINAL POR UI-5 - Wrap Up sections and expansions, in a browser")
 print("=" * 70)
 
+# UI-5 GAP 4 REMAINS OPEN, AND ITS CAUSE IS NOW KNOWN.
+#
+# `action_shape="settled"` exists and issues, accepts and settles a wager for
+# the wrap-up week through the real engine -- but `settle_week` takes a plain
+# `SELECT ... FOR UPDATE`, which SQLite does not implement, and every fixture
+# here is SQLite. The shape refuses by name on SQLite rather than failing with
+# a syntax error, and it is not used here: this suite must stay runnable.
+#
+# So §29's FF Breakdown + Bet Market Breakdown requirement for the
+# FantasyStakes Matchups section is UNVERIFIED rather than passing or failing,
+# and it becomes verifiable the moment a PostgreSQL test database exists.
 with AppServer(seed_pool_slate=True) as server:
     env = dict(os.environ)
     env.update({"FS_TEST_ORIGIN": server.origin,

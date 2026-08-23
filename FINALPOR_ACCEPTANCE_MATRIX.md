@@ -60,12 +60,12 @@ change summary. Anything implemented but not certified is marked explicitly.
 Each is **NOT IMPLEMENTED**. None was partially applied; there is no half-converted
 account model and no half-applied migration on this branch.
 
-**Every backend package — WP-4, WP-5, WP-6, WP-8, WP-9, WP-11, WP-12, WP-13, WP-14, WP-15, WP-16 and WP-18 — is complete and are no longer listed here.** **Every backend work package is complete, and UI-2 and UI-3A–D are complete.** **UI-7 is complete.** The remaining packages are **UI-5** (Wrap Up — three measured gaps, below) and **WP-17** (demo).
+**Every backend package — WP-4, WP-5, WP-6, WP-8, WP-9, WP-11, WP-12, WP-13, WP-14, WP-15, WP-16 and WP-18 — is complete and are no longer listed here.** **Every backend work package is complete, and UI-2 and UI-3A–D are complete.** **UI-7 is complete, and UI-5 is substantially complete** — three of its four gaps are closed and certified. The remaining work is **WP-17** (demo) and UI-5's **GAP 4**, which is blocked on PostgreSQL rather than on UI.
 
 | WP | Requirement | Why it matters |
 |---|---|---|
 | **WP-17** | demo re-fixture | Waits on the UI packages; the demo must visibly demonstrate the new economy. |
-| **UI-5** | §29 Wrap Up | **PARTIAL — the collapsed layout is DONE and certified; four gaps are MEASURED and named below.** `test_finalpor_ui5_wrapup.py` is committed and is **RED by design**: it is the certification UI-5 must turn green, and every failing line is a real gap rather than a probe artefact. |
+| **UI-5** | §29 Wrap Up | **SUBSTANTIALLY DONE — three of the four gaps are CLOSED and certified (48 PASS / 1 FAIL).** GAP 4 alone remains, and it is **BLOCKED on PostgreSQL**, not on UI work: the wager settlement engine cannot run on SQLite at all. The suite stays RED on that one line, which is a real unverified requirement rather than a probe artefact. |
 | **PROV-0/1/2** | §33 Yahoo | See below. |
 | **AUDIT-1** | §38 independent acceptance audit | This document is the artifact; the audit itself is external. |
 
@@ -84,39 +84,93 @@ account model and no half-applied migration on this branch.
   internally**, and fabricates no analysis (checked against a 14-term vocabulary
   the application has no source for).
 
-**GAP 1 — provider-backed Yahoo matchups do not expand at all.**
-`web/js/week.js::providerMatchupCard` sets `tapAction: ''`, so the card carries
-no `data-card-action` and nothing binds to it. The DEMO card
-(`yahooCard`) sets `tapAction: 'yahoo'` and does expand. §29 requires a Fantasy
-Football Breakdown on this section. **This needs a data decision before it can
-be implemented honestly**: the provider matchup row may not carry the
-projections and lineup slots `narrative.js` builds a breakdown from, and §29
-also says *do not fabricate analysis*. Opening an empty sheet would satisfy the
-letter and break the rule.
+**GAP 1 — CLOSED. Provider-backed Yahoo matchups now expand into a Fantasy
+Football Breakdown.** The gap was recorded rather than guessed at because the
+honest question was what a breakdown may contain when the provider gateway
+captures no lineups and no projections, and §29 forbids fabricating analysis in
+the same breath as it asks for the section. **What resolved it was separating
+two questions that had been answered as one.** The Matchup *Preview* cannot be
+opened over provider data — its four sections are Sportsbook View, Starting
+Lineups & Projections, Why The Line Looks This Way and The Read, and the
+gateway captures none of them. A *breakdown* can: the provider does state both
+team totals, finality, a winner and a refresh time, and the margin between two
+stated figures is subtraction rather than analysis.
+`week.js::providerMatchupSheet` draws those facts and **says outright that no
+per-player detail exists**, which is the only treatment that is both complete
+and true — a sheet that stopped after the score would leave a reader assuming
+the lineup detail was still loading.
 
-**GAP 2 — the Prop Pool expansion has no Fantasy Football drivers section.**
-Its only titled section is the pool's own name. §29 asks for *concise FF drivers
-+ Pool/market analysis*; the Pool/market half is present, the FF half is not.
+**GAP 2 — CLOSED. The Prop Pool expansion carries a named FANTASY FOOTBALL
+DRIVERS section.** `league.js::poolFootballDrivers` states what on the field
+decides the Pool (the catalog's metric expression), what it is measured across
+(one matchup, or every fantasy team in the league), how many subjects are in
+contention, and — for a settled Pool — the winners settlement actually wrote.
+Every line is slate content already published; the subjects are the ones the
+pick control already renders, so naming them discloses nothing new. **It
+deliberately does not say who is winning:** an open Pool has no standing,
+because the metric is evaluated once, at settlement, by the Pool engine, and a
+running order computed in the browser would be a second evaluation that could
+disagree with the one that pays. The sheet says that rather than leaving the
+absence to look like a page that failed to load.
 
 **GAP 3 — RESOLVED BY OWNER RULING (addendum). The close control is
 UPPER-LEFT, everywhere, and that is now the governing rule.** The conflict this
 gap recorded was real: `components.js` placed the control upper-left on the
-strength of an earlier owner ruling, while §29 of this POR said upper-right. The
-addendum settles it in favour of upper-left and states the rule in full — *upper
-left, visually attached to the active card, sheet, modal or detail view,
-throughout the application including Wrap Up, superseding every older
-upper-right reference*. No code moved, because the code was already correct;
-what changed is that the position is now **locked and certified** rather than
-merely implemented. §29's own wording is superseded, and W8 in the UI-5 suite
-now asserts UPPER LEFT. See the UI-CLOSE-X row in §1 for the regression
-evidence the ruling required.
+strength of an earlier owner ruling, while §29 of this POR said upper-right.
+The addendum settles it in favour of upper-left. No code moved, because the
+code was already correct; what changed is that the position is now **locked and
+certified**. See the UI-CLOSE-X row in §1.
 
-**GAP 4 — the FantasyStakes Matchups section is EMPTY in the certification
-fixture**, so its expansion could not be exercised at all. `AppServer` seeds no
-settled FantasyStakes wager for the wrap-up week; the section correctly draws
-its empty-state note. This is a **fixture** gap and belongs to **WP-17**, not to
-UI-5 — but it means §29's *FF Breakdown + Bet Market Breakdown* requirement for
-that section is **UNVERIFIED**, not passing.
+**GAP 4 — STILL OPEN, and its cause is now known: it is not a fixture gap.**
+The FantasyStakes Matchups section is empty in certification because no fixture
+has ever produced a settled wager — and the reason no fixture has is that
+**`betting/settlement_engine.py::settle_week` takes a plain
+`SELECT … FOR UPDATE`, which SQLite does not implement** (`near "FOR": syntax
+error`). Every certification fixture in this repository is SQLite, so the wager
+settlement engine **has never run in one**. An `action_shape="settled"` was
+written for `AppServer` — it issues, accepts, finalizes the matchup and calls
+the real engine — and it **refuses by name on SQLite** rather than failing with
+a syntax error. It is correct as written and runs on PostgreSQL.
+
+Both available workarounds are worse than the gap and neither was taken:
+stripping the lock would weaken a concurrency guard to make a test pass, and
+writing the settled rows by hand would certify the renderer against a shape
+nothing in the product produces. So §29's *FF Breakdown + Bet Market Breakdown*
+requirement for that section is **UNVERIFIED** — not passing, not failing — and
+`test_finalpor_ui5_wrapup.py` stays **RED on exactly that one line**. It becomes
+verifiable the moment a PostgreSQL test database exists, which makes it the
+second item on the PostgreSQL unblock list rather than a UI defect.
+
+### Two certification defects found while closing these gaps
+
+Both were **silent false passes** — the worst kind, because they report success
+on work that was never checked.
+
+1. **`finalpor_ui5_wrapup.mjs`'s fabricated-analysis check had never run.** It
+   built its pattern as `new RegExp('\b' + word + '\b')` in an ordinary JS
+   string, where `'\b'` is the **backspace character** and `'\s+'` is a bare
+   `s+`. The compiled pattern was `<backspace>word s+<backspace>`, which matches
+   nothing, ever. **This is the §29 assertion that matters most** — *do not
+   fabricate analysis* — and it was the one silently switched off, reporting a
+   clean sheet on every sheet including one that used every word in the list.
+   Repaired and **proven to fail**: it now catches `injury`, `rain` and
+   `sources say`, catches the multi-word `beat writer` across any whitespace,
+   and still does **not** match `rain` inside the team name *Gravy Train*,
+   which is the false positive the original comment was written to avoid.
+2. **`e2e_package3.mjs`'s text normaliser lost its escape inside a template
+   literal.** `replace(/\s+/g, ' ')` written in a template literal collapses to
+   `/s+/g`, which replaces **every lowercase `s` in the sheet with a space** —
+   so an assertion read *"no lineup breakdown to show"* as *"no lineup
+   breakdown to how"* and failed on text that was perfectly correct. Doubled.
+
+A third probe weakness was fixed in the same pass: the suite read section titles
+with `.fs-psec__title, .fs-sheet__sectitle, h3` — **the first two selectors
+exist nowhere in this build**, and `h3` matches the sheet's own
+`.fs-sheet__title`. So *"its sections are named"* passed on any sheet that had a
+TITLE, whether or not it had a single named section, which is the vacuous pass
+W9–W11 rested on. It now reads `.fs-prev__title, .fs-rule__head` — what
+`collapsible()` and a flat titled block actually draw — and excludes the sheet
+title.
 
 Two probe defects were found and fixed while measuring, and are recorded because
 both are the kind that produce false confidence rather than false failure: the
@@ -182,6 +236,12 @@ authorised to change in `betting/pool_settlement.py` and which suite pins it.
 
 ---
 
+### Replaced during UI-5 — an assertion that required the gap
+
+| Suite | Was | Now, and why the replacement is not a loosening |
+|---|---|---|
+| `e2e_package3.mjs` | "a served provider matchup offers no preview affordance" and "tapping it opens nothing rather than an invented analysis" — the suite **certified the absence** GAP 1 recorded | The reasoning behind it was right and the conclusion was too narrow: the *Preview* cannot be opened over provider data, but a *breakdown* can. **The claim is inverted and made stricter** — the card must expand, into a Fantasy Football Breakdown and **not** the Matchup Preview, stating the margin between the two provider figures, and **saying outright that no per-player detail exists**. The old version could pass on a product that had simply forgotten the section; this one cannot |
+
 ### Replaced during UI-7 — the RC2 rules structure, and one UI-6 leftover
 
 | Suite | Was | Now, and why the replacement is not a loosening |
@@ -213,6 +273,11 @@ Final sweep, this branch:
 | `test_finalpor_wp15_settle_reshape.py` | **59 PASS / 0 FAIL** |
 | `test_finalpor_wp16_retirements.py` | **55 PASS / 0 FAIL** |
 | `test_finalpor_wp18_spec_supersession.py` | **55 PASS / 0 FAIL** |
+| `test_finalpor_ui5_wrapup.py` | **48 PASS / 1 FAIL** — the one failure is GAP 4, blocked on PostgreSQL |
+| `test_s7_p3_week_ledger.py` | **455 PASS / 0 FAIL** (was 449/3 — the GAP 1 inversion) |
+| `test_s7_p2_league_action.py` | **484 PASS / 0 FAIL** |
+| `test_uirecon_rev14_wrap.py` | **270 PASS / 0 FAIL** |
+| `test_wp6c_pool_claim_browser.py` | **34 PASS / 0 FAIL** |
 | `test_finalpor_ui7_settings_view.py` | **63 PASS / 0 FAIL** |
 | `test_finalpor_ui7_rules.py` | **215 PASS / 0 FAIL** (headless Chrome, 3 viewports) |
 | `test_s7_p4_rules_commissioner.py` | **387 PASS / 0 FAIL** (was 367 — UI-7 added assertions) |
@@ -278,7 +343,9 @@ Final sweep, this branch:
   not on PATH). No credentials for it exist in this environment and I did not attempt
   authentication against an unidentified server. **If a disposable `*_test` database on
   5433 is made available via `TEST_DATABASE_URL`, PostgreSQL parity becomes runnable
-  immediately** — this is the single highest-value unblock available on this branch.
+  immediately — and with it UI-5's GAP 4, because `settle_week`'s `SELECT … FOR UPDATE`
+  cannot execute on SQLite at all, so no certification fixture in this
+  repository has ever settled a wager** — this is the single highest-value unblock available on this branch.
   Until then every PG claim stays NOT RUN.
 - **Browser suites are timing-sensitive** when run in rapid succession — reconfirmed this run: `test_s7_p4_rules_commissioner.py` failed inside a back-to-back sweep and passed cleanly (367 PASS / 0 FAIL) when run alone. Treat isolated browser failures as suspect until re-run.
 - **`test_wp3d_provider_attribution.py` is NOT a usable signal in this environment, and is NOT attributable to WP-4/WP-5.** Measured on four trees: base `766ea37` → 2 failing browser modes / 387 PASS; `6b576c1` (WP-1, a pure backend change touching no `web/js`) → 5 modes / 169 PASS; `604f2b9` (UI-1) → 4 modes / 241 PASS; `fc57288` (previous HEAD, before any of this continuation's work) → 5 modes / 289 PASS. The PASS count swings from 169 to 387 across identical trees, so the suite is non-deterministic here — most likely headless-Chrome resource contention. **WP-4 and WP-5 changed no file under `web/js` at all** (verified by `git diff --name-only fc57288 -- web/js/*` → empty), so no runtime UI behaviour moved. The degradation between base and `fc57288` predates this continuation and is flagged for the UI packages to investigate on a quiet machine.

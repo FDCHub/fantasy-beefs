@@ -204,44 +204,76 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     yahoo.invented === 0,
     `${yahoo.marketCells} market cell(s), ${yahoo.invented} carrying a value`);
 
-  /* ── WP5 · the Matchup Preview, and where it is reachable ──────────────────
+  /* ── UI-5 GAP 1 · what a provider matchup opens, and what it may contain ──
    *
-   * SPRINT 7 TAPPED A YAHOO CARD AND EXPECTED A PREVIEW. In the bound product a
-   * provider matchup card carries NO tap affordance: `providerMatchupCard` sets
-   * `tapAction: ''`, and `bindWeek` binds the preview lookup only in demo mode
-   * ("THE FIXTURE LOOKUPS ARE DEMO-ONLY").
+   * THIS BLOCK USED TO REQUIRE AN ABSENCE. `providerMatchupCard` set
+   * `tapAction: ''`, so a served matchup carried no affordance and opened
+   * nothing, and this suite certified that -- for a stated reason: the Matchup
+   * Preview's four sections are Sportsbook View, Starting Lineups &
+   * Projections, Why The Line Looks This Way and The Read, and the provider
+   * gateway captures none of the four. Opening THAT sheet over a served
+   * matchup would mean manufacturing all of it.
    *
-   * THAT IS DELIBERATE AND IT IS ALSO A REAL CAPABILITY GAP. The preview's four
-   * sections are Sportsbook View, Starting Lineups & Projections, Why The Line
-   * Looks This Way and The Read — sportsbook analysis the provider gateway does
-   * not capture. Opening it over a served matchup would mean manufacturing all
-   * four, which is the one thing this build consistently refuses. Drawing no
-   * affordance is the honest option, and it is reported as a product gap rather
-   * than certified away.
+   * THE REASONING WAS RIGHT AND THE CONCLUSION WAS TOO NARROW. §29 requires
+   * the Yahoo section to carry a Fantasy Football Breakdown, and UI-5 recorded
+   * the absence as a gap rather than certifying it away. What resolved it was
+   * separating two questions that had been answered as one: the PREVIEW cannot
+   * be opened over provider data, and a BREAKDOWN can -- because the provider
+   * does state team totals, finality, a winner and a refresh time, and the
+   * margin between two stated figures is subtraction rather than analysis.
    *
-   * SO THE CLAIM IS SPLIT, AND NEITHER HALF IS DROPPED:
-   *   · production — a provider card offers no preview and opens no sheet;
-   *   · the preview itself — still certified in the shared sheet, driven
-   *     through the real modules, so the four sections, the source banner and
-   *     the upper-left close control remain browser-certified rather than
-   *     demoted to a source check.
+   * SO THE CLAIM IS INVERTED AND MADE STRICTER. The card must now expand, and
+   * what it opens must contain the facts the provider stated, must NOT be the
+   * Matchup Preview, and must say outright that no per-player detail exists
+   * rather than leaving a reader to assume it is loading.
    */
-  const notTappable = await evaluate(`
+  const providerSheet = await evaluate(`return (async () => {
     const card = document.querySelector('[data-module="yahoo"] .fs-wcard');
-    card.click();
+    const target = card.matches('[data-card-action]')
+      ? card : card.querySelector('[data-card-action]');
+    if (target) target.click();
+    await new Promise((r) => setTimeout(r, 400));
+    const sheet = document.getElementById('fs-sheet');
     return {
-      sheetOpened: document.getElementById('fs-overlay').classList.contains('is-open'),
-      tapAffordances: document.querySelectorAll(
+      affordances: document.querySelectorAll(
         '[data-module="yahoo"] [data-card-action]').length,
-      foot: card.querySelector('.fs-wcard__footvalue')
-        ? card.querySelector('.fs-wcard__footvalue').textContent.trim() : '',
+      opened: document.getElementById('fs-overlay').classList.contains('is-open'),
+      heads: [...sheet.querySelectorAll('.fs-rule__head')].map(
+        (el) => el.textContent.trim()),
+      previewTitles: [...sheet.querySelectorAll('.fs-prev__title')].map(
+        (el) => el.textContent.trim()),
+      // DOUBLED, AND IT MATTERS. This lives inside a TEMPLATE LITERAL, which
+      // processes escapes before the code reaches the browser -- a single
+      // backslash-s is not a recognised escape and collapses to a bare s, so
+      // the normaliser became /s+/g and replaced every lowercase s in the
+      // sheet with a space. The assertions then read "no lineup breakdown to
+      // show" as "no lineup breakdown to how" and failed on text that was
+      // perfectly correct.
+      text: sheet.textContent.replace(/\\s+/g, ' ').trim(),
     };
+  })();`);
+  check('a served provider matchup DOES expand', providerSheet.opened === true,
+    `${providerSheet.affordances} affordance(s)`);
+  check('  · into a Fantasy Football Breakdown',
+    providerSheet.heads.some((h) => /FANTASY FOOTBALL BREAKDOWN/i.test(h)),
+    JSON.stringify(providerSheet.heads));
+  check('  · and NOT into the Matchup Preview',
+    !providerSheet.previewTitles.some(
+      (t) => /SPORTSBOOK|WHY THE LINE|THE READ|LINEUPS/i.test(t)),
+    JSON.stringify(providerSheet.previewTitles));
+  check('  · it states the margin between the two provider figures',
+    /Margin/.test(providerSheet.text), providerSheet.text.slice(0, 140));
+  // THE ABSENCE IS STATED, NOT IMPLIED BY SILENCE -- which is the whole reason
+  // this can satisfy §29 without fabricating the section §29 forbids.
+  check('  · and says outright that no lineup breakdown exists',
+    /not per-player scoring/.test(providerSheet.text)
+    && /will not estimate one/.test(providerSheet.text),
+    providerSheet.text.slice(-200));
+  await evaluate(`
+    const c = document.querySelector('#fs-sheet [data-fs-close]');
+    if (c) c.click();
+    return true;
   `);
-  check('a served provider matchup offers no preview affordance',
-    notTappable.tapAffordances === 0 && notTappable.foot === '',
-    `${notTappable.tapAffordances} affordance(s), foot "${notTappable.foot}"`);
-  check('and tapping it opens nothing rather than an invented analysis',
-    notTappable.sheetOpened === false);
 
   const preview = await evaluate(`return (async () => {
     const { previewSheet } = await import('/app/js/preview.js');

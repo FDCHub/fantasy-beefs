@@ -213,6 +213,78 @@ _SEED_ACTION = """
             _cf.decline_funded_challenge(
                 event_id=_uuid.uuid4(), challenge_id=_ch,
                 actor_team_id=comm_team.id, db=db)
+        elif _shape == "settled":
+            # UI-5 GAP 4 -- A WAGER THAT HAS ACTUALLY FINISHED.
+            #
+            # §29 requires the FantasyStakes Matchups section to carry an FF
+            # Breakdown AND a Bet Market Breakdown, and no fixture had ever
+            # produced a settled wager for the wrap-up week -- so that section
+            # correctly drew its empty-state note and the requirement went
+            # UNVERIFIED rather than passing or failing.
+            #
+            # IT IS SETTLED BY THE REAL ENGINE, not by writing a settled row.
+            # `settle_week` reads the finalized matchup and pays the winner
+            # through the ledger, so what the surface then reads is a wager
+            # that genuinely finished the way the product finishes one. A
+            # hand-written row would certify the renderer against a shape
+            # nothing produces.
+            _cf.accept_funded_challenge(
+                event_id=_uuid.uuid4(), challenge_id=_ch,
+                actor_team_id=comm_team.id, db=db)
+            db.flush()
+
+            # THE MATCHUP MUST BE FINAL FIRST. The engine settles nothing
+            # against a matchup the provider has not finalized, which is the
+            # rule and not an obstacle -- so the fixture finalizes it exactly
+            # as `_SEED_SKUNK_WEEK` does.
+            # ── THE SHAPE IS POSTGRESQL-ONLY, AND THIS IS WHY ──────────────
+            #
+            # `settle_week` re-reads the WeekSettlement row with a plain
+            # `SELECT ... FOR UPDATE` before it pays anything. That lock is the
+            # engine's concurrency guarantee and is exactly right in
+            # production -- and SQLite does not implement it, failing with
+            # `near "FOR": syntax error`.
+            #
+            # Every certification fixture in this repository is SQLite, so the
+            # wager settlement engine has never run in one. That -- not a
+            # forgotten fixture row -- is why UI-5's FantasyStakes Matchups
+            # section had no settled wager to draw and why §29's requirement
+            # for that section is UNVERIFIED rather than passing or failing.
+            #
+            # REFUSED BY NAME RATHER THAN WORKED AROUND. The two workarounds
+            # available are both worse than the gap: stripping the lock would
+            # weaken a concurrency guard to make a test pass, and writing the
+            # settled rows by hand would certify the renderer against a shape
+            # nothing in the product produces. On PostgreSQL this shape runs
+            # as written.
+            if db.get_bind().dialect.name == "sqlite":
+                raise RuntimeError(
+                    "action_shape='settled' needs PostgreSQL: "
+                    "betting.settlement_engine.settle_week takes SELECT ... "
+                    "FOR UPDATE, which SQLite does not implement. The shape "
+                    "is correct as written and runs on PostgreSQL; it is "
+                    "refused here rather than settled by a second, weaker "
+                    "path that would certify the surface against state the "
+                    "engine never writes.")
+
+            from betting.settlement_engine import settle_week as _settle_week
+            from db.schema import Matchup as _M
+
+            _mu = (db.query(_M)
+                   .filter(_M.league_id == league.id, _M.week == _week)
+                   .first())
+            if _mu is None:
+                _mu = _M(league_id=league.id, week=_week,
+                         home_team_id=gm_team.id, away_team_id=comm_team.id)
+                db.add(_mu)
+            _mu.home_score = 141.62
+            _mu.away_score = 118.04
+            _mu.winner_team_id = _mu.home_team_id
+            _mu.finalized_at = datetime.now(timezone.utc)
+            db.flush()
+            db.commit()
+            _settle_week(week=_week, db=db, league_id=league.id)
+            db.commit()
 """
 
 #: Opt-in seed steps. Kept OUT of the default fixture on purpose: every existing

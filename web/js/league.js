@@ -697,6 +697,74 @@ export function bindLeague(panel, api) {
  * @param {object} pool
  * @returns {{title: string, sub: string, body: string}}
  */
+/**
+ * §29's Fantasy Football drivers for a Prop Pool.
+ *
+ * UI-5 GAP 2 CLOSED. §29 asks a Pool expansion for *concise FF drivers plus
+ * Pool/market analysis*. The Pool half was there -- the question, the settle
+ * rule, the entry, the pot, the count entered -- and the football half was not,
+ * so a reader learned what they were being asked and nothing about the field it
+ * would be answered on.
+ *
+ * EVERY LINE BELOW IS SLATE CONTENT ALREADY PUBLISHED. The metric expression is
+ * the catalog's own settle condition; the scope is the catalog's; the subjects
+ * are the admissible ones the pick control already renders, so naming them here
+ * discloses nothing that was not already on the screen. Nothing is derived from
+ * a projection, because the slate carries none.
+ *
+ * WHAT IT DELIBERATELY DOES NOT SAY IS WHO IS WINNING. An open Pool has no
+ * standing -- the metric is evaluated at settlement by the Pool engine, and a
+ * running order computed in the browser would be a second evaluation that could
+ * disagree with the one that pays. A settled Pool shows the winners settlement
+ * actually wrote, which is a read rather than a computation.
+ *
+ * @param {object} pool a slate row
+ * @returns {string}
+ */
+function poolFootballDrivers(pool) {
+  const rows = [];
+  const row = (label, value) => (
+    '<div class="fs-prev__row">' +
+    `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
+    `<span class="fs-prev__value">${escapeHtml(value)}</span></div>`
+  );
+
+  // WHAT ON THE FIELD DECIDES IT. `rule` is the definition's metric
+  // expression; the em dash is the slate's own "the catalog carries none".
+  if (pool.rule && pool.rule !== '\u2014') rows.push(row('Decided by', pool.rule));
+
+  rows.push(row('Measured across',
+    pool.subject === 'matchup'
+      ? 'One fantasy matchup'
+      : 'Every fantasy team in the league'));
+
+  const subjects = Array.isArray(pool.subjects) ? pool.subjects : [];
+  if (subjects.length) {
+    rows.push(row('In contention', String(subjects.length)));
+  }
+
+  // THE WINNERS ARE SETTLEMENT'S, and only a settled Pool has any.
+  if (pool.settled && Array.isArray(pool.winningSubjects)
+      && pool.winningSubjects.length) {
+    rows.push(row(pool.winningSubjects.length > 1 ? 'Winners' : 'Winner',
+      pool.winningSubjects.join(', ')));
+  }
+
+  if (!rows.length) return '';
+
+  return (
+    '<div class="fs-rule__head">FANTASY FOOTBALL DRIVERS</div>' +
+    rows.join('') +
+    (pool.settled
+      ? ''
+      // SAID PLAINLY, because "who is ahead" is the first thing a reader looks
+      // for and its absence would otherwise read as a page that failed to load.
+      : '<div class="fs-note">No running order is shown while a Pool is open. '
+        + 'The metric is evaluated once, at settlement, by the Pool engine \u2014 '
+        + 'a standing computed here could disagree with the one that pays.</div>')
+  );
+}
+
 export function poolSheet(pool) {
   const outcomeRows = pool.settled
     ? '<div class="fs-prev__row"><span class="fs-prev__label">Outcome</span>' +
@@ -722,6 +790,10 @@ export function poolSheet(pool) {
       // needs before choosing is what they are being asked, and that is derived
       // from the served scope rather than invented.
       `<p class="fs-poolq">${escapeHtml(poolQuestion(pool))}</p>` +
+      // FOOTBALL FIRST, THEN THE MARKET. §29 lists the FF drivers before the
+      // Pool analysis, and it reads in that order too: what is being played
+      // for on the field, and then what it costs and pays.
+      poolFootballDrivers(pool) +
       '<div class="fs-prev__row"><span class="fs-prev__label">Settles on</span>' +
       `<span class="fs-prev__value fs-money">${escapeHtml(pool.rule)}</span></div>` +
       '<div class="fs-prev__row"><span class="fs-prev__label">Entry</span>' +
