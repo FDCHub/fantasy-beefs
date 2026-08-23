@@ -342,6 +342,36 @@ became something else would be a silent rewrite of a result.
 
 ## 5. TEST EXECUTION RESULTS
 
+### Closing regression set — run at HEAD `a19f385`, browser suites SERIALLY
+
+Browser suites were run one at a time: the contention flakiness recorded below
+is real and reproducible, and a timeout under concurrency is not a product
+failure. Every suite below was re-run alone before its result was recorded.
+
+| Area | Suite | Result |
+|---|---|---|
+| FINAL POR backend (19 suites) | `test_finalpor_wp*` + `ui7_settings_view` | **957 PASS / 0 FAIL** |
+| Schema / migration readiness | `test_b1_schema_readiness` | **33 PASS / 0 FAIL** |
+| Migration certification | `test_rc2_migration_certification` | **50 PASS / 0 FAIL** |
+| Shared shell | `test_finalpor_ui1_shell_context` | **13 PASS / 0 FAIL** |
+| Standings | `test_finalpor_ui2_standings` | **54 PASS / 0 FAIL** |
+| Play | `test_finalpor_ui3_play` | **122 PASS / 0 FAIL** |
+| Play / Action | `test_s7_p2_league_action` | **484 PASS / 0 FAIL** |
+| Status | `test_uirecon_rev14_status` | **38 PASS / 0 FAIL** |
+| Wrap Up + Ledger | `test_s7_p3_week_ledger` | **455 PASS / 0 FAIL** |
+| Account binding | `test_s8_p4b2_binding` | **70 PASS / 0 FAIL** |
+| Rules / League Settings | `test_s7_p4_rules_commissioner` | **387 PASS / 0 FAIL** |
+| Rules / Settings (UI-7) | `test_finalpor_ui7_rules` | **215 PASS / 0 FAIL** |
+| Universal close-X | `test_finalpor_closex` | **170 PASS / 0 FAIL** |
+| Grand Championship route | `test_finalpor_wp14_grand_route` | **32 PASS / 0 FAIL** |
+| Demo certification | `test_finalpor_wp17_demo` | **34 PASS / 0 FAIL, 4 NOT RUN** |
+| **Wrap Up (UI-5)** | `test_finalpor_ui5_wrapup` | **48 PASS / 1 FAIL** — GAP 4, BLOCKED on PostgreSQL |
+| Demo environment | `test_d1_demo_environment` | **cannot seed** — `near "FOR": syntax error`, reproduced at base `fc57288` |
+| PostgreSQL (61 suites) | `run_pg_suites.py` | **NOT RUN** — refuses cleanly, no `TEST_DATABASE_URL` |
+
+**Totals across the runnable set: 3162 PASS / 1 FAIL**, and the single failure is
+the PostgreSQL-blocked GAP 4.
+
 ### Final regression sweep — every FINAL POR backend suite, one run
 
 **957 PASS / 0 FAIL**, run consecutively at the end of this continuation:
@@ -480,9 +510,136 @@ Final sweep, this branch:
 
 ---
 
+## 6b. POSTGRESQL AVAILABILITY — VERIFIED, AND THE ANSWER IS NOT AVAILABLE
+
+**Classification: NOT AVAILABLE.** Verified 2026-08-23, without guessing a
+single credential.
+
+| Check | Result |
+|---|---|
+| `TEST_DATABASE_URL` | **unset** |
+| `DATABASE_URL`, `PG*`, `POSTGRES_*`, `FS_TEST_DATABASE_URL`, `TEST_PG_URL` | all unset |
+| `.env` / `.env.test` / `pytest.ini` / `setup.cfg` / `pyproject.toml` | **none present** |
+| `railway.toml`, `railway.final_lock.toml` | reference `DATABASE_URL` in prose only; no credential in the repo, and Railway is **production** |
+| `docs/PRODUCTION_RUNBOOK.md` | documents the *shape* `postgresql://…/fantasy_test` — an elided template, not a usable URL |
+| `%APPDATA%\postgresql\pgpass.conf`, `~/.pgpass` | **absent** — no stored credential |
+| `psql` / `pg_ctl` / `pg_isready` / `initdb` / `createdb` | **none on PATH** |
+| `C:/Program Files/PostgreSQL` | **not installed** |
+| 127.0.0.1:5432 | no listener |
+| **127.0.0.1:5433** | **a PostgreSQL server DOES answer** — confirmed by protocol handshake (SSLRequest → `N`). **No credentials exist for it and none were attempted.** |
+
+**A listening server is not an available test database.** Connecting would have
+required inventing a username, a password and a database name, which §2 forbids
+in as many words. The server on 5433 is unidentified: nothing in this repository
+or environment says what it is, who owns it, or whether it holds real data.
+
+**The harness itself is ready and fails closed, which is the evidence that
+matters.** `test_support_postgres.setup_postgres_test_db()` applies six guards
+before it touches anything — `TEST_DATABASE_URL` required with **no fallback to
+`DATABASE_URL`**, a `postgresql://` scheme, `_test` in the database name, no
+Railway-shaped host, a destination distinct from the live `DATABASE_URL`, and an
+**empty** database. Run now, both entry points refuse cleanly rather than
+degrading to SQLite:
+
+- `test_b6_group_a_ledger_pg.py` → `[HARNESS ERROR] … requires TEST_DATABASE_URL … will NOT fall back to DATABASE_URL`
+- `run_pg_suites.py` → `TEST_DATABASE_URL is not set. This runner fails closed rather than silently falling back to SQLite.`
+
+**61 `*_pg.py` suites are unexecuted.** Every one is written and none was
+modified to run without a database.
+
+### Exactly what is needed to unblock
+
+One environment variable, pointing at a **dedicated, empty, disposable**
+PostgreSQL database whose name contains `_test`:
+
+```
+TEST_DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<name>_test
+```
+
+The database must be **empty** (guard 6 refuses one with any pre-existing
+table), must **not** be Railway-hosted, and must **not** resolve to the same
+host+port+database as any live `DATABASE_URL`. If the server already listening
+on `127.0.0.1:5433` is a local development instance, a `fantasy_test` database
+created on it would satisfy every guard — but **whose it is, and whether it is
+safe to write to, is a question only the operator can answer.**
+
+---
+
+## 6c. FINAL CLASSIFICATION — every requirement, one label
+
+**DONE** requires evidence. Suites listed were run at HEAD `a19f385`.
+
+### DONE — backend work packages
+
+| WP | Evidence |
+|---|---|
+| WP-1 ruleset era gate | `wp1_ruleset` 22 PASS |
+| WP-2 optional Skunk Fee | `wp2_skunk_zero` 25 PASS |
+| WP-3 season-scoped Skunk | same suite |
+| WP-4 unused Minimum → FS Pot | `wp4_minimum_sweep` 59 PASS |
+| WP-5 league-level minted pots (Model B) | `wp5_pot_architecture` 104 PASS |
+| WP-6 Top-Off grows the pot | `wp6_topoff_pot_leg` 49 PASS |
+| WP-7 FS Score = Matchups + Pools − Skunk | `wp7_fs_score` 16 PASS |
+| WP-8 FS lifecycle LIVE→FINAL→PAID | `wp8_lifecycle` 42 PASS |
+| WP-9 Points Championship | `wp9_points_championship` 49 PASS |
+| WP-10 one canonical 60/30/10 | `wp10_distribution` 43 PASS |
+| WP-12 Skunk corrections | `wp12_skunk_correction` 64 PASS |
+| WP-13 accepted-wager void | `wp13_wager_void` 50 PASS |
+| WP-14 Grand Championship (engine **and** route) | `wp14_grand_championship` 50 + `wp14_grand_route` 32 PASS |
+| WP-15 My Settle reshape (module **and** wire) | `wp15_settle_reshape` 59 PASS; seam certified by `s7_p3` 455, `s8_p4b2` 70 |
+| WP-16 retirements | `wp16_retirements` 55 PASS |
+| WP-18 spec supersession | `wp18_spec_supersession` 56 PASS |
+
+### DONE — UI packages
+
+| UI | Evidence |
+|---|---|
+| UI-1 shared shell / carousel context | `ui1_shell_context` 13 PASS, 3 viewports |
+| UI-2 six-column Standings | `ui2_standings` 54 PASS, 3 viewports |
+| UI-3A–E Play | `ui3_play` 122 PASS, 3 viewports |
+| UI-4 Status category names | `uirecon_rev14_status` 38 PASS |
+| UI-6 Account cards | `s7_p3_week_ledger` 455 PASS |
+| UI-7 Rules / League Settings | `ui7_settings_view` 63 + `ui7_rules` 215 PASS, 3 viewports |
+| UI-CLOSE-X owner ruling | `closex` 170 PASS, 3 surfaces × 3 viewports |
+| Ruling 1 — two-team playoff 67/33 | `wp11_ff_championship` 85 PASS (F11/F12) |
+
+### BLOCKED — and every one is external
+
+| Item | Classification | Why, and what would unblock it |
+|---|---|---|
+| **UI-5 GAP 4** — a real settled FantasyStakes Matchup card and expansion | **BLOCKED** | `betting/settlement_engine.py::settle_week` takes a plain `SELECT … FOR UPDATE`; SQLite does not implement it and every disposable database here is SQLite. `action_shape="settled"` is written, drives the real engine, and **refuses by name on SQLite**. Reproduced at base `fc57288`. UI-5 stands at **48 PASS / 1 FAIL** — the one failure is this. Unblocked by `TEST_DATABASE_URL`. |
+| **WP-17** — demo through the real engines | **BLOCKED** | Same single cause: `demo/gameplay.play_season` calls `settle_week`. `test_d1_demo_environment.py` fails identically **at base `fc57288`**, so it predates this work. `wp17_demo` certifies **34 PASS / 0 FAIL** of what is decidable without a database and reports **4 items NOT RUN** rather than skipping them. One real defect *was* found and fixed on the way: the demo minted the Fantasy Football pillar at zero. Unblocked by `TEST_DATABASE_URL`. |
+| **PostgreSQL parity — 61 `*_pg.py` suites** | **BLOCKED** | No `TEST_DATABASE_URL`; see §6b. Harness refuses cleanly at both entry points. **Database class used: none.** |
+| **Yahoo runtime authorization** | **BLOCKED / UNKNOWN** | No `YAHOO_*` variable is set (verified by presence check only — no value read, no network call, no OAuth refresh). UNKNOWN fails closed everywhere. |
+| **PROV-1 / PROV-2 — postseason bracket classification** | **BLOCKED** | No postseason payload is captured and no bracket-classifying field is documented. Required *regardless* of authorization. Nothing fabricates playoff, consolation, championship or third-place classification. |
+| **FF Championship settlement finality** | **BLOCKED** | Depends on the two rows above. `wp11_ff_championship` certifies everything above the provider seam; settlement stays fail-closed. |
+
+### Not attributable to this branch — open and unowned
+
+| Item | Classification | Verification |
+|---|---|---|
+| `test_s7_full_ui_certification` — `ledger: no summary strip clips`, Package 1 browser cert, Stripe-removal regression | **pre-existing** | Reproduced at HEAD `d8978a2` in a detached worktree; same three families, this branch raised the pass count and moved none of them |
+| `test_s8_p1_browser` — commissioner badge (2 assertions) | **pre-existing** | Reproduced at HEAD identically, 28 PASS / 2 FAIL, isolated re-runs on both trees |
+| `test_wp3d_provider_attribution` | **non-deterministic here** | PASS count swings 169→387 across identical trees; headless-Chrome contention |
+
+**No requirement is classified MISSED / INCORRECT, and none is a REGRESSION.**
+
+---
+
 ## 7. EXPLICITLY NOT DONE
 
 - No push, no deploy, no tag, no branch beyond the local implementation branch.
 - No production database touched. No Yahoo configuration or secret read, written or exposed.
 - The separate public marketing website was not touched (§40).
+- **PostgreSQL was verified as NOT AVAILABLE and nothing was fabricated to work
+  around it.** No credential was guessed, no connection was attempted against
+  the unidentified server on `127.0.0.1:5433`, the production `FOR UPDATE` lock
+  was not weakened or emulated, and no settled state was hand-posted. The two
+  remaining items are BLOCKED with named causes rather than closed with weaker
+  evidence. See §6b.
+- **READY FOR INDEPENDENT ACCEPTANCE AUDIT**, with the scope stated plainly:
+  every implementation item is DONE and certified; everything outstanding is
+  BLOCKED on an external dependency — one environment variable
+  (`TEST_DATABASE_URL`) and Yahoo runtime credentials. Nothing is MISSED /
+  INCORRECT and nothing is a REGRESSION.
 - **WP-18 is now DONE and this debt is cleared.** `spec/FANTASYSTAKES_FINAL_POR.md` is the governing active spec; `spec/RC2_CHAMPIONSHIP_POR.md` and `spec/FantasyBeefs_Merged_Section_4_BABEconomy.md` carry explicit supersession headers and are otherwise unedited. `test_finalpor_wp18_spec_supersession.py` checks the spec against the code that defines each constant, so the drift cannot recur silently.
