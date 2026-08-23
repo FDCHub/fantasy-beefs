@@ -379,6 +379,73 @@ def pot_balances(db, *, league_id: int, season: int) -> PotBalances:
     )
 
 
+def pillar_funded_cents(db, *, pillar: str, league_id: int,
+                        season: int) -> int:
+    """How much this pillar's pot EVER held. Not its current balance.
+
+    THE DIFFERENCE IS THE WHOLE POINT (WP-14). §20 counts FUNDED pillars, and a
+    pillar that has been distributed holds zero — so a balance test would stop
+    counting a pillar at the exact moment it paid out, which is also the moment
+    the Grand Championship needs it most. Summing the POSITIVE legs answers "was
+    there ever money here?", which is the question §20 actually asks and is
+    stable across the distribution.
+
+    Works for all three pillars without knowing how each was funded: minted,
+    swept, assessed or topped up, every credit is a positive leg on the pot.
+    """
+    from sqlalchemy import text
+
+    db.flush()
+    total = db.execute(text(
+        "SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+        "WHERE account = :a AND amount_cents > 0"),
+        {"a": championship_pot_account(pillar, league_id, season)}).scalar()
+    return int(total or 0)
+
+
+def pillar_awards(db, *, pillar: str, league_id: int,
+                  season: int) -> dict[int, int]:
+    """What each GM was awarded FROM this pillar's pot, in positive cents.
+
+    DERIVED FROM THE POSTING, NOT FROM AN EVENT JOIN. A wallet leg counts when
+    its own posting also DEBITS this pillar's pot — which is what "paid out of
+    this pot" means, and is true whatever door the pillar's settlement used. The
+    three pillars settle through three different modules and two different
+    doors; this asks the one question all three answer the same way.
+
+    IT ALSO AVOIDS THE `posting_id` FORMAT TRAP. `economy_event.posting_id` is
+    written dashed through raw SQL while `ledger_entries.posting_id` is written
+    dashless through the ORM, so a join between those two tables returns no rows
+    on SQLite (see `economy.skunk.skunk_fees_by_team`). This joins
+    `ledger_entries` TO ITSELF — one table, one write path, one format — so the
+    defect cannot reach it at all rather than being worked around a second time.
+    """
+    from sqlalchemy import text
+
+    db.flush()
+    rows = db.execute(text(
+        "SELECT w.account, COALESCE(SUM(w.amount_cents), 0) "
+        "FROM ledger_entries w "
+        "WHERE w.account LIKE 'wallet:%' "
+        "  AND w.amount_cents > 0 "
+        "  AND EXISTS (SELECT 1 FROM ledger_entries p "
+        "              WHERE p.posting_id = w.posting_id "
+        "                AND p.account = :pot "
+        "                AND p.amount_cents < 0) "
+        "GROUP BY w.account"),
+        {"pot": championship_pot_account(pillar, league_id, season)}).fetchall()
+
+    awards: dict[int, int] = {}
+    for account, amount in rows:
+        try:
+            team_id = int(str(account).split(":", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        if amount:
+            awards[team_id] = int(amount)
+    return awards
+
+
 def no_gm_liability(db, *, league_id: int, season: int) -> bool:
     """Whether minting created any GM-keyed leg. Must always be True.
 
