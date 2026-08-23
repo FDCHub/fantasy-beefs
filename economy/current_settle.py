@@ -23,6 +23,41 @@ reproduces exactly:
 ASSETS (`wallet:`, `min:`, `min_reserve:`, `expired_min:`, GM-funded unresolved
 escrow) and OBLIGATIONS (season advance, approved Top-Off, `receivable:`).
 
+── WHAT THE FINAL POR RESHAPES (WP-15, §21) ────────────────────────────────
+
+The identity is unchanged. Three of its inputs are, and each for a reason that
+belongs to a package that already landed:
+
+  · `expired_min:` LEAVES THE ASSET SET. WP-4 forfeits an unspent Weekly Minimum
+    to the FantasyStakes Championship Pot at week close, so under the Final POR
+    the account is never written and counting it would be counting a state the
+    era cannot produce. It is excluded rather than deleted: a legacy season's
+    balance is real and is still counted for that season.
+
+  · THE PER-GM CHAMPIONSHIP OBLIGATION IS GONE, and it went structurally rather
+    than by a subtraction here. `season_advance_cents` sums the GM's own credit
+    legs under the allocation door; WP-5 stopped posting the `reserve:{team}`
+    leg, so there is nothing to sum. The 8000 asymmetry the sample above
+    describes simply does not arise for a Final POR season — its opening
+    allocation moves Current Settle by exactly zero.
+
+  · SKUNK IS DERIVED THROUGH EVENT PROVENANCE, not from the `receivable:`
+    balance. That balance is neither Skunk-only (`betting/shortfall_sweep.py`
+    also posts to it) nor season-scoped, and WP-12 made it correctable — a
+    reversal and a restatement must net. `economy.skunk.cumulative_skunk_fees_
+    cents` answers exactly "what did THIS league-season's Skunk machinery post
+    against this GM", which is the obligation, and nets a correction for free.
+
+THE SIX CONCEPTS STAY SEPARATE, and the dataclass keeps them in separate fields
+on purpose (§21): Wallet, FantasyStakes Score, Current Settle, Championship
+Pots, Top-Off principal and Skunk assessment are six different questions.
+FantasyStakes Score is not here AT ALL — it is competitive and this is
+accounting, and mixing them is the single most common way a surface ends up
+telling a GM their standing depends on their balance. A Championship POT is a
+league account and is not any GM's asset; a championship AWARD reaches the GM as
+a Wallet credit and is counted there ONCE, by the Wallet term, with nothing
+added on top.
+
 DELIBERATELY EXCLUDED, each for a stated reason:
 
     reserve:{team}          GM-keyed for provenance only. Economically committed
@@ -92,16 +127,38 @@ class CurrentSettle:
     topoff_issued_cents: int
     receivable_cents: int
 
+    #: WP-15. Which era's asset set and Skunk derivation govern. Carried on the
+    #: object so a reader can tell WHY a figure is shaped as it is without
+    #: re-resolving the ruleset, and so the two properties below have one input
+    #: rather than a hidden global.
+    is_final_por: bool = False
+
+    #: WP-15 — Skunk assessed against this GM THIS LEAGUE-SEASON, as a positive
+    #: magnitude, derived through economy-event provenance. Populated only under
+    #: the Final POR; a legacy season's obligation is `receivable_cents`, which
+    #: is what it has always been.
+    skunk_cents: int = 0
+
     @property
     def assets_cents(self) -> int:
+        # `expired_min:` IS A LEGACY-ERA ASSET ONLY (WP-4/WP-15). A Final POR
+        # season never writes the account, so this exclusion changes no figure
+        # for a correctly-behaved season — it is what makes the OMISSION
+        # deliberate and testable rather than an accident of the data.
+        expired = 0 if self.is_final_por else self.expired_min_cents
         return (self.wallet_cents + self.weekly_min_live_cents
-                + self.min_reserve_cents + self.expired_min_cents
+                + self.min_reserve_cents + expired
                 + self.in_play_cents)
 
     @property
     def obligations_cents(self) -> int:
-        return (self.season_advance_cents + self.topoff_issued_cents
-                + self.receivable_cents)
+        # THE SKUNK OBLIGATION HAS ONE SOURCE PER ERA, NEVER BOTH. Adding the
+        # provenance figure to the raw `receivable:` balance would count every
+        # Skunk twice, because the provenance figure is derived FROM those same
+        # postings. See the module docstring for why the Final POR reads the
+        # provenance rather than the balance.
+        skunk = self.skunk_cents if self.is_final_por else self.receivable_cents
+        return (self.season_advance_cents + self.topoff_issued_cents + skunk)
 
     @property
     def current_settle_cents(self) -> int:
@@ -119,6 +176,8 @@ class CurrentSettle:
             "season_advance": self.season_advance_cents,
             "topoff_issued": self.topoff_issued_cents,
             "receivable": self.receivable_cents,
+            "skunk": self.skunk_cents,
+            "is_final_por": self.is_final_por,
             "obligations": self.obligations_cents,
             "current_settle": self.current_settle_cents,
         }
@@ -304,10 +363,22 @@ def topoff_issued_cents(db, team_id: int) -> int:
 def current_settle(db, *, team_id: int, league_id: int,
                    season: int) -> CurrentSettle:
     """Derive one GM's Current Settle from posted Ledger state."""
+    from economy.skunk import cumulative_skunk_fees_cents
+    from ruleset import is_final_por as _is_final_por
+
     db.flush()
     receivable = _balance_of_in_session(db, receivable_account(team_id))
+    final_por = _is_final_por(db, league_id=league_id, season=season)
+    # DERIVED ONLY FOR THE ERA THAT USES IT. The provenance query joins two
+    # tables; running it for a legacy season would cost a join to produce a
+    # number `obligations_cents` would then ignore.
+    skunk = (cumulative_skunk_fees_cents(db, league_id=league_id,
+                                         season=season, team_id=team_id)
+             if final_por else 0)
     return CurrentSettle(
         team_id=team_id,
+        is_final_por=final_por,
+        skunk_cents=skunk,
         wallet_cents=_balance_of_in_session(db, wallet_account(team_id)),
         weekly_min_live_cents=live_weekly_minimum_cents(db, team_id),
         min_reserve_cents=_balance_of_in_session(
