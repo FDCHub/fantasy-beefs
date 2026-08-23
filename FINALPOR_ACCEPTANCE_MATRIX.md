@@ -63,10 +63,65 @@ account model and no half-applied migration on this branch.
 | WP | Requirement | Why it matters |
 |---|---|---|
 | **WP-17** | demo re-fixture | Waits on the UI packages; the demo must visibly demonstrate the new economy. |
-| **UI-5** | §29 Wrap Up expansion, X close, analysis panels | Three carousels already exist and are correctly headed. |
+| **UI-5** | §29 Wrap Up | **PARTIAL — the collapsed layout is DONE and certified; four gaps are MEASURED and named below.** `test_finalpor_ui5_wrapup.py` is committed and is **RED by design**: it is the certification UI-5 must turn green, and every failing line is a real gap rather than a probe artefact. |
 | **UI-7** | §24 Rules card, §23 seven-row League Settings | Prop Pool Entry not yet moved into the economy table. |
 | **PROV-0/1/2** | §33 Yahoo | See below. |
 | **AUDIT-1** | §38 independent acceptance audit | This document is the artifact; the audit itself is external. |
+
+### UI-5 — what is certified, and the four gaps that remain
+
+**Certified DONE** (`test_finalpor_ui5_wrapup.py`, headless Chrome, 320×568 /
+375×667 / 390×844 — **36 PASS**):
+
+- the three sections are §29's three, in order, at every width;
+- **every collapsed card is the same width (296/351/366 — exactly one rail) and
+  the same height (129px)**, across all three sections, which is the Wave 4B
+  property most likely to drift;
+- nothing is clipped, there is no page-level horizontal scroll, and the last
+  section clears the bottom navigation;
+- the Prop Pool expansion is **bounded at 67vh of 844** and **scrolls
+  internally**, and fabricates no analysis (checked against a 14-term vocabulary
+  the application has no source for).
+
+**GAP 1 — provider-backed Yahoo matchups do not expand at all.**
+`web/js/week.js::providerMatchupCard` sets `tapAction: ''`, so the card carries
+no `data-card-action` and nothing binds to it. The DEMO card
+(`yahooCard`) sets `tapAction: 'yahoo'` and does expand. §29 requires a Fantasy
+Football Breakdown on this section. **This needs a data decision before it can
+be implemented honestly**: the provider matchup row may not carry the
+projections and lineup slots `narrative.js` builds a breakdown from, and §29
+also says *do not fabricate analysis*. Opening an empty sheet would satisfy the
+letter and break the rule.
+
+**GAP 2 — the Prop Pool expansion has no Fantasy Football drivers section.**
+Its only titled section is the pool's own name. §29 asks for *concise FF drivers
++ Pool/market analysis*; the Pool/market half is present, the FF half is not.
+
+**GAP 3 — the close control is UPPER-LEFT, and this is an AUTHORITY CONFLICT,
+not a defect.** `web/js/components.js::closeControl` and
+`web/styles/components.css` place it upper-left, and the code states: *"The
+FantasyStakes owner ruling supersedes Rev 4.3 FINAL POR §25, which had required
+upper-right."* §29 of this POR says *X upper-right*. A recorded owner ruling
+already considered and overrode exactly that requirement, so **this was NOT
+flipped**: reversing a documented owner ruling on the strength of one line in a
+later UI spec is a product decision, not an implementation one. It is also the
+ONLY close control in the product — `sheet()` renders every dismissible
+overlay — so the change is one CSS rule and is trivially reversible once ruled
+on. **A ruling is required.**
+
+**GAP 4 — the FantasyStakes Matchups section is EMPTY in the certification
+fixture**, so its expansion could not be exercised at all. `AppServer` seeds no
+settled FantasyStakes wager for the wrap-up week; the section correctly draws
+its empty-state note. This is a **fixture** gap and belongs to **WP-17**, not to
+UI-5 — but it means §29's *FF Breakdown + Bet Market Breakdown* requirement for
+that section is **UNVERIFIED**, not passing.
+
+Two probe defects were found and fixed while measuring, and are recorded because
+both are the kind that produce false confidence rather than false failure: the
+suite initially looked for `.fs-sheet.is-open` (the sheet is `#fs-sheet` inside
+`#fs-overlay.is-open`) and reported every content check as vacuously empty; and
+its fabricated-analysis check matched `rain` inside the team name **Gravy
+Train**, reporting invented weather analysis on a clean sheet.
 
 ---
 
