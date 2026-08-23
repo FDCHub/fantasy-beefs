@@ -94,6 +94,25 @@ await withPage({ port: 9473 }, async ({ evaluate, setViewport }) => {
     !/debug|dev\b|test|fixture|prototype|mock|sandbox|beta/i.test(chip.text),
     chip.text);
 
+  const providerPanel = await evaluate(`
+    FantasyStakes.goTo('provider');
+    const panel = document.querySelector('.fs-panel.is-active');
+    const region = panel.querySelector('[data-region="provider"]');
+    return { id: panel.id,
+      title: panel.querySelector('.fs-tabhead__title').textContent,
+      label: panel.querySelector('[data-provider-label]').textContent,
+      family: region.dataset.providerFamily,
+      controls: region.querySelectorAll('button, input, select, textarea').length };
+  `);
+  check('Provider Information is its own rendered destination',
+    providerPanel.id === 'panel-provider'
+      && providerPanel.title === 'PROVIDER INFORMATION', JSON.stringify(providerPanel));
+  check('the destination reports the same served provider state as the chrome',
+    providerPanel.label === EXPECT.label && providerPanel.family === EXPECT.family,
+    JSON.stringify(providerPanel));
+  check('Provider Information is read-only', providerPanel.controls === 0,
+    String(providerPanel.controls));
+
   /* ── §26/§4 · the product is unchanged ────────────────────────────────── */
 
   section('§4/§26 · Same product, same five tabs, whatever the source');
@@ -247,12 +266,12 @@ await withPage({ port: 9473 }, async ({ evaluate, setViewport }) => {
     // to name and absent when it does not. The pending family legitimately has
     // none. What is invariant, and is what this assertion has always been
     // about, is the ANALYSIS ORDER underneath.
-    const analysis = preview.titles
-      .filter((t) => t !== 'ON OFFER' && t !== 'RESULT');
-    check('the locked analysis order is untouched',
-      analysis.join(' → ')
-        === 'WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
-      preview.titles.join(' → '));
+    const analysis = preview.titles.filter((t) => t !== 'RESULT');
+    const expected = analysis.includes('ON OFFER')
+      ? 'LINEUPS → ON OFFER → WHY THE LINE LOOKS THIS WAY → THE READ'
+      : 'LINEUPS → WHY THE LINE LOOKS THIS WAY → THE READ';
+    check('the locked analysis order keeps Lineups above On Offer',
+      analysis.join(' → ') === expected, preview.titles.join(' → '));
     check('and nothing restates the pairing the sheet header already names',
       !preview.titles.includes('MATCHUP'), preview.titles.join(' → '));
     if (EXPECT.family === 'demo') {

@@ -176,21 +176,20 @@
 .fs-strip__value.is-negative { color: var(--red); }
 .fs-strip__value.is-pending  { color: var(--amber); }
 
-/* Rank/context reads as context, not as a second figure — secondary grey,
- * including its separator (POR §2.3).
- *
- * `white-space: pre` IS LOad-BEARING NOW. `stripCell()` emits this span with a
- * leading space before the middot, and the value became a flex container in
- * this wave so the span is a flex ITEM — leading whitespace at the start of a
- * flex item collapses away, and the figure and its context would run together.
- * Preserving it here keeps the rendered string character-for-character what it
- * was, without the component having to know how the cell is laid out. */
+.fs-strip__value.has-context {
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Context reads as a secondary line beneath its figure. It stays unbroken so
+ * the four-cell summary cannot push context into the adjacent cell. */
 .fs-strip__context {
   font-family: var(--fs-font-ui);
-  font-size: var(--fs-size-micro);
+  font-size: 8px;
   font-weight: var(--fs-weight-regular);
   color: var(--fs-c-text-muted);
-  white-space: pre;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 /* ── Credits disclaimer ────────────────────────────────────────────────────

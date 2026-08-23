@@ -352,9 +352,9 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
   await wait(1600);
 
   const EXPECTED = [
-    'YAHOO LEAGUE MATCHUPS · SWIPE',
-    'FANTASYSTAKES MATCHUPS · SWIPE',
-    'FANTASYSTAKES PROP POOLS · SWIPE',
+    'YAHOO LEAGUE MATCHUPS',
+    'FANTASYSTAKES MATCHUPS',
+    'FANTASYSTAKES PROP POOLS',
   ];
 
   const READ_SECTIONS = `
@@ -380,7 +380,7 @@ await withPage({ port: 9424 }, async ({ evaluate, setViewport }) => {
         const items = car ? [...car.querySelectorAll(':scope > .fs-rescar__item')] : [];
         return {
           mod: s.dataset.module,
-          heading: head ? head.textContent.trim() : null,
+          heading: head ? head.querySelector('.fs-heading__text').textContent.trim() : null,
           size: hs ? hs.fontSize : null, weight: hs ? hs.fontWeight : null,
           track: hs ? hs.letterSpacing : null, transform: hs ? hs.textTransform : null,
           gap: hb && cb ? +(cb.top - hb.bottom).toFixed(1) : null,

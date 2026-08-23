@@ -89,13 +89,15 @@ const PROBE = `return (async () => {
              w: Math.round(r.width), h: Math.round(r.height) };
   };
 
-  { const t = document.querySelector(
-      '.fs-tabbar__item[data-destination="rules"]');
-    if (t) t.click(); }
+  FantasyStakes.goTo('rules');
   await new Promise((r) => setTimeout(r, 400));
 
-  const panel = document.getElementById('panel-rules');
-  if (!panel) return { on: false, reason: 'no rules panel' };
+  const rulesPanel = document.getElementById('panel-rules');
+  if (!rulesPanel) return { on: false, reason: 'no rules panel' };
+  FantasyStakes.goTo('settings');
+  await new Promise((r) => setTimeout(r, 200));
+  const panel = document.getElementById('panel-settings');
+  if (!panel) return { on: false, reason: 'no settings panel' };
 
   const table = document.getElementById('fs-vc-allocation');
   const heads = table ? [...table.querySelectorAll('thead th')] : [];
@@ -105,7 +107,7 @@ const PROBE = `return (async () => {
 
   return {
     on: true,
-    groups: [...panel.querySelectorAll('[data-rule]')].map(
+    groups: [...rulesPanel.querySelectorAll('[data-rule]')].map(
       (el) => (el.querySelector('.fs-rulerow__title') || {}).textContent),
 
     hasTable: Boolean(table),
@@ -156,17 +158,15 @@ const PROBE = `return (async () => {
     docClientW: document.documentElement.clientWidth,
     navTop: nav ? Math.round(nav.getBoundingClientRect().top) : null,
     lastBottom: (() => {
-      const legal = document.getElementById('fs-legal');
-      return legal ? Math.round(legal.getBoundingClientRect().bottom) : null;
+      const scroller = panel.querySelector('.fs-rulescroll');
+      return scroller ? Math.round(scroller.getBoundingClientRect().bottom) : null;
     })(),
   };
 })();`;
 
 /** Tap one allocation row and report what opened. */
 const OPEN_ROW = (rowId) => `return (async () => {
-  { const t = document.querySelector(
-      '.fs-tabbar__item[data-destination="rules"]');
-    if (t) t.click(); }
+  FantasyStakes.goTo('settings');
   await new Promise((r) => setTimeout(r, 250));
 
   const row = document.querySelector('[data-alloc="${rowId}"]');
@@ -203,9 +203,7 @@ const OPEN_ROW = (rowId) => `return (async () => {
 
 /** Open one rule group and report its sheet. */
 const OPEN_GROUP = (id) => `return (async () => {
-  { const t = document.querySelector(
-      '.fs-tabbar__item[data-destination="rules"]');
-    if (t) t.click(); }
+  FantasyStakes.goTo('rules');
   await new Promise((r) => setTimeout(r, 250));
   const row = document.querySelector('[data-rule="${id}"]');
   if (!row) return { opened: false, reason: 'no such group' };

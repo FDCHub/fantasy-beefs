@@ -282,6 +282,23 @@
 
 #panel-action .fs-wcard--lifecycle > .fs-wcard__copy { margin-top: 0; }
 
+/* Status has four simultaneous lifecycle summaries. The state sentence stays
+ * available in the detail sheet and to assistive technology, while the compact
+ * rail card uses the explicit category heading, opponent, market, figures and
+ * foot. Removing this duplicated visual sentence is the vertical budget that
+ * keeps all four categories above the persistent navigation at 390x844. */
+#panel-action .fs-railsec .fs-wcard__copy {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* THE BADGE SET THE HEAD ROW'S HEIGHT, not the identity beside it: its own
  * padding plus an undeclared leading made a 13px word 21px tall, three pixels
  * more than the 16px name it sits next to. It keeps its size and its contrast

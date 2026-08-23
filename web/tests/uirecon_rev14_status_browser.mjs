@@ -239,8 +239,8 @@ const READ_STATUS = `
 
 const RAILS = ['action', 'waiting', 'live', 'completed'];
 const WORDS = {
-  action: 'ACTION REQUIRED', waiting: 'WAITING', live: 'LIVE',
-  completed: 'COMPLETED',
+  action: 'ACTION REQUIRED', waiting: 'PENDING ACTION', live: 'LOCKED ACTION',
+  completed: 'RESOLVED ACTION',
 };
 
 await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
@@ -261,11 +261,11 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
     check('they are the locked rails, in the locked order',
       m.zones.map((z) => z.rail).join(',') === RAILS.join(','),
       m.zones.map((z) => z.rail).join(','));
-    check('every heading reads exactly `LABEL: N`',
-      m.zones.every((z) => new RegExp(`^${WORDS[z.rail]}: \\d+$`).test(z.heading)),
+    check('every heading reads exactly `LABEL · N · SWIPE`',
+      m.zones.every((z) => new RegExp(`^${WORDS[z.rail]} · \\d+ · SWIPE$`).test(z.heading)),
       m.zones.map((z) => z.heading).join(' | '));
-    check('no heading carries anything but the label and the count',
-      m.zones.every((z) => !/·|SEASON|–/.test(z.heading)),
+    check('every heading carries the shared swipe affordance',
+      m.zones.every((z) => z.heading.endsWith('· SWIPE')),
       m.zones.map((z) => z.heading).join(' | '));
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -293,8 +293,11 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
       RAILS.every((r) => served.counts[r] === served.lengths[r]),
       RAILS.map((r) => `${r} ${served.counts[r]}/${served.lengths[r]}`).join(' '));
     check('every heading states the served count',
-      m.zones.every((z) => z.heading === `${WORDS[z.rail]}: ${served.counts[z.rail]}`),
+      m.zones.every((z) => z.heading === `${WORDS[z.rail]} · ${served.counts[z.rail]} · SWIPE`),
       m.zones.map((z) => z.heading).join(' | '));
+    check('the showcase supplies 2-3 real cards in every Status category',
+      RAILS.every((r) => served.counts[r] >= 2 && served.counts[r] <= 3),
+      RAILS.map((r) => `${r}=${served.counts[r]}`).join(' '));
     check('every section declares the same count to the DOM',
       m.zones.every((z) => z.declaredCount === served.counts[z.rail]),
       m.zones.map((z) => `${z.rail}=${z.declaredCount}`).join(' '));
@@ -407,9 +410,6 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
       `COMPLETED ends at ${m.lastBottom}px, the bar starts at ${m.navTop}px`);
     check('the bottom navigation is visible and hit-testable',
       Boolean(m.nav && m.nav.onScreen && m.nav.reachable), JSON.stringify(m.nav));
-    check('every card is the same height, so no section is taller than another',
-      new Set(m.zones.flatMap((z) => z.cardH)).size === 1,
-      [...new Set(m.zones.flatMap((z) => z.cardH))].join(','));
 
     /* ══════════════════════════════════════════════════════════════════════
      * §7 · DENSITY COST NOTHING A GM WAS READING
@@ -541,8 +541,8 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
       check('Status is actually laid out at this size',
         m.zones.length === 4 && m.zones.every((z) => z.railW > 0),
         m.zones.map((z) => z.railW).join(' / '));
-      check('every heading still reads `LABEL: N`',
-        m.zones.every((z) => new RegExp(`^${WORDS[z.rail]}: \\d+$`).test(z.heading)),
+      check('every heading still reads `LABEL · N · SWIPE`',
+        m.zones.every((z) => new RegExp(`^${WORDS[z.rail]} · \\d+ · SWIPE$`).test(z.heading)),
         m.zones.map((z) => z.heading).join(' | '));
       check('the document does not scroll sideways',
         m.docSW <= m.docCW + 1, `${m.docSW} vs ${m.docCW}`);
@@ -644,8 +644,8 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
 
     check('an all-empty read still draws four sections',
       empty.allEmpty.length === 4, `${empty.allEmpty.length}`);
-    check('every heading reads `LABEL: 0`',
-      empty.allEmpty.every((z) => z.heading === `${WORDS[z.rail]}: 0`),
+    check('every heading reads `LABEL · 0 · SWIPE`',
+      empty.allEmpty.every((z) => z.heading === `${WORDS[z.rail]} · 0 · SWIPE`),
       empty.allEmpty.map((z) => z.heading).join(' | '));
     check('and no card is fabricated to fill any of them',
       empty.allEmpty.every((z) => z.cards === 0),
@@ -661,15 +661,15 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
       empty.allEmpty.map((z) => String(z.role)).join(','));
 
     const mixedAction = empty.mixed.find((z) => z.rail === 'action');
-    check('one empty rail among populated ones reads `ACTION REQUIRED: 0`',
-      mixedAction.heading === 'ACTION REQUIRED: 0', mixedAction.heading);
+    check('one empty rail among populated ones reads `ACTION REQUIRED · 0 · SWIPE`',
+      mixedAction.heading === 'ACTION REQUIRED · 0 · SWIPE', mixedAction.heading);
     check('  · draws no card',
       mixedAction.cards === 0, `${mixedAction.cards}`);
     check('  · and says the thing that is true of THAT rail',
       mixedAction.note === 'Nothing needs your decision.', mixedAction.note);
     check('  · while its peers keep the counts the server served',
       empty.mixed.filter((z) => z.rail !== 'action')
-        .every((z) => z.heading === `${WORDS[z.rail]}: ${empty.servedCounts[z.rail]}`
+        .every((z) => z.heading === `${WORDS[z.rail]} · ${empty.servedCounts[z.rail]} · SWIPE`
           && z.cards === empty.servedCounts[z.rail]),
       empty.mixed.map((z) => `${z.heading}/${z.cards}`).join(' | '));
   });

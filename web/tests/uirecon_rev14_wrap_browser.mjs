@@ -53,9 +53,9 @@ const VIEWPORTS = [
 
 /** The three locked section names, in the order Wrap Up states them. */
 const HEADINGS = [
-  'YAHOO LEAGUE MATCHUPS · SWIPE',
-  'FANTASYSTAKES MATCHUPS · SWIPE',
-  'FANTASYSTAKES PROP POOLS · SWIPE',
+  'YAHOO LEAGUE MATCHUPS',
+  'FANTASYSTAKES MATCHUPS',
+  'FANTASYSTAKES PROP POOLS',
 ];
 
 /** Sub-pixel noise is not a difference; anything a GM could see is. */
@@ -103,7 +103,7 @@ const READ = `
     const items = rail ? [...rail.querySelectorAll(':scope > .fs-rescar__item')] : [];
     return {
       mod: s.dataset.module,
-      heading: head ? head.textContent.trim() : null,
+      heading: head ? head.querySelector('.fs-heading__text').textContent.trim() : null,
       rail: rail ? {
         left: +rb.left.toFixed(1),
         right: +rb.right.toFixed(1),
@@ -160,7 +160,15 @@ const READ = `
   };
 `;
 
-await withPage({ port: 9438 }, async ({ evaluate, setViewport }) => {
+await withPage({ port: 9438, origin: process.env.FS_TEST_ORIGIN }, async ({ evaluate, setViewport }) => {
+  if (!process.env.FS_TEST_AUTH_EMAIL) {
+    const entered = await evaluate(`return (async () => {
+      const res = await fetch('/demo/enter', { method: 'POST', credentials: 'include' });
+      return res.ok;
+    })()`);
+    check('the public showcase entry route succeeds before Wrap Up is measured',
+      entered === true, String(entered));
+  }
   for (const vp of VIEWPORTS) {
     // `setViewport` NAVIGATES — mobile emulation only takes effect on a fresh
     // document — so the application remounts on its default tab and Wrap Up has

@@ -21,7 +21,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
 
   /* ── Frame ────────────────────────────────────────────────────────────── */
 
-  section('Rules & Settings renders at the phone viewport');
+  section('Rules renders at the phone viewport');
 
   await evaluate(`${goRules} return true;`);
 
@@ -43,7 +43,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
         .map(el => Math.round(el.getBoundingClientRect().right))),
     };
   })();`);
-  check('the title is RULES & SETTINGS', frame.title === 'RULES & SETTINGS', frame.title);
+  check('the title is RULES', frame.title === 'RULES', frame.title);
   // WP5: the identity is the BOUND league's name — S8-P4B-2 wired leagueName()
   // into this header. The requirement, that Rules & Settings identifies the
   // league whose rules it shows in the shared treatment, is unchanged; the
@@ -137,6 +137,8 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
 
   section('The four settings rows show governed values and offer no mutation');
 
+  await evaluate(`FantasyStakes.goTo('settings'); return true;`);
+
   // WP3C -- the settings row FIGURES are this league's own, so the suite reads
   // the same body the rows were built from and compares. That is a stronger
   // claim than a literal: it fails if the surface and the server disagree,
@@ -169,7 +171,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
    * required copy, and it is asserted just as strictly. `finalpor_ui7_rules`
    * certifies the seven rows themselves, against a Final POR fixture. */
   const settings = await evaluate(`
-    const panel = document.getElementById('panel-rules');
+    const panel = document.getElementById('panel-settings');
     const table = document.getElementById('fs-vc-allocation');
     const rows = table ? [...table.querySelectorAll('tbody tr')] : [];
     const region = panel.querySelector('[data-region="settings"]');
@@ -276,6 +278,8 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
   /* ── Commissioner order ───────────────────────────────────────────────── */
 
   section('The commissioner sections are in the locked order, B before C');
+
+  await evaluate(`FantasyStakes.goTo('commissioner'); return true;`);
 
   const commissioner = await evaluate(`
     const secs = [...document.querySelectorAll('#fs-commissioner [data-commissioner]')];
@@ -466,7 +470,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     const crossTab = await evaluate(`
       document.querySelector('.fs-tabbar__item[data-destination="ledger"]').click();
       const own = Number(document.querySelector('#fs-current-settle .fs-settle__total').dataset.exactCents);
-      ${GO_RULES}
+      FantasyStakes.goTo('commissioner');
       const commish = Number(document.querySelector('[data-gm="you"] .fs-gmcard__settle').dataset.exactCents);
       return { own, commish };
     `);
@@ -555,10 +559,12 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
 
   section('The legal line closes the tab, subordinate to it');
 
+  await evaluate(`FantasyStakes.goTo('about'); return true;`);
+
   const legal = await evaluate(`
-    const panel = document.getElementById('panel-rules');
+    const panel = document.getElementById('panel-about');
     const el = document.getElementById('fs-legal');
-    const commish = document.getElementById('fs-commissioner');
+    const about = panel.querySelector('[data-region="about-legal"]');
     const title = panel.querySelector('.fs-tabhead__title');
     return {
       // WP3D — THE LEGAL LINE, NOT THE WHOLE FOOTER BLOCK. The footer now holds
@@ -569,19 +575,19 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
       // about the copyright line's exact wording, so it reads that line.
       text: (el.querySelector('.fs-legal__line') || el).textContent,
       count: panel.querySelectorAll('#fs-legal').length,
-      belowCommissioner: el.getBoundingClientRect().top >= commish.getBoundingClientRect().bottom - 1,
+      belowContent: el.getBoundingClientRect().top >= about.getBoundingClientRect().bottom - 1,
       fontSize: parseFloat(getComputedStyle(el).fontSize),
       titleFontSize: parseFloat(getComputedStyle(title).fontSize),
       elsewhere: [...document.querySelectorAll('.fs-panel')]
-        .filter(p => p.id !== 'panel-rules')
+        .filter(p => p.id !== 'panel-about')
         .some(p => /All Rights Reserved/.test(p.textContent)),
       inMasthead: /All Rights Reserved/.test(document.getElementById('fs-mast').textContent),
     };
   `);
   check('the footer text is exact',
     legal.text === '© 2026 Fraser D. Coleman. All Rights Reserved. FantasyStakes™.', legal.text);
-  check('it appears once on the tab', legal.count === 1);
-  check('it sits below the commissioner area', legal.belowCommissioner === true);
+  check('it appears once on the destination', legal.count === 1);
+  check('it sits below the About content', legal.belowContent === true);
   check('it is visually subordinate to the tab title',
     legal.fontSize < legal.titleFontSize,
     `${legal.fontSize}px vs ${legal.titleFontSize}px`);

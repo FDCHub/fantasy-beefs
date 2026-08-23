@@ -204,8 +204,8 @@ _assert("all four Status rails are populated",
         all(RAILS.get(r, 0) >= 1
             for r in ("action", "waiting", "live", "completed")),
         json.dumps(RAILS, sort_keys=True))
-_assert("the Wave 4 Matchups are intact — one live, seven completed",
-        RAILS.get("live") == 1 and RAILS.get("completed") == 7,
+_assert("the showcase carries two live and seven immutable completed Matchups",
+        RAILS.get("live") == 2 and RAILS.get("completed") == 7,
         json.dumps(RAILS, sort_keys=True))
 _assert("the Wave 3 Prop Pool pick is still open",
         any(pick is None for _s, _k, pick in PRISTINE["week11_open_pick"]),
@@ -228,8 +228,9 @@ def _cycle(name: str, answer) -> None:
         answer(db, challenge_id, acting_team_id())
 
     after_answer = rails()
-    _assert(f"{name} moved the card off ACTION REQUIRED",
-            after_answer.get("action", 0) == 0, json.dumps(after_answer))
+    _assert(f"{name} moved exactly that card off ACTION REQUIRED",
+            after_answer.get("action", 0) == RAILS.get("action", 0) - 1,
+            json.dumps(after_answer))
     _assert("and the trial balance still balances", trial_balance() == 0,
             str(trial_balance()))
 

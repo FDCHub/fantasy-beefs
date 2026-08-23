@@ -91,9 +91,33 @@ export const NAV_DESTINATIONS = Object.freeze([
 export const SECONDARY_DESTINATIONS = Object.freeze([
   {
     id: 'rules',
-    label: 'Rules & Settings',
+    label: 'Rules',
     panelId: 'panel-rules',
     icon: '<path d="M9 3v12"/><path d="M4 6h10"/><path d="M4 6 2 10.5h4L4 6z"/><path d="M14 6l-2 4.5h4L14 6z"/><path d="M6 15h6"/>',
+  },
+  {
+    id: 'settings',
+    label: 'League Settings',
+    panelId: 'panel-settings',
+    icon: '',
+  },
+  {
+    id: 'provider',
+    label: 'Provider Information',
+    panelId: 'panel-provider',
+    icon: '',
+  },
+  {
+    id: 'about',
+    label: 'About & Legal',
+    panelId: 'panel-about',
+    icon: '',
+  },
+  {
+    id: 'commissioner',
+    label: 'Commissioner controls',
+    panelId: 'panel-commissioner',
+    icon: '',
   },
 ]);
 

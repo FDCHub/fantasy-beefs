@@ -115,6 +115,8 @@ def versus_card(week: int) -> tuple:
         home, away, _, _ = games[index]
         market = MARKETS[(week + offset) % len(MARKETS)]
         picked.append((home, away, market))
+    if week == showcase.CURRENT_WEEK:
+        picked.extend(showcase.VISITOR_LIVE_EXTRA_MATCHUPS)
     return tuple(picked)
 
 

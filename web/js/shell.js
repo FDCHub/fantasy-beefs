@@ -92,7 +92,10 @@ import {
 import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
 import { bindChampionshipState } from './commissioner.js';
-import { bindRules, buildRulesPanel } from './rules.js';
+import {
+  bindRules, buildAboutLegalPanel, buildCommissionerPanel,
+  buildLeagueSettingsPanel, buildProviderPanel, buildRulesPanel,
+} from './rules.js';
 import {
   beginSession, composerSheet, endSession, setIssueHook, setMarketHook,
   setPreviewHook, setQuoteHook,
@@ -306,6 +309,10 @@ export function buildPanelContent(destinationId) {
   if (destinationId === 'week') return buildWeekPanel();
   if (destinationId === 'ledger') return buildLedgerPanel();
   if (destinationId === 'rules') return buildRulesPanel();
+  if (destinationId === 'settings') return buildLeagueSettingsPanel();
+  if (destinationId === 'provider') return buildProviderPanel();
+  if (destinationId === 'about') return buildAboutLegalPanel();
+  if (destinationId === 'commissioner') return buildCommissionerPanel();
 
   throw new Error(`no panel content defined for "${destinationId}"`);
 }
@@ -336,20 +343,22 @@ function redrawActionPanel() {
  * live after every redraw.
  */
 function redrawRulesPanel() {
-  const panel = document.getElementById('panel-rules');
-  if (!panel) return;
-  panel.innerHTML = buildPanelContent('rules');
-  bindRules(panel, {
-    openSheet,
-    closeSheet,
-    leagueId: currentLeagueId(),
-    // A successful championship mutation re-reads the authoritative state and
-    // redraws, rather than patching what the browser believes.
-    refreshChampionship: async () => {
-      await bindAuthoritativeData();
-      redrawRulesPanel();
-    },
-  });
+  for (const id of ['rules', 'settings', 'provider', 'about', 'commissioner']) {
+    const panel = document.getElementById(destinationById(id).panelId);
+    if (!panel) continue;
+    panel.innerHTML = buildPanelContent(id);
+    bindRules(panel, {
+      openSheet,
+      closeSheet,
+      leagueId: currentLeagueId(),
+      // A successful championship mutation re-reads the authoritative state and
+      // redraws, rather than patching what the browser believes.
+      refreshChampionship: async () => {
+        await bindAuthoritativeData();
+        redrawRulesPanel();
+      },
+    });
+  }
 }
 
 /* ── Pop-out / bottom sheet ─────────────────────────────────────────────── */
@@ -1562,6 +1571,10 @@ function mountApplication(options = {}) {
 
   const rulesPanel = document.getElementById('panel-rules');
   if (rulesPanel) bindRules(rulesPanel, { openSheet });
+  const settingsPanel = document.getElementById('panel-settings');
+  if (settingsPanel) bindRules(settingsPanel, { openSheet });
+  const commissionerPanel = document.getElementById('panel-commissioner');
+  if (commissionerPanel) bindRules(commissionerPanel, { openSheet });
 
   bindNavigation();
 

@@ -102,7 +102,7 @@ const base = %s;
 const rulesData = await import(base + 'data/rules-data.js');
 const commData = await import(base + 'data/commissioner-data.js');
 const commModel = await import(base + 'commissioner-model.js');
-const { buildRulesPanel } = await import(base + 'rules.js');
+const { buildAboutLegalPanel, buildCommissionerPanel, buildRulesPanel } = await import(base + 'rules.js');
 const { buildWeekPanel, BETS_HEADING, selectWeek, resetWeek } = await import(base + 'week.js');
 const { weekBets, CURRENT_WEEK, PAST_WEEK } = await import(base + 'data/week-data.js');
 const ledger = await import(base + 'ledger-model.js');
@@ -134,10 +134,12 @@ console.log(JSON.stringify({
   positions: commModel.gmPositions(),
   league: commModel.leagueReconciliation(),
   gmLedger: ledger.reconciliation(),
-  panel: buildRulesPanel(),
+  panel: buildCommissionerPanel(),
+  rulesPanel: buildRulesPanel(),
+  aboutPanel: buildAboutLegalPanel(),
   betsHeading: BETS_HEADING,
-  weekCurrentHasHeading: weekCurrent.includes(BETS_HEADING),
-  weekPastHasHeading: weekPast.includes(BETS_HEADING),
+  weekCurrentHasHeading: weekCurrent.includes('FANTASYSTAKES MATCHUPS') && weekCurrent.includes('SWIPE'),
+  weekPastHasHeading: weekPast.includes('FANTASYSTAKES MATCHUPS') && weekPast.includes('SWIPE'),
   betsCurrent: weekBets(CURRENT_WEEK).length,
   betsPast: weekBets(PAST_WEEK).length,
 }));
@@ -185,6 +187,8 @@ RULES_JS = _read("js", "rules.js")
 COMMISSIONER_JS = _read("js", "commissioner.js")
 RULES_CSS = _read("styles", "rules.css")
 PANEL = APP.get("panel", "")
+RULES_PANEL = APP.get("rulesPanel", "")
+ABOUT_PANEL = APP.get("aboutPanel", "")
 
 _assert("the Package 4 stylesheet is linked", 'href="./styles/rules.css"' in INDEX)
 _assert("the shell builds Rules & Settings from its own module",
@@ -670,10 +674,11 @@ _assert("and no Credits disclaimer", 'class="fs-disclaimer"' not in PANEL)
 _assert("the legal line is exact",
         APP.get("legalLine") == "© 2026 Fraser D. Coleman. All Rights Reserved. FantasyStakes™.",
         str(APP.get("legalLine")))
-_assert("it renders on this tab", 'id="fs-legal"' in PANEL)
-_assert("exactly once", PANEL.count('id="fs-legal"') == 1)
-_assert("it is the last region on the tab",
-        PANEL.rindex("fs-legal") > PANEL.rindex("fs-commissioner"))
+_assert("it renders on the About & Legal destination", 'id="fs-legal"' in ABOUT_PANEL)
+_assert("exactly once", ABOUT_PANEL.count('id="fs-legal"') == 1)
+_assert("it is the last region on the About & Legal destination",
+        ABOUT_PANEL.rindex("fs-legal") > ABOUT_PANEL.rindex('data-region="about-legal"'))
+_assert("Rules remains Rules-only", 'id="fs-legal"' not in RULES_PANEL)
 _assert("it is not in the global masthead or index shell",
         "All Rights Reserved" not in INDEX and "All Rights Reserved" not in
         _strip_comments(_read("js", "demo-state.js")))

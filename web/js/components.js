@@ -180,8 +180,9 @@ function stripCell(cell) {
   // Rank and similar context read as context, not as a second figure: the
   // separator itself is secondary grey.
   const contextHtml = cell.context
-    ? `<span class="fs-strip__context"> ${MIDDOT} ${escapeHtml(cell.context)}</span>`
+    ? `<span class="fs-strip__context">${escapeHtml(cell.context)}</span>`
     : '';
+  if (cell.context) valueClasses.push('has-context');
 
   return (
     `<div class="${classes.join(' ')}">` +

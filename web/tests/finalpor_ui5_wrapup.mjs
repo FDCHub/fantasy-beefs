@@ -45,9 +45,9 @@ const VIEWPORTS = [
 
 /** §29's three sections, in order. */
 const SECTIONS = [
-  'YAHOO LEAGUE MATCHUPS · SWIPE',
-  'FANTASYSTAKES MATCHUPS · SWIPE',
-  'FANTASYSTAKES PROP POOLS · SWIPE',
+  'YAHOO LEAGUE MATCHUPS',
+  'FANTASYSTAKES MATCHUPS',
+  'FANTASYSTAKES PROP POOLS',
 ];
 
 /* Vocabulary nothing in this application has a source for. A sentence using
@@ -78,6 +78,17 @@ const GO_WRAP = `
 `;
 
 await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport }) => {
+
+  if (!process.env.FS_TEST_AUTH_EMAIL) {
+    const entered = await evaluate(`return (async () => {
+      const res = await fetch('/demo/enter', {
+        method: 'POST', credentials: 'include'
+      });
+      return res.ok;
+    })()`);
+    report.check('the public showcase entry route succeeds before UI-5 is measured',
+      entered === true, String(entered));
+  }
 
   for (const vp of VIEWPORTS) {
     await setViewport(vp.width, vp.height);

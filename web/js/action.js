@@ -228,7 +228,7 @@ export function buildActionPanel() {
       return (
         `<section class="fs-railsec" data-rail="${rail}"` +
         ` data-rail-count="${sectionCount(rail)}">` +
-        sectionHeading(railHeading(rail)) +
+        sectionHeading(RAIL_WORDS[rail], railHelper(rail)) +
         `<div class="fs-rail is-stretch fs-rail--carousel"` +
         `${isList ? ' role="list"' : ''}>` +
         body +
@@ -302,6 +302,12 @@ export function railHeading(rail) {
   // was there and not how to get to it. SWIPE is the same word Play and Wrap Up
   // already use, so the whole application states the affordance one way.
   return `${word} · ${sectionCount(rail)} · ${SWIPE_WORD}`;
+}
+
+/** Count/affordance slot shared with Play's canonical section heading. */
+export function railHelper(rail) {
+  if (!RAIL_WORDS[rail]) throw new Error(`unknown rail "${rail}"`);
+  return `${sectionCount(rail)} · ${SWIPE_WORD}`;
 }
 
 /**
@@ -763,7 +769,7 @@ export function wagerSheet(card) {
     ? SET_AT_LOCK
     : formatCredits(card.potCents);
 
-  const rows = [
+  const marketRows = [
     ['Market', `${card.marketLabel} ${card.line}`],
     ['Terms', card.mode.toUpperCase()],
     ['Your stake', formatCredits(card.yourStakeCents)],
@@ -774,29 +780,37 @@ export function wagerSheet(card) {
     // THE CEILING IS AUTHORITATIVE — the backend wrote it at the Handshake. It
     // is the most a GM's opponent can end up staking, and it is a bound rather
     // than a prediction.
-    rows.push(['Their stake ceiling', formatCredits(card.derivedCeilingCents)]);
+    marketRows.push(['Their stake ceiling', formatCredits(card.derivedCeilingCents)]);
   }
-  if (card.score) rows.push([card.settled ? 'Final' : 'Live', card.score]);
-  if (card.settled) rows.push(['Net', formatSignedCredits(card.netCents)]);
-  if (card.expiresIn) rows.push(['Expires', card.expiresIn]);
+  if (card.settled) marketRows.push(['Net', formatSignedCredits(card.netCents)]);
+  if (card.expiresIn) marketRows.push(['Expires', card.expiresIn]);
 
-  // The protocol state is shown as itself. A rail name is where a card sits,
-  // not what it is.
-  rows.push(['Protocol state', card.protocolState]);
-  // The locked Response Card word — served as `status` in production, carried
-  // as `responseCard` by the illustrative fixture. Same five-word vocabulary.
-  rows.push(['Response card', card.responseCard || card.status || '—']);
+  const rowHtml = ([label, value]) => (
+    '<div class="fs-prev__row">' +
+    `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
+    `<span class="fs-prev__value fs-money">${escapeHtml(value)}</span>` +
+    '</div>'
+  );
+
+  const fantasyRows = [
+    ['Fantasy matchup', `You vs ${card.opponent}`],
+  ];
+  if (card.score) {
+    fantasyRows.push([card.settled ? 'Final score' : 'Live score', card.score]);
+  }
 
   return {
     title: `vs ${card.opponent}`,
     sub: `${card.marketLabel} ${card.line} · ${card.mode.toUpperCase()}`,
     body:
-      rows.map(([label, value]) => (
-        '<div class="fs-prev__row">' +
-        `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
-        `<span class="fs-prev__value fs-money">${escapeHtml(value)}</span>` +
-        '</div>'
-      )).join('') +
+      '<div class="fs-rule__head">FANTASY FOOTBALL BREAKDOWN</div>' +
+      fantasyRows.map(rowHtml).join('') +
+      (!card.score
+        ? '<div class="fs-note">The fantasy provider has not published a ' +
+          'score for this matchup yet. FantasyStakes will not estimate one.</div>'
+        : '') +
+      '<div class="fs-rule__head">BET MARKET BREAKDOWN</div>' +
+      marketRows.map(rowHtml).join('') +
       `<div class="fs-note">${escapeHtml(card.copy || modeCopy(card))}</div>` +
       responseControls(card),
     onMount: (host, api) => bindResponseControls(host, api, card),

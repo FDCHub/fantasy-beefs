@@ -316,6 +316,7 @@ def expected_fingerprint() -> dict:
         # every untouched visit look dirty and replayed a whole season per
         # request.
         "challenges": (len(showcase.VERSUS_PER_WEEK_MARKETS) * played
+                       + len(showcase.VISITOR_LIVE_EXTRA_MATCHUPS)
                        + len(showcase.VISITOR_OPEN_NEGOTIATIONS)),
         "offered_challenges": len(showcase.VISITOR_OPEN_NEGOTIATIONS),
         "pool_claims": (showcase.POOL_SLOTS_PER_WEEK * showcase.TEAM_COUNT

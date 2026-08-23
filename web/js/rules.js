@@ -20,7 +20,9 @@
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
-import { PanelComposer, escapeHtml, note, sectionHeading, tabHeader } from './components.js';
+import {
+  CREDITS_DISCLAIMER, PanelComposer, escapeHtml, note, sectionHeading, tabHeader,
+} from './components.js';
 import { LEGAL_LINE, RULE_GROUPS, SETTINGS, SETTINGS_SEAM } from './data/rules-data.js';
 import {
   SETTINGS_MODE_AUTHORITATIVE,
@@ -36,10 +38,11 @@ import { LEAGUE_IDENTITY } from './demo-state.js';
 import { leagueName } from './league-model.js';
 import { bindCommissioner, commissionerArea } from './commissioner.js';
 import { bindLifecycle, lifecycleArea } from './lifecycle.js';
+import { sourceState } from './provider-state.js';
 
-/** Locked Rev 4.2 header copy. */
-export const RULES_TITLE = 'RULES & SETTINGS';
-export const RULES_SUBTITLE = 'The league’s operating manual';
+/** Locked Final POR Rules destination copy. */
+export const RULES_TITLE = 'RULES';
+export const RULES_SUBTITLE = 'How FantasyStakes is played';
 
 /* ── A · Rules ──────────────────────────────────────────────────────────────*/
 
@@ -458,13 +461,87 @@ export function buildRulesPanel() {
   composer.add(
     '<div class="fs-rulescroll">' +
     rulesRegion() +
-    settingsRegion() +
-    lifecycleArea() +
-    commissionerArea() +
-    legalFooter() +
     '</div>',
   );
 
+  return composer.toHTML();
+}
+
+/** Read-only provider state from the same served context as the masthead chip. */
+export function buildProviderPanel() {
+  const composer = new PanelComposer('provider');
+  const state = sourceState();
+  composer.add(tabHeader({
+    title: 'PROVIDER INFORMATION',
+    sub: leagueName() ?? LEAGUE_IDENTITY.name,
+    asideLabel: 'Read-only connection state',
+  }));
+  composer.add(
+    '<div class="fs-rulescroll">'
+    + `<section class="fs-rulesec" data-region="provider" data-provider-family="${escapeHtml(state.family)}">`
+    + sectionHeading('CURRENT PROVIDER')
+    + '<div class="fs-rule">'
+    + '<div class="fs-rule__head">CONNECTION STATE</div>'
+    + `<div class="fs-rule__body" data-provider-label>${escapeHtml(state.label)}</div>`
+    + '</div>'
+    + '<div class="fs-note">This status comes from the league context currently served to this session. '
+    + 'FantasyStakes does not infer provider authorization or readiness.</div>'
+    + '</section>'
+    + attributionFooter()
+    + '</div>',
+  );
+  return composer.toHTML();
+}
+
+/** Existing virtual-credit and legal copy, presented in its own destination. */
+export function buildAboutLegalPanel() {
+  const composer = new PanelComposer('about');
+  const credits = RULE_GROUPS.find((group) => group.id === 'credits');
+  composer.add(tabHeader({
+    title: 'ABOUT & LEGAL',
+    sub: 'FantasyStakes',
+    asideLabel: 'Product and legal information',
+  }));
+  composer.add(
+    '<div class="fs-rulescroll">'
+    + '<section class="fs-rulesec" data-region="about-legal">'
+    + sectionHeading('VIRTUAL CREDITS')
+    + `<div class="fs-note">${escapeHtml(CREDITS_DISCLAIMER)}</div>`
+    + (credits ? credits.rules.slice(0, 2).map((rule) => (
+      '<div class="fs-rule">'
+      + `<div class="fs-rule__head">${escapeHtml(rule.heading)}</div>`
+      + `<div class="fs-rule__body">${escapeHtml(rule.body)}</div>`
+      + '</div>'
+    )).join('') : '')
+    + '</section>'
+    + legalFooter()
+    + '</div>',
+  );
+  return composer.toHTML();
+}
+
+/** League-configured values, deliberately separate from the fixed Rules. */
+export function buildLeagueSettingsPanel() {
+  const composer = new PanelComposer('settings');
+  composer.add(tabHeader({
+    title: 'LEAGUE SETTINGS',
+    sub: leagueName() ?? LEAGUE_IDENTITY.name,
+    asideLabel: 'Configured league values',
+  }));
+  composer.add('<div class="fs-rulescroll">' + settingsRegion() + '</div>');
+  return composer.toHTML();
+}
+
+/** Role-aware league operations, kept out of both read-only destinations. */
+export function buildCommissionerPanel() {
+  const composer = new PanelComposer('commissioner');
+  composer.add(tabHeader({
+    title: 'COMMISSIONER CONTROLS',
+    sub: leagueName() ?? LEAGUE_IDENTITY.name,
+    asideLabel: 'League operations',
+  }));
+  composer.add('<div class="fs-rulescroll">' + lifecycleArea()
+    + commissionerArea() + '</div>');
   return composer.toHTML();
 }
 

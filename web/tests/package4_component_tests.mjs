@@ -25,6 +25,9 @@ import { vcAllocation } from '../js/settings-model.js';
 
 import {
   RULES_TITLE,
+  buildAboutLegalPanel,
+  buildCommissionerPanel,
+  buildLeagueSettingsPanel,
   buildRulesPanel,
   ruleSheet,
   settingSheet,
@@ -68,6 +71,9 @@ function section(title) {
 }
 
 const panel = buildRulesPanel();
+const settingsPanel = buildLeagueSettingsPanel();
+const commissionerPanel = buildCommissionerPanel();
+const aboutPanel = buildAboutLegalPanel();
 
 /* ── Tab frame ──────────────────────────────────────────────────────────── */
 
@@ -335,11 +341,11 @@ check('the labels are §23’s labels, in §23’s order',
   VC.allocation.map((r) => r.label).join(' / ') === VC_LABELS.join(' / '),
   VC.allocation.map((r) => r.label).join(' / '));
 for (const label of VC_LABELS) {
-  check(`${label} renders`, panel.includes(`>${label}</th>`), label);
+  check(`${label} renders`, settingsPanel.includes(`>${label}</th>`), label);
 }
 check('the three column headers are §23’s three',
-  panel.includes('>VC ALLOCATION</th>') && panel.includes('>AMOUNT</th>')
-  && panel.includes('>RATIO TO WEEKLY MINIMUM</th>'));
+  settingsPanel.includes('>VC ALLOCATION</th>') && settingsPanel.includes('>AMOUNT</th>')
+  && settingsPanel.includes('>RATIO TO WEEKLY MINIMUM</th>'));
 check('every row carries a ratio to the Weekly Minimum',
   VC.allocation.every((r) => typeof r.ratio === 'string' && r.ratio.endsWith('×')),
   VC.allocation.map((r) => r.ratio).join(' '));
@@ -359,7 +365,7 @@ check('the four in-season figures render, in §23’s order',
       'Terminal Prop Pool Remainders', 'Current FS Championship Pot'].join(' / '),
   VC.inSeason.map((r) => r.label).join(' / '));
 check('  · and they are marked read-only on the surface',
-  panel.includes('id="fs-vc-in-season"') && /Read-only\./.test(panel));
+  settingsPanel.includes('id="fs-vc-in-season"') && /Read-only\./.test(settingsPanel));
 
 check('the five Season Rules render, in §23’s order',
   VC.seasonRules.map((r) => `${r.label}: ${r.value}`).join(' | ')
@@ -368,7 +374,7 @@ check('the five Season Rules render, in §23’s order',
       'Wagers: Public'].join(' | '),
   VC.seasonRules.map((r) => `${r.label}: ${r.value}`).join(' | '));
 check('  · and are stated to be FantasyStakes’ rules, not the commissioner’s',
-  /Set by FantasyStakes, not by your commissioner/.test(panel));
+  /Set by FantasyStakes, not by your commissioner/.test(settingsPanel));
 
 section('The four settings rows still back their detail sheets');
 
@@ -402,28 +408,28 @@ check('the other three rows remain read-only',
   JSON.stringify([...SETTINGS_SEAM.readOnly].sort())
     === JSON.stringify(['championship-split', 'economy-stop', 'skunk-fee']));
 check('the surface says which row the commissioner sets',
-  /Prop Pool Entry is set by the commissioner/.test(panel));
+  /Prop Pool Entry is set by the commissioner/.test(settingsPanel));
 check('and says the other three are fixed for the season',
-  panel.includes('fixed for the season'));
+  settingsPanel.includes('fixed for the season'));
 check('a setting sheet repeats the constraint',
   /Read-only\./.test(settingSheet(SETTINGS[0]).body));
 check('no setting renders an input, a toggle or a save control',
-  !/<input|<select|type="checkbox"|data-save|Save<\/button>/.test(panel));
+  !/<input|<select|type="checkbox"|data-save|Save<\/button>/.test(settingsPanel));
 
 /* ── C · Commissioner ───────────────────────────────────────────────────── */
 
 section('The commissioner sections are in the locked order');
 
-check('the area is present', panel.includes('id="fs-commissioner"'));
+check('the area is present', commissionerPanel.includes('id="fs-commissioner"'));
 check('all three sections render',
-  COMMISSIONER_SECTIONS.every((id) => panel.includes(`data-commissioner="${id}"`)));
+  COMMISSIONER_SECTIONS.every((id) => commissionerPanel.includes(`data-commissioner="${id}"`)));
 check('Top-Off Requests comes first',
-  panel.indexOf('data-commissioner="topoffs"') < panel.indexOf('data-commissioner="gm-cards"'));
+  commissionerPanel.indexOf('data-commissioner="topoffs"') < commissionerPanel.indexOf('data-commissioner="gm-cards"'));
 check('GM Ledger Cards comes SECOND — before League Reconciliation',
-  panel.indexOf('data-commissioner="gm-cards"') < panel.indexOf('data-commissioner="reconciliation"'));
+  commissionerPanel.indexOf('data-commissioner="gm-cards"') < commissionerPanel.indexOf('data-commissioner="reconciliation"'));
 check('the headings are the locked headings',
-  panel.includes(TOPOFF_HEADING) && panel.includes(GM_CARDS_HEADING)
-  && panel.includes(RECONCILIATION_HEADING));
+  commissionerPanel.includes(TOPOFF_HEADING) && commissionerPanel.includes(GM_CARDS_HEADING)
+  && commissionerPanel.includes(RECONCILIATION_HEADING));
 check('the GM card heading names the league size',
   GM_CARDS_HEADING === 'B · GM LEDGER CARDS · 12 · TAP TO EXPAND', GM_CARDS_HEADING);
 
@@ -483,12 +489,12 @@ section('B · Twelve GM ledger cards, on the GM’s own arithmetic');
 
 const positions = gmPositions();
 check('twelve GM cards', positions.length === LEAGUE_SIZE, String(positions.length));
-check('all twelve render', (panel.match(/data-gm="/g) || []).length === 12);
+check('all twelve render', (commissionerPanel.match(/data-gm="/g) || []).length === 12);
 check('every card carries Available, In Play and Held',
-  panel.includes('>Available<') && panel.includes('>In Play<') && panel.includes('>Held<'));
+  commissionerPanel.includes('>Available<') && commissionerPanel.includes('>In Play<') && commissionerPanel.includes('>Held<'));
 check('every card carries its exact cents',
-  positions.every((p) => panel.includes(`data-exact-cents="${p.currentSettleCents}"`)));
-check('no figure is drawn with cents', !/\$\d+\.\d\d/.test(panel));
+  positions.every((p) => commissionerPanel.includes(`data-exact-cents="${p.currentSettleCents}"`)));
+check('no figure is drawn with cents', !/\$\d+\.\d\d/.test(commissionerPanel));
 
 // The one assertion that matters most: the commissioner's view of a GM and
 // that GM's own Ledger tab must be the same number, from the same arithmetic.
@@ -526,7 +532,7 @@ check('the league positions seam names its route',
 check('and records that the cards are not yet bound to it',
   LEAGUE_POSITIONS_SEAM.status.includes('NOT YET BOUND'));
 check('the surface says the league state is illustrative',
-  /Illustrative league state/.test(panel));
+  /Illustrative league state/.test(commissionerPanel));
 
 section('C · League reconciliation aggregates, and invents nothing');
 
@@ -575,7 +581,7 @@ check('and it points the commissioner at League Reconciliation',
   TRIAL_BALANCE_SEAM.commissionerSurface
     === 'GET /league/{league_id}/ledger/reconciliation');
 check('the surface reports the invariant as not verified here',
-  panel.includes('NOT VERIFIED HERE'));
+  commissionerPanel.includes('NOT VERIFIED HERE'));
 check('the reconciliation is not a second Current Settle formula',
   /the same arithmetic|Wagering Position \+ Net Adjustments/.test(gmSheet(you).body));
 
@@ -586,12 +592,12 @@ section('The legal line sits at the bottom, once');
 check('the footer text is exact',
   LEGAL_LINE === '© 2026 Fraser D. Coleman. All Rights Reserved. FantasyStakes™.',
   LEGAL_LINE);
-check('it renders on this tab', panel.includes('id="fs-legal"'));
+check('it renders on the About & Legal destination', aboutPanel.includes('id="fs-legal"'));
 check('it appears exactly once',
-  (panel.match(/id="fs-legal"/g) || []).length === 1
-  && (panel.split(LEGAL_LINE.slice(0, 20)).length - 1) === 1);
-check('it is the last thing on the tab',
-  panel.lastIndexOf('fs-legal') > panel.lastIndexOf('fs-commissioner'));
+  (aboutPanel.match(/id="fs-legal"/g) || []).length === 1
+  && (aboutPanel.split(LEGAL_LINE.slice(0, 20)).length - 1) === 1);
+check('it is the last thing on its destination',
+  aboutPanel.lastIndexOf('fs-legal') > aboutPanel.lastIndexOf('data-region="about-legal"'));
 
 /* ── Result ─────────────────────────────────────────────────────────────── */
 

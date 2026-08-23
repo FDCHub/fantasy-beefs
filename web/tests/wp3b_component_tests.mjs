@@ -99,7 +99,8 @@ check('no superseded Rev 4.2 primary label survives',
   !NAV_DESTINATIONS.some((d) => ['League', 'Action', 'Ledger', 'The Week',
     'Rules & Settings'].includes(d.label)));
 check('it is a secondary destination instead',
-  SECONDARY_DESTINATIONS.map((d) => d.id).join(',') === 'rules');
+  SECONDARY_DESTINATIONS.map((d) => d.id).join(',')
+    === 'rules,settings,commissioner');
 check('it still has a panel of its own',
   destinationById('rules').panelId === 'panel-rules');
 check('it is navigable — selecting it activates exactly one destination',

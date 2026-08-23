@@ -133,10 +133,11 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
     };
   `);
 
-  check('choosing Rules navigates to the Rules & Settings panel',
+  check('choosing Rules navigates to the Rules-only panel',
     reached.active === true && reached.visible === true);
   check('and its content is intact',
-    reached.hasRules === true && reached.hasSettings === true);
+    reached.hasRules === true && reached.hasSettings === false
+      && reached.title === 'RULES');
   check('the menu closes behind it', reached.sheetClosed === true);
   check('no primary tab is left lit above it', reached.noPrimaryLit === true);
 

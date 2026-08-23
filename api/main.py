@@ -5179,11 +5179,20 @@ def action_me(
                    if f != "controls"}
         return ActionCardOut(**payload, controls=list(card.controls))
 
+    sections = {name: list(state.section(name)) for name in ACTION_SECTIONS}
+    # The showcase deliberately carries a full immutable season history, but
+    # Status is a compact action surface. Keep its resolved Demo rail to the
+    # three most recent data-backed records so every public carousel contains
+    # the POR's testable 2-3 cards without deleting or fabricating history.
+    if (league_row is not None and league_row.provider == "demo"
+            and str(league_row.provider_league_key or "").startswith("demo.l.")):
+        sections["completed"] = sections["completed"][-3:]
+
     return ActionStateOut(
         team_id=state.team_id,
         league_id=state.league_id,
-        counts=state.counts,
-        sections={name: [out(c) for c in state.section(name)]
+        counts={name: len(sections[name]) for name in ACTION_SECTIONS},
+        sections={name: [out(c) for c in sections[name]]
                   for name in ACTION_SECTIONS},
         opponents=[ActionOpponentOut(team_id=o.team_id, team_name=o.team_name,
                                      owner=o.owner,

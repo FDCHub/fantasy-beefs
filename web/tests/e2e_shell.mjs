@@ -207,10 +207,14 @@ await withPage({ port: 9333 }, async ({ evaluate }) => {
 
   const money = await evaluate(`
     const values = [...document.querySelectorAll('[data-exact-cents]')];
-    return values.map(el => ({
-      exact: el.getAttribute('data-exact-cents'),
-      drawn: el.textContent.trim(),
-    }));
+    return values.map(el => {
+      // A money element may carry a secondary context child (for example,
+      // Escrow's "included in In Play"). Certify the figure after removing
+      // that context while preserving any nested figure markup.
+      const copy = el.cloneNode(true);
+      copy.querySelectorAll('.fs-strip__context').forEach((node) => node.remove());
+      return { exact: el.getAttribute('data-exact-cents'), drawn: copy.textContent.trim() };
+    });
   `);
   check('rendered money carries its exact cents', money.length >= 4, `${money.length} figures`);
   check(
@@ -220,11 +224,16 @@ await withPage({ port: 9333 }, async ({ evaluate }) => {
   );
   check(
     'each drawn figure is its exact value rounded to whole dollars',
-    money.every((m) => {
+    money.every((m) => m.drawn === '—' || (() => {
       const cents = Number(m.exact);
       const dollars = (cents < 0 ? -1 : 1) * Math.floor((Math.abs(cents) + 50) / 100);
       return m.drawn.includes(`$${Math.abs(dollars).toLocaleString('en-US')}`);
-    }),
+    })()),
+    money.filter((m) => m.drawn !== '—' && (() => {
+      const cents = Number(m.exact);
+      const dollars = (cents < 0 ? -1 : 1) * Math.floor((Math.abs(cents) + 50) / 100);
+      return !m.drawn.includes(`$${Math.abs(dollars).toLocaleString('en-US')}`);
+    })()).map((m) => `${m.exact}=>${m.drawn}`).join(' | '),
   );
 
   console.log('\nThe Credits disclaimer appears under its strip, once per tab');

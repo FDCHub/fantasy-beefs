@@ -75,7 +75,11 @@ print("=" * 70)
 print("FINAL POR UI-5 - Wrap Up sections and expansions, in a browser")
 print("=" * 70)
 
-# UI-5 GAP 4 REMAINS OPEN, AND ITS CAUSE IS NOW KNOWN.
+# The disposable SQLite fixture cannot settle a wager because the production
+# path correctly requires PostgreSQL row locks. When FS_TEST_ORIGIN names a
+# seeded PostgreSQL showcase, this same driver exercises the completed wager
+# expansion through the real public Demo path; otherwise it retains the
+# lightweight fixture coverage for the collapsed modules.
 #
 # `action_shape="settled"` exists and issues, accepts and settles a wager for
 # the wrap-up week through the real engine -- but `settle_week` takes a plain
@@ -83,14 +87,15 @@ print("=" * 70)
 # here is SQLite. The shape refuses by name on SQLite rather than failing with
 # a syntax error, and it is not used here: this suite must stay runnable.
 #
-# So §29's FF Breakdown + Bet Market Breakdown requirement for the
-# FantasyStakes Matchups section is UNVERIFIED rather than passing or failing,
-# and it becomes verifiable the moment a PostgreSQL test database exists.
-with AppServer(seed_pool_slate=True) as server:
+external_origin = os.environ.get("FS_TEST_ORIGIN", "").strip()
+
+
+def _run(origin: str, *, fixture_auth: bool) -> None:
     env = dict(os.environ)
-    env.update({"FS_TEST_ORIGIN": server.origin,
-                "FS_TEST_AUTH_EMAIL": GM_EMAIL,
-                "FS_TEST_AUTH_PASSWORD": PASSWORD})
+    env["FS_TEST_ORIGIN"] = origin
+    if fixture_auth:
+        env.update({"FS_TEST_AUTH_EMAIL": GM_EMAIL,
+                    "FS_TEST_AUTH_PASSWORD": PASSWORD})
     proc = subprocess.run(
         ["node", os.path.join("web", "tests", "finalpor_ui5_wrapup.mjs")],
         cwd=ROOT, env=env, capture_output=True, text=True,
@@ -103,6 +108,13 @@ with AppServer(seed_pool_slate=True) as server:
     _assert("UI-5 Wrap Up",
             proc.returncode == 0 and failed == 0,
             f"{passed} PASS / {failed} FAIL, exit {proc.returncode}")
+
+
+if external_origin:
+    _run(external_origin, fixture_auth=False)
+else:
+    with AppServer(seed_pool_slate=True) as server:
+        _run(server.origin, fixture_auth=True)
 
 print("\n" + "=" * 70)
 if _failures:

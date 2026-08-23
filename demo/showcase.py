@@ -161,6 +161,17 @@ VISITOR_OPEN_NEGOTIATIONS: tuple = (
     OpenNegotiation(8, VISITOR_ORDINAL, "spread"),
     # The visitor asks Victorious Secret for a Moneyline Matchup — WAITING.
     OpenNegotiation(VISITOR_ORDINAL, 6, "straight"),
+    # A second decision in each direction makes both carousels testable. These
+    # are ordinary funded proposals, not display-only cards.
+    OpenNegotiation(9, VISITOR_ORDINAL, "over_under"),
+    OpenNegotiation(VISITOR_ORDINAL, 10, "spread"),
+)
+
+# One additional accepted live contest involving the visitor. The ordinary
+# weekly rotation already gives the visitor one; this second governed contest
+# makes LOCKED ACTION a real multi-item carousel in the public showcase.
+VISITOR_LIVE_EXTRA_MATCHUPS: tuple = (
+    (VISITOR_ORDINAL, 4, "straight"),
 )
 
 

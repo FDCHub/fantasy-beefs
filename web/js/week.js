@@ -945,7 +945,7 @@ function resultSection(spec) {
   return (
     `<section class="fs-wkmod" data-module="${escapeHtml(id)}"` +
     `${state ? ` data-state="${escapeHtml(state)}"` : ''}>` +
-    sectionHeading(title) +
+    sectionHeading(title.replace(/ · SWIPE$/, ''), `${items.length} · SWIPE`) +
     `<div class="fs-rescar" id="fs-${escapeHtml(id)}-carousel"` +
     `${hasItems ? ' role="list"' : ''}>${body}</div>` +
     '</section>'
