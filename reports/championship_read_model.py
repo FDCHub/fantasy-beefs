@@ -49,7 +49,24 @@ REASON_BOUNDARY_UNAVAILABLE = "FS_CHAMPIONSHIP_BOUNDARY_UNAVAILABLE"
 REASON_TOO_EARLY = "FS_CHAMPIONSHIP_TOO_EARLY"
 REASON_REGULAR_VERSUS_OPEN = "FS_CHAMPIONSHIP_REGULAR_VERSUS_OPEN"
 REASON_REGULAR_POOL_OPEN = "FS_CHAMPIONSHIP_REGULAR_POOL_OPEN"
+#: LEGACY-ERA ONLY. RETIRED FOR `RULESET_FINAL_POR` BY WP-8, and retired by
+#: becoming UNREACHABLE rather than by deletion: it is raised only from inside
+#: `freeze_fantasystakes_championship`, which a Final POR season is refused
+#: before it can get near this check.
+#:
+#: WHAT IT MEANT, AND WHY THE FINAL POR HAS NOTHING FOR IT TO SAY. Under RC2 the
+#: championship was the REGULAR SEASON's, so a postseason result that had
+#: already moved the competitive ledger made the snapshot unfreezable — the
+#: score it would capture was no longer the regular-season score. §18 scores the
+#: whole season, so a postseason result is not contamination; it is the
+#: competition. The concept has no referent in the new era.
+#:
+#: The constant survives because every legacy season's freeze is still governed
+#: by it and its refusals are still the right answer for those seasons.
 REASON_POSTSEASON_CONTAMINATED = "FS_CHAMPIONSHIP_POSTSEASON_ALREADY_ACTIVE"
+
+#: WP-8 — a Final POR season has no boundary freeze at all.
+REASON_FREEZE_RETIRED = "FS_CHAMPIONSHIP_FREEZE_RETIRED"
 REASON_PARTIAL_SNAPSHOT = "FS_CHAMPIONSHIP_PARTIAL_SNAPSHOT"
 REASON_NO_TEAMS = "FS_CHAMPIONSHIP_NO_TEAMS"
 #: No FantasyStakes Championship activation exists for this league-season, so
@@ -344,6 +361,35 @@ def freeze_fantasystakes_championship(
     existing = _existing_snapshot(db, league_id=league_id, season=league.season)
     if existing is not None:
         return existing
+
+    # ── FINAL POR · WP-8 — THE BOUNDARY FREEZE IS RETIRED ───────────────────
+    #
+    # §18: FantasyStakes scoring runs THROUGH the postseason, so there is no
+    # boundary at which a regular-season score is snapshotted. A Final POR
+    # season's championship runs LIVE → FINAL → PAID
+    # (`economy.fantasystakes_lifecycle`), derived from posted state with no
+    # snapshot row in it at all.
+    #
+    # REFUSES RATHER THAN NO-OPS. A snapshot written for a Final POR season
+    # would be a durable row asserting a regular-season score that its
+    # championship is not decided on, and `settle_fantasystakes_championship`
+    # pays the snapshot — so a stray freeze would not be inert, it would pay the
+    # wrong podium. Refusing is also what retires `REASON_POSTSEASON_CONTAMINATED`
+    # for this era: that check lives further down this function and a Final POR
+    # season can no longer reach it.
+    #
+    # AFTER the replay branch above, deliberately: a season somehow already
+    # carrying a snapshot keeps returning it rather than starting to raise.
+    from ruleset import is_final_por
+
+    if is_final_por(db, league_id=league_id, season=league.season):
+        raise FantasyStakesChampionshipError(
+            REASON_FREEZE_RETIRED,
+            f"league {league_id} season {league.season} is governed by the "
+            f"Final POR, whose FantasyStakes Championship does not freeze at "
+            f"the playoff boundary (§18) — it scores through the postseason "
+            f"and runs LIVE -> FINAL -> PAID. Refusing to write a "
+            f"regular-season snapshot its championship is not decided on.")
 
     if league.playoff_start_week is None:
         raise FantasyStakesChampionshipError(

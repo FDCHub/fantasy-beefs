@@ -1,10 +1,30 @@
 """RC2 — boundary gate between championship scoring and postseason action.
 
+LEGACY-ERA ONLY. RETIRED FOR `RULESET_FINAL_POR` SEASONS BY WP-8.
+
+── WHAT IT DOES UNDER THE LEGACY ERA ───────────────────────────────────────
+
 The first governed postseason FantasyStakes action automatically freezes the
 regular-season Championship Score if it has not already been frozen. The freeze
 is staged in the caller's transaction and commits atomically with that first
 postseason action. If any regular-season result is still unsettled, the freeze
 fails closed and postseason action remains blocked.
+
+── AND WHY THE FINAL POR HAS NO SUCH GATE ──────────────────────────────────
+
+§18 removes the playoff boundary from the FantasyStakes Championship: scoring
+runs THROUGH the postseason, so there is no moment at which a regular-season
+score needs snapshotting and nothing for a postseason action to be blocked
+behind. A Final POR season therefore passes this gate unconditionally, and
+`freeze_fantasystakes_championship` refuses it outright — the two together are
+what make the retirement real rather than merely unused.
+
+The lifecycle a Final POR season runs instead is LIVE → FINAL → PAID, in
+`economy.fantasystakes_lifecycle`, derived from posted state with no snapshot
+row anywhere in it.
+
+NOT DELETED, because every legacy season on every deployment was frozen by this
+gate and its snapshot is still read to settle one.
 """
 from __future__ import annotations
 
@@ -41,6 +61,20 @@ def require_championship_frozen_for_postseason(
     if league is None:
         raise ChampionshipScoringGateError(
             REASON_LEAGUE_NOT_FOUND, f"league {league_id} not found")
+
+    # ── FINAL POR · WP-8 — THERE IS NO BOUNDARY TO GATE ─────────────────────
+    #
+    # §18: FantasyStakes scoring runs through the postseason. Nothing is frozen
+    # at the playoff boundary, so there is no snapshot for a postseason action
+    # to be blocked behind and nothing here to establish. Returning before the
+    # `playoff_start_week` requirement below is deliberate: that requirement
+    # exists only to locate the boundary, and a Final POR season does not need
+    # one located.
+    from ruleset import is_final_por
+
+    if is_final_por(db, league_id=league_id, season=league.season):
+        return
+
     if league.playoff_start_week is None:
         raise ChampionshipScoringGateError(
             REASON_BOUNDARY_UNAVAILABLE,
