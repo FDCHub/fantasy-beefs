@@ -4716,6 +4716,14 @@ class GmLedgerOut(BaseModel):
     season_advance_cents: int
     topoff_issued_cents:  int
     receivable_cents:     int
+
+    #: WP-15. The Skunk obligation and the era that decided where it came from.
+    #: A Final POR GM's Skunk is NOT a `receivable:` balance, so a client
+    #: itemising `receivable_cents` as Skunk drew zero while the total included
+    #: the fee.
+    skunk_cents:          int
+    is_final_por:         bool
+
     obligations_cents:    int
 
     # Result
