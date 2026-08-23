@@ -108,6 +108,7 @@ from economy.dynamic_challenge import (     # noqa: E402
     DOOR_FL_MIGRATE, DOOR_FL_REFUND, DOOR_HS_DERIVED, DOOR_HS_RELEASE,
     DOOR_HS_SPLIT, DOOR_HS_TOPUP,
 )
+from economy.wager_void import DOOR_WAGER_VOID   # noqa: E402
 
 #: Every door through which Versus competition moves a GM's Credits.
 #:
@@ -131,6 +132,14 @@ VERSUS_DOORS: tuple[str, ...] = (
     DOOR_HS_DERIVED,
     DOOR_FL_REFUND,
     DOOR_FL_MIGRATE,
+    # WP-13 — the accepted-wager void. ITS MEMBERSHIP HERE IS THE MECHANISM,
+    # not bookkeeping. The original funding debited a spend account for -X while
+    # the escrow held +X, netting 0 while open. The void drains the escrow and
+    # credits `wallet:` +X; counted under a Versus door the spend legs sum to 0
+    # with no open escrow left, so the Score effect is exactly 0. Refunding
+    # under a door OUTSIDE this set would leave the GM permanently -X — charged
+    # for a contest that never happened.
+    DOOR_WAGER_VOID,
 )
 
 #: Every door through which Pool competition moves a GM's Credits.

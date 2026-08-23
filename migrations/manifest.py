@@ -187,6 +187,19 @@ ACTIVE: tuple = (
         summary="Final POR §14 — league_season_economy_config.ff_championship_pot_cents; one commissioner-entered league-level Fantasy Football Championship Pot, may be 0, NULL where unconfigured",
         columns=(("league_season_economy_config", "ff_championship_pot_cents"),),
     ),
+    # FINAL POR §7 / WP-13 — the voided-wager record.
+    #
+    # A NEW TABLE rather than a widened `ck_bet_status`. A void is not a `push`:
+    # a push is a RESULT, a void says no contest occurred, and §7 gives the two
+    # different consequences for the Weekly Minimum. Widening that CHECK would
+    # also have meant rebuilding `bets` on SQLite for a fact that belongs beside
+    # the refund it records rather than inside the wager it cancels.
+    Migration(
+        identifier="0013_voided_wagers",
+        module="migrations.add_voided_wagers",
+        summary="Final POR §7 — voided_wagers; one row per voided accepted wager, unique on bet_id, recording the Wallet refund that never restores the Weekly Minimum",
+        tables=("voided_wagers",),
+    ),
 )
 
 

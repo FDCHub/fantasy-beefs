@@ -246,6 +246,11 @@ EVENT_LEGACY_CHAMPIONSHIP_CONSOLIDATION = "LEGACY_CHAMPIONSHIP_CONSOLIDATION"
 EVENT_CHAMPIONSHIP_DISTRIBUTION = "CHAMPIONSHIP_DISTRIBUTION"
 EVENT_EXPIRED_MINIMUM_RECONCILIATION = "EXPIRED_MINIMUM_RECONCILIATION"
 
+#: WP-13 — one ACCEPTED wager voided, both sides. Keyed on the CHALLENGE rather
+#: than on a team, because a void removes one contest and both GMs are refunded
+#: by the same act; two per-GM events would let half a wager be voided.
+EVENT_WAGER_VOID = "WAGER_VOID"
+
 #: WP-5 — one minted league-level pot allocation. The pillar is carried in the
 #: event key, not in three separate event types, so "what did this league-season
 #: mint?" is one query rather than a union of three.

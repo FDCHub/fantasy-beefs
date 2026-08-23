@@ -3123,6 +3123,55 @@ class LedgerPostingBatch(Base):
     protocol_event = relationship("ProtocolEvent", back_populates="batches")
 
 
+class VoidedWager(Base):
+    """FINAL POR §7 / WP-13 — one ACCEPTED wager, voided. Append-only.
+
+    WHY A ROW AND NOT A `Bet.status` VALUE. `ck_bet_status` admits
+    `pending / won / lost / push`, and a void is none of them. It is not `push`:
+    a push is a RESULT — the contest happened and separated nobody — while a
+    void says the contest produced no result at all, and the two must stay
+    distinguishable because §7 gives them different consequences for the Weekly
+    Minimum. Widening that CHECK would also have meant rebuilding `bets` on
+    SQLite, which is a large blast radius for a fact that belongs beside the
+    refund it records rather than inside the wager it cancels.
+
+    ONE ROW PER BET, ENFORCED. `bet_id` is unique, so a second void of the same
+    wager cannot be recorded and cannot refund a second time.
+
+    WHAT IT DELIBERATELY DOES NOT SAY. Nothing here asserts the Weekly Minimum
+    was or was not satisfied. §7 says an accepted action goes on satisfying it,
+    and that is true because the refund credits `wallet:` and never restores
+    `min:` — a property of the POSTING, derivable from the ledger, not a flag
+    anybody sets. A stored flag could disagree with the postings; this cannot.
+    """
+
+    __tablename__ = "voided_wagers"
+    __table_args__ = (
+        UniqueConstraint("bet_id", name="uq_voided_wager_bet"),
+        CheckConstraint("refunded_cents >= 0", name="ck_voided_wager_refund"),
+    )
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    bet_id       = Column(Integer, ForeignKey("bets.id"), nullable=False)
+    challenge_id = Column(Integer, nullable=True)
+    team_id      = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    league_id    = Column(Integer, nullable=False)
+    season       = Column(Integer, nullable=False)
+    week         = Column(Integer, nullable=True)
+
+    #: Cents returned to `wallet:{team_id}`. 0 is legal: an escrow already
+    #: emptied by an earlier partial release has nothing left to return, and the
+    #: void is still a real, recorded event.
+    refunded_cents = Column(Integer, nullable=False)
+
+    #: The commissioner's stated reason. Free text, recorded verbatim, never
+    #: parsed — it is evidence for a human reader, not a control value.
+    reason       = Column(String, nullable=False)
+    posting_id   = Column(Uuid, nullable=True)
+    created_at   = Column(DateTime(timezone=True), nullable=False,
+                          default=lambda: datetime.now(timezone.utc))
+
+
 class ChallengeFundingLeg(Base):
     """Spec 2 §5 — ordered, append-only source-funding provenance.
 
