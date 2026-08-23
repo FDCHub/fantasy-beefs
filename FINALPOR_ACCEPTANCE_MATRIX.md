@@ -60,11 +60,11 @@ change summary. Anything implemented but not certified is marked explicitly.
 Each is **NOT IMPLEMENTED**. None was partially applied; there is no half-converted
 account model and no half-applied migration on this branch.
 
-**Every backend package — WP-4, WP-5, WP-6, WP-8, WP-9, WP-11, WP-12, WP-13, WP-14, WP-15, WP-16 and WP-18 — is complete and are no longer listed here.** **Every backend work package is complete, and UI-2 and UI-3A–D are complete.** **UI-7 is complete, and UI-5 is substantially complete** — three of its four gaps are closed and certified. The remaining work is **WP-17** (demo) and UI-5's **GAP 4**, which is blocked on PostgreSQL rather than on UI.
+**Every backend package — WP-4, WP-5, WP-6, WP-8, WP-9, WP-11, WP-12, WP-13, WP-14, WP-15, WP-16 and WP-18 — is complete and are no longer listed here.** **Every backend work package is complete, and UI-2 and UI-3A–D are complete.** **Every backend and UI package is complete.** The two remaining items — **WP-17** and UI-5's **GAP 4** — are the SAME BLOCK, and it is not a UI or demo defect: `betting/settlement_engine.py::settle_week` cannot run on SQLite, and every disposable database in this repository is SQLite.
 
 | WP | Requirement | Why it matters |
 |---|---|---|
-| **WP-17** | demo re-fixture | Waits on the UI packages; the demo must visibly demonstrate the new economy. |
+| **WP-17** | demo re-fixture | **BLOCKED ON POSTGRESQL — and not for a reason about the demo.** One configuration gap was found and fixed; everything decidable without a database is certified. The demo itself cannot be seeded here at all. See below. |
 | **UI-5** | §29 Wrap Up | **SUBSTANTIALLY DONE — three of the four gaps are CLOSED and certified (48 PASS / 1 FAIL).** GAP 4 alone remains, and it is **BLOCKED on PostgreSQL**, not on UI work: the wager settlement engine cannot run on SQLite at all. The suite stays RED on that one line, which is a real unverified requirement rather than a probe artefact. |
 | **PROV-0/1/2** | §33 Yahoo | See below. |
 | **AUDIT-1** | §38 independent acceptance audit | This document is the artifact; the audit itself is external. |
@@ -181,6 +181,70 @@ Train**, reporting invented weather analysis on a clean sheet.
 
 ---
 
+### WP-17 — what was fixed, what is certified, and what is blocked
+
+**THE BLOCK IS ONE LINE OF SQL, AND IT EXPLAINS BOTH REMAINING ITEMS.**
+`demo/gameplay.py` plays the season through the real engines — which is exactly
+what makes the demo worth showing, and is why `demo/seed.py` records that four
+hand-written posting helpers were REMOVED for producing "a league that had never
+played". One of those engines is `betting/settlement_engine.py::settle_week`,
+which takes a plain `SELECT … FOR UPDATE` before it pays anything. **SQLite does
+not implement that lock**, and every disposable database here is SQLite.
+
+So the demo cannot be seeded in this environment at all.
+`test_d1_demo_environment.py` fails the same way, and **it was reproduced at the
+certified base `fc57288` in a detached worktree** — identical
+`near "FOR": syntax error` — so it long predates this continuation. `git log`
+confirms this branch never touched `betting/settlement_engine.py` except for
+WP-13's 21-line change to the pending set, which does not go near the lock.
+
+**This is the same root cause as UI-5's GAP 4**, and together they make the
+PostgreSQL unblock considerably more valuable than the matrix previously
+recorded: it is not only parity for the `*_pg.py` suites, it is the only way to
+certify the demo or a settled FantasyStakes wager anywhere.
+
+**ONE REAL DEFECT FOUND AND FIXED.** `demo/seed.py::_configure_economy` never
+passed `ff_championship_pot_cents`, and `set_draft` deliberately leaves it NULL
+when a caller does not mention it — 0 is a real commissioner choice, and a
+caller who never saw the setting must not be taken to have made it. So the demo
+minted the **Fantasy Football pillar at zero**. Two of WP-17's eleven required
+demonstrations were unreachable because of it: *Fantasy Football Championship
+when funded*, and *Grand placeholder / live / final states* — §20 needs **two**
+funded pillars, and with only the FantasyStakes pot funded the Grand
+Championship could never leave PLACEHOLDER. `showcase.FF_CHAMPIONSHIP_POT_CENTS`
+is now $80 and the seeder passes it.
+
+**WHAT IS CERTIFIED**, by `test_finalpor_wp17_demo.py` — **34 PASS / 0 FAIL,
+4 NOT RUN**:
+
+- the demo season is a **Final POR** season, and the demo stamps no ruleset of
+  its own — the era is activation's to decide, so the demo cannot drift onto a
+  different one without activation doing so for every league at once;
+- all three pillars are **configured to be funded**, clearing §20's two-pillar
+  minimum with one to spare;
+- the season is **played, not posted**: the real `create_top_off_request` /
+  `approve_top_off`, the real `assess_weekly_skunk`, the real `settle_week`, the
+  real Pool open/claim/settle — and **no `ledger_post` call anywhere** in either
+  module, so WP-4's sweep, WP-6's third leg and WP-7's Score effect fall out of
+  playing rather than being fixtured;
+- the live week opens **real negotiations** and expires some of them, which is
+  what makes four distinct Status lifecycle states exist at once;
+- **no demo-only product logic**: the demo defines no settle, distribute, award,
+  score or payout function of its own. The one declared demo-only choice,
+  `visitor_skips_claim`, is an **input** — it decides who plays, not who wins.
+
+**WHAT IS NOT RUN**, and reported as NOT RUN rather than skipped quietly: that
+the drawn slate really is 3 TEAM + 1 MATCHUP, that a Team Pool really carries
+past its first week, that all four Status and all three Wrap Up carousels draw
+cards, and the end-to-end seed itself. Each needs a seeded league.
+
+**Neither workaround was taken, and both are worse than the gap.** Stripping the
+lock would weaken a concurrency guard to make a test pass. Hand-posting the
+settled state would certify the demo against a shape the product never writes —
+which is the exact defect `demo/seed.py`'s own history records removing.
+
+---
+
 ## 3. YAHOO PROVIDER — CURRENT STATE
 
 **Current authorization state: UNKNOWN. No fresh probe was possible.**
@@ -294,6 +358,7 @@ Final sweep, this branch:
 | `test_finalpor_wp15_settle_reshape.py` | **59 PASS / 0 FAIL** |
 | `test_finalpor_wp16_retirements.py` | **55 PASS / 0 FAIL** |
 | `test_finalpor_wp18_spec_supersession.py` | **55 PASS / 0 FAIL** |
+| `test_finalpor_wp17_demo.py` | **34 PASS / 0 FAIL, 4 NOT RUN** (the demo seed is blocked on SQLite) |
 | `test_finalpor_wp14_grand_route.py` | **32 PASS / 0 FAIL** |
 | `test_rc2_championship*` (5 suites) | **242 PASS / 0 FAIL** |
 | `test_championship_payout.py` | **17 PASS / 0 FAIL** |
@@ -355,6 +420,8 @@ Final sweep, this branch:
 
 | `test_s7_full_ui_certification.py` | Package 1 `ledger: no summary strip clips`, the Package 1 browser certification, and the Stripe-removal regression | **Reproduced at HEAD `d8978a2` in a detached worktree** — 187 PASS / 4 FAIL there against 306 PASS / 6 FAIL here, the same three failure families. UI-7 raised the pass count and moved none of the failures. Same root as the `fs-strip-ledger` failures above; open and unowned. |
 | `test_s8_p1_browser.py` | `a commissioner is badged as one`; `the badge follows /auth/me rather than anything held locally` | **Reproduced at HEAD `d8978a2`, identically: 28 PASS / 2 FAIL, the same two assertions.** Isolated re-runs on both trees agree, so this is not the documented contention flakiness. Open and unowned; not attributable to UI-7. |
+
+| `test_d1_demo_environment.py` | `near "FOR": syntax error` — the demo cannot be seeded | **Reproduced at the certified base `fc57288`** in a detached worktree, identically. `betting/settlement_engine.py::settle_week` takes `SELECT … FOR UPDATE`; SQLite does not implement it. Predates this continuation entirely — `git log fc57288..HEAD -- demo/` is empty and the engine's only change on this branch is WP-13's pending-set filter. |
 
 ### Certification NOT performed
 

@@ -183,11 +183,16 @@ def _configure_economy(db, league):
     """The REAL economy config and freeze. No demo shortcut."""
     from economy.league_economy_config import freeze_economy_config, set_draft
 
+    # WP-17 — THE FANTASY FOOTBALL POT IS ENTERED, not left NULL. Omitting it
+    # mints that pillar at zero, which leaves the demo unable to show the
+    # Fantasy Football Championship funded and unable to leave the Grand
+    # Championship's PLACEHOLDER state, since §20 needs two funded pillars.
     set_draft(db, league_id=league.id, season=showcase.SEASON,
               weekly_bet_minimum_cents=showcase.WEEKLY_BET_MINIMUM_CENTS,
               championship_contribution_cents=(
                   showcase.YAHOO_CHAMPIONSHIP_CONTRIBUTION_CENTS),
-              skunk_fee_cents=showcase.SKUNK_FEE_CENTS)
+              skunk_fee_cents=showcase.SKUNK_FEE_CENTS,
+              ff_championship_pot_cents=showcase.FF_CHAMPIONSHIP_POT_CENTS)
     db.flush()
     freeze_economy_config(db, league_id=league.id, season=showcase.SEASON,
                           now=_now())

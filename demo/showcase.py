@@ -198,6 +198,26 @@ WEEKLY_BET_MINIMUM_CENTS = 1_000
 YAHOO_CHAMPIONSHIP_CONTRIBUTION_CENTS = 8_000
 FANTASYSTAKES_CHAMPIONSHIP_CONTRIBUTION_CENTS = 8_000
 SKUNK_FEE_CENTS = 1_000
+
+#: FINAL POR §14 / WP-17 — the Fantasy Football Championship Pot, as ONE
+#: league-level amount the commissioner enters.
+#:
+#: WHY THE DEMO HAS TO SET IT. `set_draft` leaves this NULL when a caller does
+#: not mention it, and that is right: 0 is a real commissioner choice and a
+#: caller who never saw the setting must not be taken to have made it. But NULL
+#: mints the pillar at zero, so a demo that omitted it showed a league with the
+#: Fantasy Football Championship permanently unfunded -- and WP-17 requires the
+#: demo to show that championship WHEN FUNDED.
+#:
+#: IT ALSO DECIDES WHETHER THE GRAND CHAMPIONSHIP EXISTS AT ALL. §20 needs at
+#: least two FUNDED pillars, so with only the FantasyStakes pot funded the demo
+#: could never leave PLACEHOLDER -- and WP-17 asks for placeholder, live AND
+#: final.
+#:
+#: $80 matches the Yahoo Championship Contribution above, which is the figure
+#: this league's GMs would recognise. It is a demo amount, not a product
+#: constant: nothing derives it and every league sets its own.
+FF_CHAMPIONSHIP_POT_CENTS = 8_000
 POOL_ENTRY_CENTS = 500
 
 #: How many FantasyStakes contests `demo.gameplay.versus_card` puts on the board
