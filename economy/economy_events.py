@@ -224,6 +224,21 @@ EVENT_WEEKLY_MINIMUM_EXPIRY = "WEEKLY_MINIMUM_EXPIRY"
 #: them apart cannot answer "where did this GM's Week 3 Minimum go?".
 EVENT_WEEKLY_MINIMUM_SWEEP = "WEEKLY_MINIMUM_SWEEP"
 EVENT_SKUNK_ASSESSMENT = "SKUNK_ASSESSMENT"
+
+#: WP-12 — a Skunk correction, in its two halves.
+#:
+#: TWO EVENT TYPES, NOT ONE, because the two halves answer different questions
+#: and an audit needs both: "what did we un-assess?" and "what did we assess
+#: instead?". A single event type carrying a net figure could not say who was
+#: wrongly charged, which is the whole reason a correction happens.
+#:
+#: BOTH ARE SKUNK-SCORING EVENTS. `economy.skunk.skunk_fees_by_team` sums
+#: `receivable:` legs across this family and negates once, so a reversal's
+#: positive leg nets against the original's negative leg with no special case
+#: and with both postings preserved in full. WP-3 wrote that derivation with
+#: this in mind and says so at the site.
+EVENT_SKUNK_ASSESSMENT_REVERSAL = "SKUNK_ASSESSMENT_REVERSAL"
+EVENT_SKUNK_ASSESSMENT_CORRECTION = "SKUNK_ASSESSMENT_CORRECTION"
 EVENT_SKUNK_OBLIGATION = "SKUNK_OBLIGATION"
 EVENT_SKUNK_DISTRIBUTION = "SKUNK_DISTRIBUTION"
 EVENT_RESERVE_SWEEP = "RESERVE_SWEEP"
@@ -243,6 +258,13 @@ DOOR_WEEKLY_MINIMUM_RELEASE = "weekly_minimum_release"
 DOOR_WEEKLY_MINIMUM_EXPIRY = "weekly_minimum_expiry"
 DOOR_WEEKLY_MINIMUM_SWEEP = "weekly_minimum_sweep"
 DOOR_SKUNK_ASSESSMENT = "skunk_assessment"
+
+#: WP-12. DISTINCT FROM `DOOR_SKUNK_ASSESSMENT`, deliberately. A correction is
+#: not an ordinary assessment, and conflating them would make the two
+#: indistinguishable in the ledger forever — the same rule RC2's championship
+#: correction applies for the same reason.
+DOOR_SKUNK_CORRECTION_REVERSAL = "skunk_correction_reversal"
+DOOR_SKUNK_CORRECTION_REPOST = "skunk_correction_repost"
 DOOR_SKUNK_DISTRIBUTION = "skunk_distribution"
 DOOR_RESERVE_SWEEP = "championship_reserve_sweep"
 DOOR_LEGACY_CHAMPIONSHIP_CONSOLIDATION = "legacy_championship_consolidation"
@@ -275,6 +297,22 @@ def gm_season_key(event_type: str, league_id: int, season: int,
 
 def league_season_key(event_type: str, league_id: int, season: int) -> str:
     return f"{event_type}:{league_id}:{season}"
+
+
+def correction_week_key(event_type: str, league_id: int, season: int,
+                        week: int, generation: int) -> str:
+    """A CORRECTION-AWARE league-week key (WP-12).
+
+    A corrected week is assessed more than once, so the plain league-week key
+    can only ever claim the FIRST assessment — every correction after it would
+    collide with the original and silently do nothing. The generation makes each
+    restatement independently exactly-once while leaving the original key, and
+    the original event row, exactly as they were.
+
+        generation 0   the original assessment, under `league_week_key`
+        generation n   the nth restatement, under this key
+    """
+    return f"{event_type}:{league_id}:{season}:{week}:gen{generation}"
 
 
 def pillar_season_key(event_type: str, pillar: str, league_id: int,

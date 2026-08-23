@@ -46,6 +46,8 @@ from economy.economy_events import (
     DOOR_SKUNK_ASSESSMENT,
     DOOR_SKUNK_DISTRIBUTION,
     EVENT_SKUNK_ASSESSMENT,
+    EVENT_SKUNK_ASSESSMENT_CORRECTION,
+    EVENT_SKUNK_ASSESSMENT_REVERSAL,
     EVENT_SKUNK_DISTRIBUTION,
     league_season_key,
     league_week_key,
@@ -106,7 +108,21 @@ CLASSIFICATION_NO_LOSER = "NO_LOSER"
 #: how a non-Skunk movement ends up inside a Score without anybody editing this
 #: file. WP-12's correction event types join this tuple deliberately when they
 #: land, and the reversal nets against the assessment because both are here.
-SKUNK_SCORING_EVENT_TYPES: tuple[str, ...] = (EVENT_SKUNK_ASSESSMENT,)
+#: Every event family whose postings carry a GM's Skunk for FantasyStakes Score.
+#:
+#: ENUMERATED BY NAME, and all three are required for a corrected week to score
+#: correctly (WP-12). The original assessment's negative `receivable:` leg, the
+#: reversal's matching positive leg and the restatement's new negative leg all
+#: belong to the same league-season Skunk family, so summing across the three
+#: and negating once nets a correction to exactly the right per-GM figure —
+#: with no special case, and with every posting preserved in full. Omitting the
+#: reversal would leave a wrongly-skunked GM charged forever; omitting the
+#: restatement would leave the correctly-skunked GM never charged at all.
+SKUNK_SCORING_EVENT_TYPES: tuple[str, ...] = (
+    EVENT_SKUNK_ASSESSMENT,
+    EVENT_SKUNK_ASSESSMENT_REVERSAL,
+    EVENT_SKUNK_ASSESSMENT_CORRECTION,
+)
 
 
 def skunk_pot_account(db, *, league_id: int, season: int) -> str:
