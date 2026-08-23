@@ -482,7 +482,13 @@ def season_points_for(db, *, league_id: int, league) -> dict[int, float]:
 
 def distribute_season_skunk(db, *, league_id: int,
                             now: datetime | None = None) -> SkunkDistribution:
-    """Pay the accumulated Skunk pot to the highest regular-season Points For.
+    """Pay the accumulated Skunk pot. LEGACY ARITHMETIC; delegates under the Final POR.
+
+    LEGACY: the whole pot to the highest regular-season Points For, split evenly
+    among a tied lead. FINAL POR (WP-9, §12): delegated to
+    `economy.points_championship.distribute`, which pays it 60/30/10 with the
+    dead-heat rule after the regular season is final. The return shape is the
+    same either way, so every existing caller is unchanged.
 
     Does NOT commit, and is deliberately a STANDALONE callable rather than being
     wired into a close sequence — S5-P3 orchestrates it. Exposing it this way
@@ -502,6 +508,36 @@ def distribute_season_skunk(db, *, league_id: int,
     if league is None:
         raise SkunkError(REASON_LEAGUE_NOT_FOUND, f"league {league_id} not found")
     season = league.season
+
+    # ── FINAL POR · WP-9 — THIS IS NOT A SKUNK AWARD ANY MORE ───────────────
+    #
+    # §12 turns the Skunk pot into the Regular-Season Points Championship: a
+    # real three-place championship paid 60/30/10 under the one canonical
+    # split, with the dead-heat rule, settling when the regular season is
+    # final. Everything about it that differs from the legacy award lives in
+    # `economy.points_championship`; delegating rather than branching inline
+    # keeps this function's legacy arithmetic byte-identical and keeps the
+    # championship's own refusals (no championship, not final, empty pot)
+    # readable as its own reason codes rather than as Skunk ones.
+    #
+    # BOTH ERAS CLAIM THE SAME LEAGUE-SEASON EVENT KEY, deliberately. A
+    # league-season pays its Points pillar exactly once, whichever era's
+    # arithmetic did it; two keys would let a season that somehow reached both
+    # paths pay twice.
+    from ruleset import is_final_por as _is_final_por
+
+    if _is_final_por(db, league_id=league_id, season=season):
+        from economy.points_championship import distribute as _distribute_points
+
+        result = _distribute_points(db, league_id=league_id, season=season,
+                                    now=now)
+        return SkunkDistribution(
+            league_id=league_id, season=season, pot_cents=result.pot_cents,
+            winners=tuple((team_id, amount)
+                          for team_id, _place, amount, _pf in result.placements
+                          if amount > 0),
+            top_points_for=max((pf for _t, _p, _a, pf in result.placements),
+                               default=None))
 
     db.flush()
     pot_account = skunk_pot_account(db, league_id=league_id, season=season)
