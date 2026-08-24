@@ -46,39 +46,61 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN,
       }
       return value;
     };
+    const region = (id) => (id === 'rules' ? 'rules' : 'settings');
     const open = async (id) => {
+      // FINAL POR 2 - the four Settings entries open DETAIL SHEETS. Close any
+      // level already standing so each open starts from the app, not from the
+      // detail the previous call left on screen.
+      const closeAll = async () => {
+        for (let i = 0; i < 4; i += 1) {
+          const x = document.querySelector('#fs-sheet [data-fs-close]');
+          if (!x) break;
+          x.click();
+          await new Promise((resolve) => setTimeout(resolve, 80));
+        }
+      };
+      await closeAll();
       const end = Date.now() + 5000;
-      let panel = null;
-      while (!panel && Date.now() < end) {
+      let sheet = null;
+      while (!sheet && Date.now() < end) {
         if (!document.getElementById('fs-menu')) {
           document.querySelector('#fs-gear').click();
         }
         const row = await waitFor(() => document.querySelector(
           '#fs-menu [data-menu="' + id + '"]'));
         if (row) row.click();
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        panel = document.querySelector('#panel-' + id + '.is-active');
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        const host = document.getElementById('fs-sheet');
+        if (host && host.querySelector('[data-region="' + region(id) + '"]')) {
+          sheet = host;
+        }
       }
+      if (!sheet) return { id: null, title: '', rules: 0, settings: 0, headings: [] };
       return {
-        id: panel.id,
-        title: (panel.querySelector('.fs-tabhead__title') || {}).textContent || '',
-        rules: panel.querySelectorAll('[data-region="rules"]').length,
-        settings: panel.querySelectorAll('[data-region="settings"]').length,
-        headings: [...panel.querySelectorAll('.fs-heading__text')].map((e) => e.textContent),
+        id: id,
+        title: (sheet.querySelector('.fs-sheet__title') || {}).textContent || '',
+        // 2 - a detail carries no app page-header treatment.
+        tabheads: sheet.querySelectorAll('.fs-tabhead').length,
+        rules: sheet.querySelectorAll('[data-region="rules"]').length,
+        settings: sheet.querySelectorAll('[data-region="settings"]').length,
+        headings: [...sheet.querySelectorAll('.fs-heading__text')].map((e) => e.textContent),
       };
     };
     return { rules: await open('rules'), settings: await open('settings') };
   })()`);
-  check('Rules opens the Rules-only panel', destinations.rules.id === 'panel-rules'
+  check('Rules opens the Rules-only detail', destinations.rules.id === 'rules'
     && destinations.rules.title === 'RULES' && destinations.rules.rules === 1
     && destinations.rules.settings === 0, JSON.stringify(destinations.rules));
-  check('League Settings opens its own settings-only panel',
-    destinations.settings.id === 'panel-settings'
+  check('League Settings opens its own settings-only detail',
+    destinations.settings.id === 'settings'
     && destinations.settings.title === 'LEAGUE SETTINGS'
     && destinations.settings.rules === 0 && destinations.settings.settings === 1,
     JSON.stringify(destinations.settings));
-  check('the destinations are different rendered panels',
+  check('the two details are different rendered surfaces',
     destinations.rules.id !== destinations.settings.id);
+  check('neither detail carries an app page-header',
+    destinations.rules.tabheads === 0 && destinations.settings.tabheads === 0,
+    `${destinations.rules.tabheads}/${destinations.settings.tabheads}`);
 
   section('All Settings destinations are real and role-aware');
   const settingsDestinations = await evaluate(`return (async () => {
@@ -107,19 +129,35 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN,
       };
     };
     const click = async (id) => {
+      // FINAL POR 2 - a Settings entry opens a DETAIL SHEET. Dismiss whatever
+      // level is standing first, so each call measures its own surface.
+      for (let i = 0; i < 4; i += 1) {
+        const x = document.querySelector('#fs-sheet [data-fs-close]');
+        if (!x) break;
+        x.click();
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
       const end = Date.now() + 5000;
       let panel = null;
       while (!panel && Date.now() < end) {
         const menu = await openMenu();
         const row = await waitFor(() => menu.querySelector('[data-menu="' + id + '"]'));
         if (row) row.click();
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        panel = document.querySelector('#panel-' + id + '.is-active');
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        const host = document.getElementById('fs-sheet');
+        const title = host && host.querySelector('.fs-sheet__title');
+        // The Settings ROOT also lives in this host, so wait for a level whose
+        // title is no longer the chooser's.
+        if (title && title.textContent.trim() !== 'Settings') panel = host;
       }
-      return { id: panel.id,
-        title: panel.querySelector('.fs-tabhead__title').textContent,
+      if (!panel) {
+        return { id: null, title: '', text: '', providerLabel: '', providerFamily: '' };
+      }
+      return { id: id,
+        title: panel.querySelector('.fs-sheet__title').textContent,
         text: panel.textContent,
-        providerLabel: (panel.querySelector('[data-provider-label]') || {}).textContent || '',
+        providerLabel: (panel.querySelector('[data-provider-field="Connection"]')
+          || panel.querySelector('[data-provider-label]') || {}).textContent || '',
         providerFamily: (panel.querySelector('[data-provider-family]') || {}).dataset?.providerFamily || '' };
     };
     const menu = await inspectMenu();
@@ -130,10 +168,10 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN,
   })()`);
   check('Rules, League Settings, Provider Information and About & Legal are controls',
     settingsDestinations.menu.destinations.every((row) => row.tag === 'BUTTON'
-      && row.kind === 'destination' && !row.pending),
+      && row.kind === 'detail' && !row.pending),
     JSON.stringify(settingsDestinations.menu.destinations));
-  check('Provider Information opens a distinct rendered panel',
-    settingsDestinations.provider.id === 'panel-provider'
+  check('Provider Information opens a distinct rendered detail',
+    settingsDestinations.provider.id === 'provider'
       && settingsDestinations.provider.title === 'PROVIDER INFORMATION',
     JSON.stringify(settingsDestinations.provider));
   check('Provider Information renders the same authoritative state as the masthead',
@@ -146,8 +184,8 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN,
       && (!['none'].includes(settingsDestinations.provider.providerFamily)
         || !/YAHOO.*CONNECTED/i.test(settingsDestinations.provider.providerLabel)),
     JSON.stringify(settingsDestinations.provider));
-  check('About & Legal opens a distinct rendered panel',
-    settingsDestinations.about.id === 'panel-about'
+  check('About & Legal opens a distinct rendered detail',
+    settingsDestinations.about.id === 'about'
       && settingsDestinations.about.title === 'ABOUT & LEGAL',
     JSON.stringify(settingsDestinations.about));
   check('About & Legal preserves the approved cashless positioning',
@@ -203,29 +241,29 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN,
     check(`Escrow context does not intersect MIN LEFT — ${at}`,
       account.intersects === false, JSON.stringify(account));
 
-    section(`SWIPE uses Play's helper treatment — ${at}`);
-    const swipe = await evaluate(`
+    section(`SCROLL uses Play's helper treatment — ${at}`);
+    const scroll = await evaluate(`
       const style = (e) => { const s = getComputedStyle(e); return {
         fontSize:s.fontSize, fontWeight:s.fontWeight, color:s.color,
         lineHeight:s.lineHeight, letterSpacing:s.letterSpacing,
         className:e.className, parent:e.parentElement.className,
         last:e.parentElement.lastElementChild === e } };
       const read = (panel) => [...document.querySelectorAll(panel + ' .fs-heading')]
-        .filter((h) => h.textContent.includes('SWIPE')).map((h) => ({
+        .filter((h) => h.textContent.includes('SCROLL')).map((h) => ({
           title:h.querySelector('.fs-heading__text').textContent,
           helperText:(h.querySelector('.fs-heading__helper') || {}).textContent || '',
           helper:h.querySelector('.fs-heading__helper')
             ? style(h.querySelector('.fs-heading__helper')) : null }));
       return { play:read('#panel-league'), status:read('#panel-action'), wrap:read('#panel-week') };
     `);
-    const canonical = swipe.play.length > 0 ? swipe.play[0].helper : null;
-    check(`Play exposes the canonical SWIPE helper — ${at}`,
-      Boolean(canonical), JSON.stringify(swipe.play));
-    for (const [surface, rows] of Object.entries(swipe)) {
-      check(`${surface} puts SWIPE in the helper slot — ${at}`,
+    const canonical = scroll.play.length > 0 ? scroll.play[0].helper : null;
+    check(`Play exposes the canonical SCROLL helper — ${at}`,
+      Boolean(canonical), JSON.stringify(scroll.play));
+    for (const [surface, rows] of Object.entries(scroll)) {
+      check(`${surface} puts SCROLL in the helper slot — ${at}`,
         rows.length > 0 && rows.every((r) => r.helper && r.helper.className === 'fs-heading__helper'
           && r.helper.parent === 'fs-heading' && r.helper.last
-          && !r.title.includes('SWIPE') && r.helperText.includes('SWIPE')),
+          && !r.title.includes('SCROLL') && r.helperText.includes('SCROLL')),
         JSON.stringify(rows));
       check(`${surface} matches Play helper typography — ${at}`,
         Boolean(canonical) && rows.every((r) => ['fontSize','fontWeight','color','lineHeight','letterSpacing']

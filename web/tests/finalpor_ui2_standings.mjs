@@ -223,9 +223,13 @@ await withPage({ port: 9463, settleMs: 2500 }, async ({ evaluate, setViewport })
   report.section('UI-2 · the explanatory copy');
   report.check('the explainer is present', typeof copy.text === 'string',
     String(copy.text));
+  // FINAL POR 1B - ONE PARAGRAPH, NOT A SENTENCE AND A DETACHED CREDIT LINE.
+  // The virtual-credit disclaimer is the explainer's second sentence now, and
+  // `.fs-st__creditline` no longer exists. Both statements are still required
+  // to be on screen; what changed is that they are one paragraph.
   for (const line of [
     'FantasyStakes standings combine Matchup net, Pool net and Skunk fees.',
-    'Virtual credits · display only · no cash value',
+    'These are virtual credits for score keeping and display only - no cash value.',
   ]) {
     report.check(`  · it says: ${line}`,
       (copy.text || '').includes(line), String(copy.text).slice(0, 160));

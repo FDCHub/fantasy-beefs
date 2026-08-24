@@ -223,7 +223,7 @@ check('no standings rank in the summary strip',
   !/\b1st\b|\b2nd\b|\b3rd\b/.test(play));
 check('no Fantasy Sportsbook suffix', !/Fantasy Sportsbook/i.test(play));
 check('no directional arrow in any heading', !play.includes('↕'));
-check('the word SWIPE still carries the affordance', play.includes('SWIPE'));
+check('the word SCROLL still carries the affordance', play.includes('SCROLL'));
 check('the four-cell strip is retained',
   (play.match(/fs-strip__cell/g) || []).length === 4);
 // UIRECON WAVE 1 — the labels are held to one line at the smallest certified
@@ -501,10 +501,10 @@ section('K · Wrap Up keeps its shape and loses the arrow');
 check('the bets heading carries no directional arrow',
   !BETS_HEADING.includes('↕'), BETS_HEADING);
 // UIRECON WAVE 4B — the viewport treatment IS the whole heading now. `4 SHOWN`
-// named a cap that a one-card carousel makes meaningless; `SWIPE` names what a
+// named a cap that a one-card carousel makes meaningless; `SCROLL` names what a
 // GM does, and all three Wrap sections say it the same way.
 check('and still states the viewport treatment',
-  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · SWIPE', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · SCROLL', BETS_HEADING);
 
 unbindAll();
 

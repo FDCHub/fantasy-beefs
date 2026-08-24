@@ -118,28 +118,38 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
 
   const reached = await evaluate(`
     ${GO_RULES}
-    const panel = document.getElementById('panel-rules');
+    // FINAL POR 2 - Rules opens as a Settings DETAIL SHEET, not a destination.
+    const panel = document.getElementById('fs-sheet');
     return {
-      active: panel.classList.contains('is-active'),
       visible: panel.getBoundingClientRect().height > 0,
-      title: panel.querySelector('.fs-tabhead__title')
-        ? panel.querySelector('.fs-tabhead__title').textContent : null,
-      sheetClosed: !document.getElementById('fs-overlay')
+      title: panel.querySelector('.fs-sheet__title')
+        ? panel.querySelector('.fs-sheet__title').textContent : null,
+      sheetOpen: document.getElementById('fs-overlay')
         .classList.contains('is-open'),
-      noPrimaryLit: [...document.querySelectorAll('.fs-tabbar__item')]
-        .every(el => !el.classList.contains('is-active')),
+      // 2 - no app page-header treatment inside a detail.
+      tabheads: panel.querySelectorAll('.fs-tabhead').length,
+      // FINAL POR 2 - a detail SHEET sits over whatever tab the reader was on,
+      // so a primary tab staying lit is correct and expected. What must remain
+      // true is that Rules is not a primary destination itself: the bar offers
+      // five, and none of them is this.
+      primaryCount: document.querySelectorAll('.fs-tabbar__item').length,
+      rulesIsPrimary: !!document.querySelector(
+        '.fs-tabbar__item[data-destination="rules"]'),
       hasRules: !!panel.querySelector('[data-region="rules"]'),
       hasSettings: !!panel.querySelector('[data-region="settings"]'),
     };
   `);
 
-  check('choosing Rules navigates to the Rules-only panel',
-    reached.active === true && reached.visible === true);
+  check('choosing Rules opens the Rules-only detail sheet',
+    reached.sheetOpen === true && reached.visible === true);
   check('and its content is intact',
     reached.hasRules === true && reached.hasSettings === false
       && reached.title === 'RULES');
-  check('the menu closes behind it', reached.sheetClosed === true);
-  check('no primary tab is left lit above it', reached.noPrimaryLit === true);
+  check('the detail carries no app page-header', reached.tabheads === 0,
+    String(reached.tabheads));
+  check('Rules is not a primary tab, and the bar still offers five',
+    reached.rulesIsPrimary === false && reached.primaryCount === 5,
+    `${reached.primaryCount} primary, rules=${reached.rulesIsPrimary}`);
 
   /* ── E/F/H · Standings, as rendered ───────────────────────────────────── */
 

@@ -39,7 +39,7 @@ import { LEAGUE_IDENTITY } from './demo-state.js';
 import { leagueName } from './league-model.js';
 import { bindCommissioner, commissionerArea } from './commissioner.js';
 import { bindLifecycle, lifecycleArea } from './lifecycle.js';
-import { sourceState } from './provider-state.js';
+import { FAMILY_DEMO, sourceState } from './provider-state.js';
 
 /** Locked Final POR Rules destination copy. */
 export const RULES_TITLE = 'RULES';
@@ -67,11 +67,11 @@ function ruleRow(group) {
   });
 }
 
-function rulesRegion() {
+function rulesRegion(idSuffix = '') {
   return (
     '<section class="fs-rulesec" data-region="rules">' +
     sectionHeading('LEAGUE RULES') +
-    `<div class="fs-rules" id="fs-rule-groups">${RULE_GROUPS.map(ruleRow).join('')}</div>` +
+    `<div class="fs-rules" id="fs-rule-groups${idSuffix}">${RULE_GROUPS.map(ruleRow).join('')}</div>` +
     '</section>'
   );
 }
@@ -165,10 +165,10 @@ function vcAllocationTable(view) {
  * them into one table would invite a reader to think the pot additions are
  * something a commissioner configured.
  */
-function inSeasonRegion(view) {
+function inSeasonRegion(view, idSuffix = '') {
   if (!view.inSeason.length) return '';
   return (
-    '<div class="fs-vcseason" id="fs-vc-in-season">' +
+    `<div class="fs-vcseason" id="fs-vc-in-season${idSuffix}">` +
     '<div class="fs-vcseason__head">IN SEASON</div>' +
     view.inSeason.map((r) => (
       `<div class="fs-vcseason__row" data-in-season="${escapeHtml(r.id)}">` +
@@ -191,10 +191,10 @@ function inSeasonRegion(view) {
  * and which the product fixes, without having to infer the difference from the
  * absence of a control.
  */
-function seasonRulesRegion(view) {
+function seasonRulesRegion(view, idSuffix = '') {
   if (!view.seasonRules.length) return '';
   return (
-    '<div class="fs-vcrules" id="fs-season-rules">' +
+    `<div class="fs-vcrules" id="fs-season-rules${idSuffix}">` +
     '<div class="fs-vcseason__head">SEASON RULES</div>' +
     view.seasonRules.map((r) => (
       '<div class="fs-vcrules__row">' +
@@ -207,7 +207,7 @@ function seasonRulesRegion(view) {
   );
 }
 
-function settingsRegion() {
+function settingsRegion(idSuffix = '') {
   const view = vcAllocation();
 
   if (!view.available) {
@@ -238,8 +238,14 @@ function settingsRegion() {
                    settingsMode() === SETTINGS_MODE_AUTHORITATIVE
                      ? 'read-only' : 'example') +
     vcAllocationTable(view) +
-    inSeasonRegion(view) +
-    seasonRulesRegion(view) +
+    // FINAL POR §2B — SEASON RULES SITS ABOVE IN SEASON.
+    //
+    // The two blocks answer different questions, and the fixed one is the one
+    // a reader needs first: SEASON RULES states the terms the product sets,
+    // which is the frame IN SEASON's running totals are then read against.
+    // Only the order changes; both blocks keep their own content and markup.
+    seasonRulesRegion(view, idSuffix) +
+    inSeasonRegion(view, idSuffix) +
     // Stated on the surface, not only in the model: a row that looks editable
     // and is not should say why.
     '<div class="fs-note">Your league’s configuration. The Prop Pool '
@@ -546,13 +552,190 @@ export function buildCommissionerPanel() {
   return composer.toHTML();
 }
 
+/* ── FINAL POR §2 · THE SETTINGS DETAIL SHEETS ──────────────────────────────
+ *
+ * The gear opens the Settings root sheet, and every one of its four entries now
+ * opens a DETAIL SHEET rather than navigating to a tab-style destination.
+ *
+ * WHY THE CONTENT IS NOT REBUILT. Rules and League Settings are approved as
+ * they are, so these sheets render the SAME region functions the panels do.
+ * What is dropped is the panel chrome: `tabHeader()` gave each destination an
+ * app page-header, which is exactly the treatment §2 retires — inside a sheet
+ * it read as a second primary tab. The sheet's own title carries the name, and
+ * `sheet()` supplies the universal upper-left X for free.
+ *
+ * WHY THEY PUSH RATHER THAN REPLACE. A detail pushed onto the Settings root
+ * pops back to it, so the X returns the reader to the list they chose from and
+ * a second X returns them to the app. That is the "closes naturally" the
+ * ruling asks for, and it is the stack's existing behaviour rather than a new
+ * one. Rows INSIDE a detail push again for the same reason.
+ */
+
+/** Rules, in the approved formatting, presented as a Settings detail. */
+export function rulesSheet() {
+  return {
+    title: RULES_TITLE,
+    /* THE IDENTITY IS THE LEAGUE, in the same slot the other three details put
+     * it. This was `RULES_SUBTITLE` — the tagline the panel carried in its
+     * aside — which left the Rules detail the only one of the four that did
+     * not say WHOSE rules it was showing. A sheet has one subtitle, and the
+     * league name is the fact worth spending it on. */
+    sub: leagueName() ?? LEAGUE_IDENTITY.name,
+    body: `<div class="fs-setdetail">${rulesRegion('-sheet')}</div>`,
+    onMount: (host) => { bindAccordions(host); },
+  };
+}
+
+/** League Settings, in the approved formatting, presented as a Settings detail. */
+export function leagueSettingsSheet() {
+  return {
+    title: 'LEAGUE SETTINGS',
+    sub: leagueName() ?? LEAGUE_IDENTITY.name,
+    body: `<div class="fs-setdetail">${settingsRegion('-sheet')}</div>`,
+    onMount: (host, api) => {
+      bindAccordions(host);
+      bindSettingsRows(host, { openSheet: (spec) => api.push(spec) });
+    },
+  };
+}
+
+/* PROVIDER INFORMATION, WRITTEN FOR A GM RATHER THAN FOR AN ENGINEER.
+ *
+ * §2C asks this surface to explain what the fantasy provider IS and what
+ * FantasyStakes does with it. The previous copy stated a connection state and
+ * a disclaimer about inference — true, but it answered a question nobody with a
+ * fantasy team was asking. There is no OAuth, no endpoint and no token here,
+ * because none of that changes what a GM should expect to see.
+ *
+ * WHAT IT MUST NOT DO IS OVERCLAIM. The identity and the connection line come
+ * from `sourceState()`, the same served context the masthead chip reads, so
+ * this sheet cannot say "connected" on a page that could not read the league. */
+export function providerSheet() {
+  const state = sourceState();
+  const isDemo = state.family === FAMILY_DEMO;
+  const provider = isDemo ? 'FantasyStakes Demo' : (state.label || 'Not connected');
+
+  const row = (label, value) => (
+    '<div class="fs-prev__row">'
+    + `<span class="fs-prev__label">${escapeHtml(label)}</span>`
+    + `<span class="fs-prev__value" data-provider-field="${escapeHtml(label)}">${escapeHtml(value)}</span>`
+    + '</div>'
+  );
+
+  return {
+    title: 'PROVIDER INFORMATION',
+    sub: leagueName() ?? LEAGUE_IDENTITY.name,
+    body:
+      '<div class="fs-setdetail">'
+      + `<section class="fs-rulesec" data-region="provider" data-provider-family="${escapeHtml(state.family)}">`
+      + sectionHeading('YOUR FANTASY PROVIDER')
+      + '<div class="fs-note">Your fantasy provider is the service that actually '
+      + 'runs your fantasy football league — the rosters, the weekly matchups '
+      + 'and the scoring. FantasyStakes does not run your league. It connects '
+      + 'to it.</div>'
+      + row('Provider', provider)
+      + row('Connection', state.label || 'Not connected')
+      + (isDemo
+        ? '<div class="fs-note">This is the FantasyStakes Demo. Every team, '
+          + 'result and Credit you see is sample data created to show how the '
+          + 'product works. No real fantasy league is connected.</div>'
+        : '')
+      + sectionHeading('WHAT FANTASYSTAKES READS')
+      + '<div class="fs-note">FantasyStakes reads the parts of your league it '
+      + 'needs to settle play: your teams and owners, the weekly schedule, '
+      + 'each team’s lineup and the points your league scores them. That is '
+      + 'all it asks for.</div>'
+      + sectionHeading('WHAT FANTASYSTAKES NEVER CHANGES')
+      + '<div class="fs-note">The connection is read-only. FantasyStakes never '
+      + 'sets a lineup, makes a trade, edits a roster or changes a score in '
+      + 'your fantasy league.</div>'
+      + sectionHeading('WHO DECIDES THE RESULT')
+      + '<div class="fs-note">Your provider does. Whatever your fantasy league '
+      + 'says happened on the field is what FantasyStakes settles against — '
+      + 'the final points, who won the matchup, and the standings. '
+      + 'FantasyStakes adds the stakes on top; it never overrules the '
+      + 'result.</div>'
+      + '</section>'
+      + attributionFooter()
+      + '</div>',
+  };
+}
+
+/* ABOUT & LEGAL — SHORT, PLAIN, AND ONLY WHAT THE PRODUCT ALREADY CLAIMS.
+ *
+ * §2D fixes the label and asks for understandable coverage of what the product
+ * is and what a Credit is not. The virtual-credit sentence is the approved
+ * `CREDITS_DISCLAIMER` and the money statements below it are the ones the
+ * product already makes everywhere else — no deposits, no payments, no
+ * payouts. Nothing here invents a legal position the application does not
+ * already take. */
+export function aboutLegalSheet() {
+  const credits = RULE_GROUPS.find((group) => group.id === 'credits');
+  return {
+    title: 'ABOUT & LEGAL',
+    sub: 'FantasyStakes',
+    body:
+      '<div class="fs-setdetail">'
+      + '<section class="fs-rulesec" data-region="about-legal">'
+      + sectionHeading('WHAT FANTASYSTAKES IS')
+      + '<div class="fs-note">FantasyStakes is a companion to your fantasy '
+      + 'football league. It adds matchup wagers and prop pools on top of the '
+      + 'league you already play, keeps score of them, and settles them '
+      + 'against your provider’s official results.</div>'
+      + sectionHeading('VIRTUAL CREDITS')
+      + `<div class="fs-note">${escapeHtml(CREDITS_DISCLAIMER)}</div>`
+      + '<div class="fs-note">Credits are used for keeping score and for '
+      + 'display. They have no cash value.</div>'
+      + sectionHeading('MONEY')
+      + '<div class="fs-note">FantasyStakes does not accept deposits, does not '
+      + 'process payments and does not make payouts. Anything your league '
+      + 'chooses to settle between its members happens outside this '
+      + 'product.</div>'
+      + (credits ? credits.rules.slice(0, 2).map((rule) => (
+        '<div class="fs-rule">'
+        + `<div class="fs-rule__head">${escapeHtml(rule.heading)}</div>`
+        + `<div class="fs-rule__body">${escapeHtml(rule.body)}</div>`
+        + '</div>'
+      )).join('') : '')
+      + '</section>'
+      + legalFooter()
+      + '</div>',
+  };
+}
+
+/** The four Settings details, by the menu entry id that opens each. */
+export const SETTINGS_DETAIL_SHEETS = Object.freeze({
+  rules: rulesSheet,
+  settings: leagueSettingsSheet,
+  provider: providerSheet,
+  about: aboutLegalSheet,
+});
+
 /**
  * @param {HTMLElement} panel
  * @param {{openSheet: Function}} api
  */
 export function bindRules(panel, api) {
   bindAccordions(panel);
+  bindSettingsRows(panel, api);
+  bindCommissioner(panel, api);
+  bindLifecycle(panel);
+}
 
+/**
+ * The allocation and settings row handlers, bound wherever those rows render.
+ *
+ * EXTRACTED SO ONE BEHAVIOUR SERVES TWO CONTAINERS. Final POR §2 moves League
+ * Settings from a tab-style destination into a detail sheet, and the rows
+ * inside it have to keep opening exactly what they opened before. Duplicating
+ * the handlers would let the sheet and the panel drift; this is the same code
+ * for both, and the caller supplies how a further level is opened — `openSheet`
+ * from a panel, a stack `push` from inside a sheet.
+ *
+ * @param {HTMLElement} root
+ * @param {{openSheet: Function}} api
+ */
+export function bindSettingsRows(root, api) {
   /* THE ONE EDITABLE SETTING KEEPS ITS PATH ACROSS §23's RENAME.
    *
    * §23 calls the row Prop Pool Entry; the settings response, the command and
@@ -566,7 +749,7 @@ export function bindRules(panel, api) {
    * the question a settings table exists to answer. */
   const OPENS_SETTING = { 'prop-pool-entry': 'pool-bet' };
 
-  panel.querySelectorAll('[data-alloc]').forEach((el) => {
+  root.querySelectorAll('[data-alloc]').forEach((el) => {
     el.addEventListener('click', () => {
       const view = vcAllocation();
       const row = view.allocation.find((r) => r.id === el.dataset.alloc);
@@ -584,15 +767,12 @@ export function bindRules(panel, api) {
     });
   });
 
-  panel.querySelectorAll('[data-setting]').forEach((el) => {
+  root.querySelectorAll('[data-setting]').forEach((el) => {
     el.addEventListener('click', () => {
       const setting = settingsRows().find((s) => s.id === el.dataset.setting);
       if (setting) api.openSheet(settingSheet(setting));
     });
   });
-
-  bindCommissioner(panel, api);
-  bindLifecycle(panel);
 }
 
 /**

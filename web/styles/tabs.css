@@ -255,12 +255,35 @@
   padding: 3px var(--fs-space-3);
 }
 
+/* FINAL POR §3 — THE COLLAPSED CARD IS TALL ENOUGH TO HOLD ITS OWN CONTENT.
+ *
+ * 58px was 19px short of what the card actually needed: measured at 375 and
+ * 390 the stacked rows come to 77px, so the last row was clipped on every
+ * PENDING, LOCKED and RESOLVED card in the product. Raising the common height
+ * to 76px is what stops that, and the four rails share one number so the four
+ * sections still read as one component family.
+ *
+ * THE VERTICAL BUDGET IS WHAT MAKES THIS TIGHT, AND IT IS SPENT DELIBERATELY.
+ * All four sections must sit between the summary strip and the bottom nav
+ * without the page scrolling. At 375x667 that region is 390px, which is four
+ * sections of at most 97px each — so the heading above each card is compacted
+ * below to ~18px and the card takes the rest. 4 x (18 + 76) = 376 <= 390. */
 #panel-action .fs-railsec .fs-rail--carousel,
 #panel-action .fs-railsec .fs-rail__item,
 #panel-action .fs-railsec .fs-wcard--lifecycle {
-  height: 58px;
-  min-height: 58px;
-  max-height: 58px;
+  height: 76px;
+  min-height: 76px;
+  max-height: 76px;
+}
+
+/* THE HEADING PAYS FOR THE CARD'S EXTRA HEIGHT. It is one compact line — the
+ * locked `LABEL · N · SCROLL` — and it needs no leading of its own above a
+ * card that is already separated by the rail's padding. */
+#panel-action .fs-heading {
+  min-height: 0;
+  margin-bottom: 0;
+  padding-block: 0;
+  line-height: 1.15;
 }
 
 #panel-action .fs-statusodds {
@@ -331,15 +354,40 @@
   #panel-action .fs-heading { min-height: 15px; margin-bottom: 0; }
   #panel-action .fs-rails { padding-bottom: 0; }
   #panel-action .fs-railsec .fs-rail--carousel { padding-block: 0; }
+  /* THE SHORT-VIEWPORT CARD — 320x568 IS THE ONE THAT BINDS.
+   *
+   * That region is only 315px for four sections, so the card cannot have the
+   * full 76px. It gets 62px, which is what the SHORT form of the card needs:
+   * the figure labels are hidden here (below), the secondary context line goes
+   * with them, and what is left is the head and the figures/state row — 56px
+   * measured, inside 62px. 4 x (16 + 62) = 312 <= 315. */
   #panel-action .fs-railsec .fs-rail--carousel,
   #panel-action .fs-railsec .fs-rail__item,
   #panel-action .fs-railsec .fs-wcard--lifecycle {
-    height: 44px;
-    min-height: 44px;
-    max-height: 44px;
+    height: 62px;
+    min-height: 62px;
+    max-height: 62px;
   }
   #panel-action .fs-wcard--lifecycle { padding-top: 2px; padding-bottom: 2px; }
   #panel-action .fs-wcard__figlabel { display: none; }
+
+  /* AT 320x568 THE TYPE STEP HAS TO GIVE TOO, and only here.
+   *
+   * 315px for four sections is 78px each; a 62px card and a 19px heading is
+   * 81. The heading drops one step so all four sections stay on screen, which
+   * is what §3 asks for and what a 320px phone cannot otherwise have.
+   *
+   * `#panel-action .fs-railsec .fs-heading__text` is (1,2,0) deliberately:
+   * `gameplay.css` sets the same property at (1,1,0) and loads later, so an
+   * override at equal weight would lose on order rather than win on rank. */
+  #panel-action .fs-railsec .fs-heading__text {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  /* The context line is the first thing to go when the budget is this tight:
+   * the market and week it names are repeated inside the card's own detail,
+   * and keeping it would cost the figures row that carries stake, pot and net. */
+  #panel-action .fs-wcard--lifecycle > .fs-wcard__context { display: none; }
 }
 
 #panel-action .fs-wcard--lifecycle > .fs-wcard__head,
@@ -497,4 +545,127 @@
 
   /* The badge already says ROLLOVER; the second line is redundant here. */
   .fs-pool__carried { display: none; }
+}
+
+/* ── FINAL POR §3 · THE STATUS VERTICAL BUDGET, SETTLED LAST ────────────────
+ *
+ * These rules are last in the sheet and carry `#panel-action .fs-railsec`
+ * (1,2,0) deliberately: several earlier blocks in this file and in
+ * `gameplay.css` set the same properties at (1,1,0) or (0,2,0), and the budget
+ * below only holds if it is the one that wins. It is stated once, here, rather
+ * than edited into four places that would drift.
+ *
+ * WHAT THE BUDGET IS. Four sections have to fit between the summary strip and
+ * the bottom navigation with no page scroll:
+ *
+ *     375x667 -> 390px available; 4 x (16 heading + 76 card) + gaps = 374
+ *     320x568 -> 315px available; 4 x (16 heading + 62 card)        = 312
+ *
+ * The heading is the only place the height could come from. It is one compact
+ * line — `LABEL · N · SCROLL` — and it does not need 23px and a 5px margin to
+ * say that above a card the rail already separates. */
+/* THE MARGIN IS WHAT THE BUDGET TAKES, NOT THE TYPE STEP.
+ *
+ * Status keeps the same heading SIZE as Play and Wrap Up — that shared step is
+ * the product's visual identity and §12 says to preserve it. What it gives up
+ * is the 5px of leading below the heading, which above a rail that already
+ * insets its own card is spending height on air. That alone is enough at the
+ * two larger phones:
+ *
+ *     375x667 -> 4 x (19 heading + 76 card) + 3 x 2 gap = 386 <= 390
+ *
+ * 320x568 is the one viewport where it is not enough, and it is handled in the
+ * short-viewport block below rather than by shrinking every phone to suit it. */
+#panel-action .fs-railsec .fs-heading {
+  min-height: 0;
+  margin: 0;
+  padding-block: 0;
+}
+
+/* LEADING, NOT SIZE. The heading row measured 23px against a 19px type step —
+ * the extra came from the inherited line-height, not from the letters. Tighten
+ * the leading and the row is 20px with the SAME font size Play and Wrap Up
+ * use, which is the property that makes the three read as one step. Those four
+ * saved pixels are exactly what 375x667 was short by. */
+/* THE TITLE'S LEADING ONLY, NOT THE HELPER'S. The helper carries the shared
+ * `N · SCROLL` treatment that Play and Wrap Up use, and Final POR §28 holds all
+ * three to the same helper typography — line-height included. The row's height
+ * comes from the title, so tightening that alone buys the pixels without
+ * making Status's helper a different thing from its two peers'. */
+#panel-action .fs-railsec .fs-heading__text {
+  line-height: 1.05;
+}
+
+/* THE COLUMN'S OWN BOTTOM INSET IS THE LAST THING BETWEEN THE FOURTH SECTION
+ * AND THE NAVIGATION. `.fs-rails` paid 10px below the last card, which on
+ * Status is 10px of padding sitting directly above a 49px navigation bar that
+ * already separates the column from the edge of the screen. Two is enough to
+ * keep the last card off the bar, and the eight it returns are what put
+ * RESOLVED ACTION on screen at 375x667. */
+#panel-action .fs-rails { padding-bottom: 2px; }
+
+/* THE SECTIONS ARE SEPARATED BY THE CARDS THEMSELVES. Each rail item is a
+ * bordered card and each section is introduced by its own heading, so the two
+ * pixels between them were doing no work the border was not already doing —
+ * and at 375x667 they are two of the last pixels the budget has. */
+#panel-action .fs-railsec + .fs-railsec { margin-top: 0; }
+
+/* THE ACTION CARD IS THE ONE WITH CONTROLS, AND AT 320 IT IS THE TIGHT ONE.
+ *
+ * `:has(.fs-statusodds)` lifts its figures, foot and odds aside out of the
+ * grid and pins them to the card's corners, so the card's height is not the
+ * sum of its rows and the response controls were overhanging the bottom edge
+ * by 3px. Pinning the control row to the same 2px baseline the figures use,
+ * and letting it keep one line, puts it back inside the card without making
+ * `Take it · Counter · Decline` any smaller to read. */
+@media (max-height: 620px) {
+  #panel-action .fs-railsec .fs-wcard--lifecycle:has(.fs-statusodds) > .fs-wcard__foot {
+    bottom: 2px;
+    line-height: 1.15;
+    white-space: nowrap;
+    /* ONE ROW, NOT TWO STACKED ONES. The held amount and the response controls
+     * are two children; stacked they measured 61px inside a 62px card and the
+     * pair overhung the top edge by 1px. Side by side they are one line, which
+     * is what the pinned position assumes — and the controls keep their own
+     * size, so `Take it · Counter · Decline` is no harder to read or to hit. */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--fs-space-3);
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  /* THE RESPONSE CONTROL KEEPS A REAL TARGET, SIZED TO THE CARD IT IS IN.
+   *
+   * 44px is the standard target and it is what this control has everywhere
+   * else. Inside the 62px short-viewport card it does not fit beside an 18px
+   * identity row without overlapping it, which is the collision §3 reports.
+   * 40px is the largest target that clears the head with room to spare — 62
+   * less 2px of inset less 40 leaves the head its 18px and 2px of air — and it
+   * changes neither the control's type size nor its wording. */
+  #panel-action .fs-railsec .fs-wcard--lifecycle:has(.fs-statusodds) .fs-wcard__cta {
+    min-height: 38px;
+  }
+
+  /* THE IDENTITY ROW GETS THE ONE PIXEL IT ACTUALLY NEEDS. Its state badge
+   * measured 19px against an 18px row, so the team name and its pill were
+   * clipped by exactly one. 62 = 2 inset + 19 head + 38 control + 2 inset,
+   * with a pixel still in hand. */
+  #panel-action .fs-railsec .fs-wcard--lifecycle > .fs-wcard__head {
+    min-height: 19px;
+  }
+  /* THE ODDS BLOCK SITS ON THE FIGURES' BASELINE, NOT BELOW IT.
+   *
+   * Pinned from the TOP it ended 63px down a card whose content box is 60px,
+   * so the live line was the one thing overhanging the bottom edge. Pinning it
+   * from the bottom puts it on the same rule as the stake/pot figures opposite
+   * it — which is where a reader compares the two anyway — and it stays inside
+   * the card at every card height this breakpoint produces. */
+  #panel-action .fs-railsec .fs-wcard--lifecycle:has(.fs-statusodds) > .fs-wcard__aside {
+    top: auto;
+    bottom: 3px;
+    line-height: 1.1;
+  }
 }

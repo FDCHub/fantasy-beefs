@@ -168,6 +168,23 @@ VISITOR_OPEN_NEGOTIATIONS: tuple = (
     OpenNegotiation(VISITOR_ORDINAL, 10, "spread"),
 )
 
+# FINAL POR §6 — THE VISITOR HAS A FINISHED MATCHUP IN THE WEEK WRAP UP OPENS ON.
+#
+# Wrap Up reviews the week that finished, and the showcase visitor had no
+# FantasyStakes contest in it: the ordinary rotation picks three of the six
+# pairings per week and week 10's three did not include them. So the tab that
+# exists to report a settled stake, pot and net had a Yahoo result and a Pool
+# result and nothing of its own to show.
+#
+# ON A REAL FIXTURE, LIKE EVERY OTHER CONTEST. The visitor (ordinal 7) plays
+# ordinal 2 in week 10, so this contest sits on top of a scheduled matchup and
+# is issued, accepted and settled by the ordinary engine — the same path the
+# rotation's contests take. It invents no result: whoever won that fantasy
+# matchup wins this, and the net follows from the settled pot.
+VISITOR_WRAPUP_MATCHUPS: tuple = (
+    (2, VISITOR_ORDINAL, "spread"),
+)
+
 # One additional accepted live contest involving the visitor. The ordinary
 # weekly rotation already gives the visitor one; this second governed contest
 # makes LOCKED ACTION a real multi-item carousel in the public showcase.

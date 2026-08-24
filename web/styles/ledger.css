@@ -396,6 +396,19 @@
 
 .fs-lsec__head { align-items: center; }
 
+/* FINAL POR §11 — THE NUMBER AND TITLE GET BREATHING ROOM FROM THE CARD EDGE.
+ *
+ * `.fs-accordion__head` pays a 10px inset on both sides, which is right for a
+ * sheet accordion but reads as cramped against the Account card's own border:
+ * the gold ordinal starts almost on the edge. This lifts the LEFT inset only,
+ * and only for Account's four rows, so all four sit on one line and nothing
+ * else that uses the accordion primitive — the Preview sheet included — moves.
+ *
+ * PADDING ONLY. Typography, row height, border, chevron placement, content and
+ * behaviour are all untouched; the head keeps its 56px minimum and its 9px
+ * vertical rhythm, so the four rows do not grow. */
+#panel-ledger .fs-lsec__head { padding-left: var(--fs-space-6); }
+
 .fs-lsec__num {
   font-family: var(--fs-font-money);
   font-size: var(--fs-size-micro);

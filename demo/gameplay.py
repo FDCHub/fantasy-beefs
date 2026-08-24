@@ -117,6 +117,10 @@ def versus_card(week: int) -> tuple:
         picked.append((home, away, market))
     if week == showcase.CURRENT_WEEK:
         picked.extend(showcase.VISITOR_LIVE_EXTRA_MATCHUPS)
+    # FINAL POR §6 — the completed week Wrap Up opens on carries one settled
+    # contest of the visitor's own, so the review has a result to report.
+    if week == showcase.CURRENT_WEEK - 1:
+        picked.extend(showcase.VISITOR_WRAPUP_MATCHUPS)
     return tuple(picked)
 
 

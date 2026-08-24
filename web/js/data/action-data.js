@@ -333,5 +333,5 @@ export function railHeading(rail) {
   };
   const word = words[rail];
   if (!word) throw new Error(`unknown rail "${rail}"`);
-  return `${word} · ${cardsFor(rail).length} · SWIPE`;
+  return `${word} · ${cardsFor(rail).length} · SCROLL`;
 }

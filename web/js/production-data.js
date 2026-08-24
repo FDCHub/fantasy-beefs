@@ -38,7 +38,7 @@ export async function loadProductionData({ leagueId, week }) {
   );
 
   const [ledger, settings, slate, previousSlate, positions, reconciliation, action,
-         weekMatchups, lifecycle, skunk, standings, championship,
+         weekMatchups, previousWeekMatchups, lifecycle, skunk, standings, championship,
          championshipResults, championshipCorrections,
          championshipConfig] = await Promise.all([
     optional(apiFetch(`/league/${leagueId}/ledger/me`)),
@@ -57,6 +57,15 @@ export async function loadProductionData({ leagueId, week }) {
     resolvedWeek === null
       ? Promise.resolve(null)
       : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek}/matchups`)),
+    /* FINAL POR §6 — THE WEEK THAT FINISHED IS FETCHED TOO.
+     *
+     * Wrap Up reviews a completed week, and only the CURRENT one was ever
+     * loaded — so the previous week's module could only ever say "week N has
+     * not been loaded". The pool slate already fetched its previous week for
+     * exactly this reason; the matchups now do the same, on the same guard. */
+    resolvedWeek === null || resolvedWeek <= 1
+      ? Promise.resolve(null)
+      : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek - 1}/matchups`)),
     isCommissioner ? optional(apiFetch(`/league/${leagueId}/lifecycle`))
                    : Promise.resolve(null),
     resolvedWeek === null
@@ -91,6 +100,7 @@ export async function loadProductionData({ leagueId, week }) {
     context,
     week: resolvedWeek,
     weekMatchups,
+    previousWeekMatchups,
     ledger,
     settings,
     slate,

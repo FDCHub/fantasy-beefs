@@ -238,7 +238,7 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
     // product.
     // (No backticks in here: this comment lives inside a template literal.)
     const titles = [...sheet.querySelectorAll(
-      '.fs-prev__title, .fs-rule__head')]
+      '.fs-prev__title, .fs-rule__head, .fs-wrapsec__head')]
       .map((h) => h.textContent.replace(/\\s+/g, ' ').trim())
       .filter(Boolean);
     return {

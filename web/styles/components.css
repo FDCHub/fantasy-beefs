@@ -747,3 +747,77 @@
   border-color: transparent;
   font-size: var(--fs-size-eyebrow);
 }
+
+/* ── FINAL POR §8 · THE WRAP UP DETAIL COMPONENT FAMILY ─────────────────────
+ *
+ * Yahoo Fantasy Football Matchup, FantasyStakes Matchup and Prop Pool detail
+ * are three views of the same idea — here is a thing that finished, here is
+ * what it did — and they have to read as three members of one family rather
+ * than as three surfaces built by three packages.
+ *
+ * ONE PLACE DECIDES ALL OF IT. Section-label typography, key/value row sizing,
+ * left/right alignment, sheet padding, divider treatment, explanatory copy size
+ * and vertical spacing live here and only here. The three sheets emit
+ * `detailSection` / `detailRow` / `detailNote` and choose nothing themselves,
+ * which is what stops the Pool detail drifting away from the other two again.
+ *
+ * WHY NOT REUSE `.fs-prev__row`. That primitive belongs to Preview, which is a
+ * pre-decision surface with its own sizing; the two were already diverging and
+ * sharing them would have coupled a postgame report to a betting slip. */
+.fs-wrapsec + .fs-wrapsec { margin-top: var(--fs-space-5); }
+
+.fs-wrapsec__head {
+  margin: 0 0 var(--fs-space-3);
+  padding-bottom: var(--fs-space-2);
+  border-bottom: var(--fs-border-hair);
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--fs-r43-tertiary);
+}
+
+/* THE KEY/VALUE ROW. Label left, figure right, both on one baseline — the same
+ * left/right contract the four-cell strips and the settings tables use, so a
+ * reader moving between them is never re-learning where a number is. */
+.fs-wraprow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-4);
+  padding: 5px 0;
+}
+
+.fs-wraprow + .fs-wraprow { border-top: var(--fs-border-hair); }
+
+.fs-wraprow__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-r43-card);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-wraprow__value {
+  flex: 0 0 auto;
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  text-align: right;
+}
+
+/* Explanatory copy — THE READ's sentences and each section's note — is one
+ * size everywhere. It was three. */
+.fs-wrapnote {
+  margin: 0 0 var(--fs-space-2);
+  font-size: var(--fs-r43-meta);
+  line-height: 1.45;
+  color: var(--fs-r43-secondary);
+}
+
+.fs-wrapnote:last-child { margin-bottom: 0; }
+
+.fs-wrapsrc {
+  margin-top: var(--fs-space-2);
+  font-size: var(--fs-r43-micro, 10px);
+  color: var(--fs-r43-tertiary);
+}

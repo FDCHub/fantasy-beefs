@@ -18,7 +18,7 @@ WHAT REV 1.4 DID.
   to discover that the other two existed.
 
   The half card is the defect, not the scrolling. It reads as a rendering fault
-  rather than as an invitation to swipe, and it spends a third of the rail on a
+  rather than as an invitation to scroll, and it spends a third of the rail on a
   card nobody can read.
 
 WHY THE FIX IS A RULE AND NOT A SMALLER NUMBER.
@@ -27,14 +27,14 @@ WHY THE FIX IS A RULE AND NOT A SMALLER NUMBER.
   for the Rev 4.2 card and wrong the moment Rev 4.3 grew the type. An item that
   is exactly 100% of its rail's width cannot show a partial neighbour at any
   card height, at any viewport width, ever: one item fills the rail by
-  construction and `scroll-snap-stop: always` parks the swipe on the next one.
+  construction and `scroll-snap-stop: always` parks the scroll on the next one.
   That is the mechanism Wrap Up's result carousels already use. §2 below asserts
   the rule is what is written, and that the constants it replaced are gone.
 
 WHY THE COUNT MOVED INTO THE HEADING, AND WHERE IT COMES FROM.
 
   A carousel shows one card, so the heading is now the only place a GM learns
-  how many are behind it. `LABEL · N · SWIPE` is the same sentence four times.
+  how many are behind it. `LABEL · N · SCROLL` is the same sentence four times.
   N is the rendered sum of the authoritative Matchup read and lifecycle-
   appropriate Pool entries. §1 asserts the heading and DOM count use that same
   set; the browser tier compares Matchup counts, Pool cards and rendered cards.
@@ -117,7 +117,7 @@ _tabs_rules = _without_comments(_tabs_css)
 
 # ── §1 · The heading grammar, and whose number it is ────────────────────────
 
-_section("§1 · every rail heading reads `LABEL · N · SWIPE`, and N is the server's")
+_section("§1 · every rail heading reads `LABEL · N · SCROLL`, and N is the server's")
 
 # FINAL POR §28 — THE LOCKED CATEGORY NAMES CHANGED, SO THIS LIST DID.
 #
@@ -175,7 +175,7 @@ _assert("and the geometry is not written in JavaScript",
 _assert("an item is exactly one rail wide",
         re.search(r"\.fs-rail--carousel > \.fs-rail__item,?[^{]*\{[^}]*"
                   r"flex:\s*0 0 100%", _tabs_rules, flags=re.S) is not None)
-_assert("a swipe parks on the next card rather than carrying past it",
+_assert("a scroll parks on the next card rather than carrying past it",
         "scroll-snap-stop: always" in _tabs_rules)
 _assert("the rail is the scroll container, and snaps mandatorily",
         "overflow-x: auto" in _without_comments(_read("web", "styles", "components.css"))
@@ -189,7 +189,7 @@ _assert("and the 132px card floor with it", "132px" not in _tabs_rules)
 _assert("the rail cannot widen the column it sits in",
         re.search(r"\.fs-rail--carousel\s*\{[^}]*min-width:\s*0",
                   _tabs_rules, flags=re.S) is not None)
-_assert("and it never draws a scrollbar for the swipe",
+_assert("and it never draws a scrollbar for the scroll",
         "scrollbar-width: none"
         in _without_comments(_read("web", "styles", "components.css")))
 

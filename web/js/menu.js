@@ -69,34 +69,38 @@ export function menuButton() {
  */
 export function menuEntries() {
   const entries = [
+    /* FINAL POR §2 — THE FOUR SETTINGS ENTRIES OPEN DETAILS, NOT DESTINATIONS.
+     *
+     * They were `destination` entries, so choosing one navigated the app to a
+     * full tab-style panel and the reader lost the Settings context they had
+     * just opened. The ruling is that all four belong to the Settings sheet
+     * family, so they are `detail` entries: the shell pushes the matching
+     * sheet onto this one, the universal X pops back here, and a second X
+     * returns to the app. The panels they used to navigate to still exist and
+     * are unchanged — nothing else routes to them. */
     {
       id: 'rules',
       label: 'Rules',
       help: 'How FantasyStakes is played in this league.',
-      kind: 'destination',
-      destination: 'rules',
-      zone: 'rules',
+      kind: 'detail',
     },
     {
       id: 'settings',
       label: 'League Settings',
       help: 'The league’s configured values.',
-      kind: 'destination',
-      destination: 'settings',
+      kind: 'detail',
     },
     {
       id: 'provider',
       label: 'Provider Information',
-      help: 'The league’s current provider connection state.',
-      kind: 'destination',
-      destination: 'provider',
+      help: 'How FantasyStakes connects to your fantasy league.',
+      kind: 'detail',
     },
     {
       id: 'about',
       label: 'About & Legal',
       help: 'Product, virtual-credit and legal information.',
-      kind: 'destination',
-      destination: 'about',
+      kind: 'detail',
     },
   ];
 
@@ -188,6 +192,18 @@ function bindMenuSheet(host, api) {
         // the menu is a chooser, and closing the economy sheet should return the
         // commissioner to the app, not to the list they chose from.
         HOOK.openEconomy();
+        return;
+      }
+      if (row.dataset.menuKind === 'detail') {
+        // FINAL POR §2 — PUSHED ONTO THIS SHEET, NOT NAVIGATED TO.
+        //
+        // `api.push` rather than `HOOK.openDetail` alone: the stack is the
+        // sheet's own, so the detail sits on top of Settings and the X pops
+        // back to it. The shell supplies WHICH sheet, because the specs live
+        // with the content in `rules.js` and this module routes rather than
+        // renders.
+        const spec = HOOK.detailSheet(row.dataset.menu);
+        if (spec) api.push(spec);
         return;
       }
       if (row.dataset.menuKind === 'destination') {

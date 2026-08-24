@@ -93,6 +93,7 @@ import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
 import { bindChampionshipState } from './commissioner.js';
 import {
+  SETTINGS_DETAIL_SHEETS,
   bindRules, buildAboutLegalPanel, buildCommissionerPanel,
   buildLeagueSettingsPanel, buildProviderPanel, buildRulesPanel,
 } from './rules.js';
@@ -1010,6 +1011,10 @@ async function bindAuthoritativeData() {
   // The provider-backed matchups for that week, when there is a week.
   if (data && data.week !== null && data.weekMatchups) {
     bindWeekMatchups(data.week, data.weekMatchups);
+    // §6 — the completed week Wrap Up opens on, bound beside the current one.
+    if (data.previousWeekMatchups && data.week > 1) {
+      bindWeekMatchups(data.week - 1, data.previousWeekMatchups);
+    }
   }
 
   // ── The live Action commands ──────────────────────────────────────────
@@ -1149,6 +1154,12 @@ async function bindAuthoritativeData() {
   setMenuHook({
     goTo: (destination, zone) => { goTo(destination, zone); },
     openEconomy: () => { openSheet(() => economySheet()); },
+    // FINAL POR §2 — the Settings root's four entries resolve to detail sheet
+    // specs. The menu pushes what this returns; it never navigates for them.
+    detailSheet: (id) => {
+      const build = SETTINGS_DETAIL_SHEETS[id];
+      return build ? () => build() : null;
+    },
   });
 
   // ── The commissioner lifecycle (WP4) ──────────────────────────────────

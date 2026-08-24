@@ -14,7 +14,7 @@
  * discover that LIVE and COMPLETED existed at all.
  *
  * The half card is the defect, not the scrolling. It reads as a rendering fault
- * rather than as an invitation to swipe, and it spends a third of the rail on a
+ * rather than as an invitation to scroll, and it spends a third of the rail on a
  * card nobody can read. Rev 1.4 makes every item exactly one rail wide, which
  * is the same mechanism Wrap Up's result carousels use: one card fills the
  * viewport BY CONSTRUCTION, at any card height and any viewport width, so there
@@ -177,7 +177,7 @@ const READ_STATUS = `
         snapType: rs ? rs.scrollSnapType : null,
         railVOverflow: rail ? rail.scrollHeight - rail.clientHeight : null,
         // The scrollbar's own thickness. A rail that shows one is a rail whose
-        // horizontal scroll is visible furniture rather than a swipe.
+        // horizontal scroll is visible furniture rather than a scroll.
         scrollbar: rail ? rail.offsetHeight - rail.clientHeight : null,
         itemW: [...new Set(items.map(
           (i) => +i.getBoundingClientRect().width.toFixed(1)))],
@@ -264,12 +264,12 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
     check('they are the locked rails, in the locked order',
       m.zones.map((z) => z.rail).join(',') === RAILS.join(','),
       m.zones.map((z) => z.rail).join(','));
-    check('every heading uses the shared title plus `N · SWIPE` helper',
+    check('every heading uses the shared title plus `N · SCROLL` helper',
       m.zones.every((z) => z.heading === WORDS[z.rail]
-        && /^\d+ · SWIPE$/.test(z.helper)),
+        && /^\d+ · SCROLL$/.test(z.helper)),
       m.zones.map((z) => `${z.heading} ${z.helper}`).join(' | '));
-    check('every heading carries the shared swipe affordance',
-      m.zones.every((z) => z.helper.endsWith('· SWIPE')),
+    check('every heading carries the shared scroll affordance',
+      m.zones.every((z) => z.helper.endsWith('· SCROLL')),
       m.zones.map((z) => z.helper).join(' | '));
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -297,7 +297,7 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
       RAILS.every((r) => served.counts[r] === served.lengths[r]),
       RAILS.map((r) => `${r} ${served.counts[r]}/${served.lengths[r]}`).join(' '));
     check('every heading states Matchups plus lifecycle-appropriate Pool cards',
-      m.zones.every((z) => z.helper === `${served.counts[z.rail] + z.poolCards} · SWIPE`),
+      m.zones.every((z) => z.helper === `${served.counts[z.rail] + z.poolCards} · SCROLL`),
       m.zones.map((z) => `${z.rail} ${z.helper}`).join(' | '));
     check('the showcase supplies 2-3 real cards in every Status category',
       m.zones.every((z) => z.cards >= 2 && z.cards <= 3),
@@ -545,8 +545,8 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
       check('Status is actually laid out at this size',
         m.zones.length === 4 && m.zones.every((z) => z.railW > 0),
         m.zones.map((z) => z.railW).join(' / '));
-      check('every heading still reads `LABEL · N · SWIPE`',
-        m.zones.every((z) => new RegExp(`^${WORDS[z.rail]} · \\d+ · SWIPE$`).test(z.heading)),
+      check('every heading still reads `LABEL · N · SCROLL`',
+        m.zones.every((z) => new RegExp(`^${WORDS[z.rail]} · \\d+ · SCROLL$`).test(z.heading)),
         m.zones.map((z) => z.heading).join(' | '));
       check('the document does not scroll sideways',
         m.docSW <= m.docCW + 1, `${m.docSW} vs ${m.docCW}`);
@@ -648,8 +648,8 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
 
     check('an all-empty read still draws four sections',
       empty.allEmpty.length === 4, `${empty.allEmpty.length}`);
-    check('every heading reads `LABEL · 0 · SWIPE`',
-      empty.allEmpty.every((z) => z.heading === `${WORDS[z.rail]} · 0 · SWIPE`),
+    check('every heading reads `LABEL · 0 · SCROLL`',
+      empty.allEmpty.every((z) => z.heading === `${WORDS[z.rail]} · 0 · SCROLL`),
       empty.allEmpty.map((z) => z.heading).join(' | '));
     check('and no card is fabricated to fill any of them',
       empty.allEmpty.every((z) => z.cards === 0),
@@ -665,15 +665,15 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
       empty.allEmpty.map((z) => String(z.role)).join(','));
 
     const mixedAction = empty.mixed.find((z) => z.rail === 'action');
-    check('one empty rail among populated ones reads `ACTION REQUIRED · 0 · SWIPE`',
-      mixedAction.heading === 'ACTION REQUIRED · 0 · SWIPE', mixedAction.heading);
+    check('one empty rail among populated ones reads `ACTION REQUIRED · 0 · SCROLL`',
+      mixedAction.heading === 'ACTION REQUIRED · 0 · SCROLL', mixedAction.heading);
     check('  · draws no card',
       mixedAction.cards === 0, `${mixedAction.cards}`);
     check('  · and says the thing that is true of THAT rail',
       mixedAction.note === 'Nothing needs your decision.', mixedAction.note);
     check('  · while its peers keep the counts the server served',
       empty.mixed.filter((z) => z.rail !== 'action')
-        .every((z) => z.heading === `${WORDS[z.rail]} · ${empty.servedCounts[z.rail]} · SWIPE`
+        .every((z) => z.heading === `${WORDS[z.rail]} · ${empty.servedCounts[z.rail]} · SCROLL`
           && z.cards === empty.servedCounts[z.rail]),
       empty.mixed.map((z) => `${z.heading}/${z.cards}`).join(' | '));
   });

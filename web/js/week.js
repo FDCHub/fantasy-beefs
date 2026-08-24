@@ -27,8 +27,8 @@ import {
 import { formatCredits, formatSignedCredits } from './credits.js';
 import { CURRENT_WEEK, PAST_WEEK, WEEKS, weekBets, weekPools, yahooMatchups } from './data/week-data.js';
 import {
-  LEAGUE_MODE_DEMO, LEAGUE_MODE_UNAVAILABLE, currentWeek, leagueMode,
-  weekMatchups,
+  LEAGUE_MODE_DEMO, LEAGUE_MODE_UNAVAILABLE, actingMatchup, currentWeek,
+  leagueMode, servedContext, weekMatchups,
 } from './league-model.js';
 import {
   ACTION_MODE_UNAVAILABLE, SECTIONS, actionMode, sectionCards,
@@ -38,6 +38,7 @@ import {
   SLATE_MODE_DEMO,
   SLATE_MODE_DRAWN,
   SLATE_MODE_UNDRAWN,
+  previousSlateRows,
   slateMode,
   slateRows,
 } from './pool-slate-model.js';
@@ -48,6 +49,9 @@ import { onActivate } from './interaction.js';
 import { skunkOfTheWeek, skunkWeek } from './skunk-model.js';
 import { seasonResultsSection } from './season-results.js';
 import { championshipResults } from './standings-model.js';
+import {
+  poolRead, providerMatchupRead, renderRead, wagerRead,
+} from './wrapup-read.js';
 
 /** Locked Rev 4.2 subtitle. */
 // WP3D — `Official` IS GONE, AND THE PROVENANCE IS NOT.
@@ -80,7 +84,7 @@ export const WEEK_SUBTITLE = 'Yahoo matchups + FantasyStakes action';
 // cap that a one-card carousel makes meaningless — a GM swipes to the next
 // card whether there are two or four. The cap itself is unchanged and is
 // still `BETS_SHOWN`; what is gone is a heading that named it.
-export const BETS_HEADING = 'FANTASYSTAKES MATCHUPS · SWIPE';
+export const BETS_HEADING = 'FANTASYSTAKES MATCHUPS · SCROLL';
 
 /** The viewport cap the heading states. */
 export const BETS_SHOWN = 4;
@@ -100,9 +104,35 @@ let selectedWeek = null;
  * Null until something asks, so the authoritative week is consulted at read
  * time rather than captured at module load, before any binding has happened.
  */
+/* THE SERVED LEAGUE IS THE DEMO ONE — the server's own flag, not a UI mode.
+ *
+ * `actionMode()` and `leagueMode()` both report AUTHORITATIVE for the showcase,
+ * because the Demo league is served through the real read models rather than
+ * through the illustrative fixtures. They answer "which data source is this
+ * surface reading", which is a different question from "is this the demo",
+ * and using them here made the §6 default silently never apply. */
+function isDemoLeague() {
+  const context = servedContext();
+  return !!(context && context.demo === true);
+}
+
 function activeWeek() {
   if (selectedWeek !== null) return selectedWeek;
-  return currentWeek() ?? CURRENT_WEEK;
+  const now = currentWeek() ?? CURRENT_WEEK;
+
+  /* FINAL POR §6 — THE DEMO OPENS ON THE WEEK THAT FINISHED.
+   *
+   * A Wrap Up reviews a week that HAPPENED. Opening on the live week meant the
+   * showcase's three rails led with LIVE, OPEN and PENDING records: a visitor
+   * meeting the product saw a week still in flight and no final score, no
+   * settled pot and no net anywhere in the tab that exists to report them.
+   *
+   * SCOPED TO THE DEMO, DELIBERATELY. A real league's Wrap Up still opens on
+   * its own current week — that is the week its GMs are living in, and moving
+   * a production default is not what §6 asks for. The switch still offers both
+   * weeks in both modes, so nothing is unreachable either way. */
+  if (isDemoLeague() && now > 1) return now - 1;
+  return now;
 }
 
 /**
@@ -234,7 +264,7 @@ function yahooModule() {
   const production = leagueMode() !== LEAGUE_MODE_DEMO;
   const body = production ? providerMatchupBody() : demoMatchupBody();
   return resultSection({
-    title: 'YAHOO LEAGUE MATCHUPS · SWIPE',
+    title: 'YAHOO LEAGUE MATCHUPS · SCROLL',
     id: 'yahoo',
     items: body.items,
     empty: body.empty,
@@ -283,7 +313,10 @@ function providerMatchupBody() {
     return { items: [], empty: weekNote('empty',
       `No matchups have been published for week ${activeWeek()}.`) };
   }
-  return { items: rows.map(providerMatchupCard), empty: '' };
+  return {
+    items: mineFirst(rows, (m) => m.involvesActingTeam).map(providerMatchupCard),
+    empty: '',
+  };
 }
 
 function weekNote(state, text) {
@@ -371,59 +404,107 @@ function providerMatchupCard(m) {
  * @param {object} m a normalised WeekMatchupOut
  * @returns {{title: string, sub: string, body: string}}
  */
+/* ── FINAL POR §8 · ONE COMPONENT FAMILY FOR EVERY WRAP UP DETAIL ───────────
+ *
+ * The three detail sheets were built three ways. The Yahoo one emitted a bare
+ * `.fs-rule__head` and loose `.fs-prev__row`s; the Matchup one wrapped its rows
+ * in `<section class="fs-rule">`; the Pool one used a third wrapper again,
+ * `.fs-prev__section`, and set its own paragraph copy at a size neither of the
+ * others used. Three surfaces a GM reads as one thing, drawn as three.
+ *
+ * These are the only primitives the three sheets may use. Title typography,
+ * week/status typography, section labels, key/value sizing, left/right
+ * alignment, padding, dividers and vertical spacing are all decided once, in
+ * `.fs-wrapsec` / `.fs-wraprow` / `.fs-wrapnote` — so the three cannot drift
+ * again without changing all three at once. */
+function detailSection(heading, inner) {
+  return (
+    '<section class="fs-wrapsec">'
+    + `<h3 class="fs-wrapsec__head">${escapeHtml(heading)}</h3>`
+    + inner
+    + '</section>'
+  );
+}
+
+function detailRow(label, value, extra = '') {
+  return (
+    '<div class="fs-wraprow">'
+    + `<span class="fs-wraprow__label">${escapeHtml(label)}</span>`
+    + `<span class="fs-wraprow__value ${extra}">${escapeHtml(value)}</span>`
+    + '</div>'
+  );
+}
+
+function detailNote(text) {
+  return `<p class="fs-wrapnote">${escapeHtml(text)}</p>`;
+}
+
 export function providerMatchupSheet(m) {
   const figure = (side) => (side.points === null
     ? PENDING_FIGURE : side.points.toFixed(1));
-
-  const row = (label, value, extra = '') => (
-    '<div class="fs-prev__row">' +
-    `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
-    `<span class="fs-prev__value ${extra}">${escapeHtml(value)}</span></div>`
-  );
 
   const bothScored = m.home.points !== null && m.away.points !== null;
   const margin = bothScored
     ? Math.abs(m.home.points - m.away.points).toFixed(1) : null;
   const leader = bothScored && m.home.points !== m.away.points
     ? (m.home.points > m.away.points ? m.home : m.away) : null;
-
   const winner = m.winnerTeamId === m.home.teamId ? m.home
     : (m.winnerTeamId === m.away.teamId ? m.away : null);
 
+  /* FINAL POR 9A - THE SUBTITLE CARRIES THE OUTCOME, NOT JUST THE WEEK.
+   *
+   * "Week 10 - Final" told a reader nothing they had not already seen on the
+   * card. Outcome-first means the first line of the sheet answers the question
+   * the sheet was opened to ask, so the result and the score sit in it. */
+  const outcome = (() => {
+    if (!m.final) return `Week ${m.week} · In progress`;
+    if (!bothScored) return `Week ${m.week} · Final`;
+    const score = `${figure(m.home)}–${figure(m.away)}`;
+    if (m.involvesActingTeam && m.actingSide) {
+      const mine = m.actingSide === 'home' ? m.home.points : m.away.points;
+      const theirs = m.actingSide === 'home' ? m.away.points : m.home.points;
+      if (mine === theirs) return `Week ${m.week} · Final · TIED ${score}`;
+      return `Week ${m.week} · Final · ${mine > theirs ? 'WIN' : 'LOSS'} ${score}`;
+    }
+    return `Week ${m.week} · Final · ${score}`;
+  })();
+
   return {
     title: `${m.home.name} vs ${m.away.name}`,
-    sub: m.final ? `Week ${m.week} · Final` : `Week ${m.week} · In progress`,
+    sub: outcome,
     body:
-      '<div class="fs-rule__head">FANTASY FOOTBALL BREAKDOWN</div>' +
-      row(m.home.name, figure(m.home), 'fs-money') +
-      row(m.away.name, figure(m.away), 'fs-money') +
-      // THE MARGIN IS SUBTRACTION, NOT A READ. Withheld outright when either
-      // side has no figure, because a margin against a missing score would be
-      // a number nobody stated.
-      (margin === null
-        ? row('Margin', PENDING_FIGURE)
-        : row('Margin', leader === null
-          ? 'Level' : `${margin} · ${leader.name}`, 'fs-money')) +
-      row('Result', m.final
-        ? (winner ? `${winner.name} won` : 'Final')
-        : 'Not final yet') +
-      (m.involvesActingTeam && m.actingSide
-        ? row('Your side', m.actingSide)
-        : '') +
-      (m.home.owner || m.away.owner
-        ? row('Managers', `${m.home.owner || '\u2014'} vs ${m.away.owner || '\u2014'}`)
-        : '') +
-      (m.refreshedAt
-        ? `<div class="fs-rule__src">Provider figures as at ${
+      renderRead(providerMatchupRead(m), detailSection, detailNote)
+      + detailSection('FANTASY FOOTBALL BREAKDOWN',
+        detailRow(m.home.name, figure(m.home), 'fs-money')
+        + detailRow(m.away.name, figure(m.away), 'fs-money')
+        // THE MARGIN IS SUBTRACTION, NOT A READ. Withheld outright when either
+        // side has no figure, because a margin against a missing score would be
+        // a number nobody stated.
+        + (margin === null
+          ? detailRow('Margin', PENDING_FIGURE)
+          : detailRow('Margin', leader === null
+            ? 'Level' : `${margin} · ${leader.name}`, 'fs-money'))
+        + detailRow('Result', m.final
+          ? (winner ? `${winner.name} won` : 'Final')
+          : 'Not final yet')
+        + (m.involvesActingTeam && m.actingSide
+          ? detailRow('Your side', m.actingSide) : '')
+        + (m.home.owner || m.away.owner
+          ? detailRow('Managers', `${m.home.owner || '—'} vs ${m.away.owner || '—'}`)
+          : ''))
+      + (m.refreshedAt
+        ? `<div class="fs-wrapsrc">Provider figures as at ${
           escapeHtml(String(m.refreshedAt))}</div>`
-        : '') +
+        : '')
       // THE HONEST LIMIT, stated rather than left to be inferred from silence.
-      '<div class="fs-note">Your fantasy provider publishes team totals for ' +
-      'this matchup and not per-player scoring, so there is no lineup ' +
-      'breakdown to show. FantasyStakes will not estimate one from the team ' +
-      'figures.</div>',
+      // It is also why 9A's Studs, Duds and bench-points sections are absent
+      // rather than estimated - see `wrapup-read.js`.
+      + detailNote('Your fantasy provider publishes team totals for this '
+        + 'matchup and not per-player scoring, so there is no lineup breakdown '
+        + 'to show. FantasyStakes will not estimate one from the team figures.'),
   };
 }
+
 
 /* ── Module 2 · FantasyStakes bets ──────────────────────────────────────────*/
 
@@ -577,9 +658,41 @@ function poolOpenCard(pool) {
  * falling back to the launch cards would present a retired fixed set as this
  * week's governed draw.
  */
+/* ── FINAL POR §7 · THE GM'S OWN ITEM LEADS EVERY RAIL ──────────────────────
+ *
+ * A Wrap Up is read by somebody asking "how did I do". Their own matchup, their
+ * own wager and their own Pool are the answer, and on a one-card carousel an
+ * item that is not first is an item most readers never reach. So each rail is
+ * ordered mine-first and league-activity-after.
+ *
+ * STABLE, NOT SORTED. `filter` twice preserves the server's order inside both
+ * groups, so the league's own sequence is untouched and only the reader's item
+ * is lifted. A GM with no item in a rail sees exactly what they saw before. */
+function mineFirst(items, isMine) {
+  const mine = items.filter(isMine);
+  if (!mine.length) return items;
+  return [...mine, ...items.filter((item) => !isMine(item))];
+}
+
+/* THE SLATE FOR THE WEEK ON SCREEN — Final POR §6.
+ *
+ * Two slates are bound: the current week's and the one before it. Wrap Up can
+ * be showing either, so it asks for the one that matches the week it is
+ * drawing rather than always taking the current one — which is what made a
+ * completed week render this week's still-open Pools. */
+function slateRowsForActiveWeek() {
+  const now = currentWeek();
+  if (now !== null && activeWeek() === now - 1) {
+    const previous = previousSlateRows();
+    if (previous && previous.length) return previous;
+  }
+  return slateRows();
+}
+
 function poolsModule() {
   const mode = slateMode();
-  const pools = mode === SLATE_MODE_DEMO ? weekPools(activeWeek()) : slateRows();
+  const pools = mode === SLATE_MODE_DEMO
+    ? weekPools(activeWeek()) : slateRowsForActiveWeek();
 
   if (mode === SLATE_MODE_UNDRAWN || mode === 'unavailable') {
     const reason = mode === SLATE_MODE_UNDRAWN
@@ -588,7 +701,7 @@ function poolsModule() {
         + 'league’s provider source readiness is not yet confirmed.'
       : 'This week’s Prop Pool slate could not be read for this session.';
     return resultSection({
-      title: 'FANTASYSTAKES PROP POOLS · SWIPE',
+      title: 'FANTASYSTAKES PROP POOLS · SCROLL',
       id: 'pools',
       state: mode,
       items: [],
@@ -609,10 +722,12 @@ function poolsModule() {
   // 150.06px of carousel. Both states take the shared shell now; what differs
   // is what they say inside it.
   return resultSection({
-    title: 'FANTASYSTAKES PROP POOLS · SWIPE',
+    title: 'FANTASYSTAKES PROP POOLS · SCROLL',
     id: 'pools',
     state: mode,
-    items: pools.map((pool) => (
+    items: mineFirst(pools, (pool) => (
+      pool.mySubjectId != null || pool.myResult === 'won' || pool.myResult === 'lost'
+    )).map((pool) => (
       pool.settled ? poolResultCard(pool) : poolOpenCard(pool))),
     empty: '',
   });
@@ -841,8 +956,16 @@ export function bindWeek(panel, api) {
   // is the only path a Pool is reached by now — and the `[data-pool]` binding
   // is kept because Play's Prop Pool card still uses that attribute and this
   // panel must not become the reason a surface is silently inert.
+  // FINAL POR §6 — THE SLATE THE CARDS WERE DRAWN FROM, NOT THIS WEEK'S.
+  //
+  // This looked the tapped Pool up in the CURRENT week's slate while the rail
+  // above it was drawing the COMPLETED week's. On a week where the two slates
+  // hold different catalog numbers the lookup simply missed, so a settled Pool
+  // card was inert: nothing opened, and any sheet already on screen stayed
+  // there — which reads as "the Pool detail is wrong" rather than "no detail
+  // opened". It asks the same helper the rail does.
   const pools = slateMode() === SLATE_MODE_DEMO
-    ? weekPools(activeWeek()) : slateRows();
+    ? weekPools(activeWeek()) : slateRowsForActiveWeek();
   const openPool = (id) => {
     const pool = pools.find((p) => String(p.catalogNumber) === String(id));
     if (pool) api.openSheet(poolRecapSheet(pool));
@@ -935,7 +1058,7 @@ function resultSection(spec) {
   return (
     `<section class="fs-wkmod" data-module="${escapeHtml(id)}"` +
     `${state ? ` data-state="${escapeHtml(state)}"` : ''}>` +
-    sectionHeading(title.replace(/ · SWIPE$/, ''), `${items.length} · SWIPE`) +
+    sectionHeading(title.replace(/ · SCROLL$/, ''), `${items.length} · SCROLL`) +
     `<div class="fs-rescar" id="fs-${escapeHtml(id)}-carousel"` +
     `${hasItems ? ' role="list"' : ''}>${body}</div>` +
     '</section>'
@@ -1031,24 +1154,49 @@ function matchupResultCard(card) {
 
 function poolRecapSheet(pool) {
   const picked = (pool.subjects || []).find((s) => s.subject_id === pool.mySubjectId);
-  const rows = [
-    ['Your pick', picked ? picked.label : 'Not entered'],
-    ['Pot', formatCredits(pool.potCents)],
-    ['State', pool.settled ? 'Resolved' : (pool.openForClaims ? 'Open' : 'Locked')],
-  ];
-  if (pool.settled) rows.push(['Result', String(pool.myResult || 'Settled').replace('_', ' ')]);
+  const pickLabel = picked ? picked.label : 'Not entered';
+
+  const state = pool.settled ? 'Resolved'
+    : (pool.openForClaims ? 'Open' : 'Locked');
+
+  const outcome = (() => {
+    if (!pool.settled) return `Week ${activeWeek()} · ${state}`;
+    const word = String(pool.myResult || 'settled').replace('_', ' ').toUpperCase();
+    return `Week ${activeWeek()} · Final · ${word}`;
+  })();
+
+  const rows =
+    detailRow('Your pick', pickLabel)
+    + (Number.isInteger(pool.entryCents)
+      ? detailRow('Buy-in', formatCredits(pool.entryCents), 'fs-money') : '')
+    + detailRow('Pot', formatCredits(pool.potCents), 'fs-money')
+    + detailRow('State', state)
+    + (pool.settled
+      ? detailRow('Result',
+        String(pool.myResult || 'Settled').replace('_', ' ')) : '')
+    + (pool.settled && Number.isInteger(pool.myNetCents)
+      ? detailRow('Net', formatSignedCredits(pool.myNetCents), 'fs-money') : '');
+
   return {
     title: pool.name,
-    sub: `Week ${activeWeek()} · read-only review`,
-    body: rows.map(([label, value]) => '<div class="fs-prev__row">'
-      + `<span class="fs-prev__label">${escapeHtml(label)}</span>`
-      + `<span class="fs-prev__value">${escapeHtml(value)}</span></div>`).join('')
-      + '<section class="fs-prev__section"><h3 class="fs-rule__head">FANTASY FOOTBALL DRIVERS</h3>'
-      + `<p>${escapeHtml(pool.question || pool.name || 'Pool outcome')}</p>`
-      + `<p>${escapeHtml(pool.rule || 'The official result determines the Pool outcome.')}</p>`
-      + '<p>The governed Pool definition is measured across the named fantasy-football results and evaluated once, at settlement.</p>'
-      + '</section>'
-      + '<div class="fs-note">Review only. Pool choices are made on Play.</div>',
+    sub: outcome,
+    body:
+      renderRead(poolRead(pool, pickLabel), detailSection, detailNote)
+      + detailSection('POOL REVIEW', rows)
+      + detailSection('FANTASY FOOTBALL DRIVERS',
+        // 8 - THE QUESTION, NEVER THE NOTATION. `pool.rule` is the governed
+        // definition and reads as an internal formula; the Pool's own question
+        // is the football statement of the same thing, and it is what a GM
+        // came here to read.
+        // ONE AUTHOR FOR THE QUESTION, AND IT IS THE CATALOG. `poolQuestion`
+        // returns the served sentence or the integrity mark and composes
+        // nothing in between; reading `pool.question` directly here would be a
+        // second author for the same sentence, which is what that reader
+        // exists to prevent.
+        detailNote(poolQuestion(pool))
+        + detailNote('Measured across the named fantasy-football results and '
+          + 'evaluated once, at settlement.'))
+      + detailNote('Review only. Pool choices are made on Play.'),
   };
 }
 
@@ -1077,23 +1225,37 @@ function matchupRecapCard(card) {
 }
 
 function matchupRecapSheet(card) {
-  const rows = [
-    ['Market', `${card.marketLabel || 'Matchup'} ${card.line || ''}`.trim()],
-    ['Terms', String(card.mode || 'locked').toUpperCase()],
-    ['Your stake', formatCredits(card.yourStakeCents)],
-  ];
-  if (Number.isInteger(card.potCents)) rows.push(['Pot', formatCredits(card.potCents)]);
-  if (card.settled && Number.isInteger(card.netCents)) rows.push(['Net', formatSignedCredits(card.netCents)]);
+  // 9B - the fantasy result the market was priced against. Real, served data:
+  // the acting GM's own provider matchup for the week this wager belongs to.
+  const matchup = actingMatchup(activeWeek());
+
+  const settledOutcome = (() => {
+    if (!card.settled) return `Week ${activeWeek()} · read-only review`;
+    if (!Number.isInteger(card.netCents)) return `Week ${activeWeek()} · Final`;
+    return `Week ${activeWeek()} · Final · ${card.netCents > 0 ? 'WON' : 'LOST'} `
+      + `${formatSignedCredits(card.netCents)}`;
+  })();
+
+  const marketRows =
+    detailRow('Market', `${card.marketLabel || 'Matchup'} ${card.line || ''}`.trim())
+    + detailRow('Terms', String(card.mode || 'locked').toUpperCase())
+    + detailRow('Your stake', formatCredits(card.yourStakeCents), 'fs-money')
+    + (Number.isInteger(card.potCents)
+      ? detailRow('Pot', formatCredits(card.potCents), 'fs-money') : '')
+    + (card.settled && Number.isInteger(card.netCents)
+      ? detailRow('Net', formatSignedCredits(card.netCents), 'fs-money') : '');
+
   return {
     title: `vs ${card.opponent}`,
-    sub: `Week ${activeWeek()} · read-only review`,
-    body: '<section class="fs-rule"><h3 class="fs-rule__head">MARKET REVIEW</h3>'
-      + rows.map(([label, value]) => '<div class="fs-prev__row">'
-      + `<span class="fs-prev__label">${escapeHtml(label)}</span>`
-      + `<span class="fs-prev__value">${escapeHtml(value)}</span></div>`).join('')
-      + '</section><section class="fs-rule"><h3 class="fs-rule__head">FANTASY FOOTBALL DRIVERS</h3>'
-      + `<p>${escapeHtml(card.copy || 'The selected-week fantasy matchup and market terms provide the review context.')}</p></section>`
-      + '<div class="fs-note">Review only. Manage current FantasyStakes activity on Status.</div>',
+    sub: settledOutcome,
+    body:
+      renderRead(wagerRead(card, matchup), detailSection, detailNote)
+      + detailSection('MARKET REVIEW', marketRows)
+      + detailSection('FANTASY FOOTBALL DRIVERS',
+        detailNote(card.copy
+          || 'The selected-week fantasy matchup and market terms provide the '
+             + 'review context.'))
+      + detailNote('Review only. Manage current FantasyStakes activity on Status.'),
   };
 }
 

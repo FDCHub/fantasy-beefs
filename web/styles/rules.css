@@ -11,6 +11,18 @@
   padding: var(--fs-space-2) var(--fs-gutter) var(--fs-space-6);
 }
 
+/* FINAL POR §2 — THE SAME CONTENT, INSIDE A SHEET INSTEAD OF A TAB.
+ *
+ * `.fs-rulescroll` is a PANEL container: it flexes, owns its own vertical
+ * scroll and pays the tab gutter. None of that is right inside a sheet, which
+ * already bounds itself at ~75vh and scrolls its own body — two nested
+ * scrollers is how a reader gets a region that will not move. So a Settings
+ * detail wraps its regions in this instead: no scroller, no gutter of its own,
+ * and no page-header treatment above it. The sheet's title and universal X
+ * carry the identity. */
+.fs-setdetail { padding-top: var(--fs-space-2); }
+.fs-setdetail > .fs-rulesec:first-child { margin-top: 0; }
+
 .fs-rulesec + .fs-rulesec { margin-top: var(--fs-space-4); }
 
 /* ── Rule rows ─────────────────────────────────────────────────────────────

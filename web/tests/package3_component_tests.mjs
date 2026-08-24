@@ -204,20 +204,20 @@ section('FantasyStakes Bets shows the week’s wagers, the viewer’s own first'
 const currentBets = weekBets(CURRENT_WEEK);
 check('the current week shows exactly four', currentBets.length === 4, String(currentBets.length));
 check('the heading uses the current FantasyStakes Matchups wording',
-  week.includes('FANTASYSTAKES MATCHUPS') && week.includes('SWIPE'));
+  week.includes('FANTASYSTAKES MATCHUPS') && week.includes('SCROLL'));
 // WP3C — Rev 4.3 §11 removed the redundant directional arrow. The claim is
 // otherwise unchanged: the heading states the VIEWPORT treatment (how many are
-// shown) rather than a record count, and the word SWIPE carries the affordance.
+// shown) rather than a record count, and the word SCROLL carries the affordance.
 // UIRECON WAVE 1 — the locked public term.
 //
 // UIRECON WAVE 4B — `4 SHOWN` IS GONE, AND THE CAP IT NAMED IS NOT. The three
-// Wrap sections carry one heading grammar now (NAME · SWIPE), and a one-card
-// carousel makes a shown-count meaningless: a GM swipes to the next card
+// Wrap sections carry one heading grammar now (NAME · SCROLL), and a one-card
+// carousel makes a shown-count meaningless: a GM scrolls to the next card
 // whether there are two or four. `BETS_SHOWN` still bounds the section, which
 // the next assertion holds to, so what this wave removed is a heading that
 // described the viewport — not the viewport itself.
 check('the locked heading states the viewport treatment, not a record count',
-  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · SWIPE', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · SCROLL', BETS_HEADING);
 check('and the four-card cap it used to advertise still bounds the section',
   BETS_SHOWN === 4, String(BETS_SHOWN));
 check('and it carries no public-facing Versus',
@@ -328,7 +328,7 @@ check('the past week shows settled wagers only',
 // The locked heading is presentation; the records are protocol. A week with
 // three settled wagers keeps the heading AND keeps three records.
 check('the current heading is unchanged on a past week',
-  week.includes('FANTASYSTAKES MATCHUPS') && week.includes('SWIPE'));
+  week.includes('FANTASYSTAKES MATCHUPS') && week.includes('SCROLL'));
 check('no fourth historical wager is fabricated to match the heading',
   pastBets.length === 3, String(pastBets.length));
 check('the settled record set is still the three Action holds',

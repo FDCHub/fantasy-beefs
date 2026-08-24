@@ -26,15 +26,18 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
   await evaluate(`${goRules} return true;`);
 
   const frame = await evaluate(`return (async () => {
-    const panel = document.getElementById('panel-rules');
+    // FINAL POR 2 - the gear opens Rules as a Settings DETAIL SHEET.
+    const panel = document.getElementById('fs-sheet');
     const me = await (await fetch('/auth/me', { credentials: 'same-origin' })).json();
     const ctx = await (await fetch(
       '/league/' + me.capabilities.acting_league_id + '/context/me',
       { credentials: 'same-origin' })).json();
     return {
       servedLeagueName: ctx.league_name,
-      title: panel.querySelector('.fs-tabhead__title').textContent,
-      identity: panel.querySelector('.fs-tabhead__sub').textContent,
+      title: panel.querySelector('.fs-sheet__title').textContent,
+      identity: panel.querySelector('.fs-sheet__sub').textContent,
+      // 2 - a detail carries no app page-header treatment.
+      tabheads: panel.querySelectorAll('.fs-tabhead').length,
       strips: panel.querySelectorAll('.fs-strip').length,
       disclaimers: panel.querySelectorAll('.fs-disclaimer').length,
       doc: document.documentElement.scrollWidth,
@@ -43,6 +46,8 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
         .map(el => Math.round(el.getBoundingClientRect().right))),
     };
   })();`);
+  check('the detail carries no app page-header', frame.tabheads === 0,
+    String(frame.tabheads));
   check('the title is RULES', frame.title === 'RULES', frame.title);
   // WP5: the identity is the BOUND league's name — S8-P4B-2 wired leagueName()
   // into this header. The requirement, that Rules & Settings identifies the
@@ -64,7 +69,7 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
   section('§24 · the four rule groups render in the locked order');
 
   const rules = await evaluate(`
-    const rows = [...document.querySelectorAll('#fs-rule-groups .fs-accordion')];
+    const rows = [...document.querySelectorAll('#fs-sheet .fs-rules .fs-accordion')];
     return {
       count: rows.length,
       titles: rows.map(r => r.querySelector('.fs-accordion__title').textContent),
@@ -88,15 +93,19 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
   const ruleSheetState = await evaluate(`
     // §24 -- the wager-mode rules live in Weekly Play now. The ruling's own
     // copy is unchanged, which is what the assertions below actually check.
-    document.querySelector('[data-accordion="rule-weekly"] [data-accordion-toggle]').click();
-    const group = document.querySelector('[data-accordion="rule-weekly"]');
+    const scope = document.getElementById('fs-sheet');
+    scope.querySelector('[data-accordion="rule-weekly"] [data-accordion-toggle]').click();
+    const group = scope.querySelector('[data-accordion="rule-weekly"]');
     return {
       open: group.classList.contains('is-open'),
       title: group.querySelector('.fs-accordion__title').textContent,
       ruleCount: group.querySelectorAll('.fs-rule').length,
       sources: group.querySelectorAll('.fs-rule__src').length,
       text: group.textContent,
-      overlayOpen: document.getElementById('fs-overlay').classList.contains('is-open'),
+      // FINAL POR 2 - Rules IS the overlay now, so "does not open a modal"
+      // becomes "does not push ANOTHER level on top of this one": the sheet a
+      // reader is standing in must still be the Rules detail after expanding.
+      sheetTitle: scope.querySelector('.fs-sheet__title').textContent,
     };
   `);
   check('a rule group expands in the shared accordion', ruleSheetState.open === true);
@@ -121,7 +130,8 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     /never above the acceptance ceiling/i.test(ruleSheetState.text),
     ruleSheetState.text.slice(0, 160));
   check('betting vocabulary survives', /ML|Spread|O\/U/.test(ruleSheetState.text));
-  check('inline expansion does not open a modal', ruleSheetState.overlayOpen === false);
+  check('inline expansion does not push another sheet level',
+    ruleSheetState.sheetTitle === 'RULES', ruleSheetState.sheetTitle);
   await evaluate(`document.querySelector('[data-accordion="rule-weekly"] [data-accordion-toggle]').click(); return true;`);
 
   /* ── Settings ─────────────────────────────────────────────────────────── */

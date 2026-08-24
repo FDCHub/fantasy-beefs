@@ -195,8 +195,18 @@ function championshipSubheading() {
  * reader who could previously see two of three terms had no way to check the
  * arithmetic; now they can, and the copy tells them the rule they are checking
  * against. */
+/* FINAL POR — ONE PARAGRAPH, NOT A SENTENCE AND A DETACHED CREDIT LINE.
+ *
+ * The virtual-credit disclaimer used to sit in its own `fs-st__creditline`
+ * element below the explainer, which read as a legal footnote rather than as
+ * part of the same explanation. The owner ruling is a single paragraph, so the
+ * disclaimer is now the explainer's second sentence and the separate element
+ * is gone. Any championship-lifecycle suffix still appends AFTER both
+ * sentences, so a default season renders exactly the locked paragraph. */
 export const STANDINGS_EXPLAINER_LINES = Object.freeze([
-  'FantasyStakes standings combine Matchup net, Pool net and Skunk fees.',
+  'FantasyStakes standings combine Matchup net, Pool net and Skunk fees. '
+  + 'These are virtual credits for score keeping and display only - no cash '
+  + 'value.',
 ]);
 
 function championshipExplainer() {
@@ -233,7 +243,6 @@ export function buildStandingsPanel() {
     + '</div>'
     + '</div>'
     + `<p class="fs-st__explainer">${escapeHtml(championshipExplainer())}</p>`
-    + '<p class="fs-st__creditline">Virtual credits · display only · no cash value</p>'
     + `<div class="fs-st__scroll" id="fs-standings-scroll">${body}</div>`
   );
 }

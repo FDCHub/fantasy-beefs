@@ -143,7 +143,7 @@ _assert("  · it snaps one card at a time on the x axis",
         "scroll-snap-type: x mandatory" in _play_rail)
 _assert("  · it cannot draw into the section beneath it",
         "overflow-y: hidden" in _play_rail)
-_assert("  · a swipe past the last card does not chain out of the rail",
+_assert("  · a scroll past the last card does not chain out of the rail",
         "overscroll-behavior-x: contain" in _play_rail)
 _assert("  · and it is exactly its grid track, never its content",
         "height: 100%" in _play_rail)
@@ -235,7 +235,7 @@ _assert("the attribution ends the tab rather than one of the two sections",
         is not None)
 _assert("the headings are unchanged", "MATCHUPS_HEADING = 'MATCHUPS'" in LEAGUE_JS
         and "POOLS_HEADING = 'PROP POOLS'" in LEAGUE_JS)
-_assert("PROP POOLS still reports the week's count and the swipe affordance",
+_assert("PROP POOLS still reports the week's count and the scroll affordance",
         "THIS WEEK · ${SWIPE_WORD}" in LEAGUE_JS)
 
 _section("§2.2 · Wrap Up is three peers, and the Prop Pool item is a card")
@@ -246,9 +246,9 @@ _assert("the three modules sit in one deck",
                   r'betsModule\(\)[\s\S]{0,120}poolsModule\(\)', _week_code)
         is not None)
 _assert("the three locked headings are unchanged",
-        "'YAHOO LEAGUE MATCHUPS · SWIPE'" in WEEK_JS
-        and "BETS_HEADING = 'FANTASYSTAKES MATCHUPS · SWIPE'" in WEEK_JS
-        and "'FANTASYSTAKES PROP POOLS · SWIPE'" in WEEK_JS)
+        "'YAHOO LEAGUE MATCHUPS · SCROLL'" in WEEK_JS
+        and "BETS_HEADING = 'FANTASYSTAKES MATCHUPS · SCROLL'" in WEEK_JS
+        and "'FANTASYSTAKES PROP POOLS · SCROLL'" in WEEK_JS)
 _assert("an OPEN Prop Pool draws the shared result card, not a list row",
         "poolOpenCard(pool)" in _week_code and "poolRow" not in _week_code)
 _assert("  · and the row component it replaced is not emitted anywhere",

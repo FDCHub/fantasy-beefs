@@ -129,15 +129,15 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     modules.map(m => m.id).join(',') === 'yahoo,bets,pools',
     modules.map(m => m.id).join(','));
   // WP3C -- Rev 4.3 §11 removed the redundant directional arrow from every
-  // swipe heading. The wording is otherwise unchanged and still pinned exactly.
+  // scroll heading. The wording is otherwise unchanged and still pinned exactly.
   check('the Yahoo module names official Yahoo matchups',
-    modules[0].heading === 'YAHOO LEAGUE MATCHUPS' && /SWIPE/.test(modules[0].helper), modules[0].heading);
-  // UIRECON WAVE 4B — one heading grammar for all three: NAME · SWIPE. The
+    modules[0].heading === 'YAHOO LEAGUE MATCHUPS' && /SCROLL/.test(modules[0].helper), modules[0].heading);
+  // UIRECON WAVE 4B — one heading grammar for all three: NAME · SCROLL. The
   // derived count named a viewport cap that a one-card carousel makes
   // meaningless, and only this module ever carried one. The cap itself is
   // unchanged; what went is a heading that described it.
   check('the Bets module carries the shared heading grammar',
-    modules[1].heading === 'FANTASYSTAKES MATCHUPS' && /SWIPE/.test(modules[1].helper), modules[1].heading);
+    modules[1].heading === 'FANTASYSTAKES MATCHUPS' && /SCROLL/.test(modules[1].helper), modules[1].heading);
   check('no rail heading carries a directional arrow',
     modules.every((m) => !m.heading.includes('↕')),
     modules.map((m) => m.heading).join(' | '));
@@ -152,7 +152,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // peers now, drawn or not. A count in one section's heading and not the
   // others' was the last thing distinguishing three identical statements.
   check('the Pools module carries the shared heading grammar',
-    modules[2].heading === 'FANTASYSTAKES PROP POOLS' && /SWIPE/.test(modules[2].helper),
+    modules[2].heading === 'FANTASYSTAKES PROP POOLS' && /SCROLL/.test(modules[2].helper),
     modules[2].heading);
   check('no module clips its own content', modules.every(m => !m.clipped));
 
@@ -239,7 +239,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       affordances: document.querySelectorAll(
         '[data-module="yahoo"] [data-card-action]').length,
       opened: document.getElementById('fs-overlay').classList.contains('is-open'),
-      heads: [...sheet.querySelectorAll('.fs-rule__head')].map(
+      // FINAL POR 8 - the three Wrap Up details share one section primitive,
+      // .fs-wrapsec__head. The old .fs-rule__head was the Yahoo sheet's own
+      // and is what the unified family replaced. NO BACKTICKS IN THIS COMMENT:
+      // it sits inside a template literal, and one would close it early.
+      heads: [...sheet.querySelectorAll('.fs-wrapsec__head')].map(
         (el) => el.textContent.trim()),
       previewTitles: [...sheet.querySelectorAll('.fs-prev__title')].map(
         (el) => el.textContent.trim()),
@@ -481,7 +485,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     + (past.cards === 0 ? ' — the provider stated no matchups for this week' : ''));
   check('no past matchup still presents as pregame', past.pregame === 0);
   // Locked copy, identical on both weeks. UIRECON Wave 4B replaced `4 SHOWN`
-  // with the shared NAME · SWIPE grammar the other two Wrap sections use; the
+  // with the shared NAME · SCROLL grammar the other two Wrap sections use; the
   // claim here is unchanged and is the one the next assertion holds to — the
   // heading is the same on every week, and a week holding three settled wagers
   // still shows three rather than gaining a fabricated fourth.

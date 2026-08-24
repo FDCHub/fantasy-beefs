@@ -719,12 +719,12 @@ _assert("P4C-2R: and a handed-in id is validated against that list too",
 _assert("P4C-2R/Rev1.4: no rail heading carries the season record, in any mode",
         "SEASON" not in _action_ui.split("export function railHeading")[1]
         .split("\n}")[0])
-# FINAL POR §28 — the grammar gained the affordance: `LABEL · N · SWIPE`.
+# FINAL POR §28 — the grammar gained the affordance: `LABEL · N · SCROLL`.
 # P4C-2R's claim was that ONE expression builds every heading from the frozen
 # word map, so no rail can acquire its own wording or its own extra content.
 # That is unchanged and is what is asserted; only the separator and the trailing
 # word moved.
-_assert("FINAL POR §28: every rail heading is the LABEL · N · SWIPE form",
+_assert("FINAL POR §28: every rail heading is the LABEL · N · SCROLL form",
         "`${word} · ${sectionCount(rail)} · ${SWIPE_WORD}`" in _action_ui)
 _assert("P4C-2R: and the record itself still has a home in the strip",
         "seasonRecordLabel()" in _action_ui)

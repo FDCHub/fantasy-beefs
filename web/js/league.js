@@ -67,8 +67,14 @@ import {
   boundAvailableCents, boundWeeklyMinLiveCents,
 } from './ledger-model.js';
 
-/** Rev 4.3 §11 — the word SWIPE, and no directional arrow. */
-export const SWIPE_WORD = 'SWIPE';
+/* FINAL POR — THE INSTRUCTIONAL WORD IS `SCROLL`, AND NO DIRECTIONAL ARROW.
+ *
+ * `SWIPE` is retired from every rendered surface. The rails are horizontal
+ * carousels on a phone and on a trackpad alike, and `SCROLL` is the one word
+ * that describes both without naming a gesture only one of them has. The
+ * constant keeps its internal name — it is imported by name in several suites
+ * and the identifier is not the copy. */
+export const SWIPE_WORD = 'SCROLL';
 
 /* ── Section headings — Rev 1.4 Part 3 ──────────────────────────────────────
  *

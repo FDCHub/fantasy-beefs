@@ -418,18 +418,18 @@ check('every open wager\'s pot is both stakes',
 
 section('Rail headings match the locked wording');
 
-// FINAL POR §28 — the four locked names, and the `LABEL · N · SWIPE` grammar.
+// FINAL POR §28 — the four locked names, and the `LABEL · N · SCROLL` grammar.
 // The counts are the fixture's own, exactly as before; only the words and the
 // separator changed, so this still asserts that the heading is built from the
 // frozen map rather than composed per rail.
-check('ACTION REQUIRED · 2 · SWIPE',
-  railHeading('action') === 'ACTION REQUIRED · 2 · SWIPE');
-check('PENDING ACTION · 2 · SWIPE',
-  railHeading('waiting') === 'PENDING ACTION · 2 · SWIPE');
-check('LOCKED ACTION · 4 · SWIPE',
-  railHeading('live') === 'LOCKED ACTION · 4 · SWIPE');
+check('ACTION REQUIRED · 2 · SCROLL',
+  railHeading('action') === 'ACTION REQUIRED · 2 · SCROLL');
+check('PENDING ACTION · 2 · SCROLL',
+  railHeading('waiting') === 'PENDING ACTION · 2 · SCROLL');
+check('LOCKED ACTION · 4 · SCROLL',
+  railHeading('live') === 'LOCKED ACTION · 4 · SCROLL');
 check('RESOLVED ACTION heading carries a count and the affordance',
-  /^RESOLVED ACTION · \d+ · SWIPE$/.test(railHeading('completed')));
+  /^RESOLVED ACTION · \d+ · SCROLL$/.test(railHeading('completed')));
 
 // S8-P4C-2R — THE DEMO HALF OF THE SEASON-RECORD REPAIR. Production drops the
 // record because 14–7 has no authoritative source; the locked Rev 4.2 heading
@@ -453,19 +453,19 @@ check('the shipped heading is in demo mode by default', actionMode() === 'demo')
 // THE RECORD DID NOT GO ANYWHERE. `seasonRecordLabel()` still draws it in the
 // summary strip's Bet Record cell, which is a figure's slot rather than a
 // heading's; that is asserted separately below.
-// FINAL POR §28 — the grammar is now `LABEL · N · SWIPE`. The Rev 1.4 claim
+// FINAL POR §28 — the grammar is now `LABEL · N · SCROLL`. The Rev 1.4 claim
 // this replaces was that ONE form covers all four rails and that the count is
 // load-bearing; both still hold, and the affordance is now stated too.
-check('every rail heading is the LABEL · N · SWIPE form',
+check('every rail heading is the LABEL · N · SCROLL form',
   ['action', 'waiting', 'live', 'completed']
-    .every((r) => /^[A-Z ]+ · \d+ · SWIPE$/.test(uiRailHeading(r))),
+    .every((r) => /^[A-Z ]+ · \d+ · SCROLL$/.test(uiRailHeading(r))),
   ['action', 'waiting', 'live', 'completed'].map(uiRailHeading).join(' | '));
 check('and the RESOLVED ACTION heading states its count, not a season record',
-  uiRailHeading('completed') === 'RESOLVED ACTION · 3 · SWIPE'
+  uiRailHeading('completed') === 'RESOLVED ACTION · 3 · SCROLL'
   && !uiRailHeading('completed').includes('SEASON'),
   uiRailHeading('completed'));
 check('while ACTION REQUIRED still counts the fixture in demo',
-  uiRailHeading('action') === 'ACTION REQUIRED · 2 · SWIPE',
+  uiRailHeading('action') === 'ACTION REQUIRED · 2 · SCROLL',
   uiRailHeading('action'));
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
@@ -481,7 +481,7 @@ const league = buildLeaguePanel();
 // its intentional empty state and the eleven-card count is gone with the
 // eleven invented cards. The heading also loses its `↕` (§12).
 check('the Matchups rail heading carries no directional arrow',
-  !league.includes('↕'), 'SWIPE ↕ removed');
+  !league.includes('↕'), 'SCROLL ↕ removed');
 // SCOPED TO THE MATCHUPS RAIL — UIRECON Rev 1.4 Part 4. `fs-carousel__item` is
 // no longer unique to Matchups: Play's Prop Pools ride the SAME carousel now,
 // deliberately, so counting the class across the whole panel would count four
@@ -502,7 +502,7 @@ check('unbound discovery draws an intentional state, never invented opponents',
 // `FANTASYSTAKES VERSUS`.
 check('Prop Pools heading uses the final explicit name, with the served count',
   league.includes('FANTASYSTAKES PROP POOLS')
-  && league.includes('4 THIS WEEK · SWIPE'));
+  && league.includes('4 THIS WEEK · SCROLL'));
 // TAGS STRIPPED BEFORE THE VERSUS CHECK. `Versus` survives as an INTERNAL
 // module and state name — `data-versus-state` is the Play rail's own empty-state
 // attribute — and the rule has only ever been about what a GM READS. Testing the

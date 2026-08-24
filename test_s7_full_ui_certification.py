@@ -351,11 +351,11 @@ _assert("the Rules title is the locked wording",
 #
 # UIRECON WAVE 4B — and `4 SHOWN` went with the vertical carousel it
 # described. All three Wrap sections carry one heading grammar now,
-# NAME · SWIPE, and a one-card rail makes a shown-count meaningless: a GM
-# swipes to the next card whether there are two or four. The four-card cap
+# NAME · SCROLL, and a one-card rail makes a shown-count meaningless: a GM
+# scrolls to the next card whether there are two or four. The four-card cap
 # itself is unchanged and still lives in `week.BETS_SHOWN`.
 _assert("The Week's bets heading is the locked viewport treatment",
-        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · SWIPE")
+        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · SCROLL")
 _assert("no rendered heading carries a directional arrow (§11)",
         "↕" not in ALL_PANELS, "↕ found")
 _assert("the legal line is exact and lives on Rules & Settings only",

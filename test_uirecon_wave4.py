@@ -130,12 +130,12 @@ for _term, _label in (
 ):
     _assert(_label, _term in _week_js)
 
-# The locked headings are exactly these three, and `· SWIPE` is the shared
+# The locked headings are exactly these three, and `· SCROLL` is the shared
 # suffix — §12 names all three verbatim.
 _HEADINGS = [
-    "YAHOO LEAGUE MATCHUPS · SWIPE",
-    "FANTASYSTAKES MATCHUPS · SWIPE",
-    "FANTASYSTAKES PROP POOLS · SWIPE",
+    "YAHOO LEAGUE MATCHUPS · SCROLL",
+    "FANTASYSTAKES MATCHUPS · SCROLL",
+    "FANTASYSTAKES PROP POOLS · SCROLL",
 ]
 for _h in _HEADINGS:
     _assert(f"the heading `{_h}` is stated verbatim", _h in _week_js)
@@ -146,7 +146,7 @@ for _h in _HEADINGS:
 _assert("the four-card cap survives the heading change",
         "BETS_SHOWN" in _week_js and "slice(0, BETS_SHOWN)" in _week_js)
 _assert("no heading advertises a count any more",
-        "SHOWN · SWIPE" not in _week_js)
+        "SHOWN · SCROLL" not in _week_js)
 
 for _forbidden in ("Bets", "Beefs", "Beef Challenge", "Prop Bet"):
     _assert(f"the retired term `{_forbidden}` is not surfaced",

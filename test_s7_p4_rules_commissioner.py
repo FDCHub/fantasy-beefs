@@ -138,8 +138,8 @@ console.log(JSON.stringify({
   rulesPanel: buildRulesPanel(),
   aboutPanel: buildAboutLegalPanel(),
   betsHeading: BETS_HEADING,
-  weekCurrentHasHeading: weekCurrent.includes('FANTASYSTAKES MATCHUPS') && weekCurrent.includes('SWIPE'),
-  weekPastHasHeading: weekPast.includes('FANTASYSTAKES MATCHUPS') && weekPast.includes('SWIPE'),
+  weekCurrentHasHeading: weekCurrent.includes('FANTASYSTAKES MATCHUPS') && weekCurrent.includes('SCROLL'),
+  weekPastHasHeading: weekPast.includes('FANTASYSTAKES MATCHUPS') && weekPast.includes('SCROLL'),
   betsCurrent: weekBets(CURRENT_WEEK).length,
   betsPast: weekBets(PAST_WEEK).length,
 }));
@@ -707,11 +707,11 @@ print("\nCarry-forward: The Week's locked bets heading")
 #
 # UIRECON WAVE 4B — and `4 SHOWN` went with the vertical carousel it
 # described. All three Wrap sections carry one heading grammar now,
-# NAME · SWIPE, and a one-card rail makes a shown-count meaningless: a GM
-# swipes to the next card whether there are two or four. The four-card cap
+# NAME · SCROLL, and a one-card rail makes a shown-count meaningless: a GM
+# scrolls to the next card whether there are two or four. The four-card cap
 # itself is unchanged and still lives in `week.BETS_SHOWN`.
 _assert("the heading is the locked Rev 4.3 wording",
-        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · SWIPE",
+        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · SCROLL",
         str(APP.get("betsHeading")))
 _assert("it renders unchanged on the current week", APP.get("weekCurrentHasHeading") is True)
 _assert("and unchanged on a past week", APP.get("weekPastHasHeading") is True)
@@ -721,7 +721,7 @@ _assert("the past week still holds only its three settled records — none fabri
         APP.get("betsPast") == 3, str(APP.get("betsPast")))
 _assert("the heading is a constant, not derived from a count",
         "BETS_HEADING" in _read("js", "week.js")
-        and "SHOWN · SWIPE" not in re.sub(r"BETS_HEADING = '[^']*';", "", _read("js", "week.js")))
+        and "SHOWN · SCROLL" not in re.sub(r"BETS_HEADING = '[^']*';", "", _read("js", "week.js")))
 _WEEK_DATA = _flat(_read("js", "data", "week-data.js"))
 _assert("Package 3's settled-week grounding survives",
         # Matched on fragments that survive JSDoc's leading `*` on wrapped lines.

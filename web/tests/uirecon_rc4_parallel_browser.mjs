@@ -293,8 +293,8 @@ await withPage({ port: 9488, origin: process.env.FS_TEST_ORIGIN },
       check(`PROP POOLS is still the second — ${at}`,
         play.headings[1] && play.headings[1].text === 'PROP POOLS',
         play.headings[1] ? play.headings[1].text : 'none');
-      check(`  · and it still says N THIS WEEK · SWIPE — ${at}`,
-        /^\d+ THIS WEEK · SWIPE$/.test(
+      check(`  · and it still says N THIS WEEK · SCROLL — ${at}`,
+        /^\d+ THIS WEEK · SCROLL$/.test(
           (play.headings[1] || {}).helper || ''),
         (play.headings[1] || {}).helper);
 
@@ -350,7 +350,7 @@ await withPage({ port: 9488, origin: process.env.FS_TEST_ORIGIN },
           `${rail.snapType} / ${rail.overflowX}`);
         check(`  · every ${name} item is a hard snap stop — ${at}`,
           rail.items.every((i) => i.align === 'start' && i.stop === 'always'));
-        check(`  · a swipe past the last ${name} card does not chain — ${at}`,
+        check(`  · a scroll past the last ${name} card does not chain — ${at}`,
           rail.overscrollX === 'contain', rail.overscrollX);
         if (rail.items.length > 1) {
           check(`  · no partial next ${name} card is exposed at rest — ${at}`,
@@ -422,9 +422,9 @@ await withPage({ port: 9488, origin: process.env.FS_TEST_ORIGIN },
         wrap.deck ? wrap.deck.rows : 'no deck');
 
       const TITLES = [
-        ['yahoo', 'YAHOO LEAGUE MATCHUPS · SWIPE'],
-        ['bets', 'FANTASYSTAKES MATCHUPS · SWIPE'],
-        ['pools', 'FANTASYSTAKES PROP POOLS · SWIPE'],
+        ['yahoo', 'YAHOO LEAGUE MATCHUPS · SCROLL'],
+        ['bets', 'FANTASYSTAKES MATCHUPS · SCROLL'],
+        ['pools', 'FANTASYSTAKES PROP POOLS · SCROLL'],
       ];
       check(`three sections, in order, under their locked headings — ${at}`,
         wrap.mods.length === 3

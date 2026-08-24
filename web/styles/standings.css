@@ -110,6 +110,24 @@
  * the figures below it on one right edge. */
 .fs-st__table th.fs-st__num { padding-left: 0; }
 
+/* FINAL POR §1A — A HEADER SITS OVER ITS OWN COLUMN.
+ *
+ * `.fs-st__table th` above sets `text-align: right`, which is correct for the
+ * four figure columns and wrong for the two text ones. It also OUTRANKS the
+ * bare `.fs-st__rank` / `.fs-st__team` rules below it — `.fs-st__table th` is
+ * (0,1,1) against their (0,1,0) — so RK and TEAM were the only cells in their
+ * columns drawn from the right edge while every value beneath them was drawn
+ * from the left. That is what put TEAM far to the right of the names.
+ *
+ * Scoped through the table for the same reason `.fs-st__table .fs-st__team`
+ * below is: it has to win on specificity, or the correction silently does not
+ * happen. The figure headers are untouched — they were already on the same
+ * right edge as their figures, which is what keeps MATCH, POOL, SKUNK and
+ * SCORE aligned. TEAM remains the only `width: auto` column, so it stays the
+ * widest. */
+.fs-st__table th.fs-st__rank,
+.fs-st__table th.fs-st__team { text-align: left; }
+
 .fs-st__table td {
   font-size: var(--fs-r43-card);
   padding: var(--fs-space-3) var(--fs-space-2);

@@ -9,7 +9,7 @@ WHAT REV 1.4 FINISHED.
   WAVE 4B STOPPED AT THE ITEM WRAPPER. It made Wrap Up's three modules one
   construction — one `resultSection()`, one horizontal snap rail, one item —
   and everything outside the item agreed: same heading, same gap, same width,
-  same swipe. INSIDE it, FANTASYSTAKES PROP POOLS still drew the `.fs-poolrow`
+  same scroll. INSIDE it, FANTASYSTAKES PROP POOLS still drew the `.fs-poolrow`
   button it had drawn as a flat column: a 9px corner where the two rails above
   turned 12px, a 1px left edge under their 3px, and its own inset. Three rails
   that measured identically, holding two visibly different components — the
@@ -118,9 +118,9 @@ _section("§1 · the headings Rev 1.4 may not change")
 _week_js = _read("web", "js", "week.js")
 
 for _h in (
-    "YAHOO LEAGUE MATCHUPS · SWIPE",
-    "FANTASYSTAKES MATCHUPS · SWIPE",
-    "FANTASYSTAKES PROP POOLS · SWIPE",
+    "YAHOO LEAGUE MATCHUPS · SCROLL",
+    "FANTASYSTAKES MATCHUPS · SCROLL",
+    "FANTASYSTAKES PROP POOLS · SCROLL",
 ):
     _assert(f"the heading `{_h}` is stated verbatim", _h in _week_js)
 
@@ -165,7 +165,7 @@ _assert("the rail declares the shell it hands down",
 # CONTAINMENT IS A DECLARATION, and it is the one that separates a carousel from
 # a strip that happens to scroll: without it a flick past the last card chains
 # into the week column and moves the page instead.
-_assert("the swipe is contained to the rail",
+_assert("the scroll is contained to the rail",
         "overscroll-behavior-x: contain" in _css_code)
 _assert("the rail hides its own scrollbar",
         "scrollbar-width: none" in _css_code
