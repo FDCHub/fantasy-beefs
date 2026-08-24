@@ -37,7 +37,7 @@ export async function loadProductionData({ leagueId, week }) {
     && identity.capabilities.commissioner_league_ids.includes(leagueId),
   );
 
-  const [ledger, settings, slate, positions, reconciliation, action,
+  const [ledger, settings, slate, previousSlate, positions, reconciliation, action,
          weekMatchups, lifecycle, skunk, standings, championship,
          championshipResults, championshipCorrections,
          championshipConfig] = await Promise.all([
@@ -46,6 +46,9 @@ export async function loadProductionData({ leagueId, week }) {
     resolvedWeek === null
       ? Promise.resolve(null)
       : optional(apiFetch(`/league/${leagueId}/pool/slate/${resolvedWeek}`)),
+    resolvedWeek === null || resolvedWeek <= 1
+      ? Promise.resolve(null)
+      : optional(apiFetch(`/league/${leagueId}/pool/slate/${resolvedWeek - 1}`)),
     isCommissioner ? optional(apiFetch(`/league/${leagueId}/ledger/positions`))
                    : Promise.resolve(null),
     isCommissioner ? optional(apiFetch(`/league/${leagueId}/ledger/reconciliation`))
@@ -91,6 +94,7 @@ export async function loadProductionData({ leagueId, week }) {
     ledger,
     settings,
     slate,
+    previousSlate,
     positions,
     reconciliation,
     action,

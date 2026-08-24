@@ -42,6 +42,7 @@ export const GOVERNED_SLOT_COUNT = 4;
 
 let MODE = SLATE_MODE_DEMO;
 let SERVED = null;
+let PREVIOUS_SERVED = null;
 
 /**
  * The league's Standard Pool Bet, for the card's Entry row.
@@ -66,6 +67,13 @@ export function bindSlate(body) {
   SERVED = body;
   MODE = body && body.drawn ? SLATE_MODE_DRAWN : SLATE_MODE_UNDRAWN;
 }
+
+/** Bind the immediately preceding week's authoritative settled Pool read. */
+export function bindPreviousSlate(body) {
+  PREVIOUS_SERVED = body && body.drawn ? body : null;
+}
+
+export function unbindPreviousSlate() { PREVIOUS_SERVED = null; }
 
 /** The read failed or was refused. */
 export function markSlateUnavailable() {
@@ -180,6 +188,19 @@ export function slateRows() {
     myResult: slot.my_result || null,
     locked: SERVED.locked === undefined ? true : Boolean(SERVED.locked),
   }));
+}
+
+/** Settled rows from the immediately preceding served week. */
+export function previousSlateRows() {
+  if (!PREVIOUS_SERVED) return [];
+  const currentServed = SERVED;
+  const currentMode = MODE;
+  SERVED = PREVIOUS_SERVED;
+  MODE = SLATE_MODE_DRAWN;
+  const rows = slateRows();
+  SERVED = currentServed;
+  MODE = currentMode;
+  return rows;
 }
 
 /**

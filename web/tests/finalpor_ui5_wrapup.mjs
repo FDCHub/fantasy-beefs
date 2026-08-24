@@ -192,6 +192,10 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
     const mod = document.querySelector('.fs-wkmod[data-module="${moduleId}"]');
     const card = mod ? mod.querySelector('.fs-rescar__item > *') : null;
     if (!card) return { opened: false, reason: 'no card in ' + '${moduleId}' };
+    if (card.matches('.fs-wkmod__note')) {
+      return { opened: false, empty: true, text: card.textContent.trim(),
+               managementControls: card.querySelectorAll('button, input, select').length };
+    }
     // THE HANDLER IS BOUND ON THE ELEMENT CARRYING data-card-action, which may
     // be the card itself or a descendant. Reported when neither is present, so
     // a card with no expansion at all is a stated finding rather than a
@@ -251,6 +255,9 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
       hasInternalScroll: Boolean(scroller),
       titles,
       text: sheet.textContent.replace(/\\s+/g, ' ').trim().toLowerCase(),
+      managementControls: [...sheet.querySelectorAll('button, input, select')]
+        .filter((el) => !el.matches('[data-fs-close]'))
+        .map((el) => (el.textContent || el.getAttribute('aria-label') || '').trim()),
     };
   })();`;
 
@@ -261,6 +268,11 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
   ]) {
     report.section(`UI-5 · the ${label} expansion`);
     const s = await evaluate(OPEN(moduleId));
+    if (s.empty) {
+      report.check(`${label} renders a compact read-only empty state when this fixture has no record`,
+        s.managementControls === 0 && Boolean(s.text), s.text || 'empty');
+      continue;
+    }
     report.check(`${label} — the card expands`,
       s.opened === true, s.reason || 'opened');
     if (!s.opened) continue;
@@ -275,6 +287,8 @@ await withPage({ port: 9487, settleMs: 2500 }, async ({ evaluate, setViewport })
     report.check(`${label} — the close control is in the UPPER LEFT`,
       s.closeInUpperLeft === true,
       `upperRight=${s.closeInUpperRight} upperLeft=${s.closeInUpperLeft}`);
+    report.check(`${label} remains read-only with no wager-management controls`,
+      s.managementControls.length === 0, JSON.stringify(s.managementControls));
 
     /* WORD BOUNDARIES, NOT SUBSTRINGS. The first version matched `rain` inside
      * the team name "Gravy Train" and reported fabricated weather analysis on a

@@ -47,7 +47,7 @@ setRefreshHook({
 });
 
 /** The rails a live Matchup — Dynamic or Locked — can be sitting on. */
-const RAILS = ['live', 'waiting', 'action'];
+const RAILS = ['action'];
 
 let scheduled = false;
 
@@ -61,7 +61,10 @@ async function sweep() {
   const panel = document.getElementById('panel-action');
   if (!served || !panel || !Number.isFinite(Number(served.league_id))) return;
 
-  const cards = RAILS.flatMap((rail) => sectionCards(rail));
+  const cards = RAILS.flatMap((rail) => sectionCards(rail))
+    .filter((card) => card.mode === 'dynamic')
+    .filter((card) => !panel.querySelector(
+      `[data-card-id="${CSS.escape(card.id)}"] [data-status-refresh]`));
   if (!cards.length) return;
   await mountRefreshOdds(panel, {
     leagueId: served.league_id, cards, currentOddsFor,

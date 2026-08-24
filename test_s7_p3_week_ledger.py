@@ -484,7 +484,7 @@ _assert("and none in the Ledger source either",
         # not exist, and that record must not trip the check that it is gone.
         "View Full Reconciliation" not in _strip_comments(LEDGER_JS))
 _assert("the Wagering Summary is the elevated section",
-        "fs-lsec is-elevated" in LEDGER_PANEL)
+        "is-elevated" in LEDGER_PANEL)
 _assert("the memo states the pending-hold rule to the GM",
         "not counted again in Current Settle until a proposal is accepted" in LEDGER_PANEL)
 

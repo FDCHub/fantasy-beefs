@@ -26,7 +26,7 @@
  * `economy-command.js` follow.
  * ========================================================================== */
 
-import { escapeHtml } from './components.js';
+import { accordion, bindAccordions, escapeHtml } from './components.js';
 import { formatCredits } from './credits.js';
 
 /**
@@ -60,11 +60,23 @@ export function counterStakeSheet(spec) {
       + `${escapeHtml(formatCredits(availableCents))}</span>`
       + ' · whole Credits only.</p>';
 
+  const preview = [
+    accordion({ title: 'LINEUPS', bodyHtml:
+      '<div class="fs-note">Current provider lineup detail remains analysis-only and does not alter this counter.</div>' }),
+    accordion({ title: 'ON OFFER', bodyHtml:
+      `<div class="fs-prev__row"><span class="fs-prev__label">Current terms</span><span class="fs-prev__value">${escapeHtml(terms || 'Unavailable')}</span></div>` }),
+    accordion({ title: 'WHY THE LINE LOOKS THIS WAY', bodyHtml:
+      '<div class="fs-note">The current market context comes from FantasyStakes projections; the incoming proposal remains locked.</div>' }),
+    accordion({ title: 'THE READ', bodyHtml:
+      `<div class="fs-note">${escapeHtml(card.copy || 'Review the locked offer before sending new terms.')}</div>` }),
+  ].join('');
+
   return {
     title: 'Counter with a different stake',
     sub: card.opponent ? String(card.opponent) : '',
     body:
       '<div class="fs-cstake" id="fs-cstake">'
+      + `<div class="fs-cstake__preview">${preview}</div>`
       + (terms
         ? `<div class="fs-cstake__terms">${escapeHtml(terms)}</div>` : '')
       + '<label class="fs-cstake__label" for="fs-cstake-input">Your stake</label>'
@@ -114,6 +126,7 @@ export function parseWholeCredits(raw) {
  * @param {object} spec
  */
 function bindCounterStake(host, api, spec) {
+  bindAccordions(host);
   const input = host.querySelector('#fs-cstake-input');
   const send = host.querySelector('#fs-cstake-send');
   const cancel = host.querySelector('#fs-cstake-cancel');

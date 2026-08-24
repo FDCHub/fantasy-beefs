@@ -29,7 +29,7 @@
  * `FANTASYSTAKES CHAMPIONSHIP` and `CHAMPIONSHIP CHASE · WEEK n`. A paragraph
  * that starts anywhere else reads as a separate block however it is styled. */
 .fs-st__explainer {
-  margin: 0 var(--fs-gutter) var(--fs-space-4);
+  margin: 0 var(--fs-gutter) var(--fs-space-3);
   font-size: var(--fs-c-size-fine);
   line-height: 1.45;
   color: var(--fs-c-text-muted);

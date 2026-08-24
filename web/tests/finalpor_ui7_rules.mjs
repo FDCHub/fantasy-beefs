@@ -107,8 +107,8 @@ const PROBE = `return (async () => {
 
   return {
     on: true,
-    groups: [...rulesPanel.querySelectorAll('[data-rule]')].map(
-      (el) => (el.querySelector('.fs-rulerow__title') || {}).textContent),
+    groups: [...rulesPanel.querySelectorAll('[data-accordion^="rule-"]')].map(
+      (el) => (el.querySelector('.fs-accordion__title') || {}).textContent),
 
     hasTable: Boolean(table),
     // THE HEADER CELLS, each measured for clipping the way UI-2 measures them.
@@ -201,30 +201,24 @@ const OPEN_ROW = (rowId) => `return (async () => {
   return out;
 })();`;
 
-/** Open one rule group and report its sheet. */
+/** Expand one rule group and report its rendered accordion. */
 const OPEN_GROUP = (id) => `return (async () => {
   FantasyStakes.goTo('rules');
   await new Promise((r) => setTimeout(r, 250));
-  const row = document.querySelector('[data-rule="${id}"]');
+  const row = document.querySelector('[data-accordion="rule-${id}"]');
   if (!row) return { opened: false, reason: 'no such group' };
-  row.click();
-  await new Promise((r) => setTimeout(r, 500));
-  const overlay = document.getElementById('fs-overlay');
-  const sheet = overlay && overlay.classList.contains('is-open')
-    ? document.getElementById('fs-sheet') : null;
-  if (!sheet) return { opened: false, reason: 'no sheet opened' };
+  row.querySelector('[data-accordion-toggle]').click();
+  await new Promise((r) => setTimeout(r, 100));
   const out = {
-    opened: true,
-    title: (sheet.querySelector('.fs-sheet__title') || {}).textContent,
-    ruleCount: sheet.querySelectorAll('.fs-rule__head').length,
-    sourceCount: sheet.querySelectorAll('.fs-rule__src').length,
-    text: (sheet.textContent || '').replace(/\\s+/g, ' ').trim(),
+    opened: row.classList.contains('is-open'),
+    title: (row.querySelector('.fs-accordion__title') || {}).textContent,
+    ruleCount: row.querySelectorAll('.fs-rule__head').length,
+    sourceCount: row.querySelectorAll('.fs-rule__src').length,
+    text: (row.textContent || '').replace(/\\s+/g, ' ').trim(),
     docScrollW: document.documentElement.scrollWidth,
     docClientW: document.documentElement.clientWidth,
   };
-  const closer = sheet.querySelector('[data-fs-close]');
-  if (closer) closer.click();
-  await new Promise((r) => setTimeout(r, 250));
+  row.querySelector('[data-accordion-toggle]').click();
   return out;
 })();`;
 

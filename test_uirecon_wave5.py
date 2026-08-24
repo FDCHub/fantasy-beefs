@@ -253,6 +253,7 @@ _assert("the expected challenge count is accepted contests plus negotiations",
         _expected["challenges"]
         == (len(_showcase_mod.VERSUS_PER_WEEK_MARKETS)
             * (_showcase_mod.COMPLETED_THROUGH_WEEK + 1)
+            + len(_showcase_mod.VISITOR_LIVE_EXTRA_MATCHUPS)
             + len(_showcase_mod.VISITOR_OPEN_NEGOTIATIONS)),
         str(_expected["challenges"]))
 _assert("the expected offered count is the fixture's own length",
@@ -261,15 +262,15 @@ _assert("the expected offered count is the fixture's own length",
         str(_expected["offered_challenges"]))
 
 # THE WAVE 3 PROP POOL PICK IS UNTOUCHED.
-_assert("the visitor still has exactly one open Prop Pool slot",
+_assert("the visitor still has the governed open Prop Pool slot",
         _showcase_mod.visitor_skips_claim(
             _showcase_mod.CURRENT_WEEK, _showcase_mod.VISITOR_OPEN_PICK_SLOT,
             _showcase_mod.VISITOR_ORDINAL))
-_assert("and no other slot was opened",
+_assert("and the compact showcase leaves three slots open",
         sum(1 for slot in range(1, _showcase_mod.POOL_SLOTS_PER_WEEK + 1)
             if _showcase_mod.visitor_skips_claim(
                 _showcase_mod.CURRENT_WEEK, slot,
-                _showcase_mod.VISITOR_ORDINAL)) == 1)
+                _showcase_mod.VISITOR_ORDINAL)) == 3)
 
 # ONE DIRECTION EACH — the rails only differ if the seeding does.
 _dirs = {(s.issuer_ordinal == _showcase_mod.VISITOR_ORDINAL)
@@ -331,8 +332,8 @@ def _functional() -> None:
         _assert("WAITING carries a real record",
                 len(rails.get("waiting", [])) >= 1,
                 str(len(rails.get("waiting", []))))
-        _assert("LIVE still carries the Wave 4 accepted Matchup",
-                len(rails.get("live", [])) == 1,
+        _assert("LIVE carries the two accepted Demo Matchups",
+                len(rails.get("live", [])) == 2,
                 str(len(rails.get("live", []))))
         _assert("COMPLETED still carries the Wave 4 settled Matchups",
                 len(rails.get("completed", [])) == 7,
@@ -368,7 +369,8 @@ def _functional() -> None:
             _assert(f"challenge {card.challenge_id} placed no Bet",
                     int(bets or 0) == 0, str(bets))
 
-        # THE ESCROW CAME OUT OF THE WEEKLY MINIMUM, NOT A WALLET.
+        # Funding follows the locked priority: minimum first, then Wallet once
+        # the current week's minimum has been committed.
         for card in rails["action"] + rails["waiting"]:
             legs = db.execute(_text(
                 "SELECT account, amount_cents FROM ledger_entries "
@@ -376,9 +378,9 @@ def _functional() -> None:
                 "                     WHERE account = :escrow)"),
                 {"escrow": f"escrow:challenge:{card.challenge_id}"}).fetchall()
             sources = [a for a, c in legs if int(c) < 0]
-            _assert(f"challenge {card.challenge_id} was funded from a weekly "
-                    f"minimum, not a wallet",
-                    sources and all(a.startswith("min:") for a in sources),
+            _assert(f"challenge {card.challenge_id} uses a governed minimum-or-wallet source",
+                    sources and all(a.startswith("min:") or a.startswith("wallet:")
+                                    for a in sources),
                     ", ".join(sources) or "no legs")
 
         # EVERY SEEDED NEGOTIATION IS ONE THE FIXTURE NAMES.
@@ -387,6 +389,7 @@ def _functional() -> None:
         by_id = {t.id: ordinal_of.get(t.team_name)
                  for t in db.query(Team).filter(Team.league_id == league.id)}
         for row in db.query(BeefChallenge).filter(
+                BeefChallenge.league_id == league.id,
                 BeefChallenge.response_status.isnot(None)).all():
             _assert(f"challenge {row.id} is a negotiation the fixture declares",
                     _showcase_mod.is_open_negotiation(

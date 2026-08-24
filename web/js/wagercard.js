@@ -161,6 +161,7 @@ export function wagerCard(spec) {
     tapAction = '',
     tapId = '',
     className = '',
+    interactiveAside = false,
   } = spec || {};
 
   if (!identity) throw new TypeError('a wager card needs an identity');
@@ -174,7 +175,7 @@ export function wagerCard(spec) {
   // a plain container and puts a real button in its foot. A card whose only
   // action is the card itself becomes the button. Either way there is exactly
   // one keyboard path per action, and no button is ever nested inside a button.
-  const nestedControls = Boolean(markets && interactiveMarkets);
+  const nestedControls = Boolean((markets && interactiveMarkets) || interactiveAside);
   const activation = tapAction && !nestedControls ? ' role="button" tabindex="0"' : '';
 
   const attrs =

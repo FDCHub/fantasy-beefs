@@ -21,7 +21,8 @@
 
 import { attributionFooter } from './attribution.js';
 import {
-  CREDITS_DISCLAIMER, PanelComposer, escapeHtml, note, sectionHeading, tabHeader,
+  CREDITS_DISCLAIMER, PanelComposer, accordion, bindAccordions, escapeHtml,
+  note, sectionHeading, tabHeader,
 } from './components.js';
 import { LEGAL_LINE, RULE_GROUPS, SETTINGS, SETTINGS_SEAM } from './data/rules-data.js';
 import {
@@ -47,23 +48,23 @@ export const RULES_SUBTITLE = 'How FantasyStakes is played';
 /* ── A · Rules ──────────────────────────────────────────────────────────────*/
 
 /**
- * One rule group as a compact, tappable row.
- *
- * The chevron is the disclosure affordance; the row opens the shared sheet
- * rather than expanding in place, because a rules sheet is long-form reading
- * and the tab behind it is a directory.
+ * One rule group in the shared disclosure shell.
  */
 function ruleRow(group) {
-  return (
-    `<button type="button" class="fs-rulerow" data-rule="${escapeHtml(group.id)}">` +
-    '<span class="fs-rulerow__main">' +
-    `<span class="fs-rulerow__title">${escapeHtml(group.title)}</span>` +
-    `<span class="fs-rulerow__blurb">${escapeHtml(group.blurb)}</span>` +
-    '</span>' +
-    `<span class="fs-rulerow__count">${group.rules.length}</span>` +
-    '<span class="fs-rulerow__chev">›</span>' +
-    '</button>'
-  );
+  const body = group.rules.map((rule) => (
+    '<section class="fs-rule">'
+    + `<div class="fs-rule__head">${escapeHtml(rule.heading)}</div>`
+    + `<div class="fs-rule__body">${escapeHtml(rule.body)}</div>`
+    + `<div class="fs-rule__src">${escapeHtml(rule.source)}</div>`
+    + '</section>'
+  )).join('');
+  return accordion({
+    key: `rule-${group.id}`,
+    title: group.title,
+    sub: group.blurb,
+    meta: String(group.rules.length),
+    bodyHtml: body,
+  });
 }
 
 function rulesRegion() {
@@ -550,12 +551,7 @@ export function buildCommissionerPanel() {
  * @param {{openSheet: Function}} api
  */
 export function bindRules(panel, api) {
-  panel.querySelectorAll('[data-rule]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const group = RULE_GROUPS.find((g) => g.id === el.dataset.rule);
-      if (group) api.openSheet(ruleSheet(group));
-    });
-  });
+  bindAccordions(panel);
 
   /* THE ONE EDITABLE SETTING KEEPS ITS PATH ACROSS §23's RENAME.
    *

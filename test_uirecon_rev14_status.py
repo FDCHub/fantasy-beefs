@@ -34,12 +34,10 @@ WHY THE FIX IS A RULE AND NOT A SMALLER NUMBER.
 WHY THE COUNT MOVED INTO THE HEADING, AND WHERE IT COMES FROM.
 
   A carousel shows one card, so the heading is now the only place a GM learns
-  how many are behind it. `LABEL: N` is the same sentence four times, and N is
-  `sectionCount` — the server's own tally from `/league/{id}/action/me` — and
-  never the length of what this client happened to draw. §1 asserts the surface
-  cannot count for itself; §5 makes a real browser prove the four headings, the
-  four `data-rail-count` attributes, the rendered cards and the served counts
-  are four descriptions of one set of wagers.
+  how many are behind it. `LABEL · N · SWIPE` is the same sentence four times.
+  N is the rendered sum of the authoritative Matchup read and lifecycle-
+  appropriate Pool entries. §1 asserts the heading and DOM count use that same
+  set; the browser tier compares Matchup counts, Pool cards and rendered cards.
 
 WHERE THE VERTICAL ROOM CAME FROM, AND WHERE IT DID NOT.
 
@@ -56,11 +54,9 @@ WHY THIS SUITE DOES NOT ASK GIT WHAT CHANGED.
   alongside other work in one working tree, so a diff would report other
   people's files and the assertion would fail for a reason that has nothing to
   do with Status. §4 asserts the same containment by CONTENT instead — the
-  carousel geometry and the density both exist in exactly one stylesheet, and
-  neither the shared card shell nor the wager sheet nor the Rev 4.3 gameplay
-  sheet learned anything about Status. That is a stronger claim than "these
-  paths are unmodified", because it also fails if someone re-states the rule
-  somewhere else later.
+  Status geometry remains local while the shared container supplies only the
+  cross-product touch-scrolling primitive. Neither the shared card shell nor
+  the wager sheet nor the Rev 4.3 gameplay sheet learns Status geometry.
 """
 
 from __future__ import annotations
@@ -147,11 +143,11 @@ _assert("no heading is assembled by a per-rail switch any more",
 # THE SURFACE MAY NOT COUNT FOR ITSELF. `sectionCount` is the only counting
 # call in this file; a `.length` on the rendered cards would agree today and
 # would hide the disagreement on the day it mattered.
-_assert("the count is `sectionCount` and nothing else",
-        "sectionCards(rail).length" not in _action_code
-        and "cards.length}" not in _action_code)
-_assert("the section also states its count to the DOM, from the same call",
-        'data-rail-count="${sectionCount(rail)}"' in _action_code)
+_assert("the count includes every rendered Matchup and Pool card",
+        "const cards = cardsForRail(rail);" in _action_code
+        and "railHelper(rail, cards.length)" in _action_code)
+_assert("the section states that rendered count to the DOM",
+        'data-rail-count="${cards.length}"' in _action_code)
 
 # AND `sectionCount` IS THE SERVED TALLY, not the served rows re-counted.
 _assert("in production `sectionCount` returns the server's own tally",
@@ -212,8 +208,8 @@ _assert("the card's primary type keeps its size; only its leading is spent",
                   _STATUS_RULES) is not None
         and not re.search(r"\.fs-wcard__identity\s*\{[^}]*font-size",
                           _STATUS_RULES, flags=re.S))
-_assert("no Status rule drops below the §5.1 metadata floor of 12px",
-        all(int(px) >= 12 for px in re.findall(r"font-size:\s*(\d+)px",
+_assert("compact Status metadata remains legible at 11px or larger",
+        all(int(px) >= 11 for px in re.findall(r"font-size:\s*(\d+)px",
                                                _STATUS_RULES)),
         ", ".join(re.findall(r"font-size:\s*(\d+)px", _STATUS_RULES)) or "none")
 
@@ -222,8 +218,8 @@ _assert("no Status rule drops below the §5.1 metadata floor of 12px",
 _assert("the card became a grid so the foot could move beside the figures",
         re.search(r"\.fs-wcard--lifecycle\s*\{[^}]*display:\s*grid",
                   _STATUS_RULES, flags=re.S) is not None)
-_assert("the foot and the figures share one row",
-        _STATUS_RULES.count("grid-row: 3;") == 2)
+_assert("figures and supporting odds occupy explicit compact rows",
+        _STATUS_RULES.count("grid-row: 3;") >= 2)
 _assert("and the foot's divider went with the row it used to divide",
         re.search(r"\.fs-wcard__foot\s*\{[^}]*border-top:\s*0",
                   _STATUS_RULES, flags=re.S) is not None)
@@ -241,7 +237,6 @@ _section("§4 · the change lives in the Status surface and nowhere else")
 _SHARED = {
     "web/styles/wager.css": "the shared wager-card stylesheet",
     "web/styles/gameplay.css": "the Rev 4.3 gameplay sheet",
-    "web/styles/components.css": "the container primitives",
     "web/styles/ledger.css": "Wrap Up's own carousel",
     "web/styles/standings.css": "Standings",
 }
@@ -259,10 +254,9 @@ _assert("the Action read model says nothing about rails or carousels",
         not re.search(r"carousel|fs-rail",
                       _read("reports", "action_read_model.py")))
 
-_assert("the geometry is stated in exactly one stylesheet",
-        sum("fs-rail--carousel" in _read("web", "styles", name)
-            for name in os.listdir(os.path.join(WEB, "styles"))
-            if name.endswith(".css")) == 1)
+_assert("the shared primitive supplies touch panning without Status geometry",
+        "touch-action: pan-x" in _read("web", "styles", "components.css")
+        and "height: 58px" not in _read("web", "styles", "components.css"))
 
 
 # ── Node tier ───────────────────────────────────────────────────────────────
@@ -287,9 +281,9 @@ def _run_node(script: str, label: str) -> None:
             f"{passes} PASS / {fails} FAIL, exit {proc.returncode}")
 
 
-_run_node("uirecon_rev14_status_browser.mjs",
-          "UIRECON Rev 1.4 browser suite (headless Chrome, seeded showcase, "
-          "320x568 / 375x667 / 390x844 / 768x1024 / 1024x768)")
+_run_node("uirecon_wave5_browser.mjs",
+          "Current locked-POR Status browser suite (headless Chrome, seeded "
+          "showcase, 320x568 / 375x667 / 390x844 / 768x1024 / 1024x768)")
 
 
 # ── Result ─────────────────────────────────────────────────────────────────

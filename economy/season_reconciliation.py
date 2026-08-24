@@ -49,7 +49,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from economy.championship_distribution import (
-    distribute_championship, podium_standings,
+    distribute_championship as calculate_championship_distribution,
+    podium_standings,
 )
 from economy.championship_podium import resolve_podium
 from economy.economy_events import (
@@ -379,8 +380,8 @@ def distribute_championship(db, *, league_id: int,
     #
     # The `(place, team_id, pct, cents)` tuple shape is preserved for
     # `ChampionshipResult.placements` and every certified caller of it.
-    ranked = distribute_championship(pot, podium_standings(order),
-                                     split=tuple(split))
+    ranked = calculate_championship_distribution(
+        pot, podium_standings(order), split=tuple(split))
     by_place = {p.place: p for p in ranked}
     placements = tuple(
         (p.place, p.team_id, split[p.place - 1] if p.place <= len(split) else 0,

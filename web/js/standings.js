@@ -2,10 +2,9 @@
  * FantasyStakes — first-tab standings / Championship Chase
  * ========================================================================== */
 
-import { attributionFooter } from './attribution.js';
-import { creditsDisclaimer, escapeHtml } from './components.js';
+import { escapeHtml } from './components.js';
 import {
-  creditsTone, exactCentsAttr, formatCredits, formatSignedCredits,
+  MINUS, creditsTone, exactCentsAttr, roundCentsToWholeDollars,
 } from './credits.js';
 import {
   STANDINGS_STATE_LOADING,
@@ -47,9 +46,11 @@ const STATE_COPY = Object.freeze({
 
 function moneyCell(cents) {
   const tone = creditsTone(cents);
+  const whole = roundCentsToWholeDollars(cents);
+  const text = whole === 0 ? '—' : (whole > 0 ? `+${whole}` : `${MINUS}${Math.abs(whole)}`);
   return (
     `<td class="fs-st__num fs-money ${tone}"${exactCentsAttr(cents)}>`
-    + `${escapeHtml(formatSignedCredits(cents))}</td>`
+    + `${escapeHtml(text)}</td>`
   );
 }
 
@@ -66,7 +67,8 @@ function moneyCell(cents) {
  * reader who needs them. */
 function skunkCell(cents) {
   const amount = Math.abs(Number(cents) || 0);
-  const text = amount === 0 ? '—' : formatCredits(amount);
+  const whole = roundCentsToWholeDollars(amount);
+  const text = whole === 0 ? '—' : String(whole);
   return (
     `<td class="fs-st__num fs-st__skunk${amount === 0 ? ' is-none' : ''}"`
     + `${exactCentsAttr(amount)}>${escapeHtml(text)}</td>`
@@ -113,7 +115,7 @@ function standingsTable(table, withRows) {
   return (
     `<section class="fs-st${withRows ? '' : ' is-empty'}" `
     + `data-standings-table="${escapeHtml(table.key)}">`
-    + `<h2 class="fs-st__heading">${escapeHtml(table.heading)}</h2>`
+    + (table.heading ? `<h2 class="fs-st__heading">${escapeHtml(table.heading)}</h2>` : '')
     + '<table class="fs-st__table">'
     + `<thead><tr>${head}</tr></thead>`
     + `<tbody>${withRows ? tableRows(table) : ''}</tbody>`
@@ -194,13 +196,11 @@ function championshipSubheading() {
  * arithmetic; now they can, and the copy tells them the rule they are checking
  * against. */
 export const STANDINGS_EXPLAINER_LINES = Object.freeze([
-  'Your FantasyStakes Score determines your championship standing.',
-  'FantasyStakes Score = Matchups + Prop Pools − Skunk Fees',
-  'Wallet balance does not affect championship position.',
+  'FantasyStakes standings combine Matchup net, Pool net and Skunk fees.',
 ]);
 
 function championshipExplainer() {
-  const base = STANDINGS_EXPLAINER_LINES.join(' ');
+  const base = STANDINGS_EXPLAINER_LINES[0];
   switch (championshipLifecycle()) {
     case 'PAID':
       return `${base} Pot paid.`;
@@ -233,9 +233,8 @@ export function buildStandingsPanel() {
     + '</div>'
     + '</div>'
     + `<p class="fs-st__explainer">${escapeHtml(championshipExplainer())}</p>`
-    + creditsDisclaimer()
+    + '<p class="fs-st__creditline">Virtual credits · display only · no cash value</p>'
     + `<div class="fs-st__scroll" id="fs-standings-scroll">${body}</div>`
-    + attributionFooter()
   );
 }
 

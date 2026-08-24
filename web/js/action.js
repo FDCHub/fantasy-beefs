@@ -57,6 +57,10 @@ import {
   sectionCount,
 } from './action-model.js';
 import { currentWeek } from './league-model.js';
+import { marketFor } from './market-model.js';
+import { previousSlateRows, slateRows } from './pool-slate-model.js';
+import { refreshPairingContext } from './play-odds-refresh.js';
+import { formatOdds } from './wager-model.js';
 import { moneyFigure, wagerCard } from './wagercard.js';
 import { onActivate } from './interaction.js';
 
@@ -206,7 +210,8 @@ export function buildActionPanel() {
   composer.add(
     `<div class="fs-rails" data-action-mode="${actionMode()}">` +
     RAILS.map((rail) => {
-      const body = railBody(rail);
+      const cards = cardsForRail(rail);
+      const body = railBody(rail, cards);
       // WP5 — `role="list"` ONLY WHEN THE RAIL HOLDS LISTITEMS. An empty or
       // unavailable rail draws an explanatory paragraph instead of cards, and a
       // `<p>` inside `role="list"` is an ARIA violation: a list may hold only
@@ -227,8 +232,8 @@ export function buildActionPanel() {
       // side going through a regular expression.
       return (
         `<section class="fs-railsec" data-rail="${rail}"` +
-        ` data-rail-count="${sectionCount(rail)}">` +
-        sectionHeading(RAIL_WORDS[rail], railHelper(rail)) +
+        ` data-rail-count="${cards.length}">` +
+        sectionHeading(RAIL_WORDS[rail], railHelper(rail, cards.length)) +
         `<div class="fs-rail is-stretch fs-rail--carousel"` +
         `${isList ? ' role="list"' : ''}>` +
         body +
@@ -305,9 +310,9 @@ export function railHeading(rail) {
 }
 
 /** Count/affordance slot shared with Play's canonical section heading. */
-export function railHelper(rail) {
+export function railHelper(rail, count = null) {
   if (!RAIL_WORDS[rail]) throw new Error(`unknown rail "${rail}"`);
-  return `${sectionCount(rail)} · ${SWIPE_WORD}`;
+  return `${count === null ? cardsForRail(rail).length : count} · ${SWIPE_WORD}`;
 }
 
 /**
@@ -325,14 +330,13 @@ export function railHelper(rail) {
  * @param {string} rail
  * @returns {string}
  */
-function railBody(rail) {
+function railBody(rail, cards = cardsForRail(rail)) {
   if (actionMode() === ACTION_MODE_UNAVAILABLE) {
     return '<p class="fs-rail__note" data-rail-state="unavailable">'
       + 'Your wagers could not be loaded. Nothing here is out of date — it is '
       + 'simply not available right now.</p>';
   }
 
-  const cards = sectionCards(rail);
   if (!cards.length) {
     const empty = actionMode() === ACTION_MODE_AUTHORITATIVE && actionIsEmpty();
     return '<p class="fs-rail__note" data-rail-state="empty">'
@@ -340,8 +344,58 @@ function railBody(rail) {
       + '</p>';
   }
   return cards.map((card) => (
-    `<div class="fs-rail__item" role="listitem">${lifecycleCard(card)}</div>`
+    `<div class="fs-rail__item" role="listitem">${card.kind === 'pool' ? poolLifecycleCard(card) : lifecycleCard(card)}</div>`
   )).join('');
+}
+
+function poolCardsForRail(rail) {
+  if (actionMode() !== ACTION_MODE_AUTHORITATIVE) return [];
+  const rows = rail === 'completed' ? previousSlateRows() : slateRows();
+  return rows.filter((pool) => pool.mySubjectId != null)
+    .filter((pool) => (pool.settled ? rail === 'completed' : rail === 'live'))
+    .slice(0, 1)
+    .map((pool) => ({ ...pool, kind: 'pool', id: `pool-${pool.poolInstanceId}` }));
+}
+
+function cardsForRail(rail) {
+  return [...sectionCards(rail), ...poolCardsForRail(rail)];
+}
+
+function poolLifecycleCard(pool) {
+  const picked = (pool.subjects || []).find((s) => s.subject_id === pool.mySubjectId);
+  const result = pool.settled ? String(pool.myResult || 'settled').replace('_', ' ') : 'Entered';
+  return wagerCard({
+    identity: pool.name,
+    context: `PROP POOL · ${result.toUpperCase()}`,
+    badge: pool.settled ? 'RESOLVED' : 'LOCKED',
+    badgeTone: pool.settled ? 'neutral' : 'positive',
+    figures: [
+      moneyFigure('Entry', pool.entryCents),
+      moneyFigure('Pot', pool.potCents),
+      ...(pool.settled ? [moneyFigure('Net', pool.myReturnCents || 0, { signed: true })] : []),
+    ],
+    copy: pool.settled ? 'Final Pool result.' : 'Entry locked until the Pool resolves.',
+    footLabel: 'Your pick',
+    footValue: picked ? picked.label : '—',
+    accent: pool.settled ? 'done' : 'live',
+    className: 'fs-wcard--lifecycle fs-wcard--pool-status',
+    tapAction: 'pool-status',
+    tapId: String(pool.poolInstanceId),
+  });
+}
+
+function statusOddsAside(card) {
+  if (actionMode() !== ACTION_MODE_AUTHORITATIVE) return '';
+  if ((card.section || lifecycleOf(card)) !== 'action') return '';
+  const locked = Number.isInteger(card.yourMoneyline) ? formatOdds(card.yourMoneyline) : '—';
+  const current = marketFor(card.opponentTeamId);
+  const now = current && current.available && Number.isInteger(current.acting_moneyline)
+    ? formatOdds(current.acting_moneyline) : '—';
+  return '<div class="fs-statusodds" data-status-odds>'
+    + `<span>LOCKED <strong>${escapeHtml(locked)}</strong></span>`
+    + `<span>NOW <strong data-status-current>${escapeHtml(now)}</strong></span>`
+    + `<button type="button" data-status-refresh data-opponent-team-id="${escapeHtml(String(card.opponentTeamId))}" aria-label="Refresh current odds">↻</button>`
+    + '</div>';
 }
 
 /** What an individual empty rail says when others have cards. */
@@ -391,12 +445,15 @@ export function lifecycleCard(card) {
       + (card.week ? ` · ${card.week}` : ''),
     figures,
     copy: card.copy || cardCopy(card),
+    aside: statusOddsAside(card),
     badge: badgeFor(card),
     badgeTone: badgeToneFor(card),
     accent: accentFor(card),
     footLabel: footLabelFor(card),
     footValue: footValueFor(card),
     className: 'fs-wcard--lifecycle',
+    interactiveAside: actionMode() === ACTION_MODE_AUTHORITATIVE
+      && (card.section || lifecycleOf(card)) === 'action',
     tapAction: 'wager',
     tapId: card.id,
   });
@@ -740,6 +797,30 @@ const CONTROL_WORDS = Object.freeze({
  * @param {{openSheet: Function}} api
  */
 export function bindAction(panel, api) {
+  panel.querySelectorAll('[data-status-refresh]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      button.disabled = true;
+      try {
+        await refreshPairingContext(Number(button.dataset.opponentTeamId));
+        const row = marketFor(Number(button.dataset.opponentTeamId));
+        const value = button.closest('[data-status-odds]')?.querySelector('[data-status-current]');
+        if (value) value.textContent = row && row.available && Number.isInteger(row.acting_moneyline)
+          ? formatOdds(row.acting_moneyline) : '—';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  panel.querySelectorAll('[data-card-action="pool-status"]').forEach((el) => {
+    onActivate(el, () => {
+      const pool = [...slateRows(), ...previousSlateRows()]
+        .find((row) => String(row.poolInstanceId) === el.dataset.cardId);
+      if (pool) api.openSheet(poolStatusSheet(pool));
+    });
+  });
   panel.querySelectorAll('[data-card-action="wager"]').forEach((el) => {
     onActivate(el, () => {
       // THE BOUND CARDS, not the fixture's. In production `sectionCards`
@@ -819,5 +900,18 @@ export function wagerSheet(card) {
       `<div class="fs-note">${escapeHtml(card.copy || modeCopy(card))}</div>` +
       responseControls(card),
     onMount: (host, api) => bindResponseControls(host, api, card),
+  };
+}
+
+function poolStatusSheet(pool) {
+  const picked = (pool.subjects || []).find((s) => s.subject_id === pool.mySubjectId);
+  return {
+    title: pool.name,
+    sub: pool.settled ? 'Resolved Prop Pool' : 'Locked Prop Pool entry',
+    body: '<div class="fs-prev__row"><span class="fs-prev__label">Your pick</span>'
+      + `<span class="fs-prev__value">${escapeHtml(picked ? picked.label : '—')}</span></div>`
+      + '<div class="fs-prev__row"><span class="fs-prev__label">Pot</span>'
+      + `<span class="fs-prev__value fs-money">${escapeHtml(formatCredits(pool.potCents))}</span></div>`
+      + '<div class="fs-note">Status is read from the governed Pool entry and settlement record. Pool picks are made on Play.</div>',
   };
 }

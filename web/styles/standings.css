@@ -27,7 +27,7 @@
 }
 
 .fs-st {
-  margin-top: var(--fs-space-5);
+  margin-top: var(--fs-space-2);
 }
 
 .fs-st__heading {
@@ -235,10 +235,10 @@
  * and the team names stay at the §5.1 sizes, because shrinking the data to fit
  * a label is the wrong trade in the other direction. */
 [data-standings-table="overall"] .fs-st__table {
-  --fs-st6-rank:  min(1.5rem,  7.5vw);
-  --fs-st6-fig:   min(3.5rem, 17.5vw);
-  --fs-st6-skunk: min(2.75rem, 13.7vw);
-  --fs-st6-wide:  min(4.4rem, 21.8vw);
+  --fs-st6-rank:  min(1.35rem,  6.8vw);
+  --fs-st6-fig:   min(2.9rem, 14.5vw);
+  --fs-st6-skunk: min(2.9rem, 14.5vw);
+  --fs-st6-wide:  min(2.9rem, 14.5vw);
 }
 
 [data-standings-table="overall"] .fs-st__table th,
@@ -263,7 +263,7 @@
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
-  font-size: var(--fs-st-head-6col);
+  font-size: 9px;
   line-height: 1.15;
   /* A single long word must not be broken mid-word to fit; the tracks below
    * are cut so it does not have to be. */
@@ -287,6 +287,26 @@
 [data-standings-table="overall"] .fs-st__table th:nth-child(5),
 [data-standings-table="overall"] .fs-st__table td:nth-child(5) {
   width: var(--fs-st6-skunk);
+}
+
+[data-standings-table="overall"] .fs-st__table th:nth-child(4),
+[data-standings-table="overall"] .fs-st__table td:nth-child(4),
+[data-standings-table="overall"] .fs-st__table th:nth-child(5),
+[data-standings-table="overall"] .fs-st__table td:nth-child(5) {
+  text-align: center;
+}
+
+[data-standings-table="overall"] .fs-st__table th:last-child,
+[data-standings-table="overall"] .fs-st__table td:last-child {
+  font-weight: var(--fs-weight-strong);
+  text-align: right;
+}
+
+.fs-st__creditline {
+  margin: -8px var(--fs-gutter) var(--fs-space-2);
+  color: var(--fs-r43-secondary);
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 /* THE SKUNK FIGURE IS NOT MONEY-TONED. It is an amount assessed against a GM,

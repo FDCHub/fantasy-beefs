@@ -365,7 +365,7 @@
 }
 
 .fs-lsec {
-  padding: var(--fs-space-4);
+  padding: 0;
   background: var(--card);
   border: var(--fs-border);
   border-radius: var(--fs-radius-card);
@@ -378,6 +378,14 @@
  * selector covers it and there is nothing left to keep in step. */
 .fs-lsec + .fs-lsec { margin-top: var(--fs-space-3); }
 
+@media (max-height: 620px) {
+  #panel-ledger .fs-seasonlabel,
+  #panel-ledger #fs-strip-season { display: none; }
+  #panel-ledger .fs-lscroll { padding-top: 2px; padding-bottom: 2px; }
+  #panel-ledger .fs-lsec + .fs-lsec { margin-top: 2px; }
+  #panel-ledger .fs-accordion__button { min-height: 44px; padding-top: 4px; padding-bottom: 4px; }
+}
+
 /* Section 2 is the statement of the page: a gold edge and a lifted fill mark
  * it as the section the others explain into. */
 .fs-lsec.is-elevated {
@@ -386,7 +394,7 @@
   box-shadow: inset 2px 0 0 var(--gold);
 }
 
-.fs-lsec__head { display: flex; align-items: baseline; gap: var(--fs-space-2); }
+.fs-lsec__head { align-items: center; }
 
 .fs-lsec__num {
   font-family: var(--fs-font-money);
@@ -396,20 +404,20 @@
 }
 
 .fs-lsec__title {
-  font-size: var(--fs-size-fine);
-  font-weight: var(--fs-weight-heavy);
-  letter-spacing: var(--fs-track-eyebrow);
+  font-size: 16px;
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: 0;
   color: var(--bone);
 }
 
 .fs-lsec__sub {
-  margin: 2px 0 var(--fs-space-3);
-  font-size: var(--fs-size-micro);
-  line-height: 1.4;
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.25;
   color: var(--g1);
 }
 
-.fs-lsec__body { display: flex; flex-direction: column; }
+.fs-lsec__body { flex-direction: column; }
 
 /* ── Ledger · rows ─────────────────────────────────────────────────────────*/
 

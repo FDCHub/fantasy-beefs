@@ -40,7 +40,7 @@ from datetime import datetime, timezone
 
 from demo import showcase
 
-DEMO_LEAGUE_NAME = "FantasyStakes Demo League"
+DEMO_LEAGUE_NAME = "Whispers Demo League"
 
 #: The account a Try Demo visitor is seated as. A PLAIN GM, seated on one
 #: showcase team — never a commissioner. D2 proved why the seat matters: with

@@ -2,8 +2,18 @@ import { createReporter, withPage } from './browser-harness.mjs';
 
 const { check, section, finish } = createReporter();
 const VIEWPORTS = [[320, 568], [375, 667], [390, 844]];
+const EXPECT_COMMISSIONER = process.env.FS_TEST_EXPECT_COMMISSIONER === '1';
 
-await withPage({ origin: process.env.FS_TEST_ORIGIN, settleMs: 1500 }, async ({ evaluate, setViewport }) => {
+await withPage({ origin: process.env.FS_TEST_ORIGIN,
+  port: EXPECT_COMMISSIONER ? 9343 : 9333, settleMs: 1500 }, async ({ evaluate, setViewport }) => {
+  const mounted = await evaluate(`return new Promise((resolve) => {
+    const end = Date.now() + 12000;
+    const poll = () => document.querySelector('#fs-gear')
+      ? resolve(true) : Date.now() > end ? resolve(false) : setTimeout(poll, 100);
+    poll();
+  })`);
+  check('the authenticated application mounts before interaction', mounted === true);
+
   section('Settings glyph is a rendered cog, not a sun');
   const gear = await evaluate(`
     const svg = document.querySelector('#fs-gear svg');
@@ -27,11 +37,28 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN, settleMs: 1500 }, async ({ 
   check('gear is visibly rendered at the control', gear.rendered >= 20, `${gear.rendered}px`);
 
   section('Rules and League Settings are distinct rendered destinations');
-  const destinations = await evaluate(`
-    const open = (id) => {
-      document.querySelector('#fs-gear').click();
-      document.querySelector('#fs-menu [data-menu="' + id + '"]').click();
-      const panel = document.querySelector('.fs-panel.is-active');
+  const destinations = await evaluate(`return (async () => {
+    const waitFor = async (read) => {
+      const end = Date.now() + 5000;
+      let value;
+      while (!(value = read()) && Date.now() < end) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return value;
+    };
+    const open = async (id) => {
+      const end = Date.now() + 5000;
+      let panel = null;
+      while (!panel && Date.now() < end) {
+        if (!document.getElementById('fs-menu')) {
+          document.querySelector('#fs-gear').click();
+        }
+        const row = await waitFor(() => document.querySelector(
+          '#fs-menu [data-menu="' + id + '"]'));
+        if (row) row.click();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        panel = document.querySelector('#panel-' + id + '.is-active');
+      }
       return {
         id: panel.id,
         title: (panel.querySelector('.fs-tabhead__title') || {}).textContent || '',
@@ -40,8 +67,8 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN, settleMs: 1500 }, async ({ 
         headings: [...panel.querySelectorAll('.fs-heading__text')].map((e) => e.textContent),
       };
     };
-    return { rules: open('rules'), settings: open('settings') };
-  `);
+    return { rules: await open('rules'), settings: await open('settings') };
+  })()`);
   check('Rules opens the Rules-only panel', destinations.rules.id === 'panel-rules'
     && destinations.rules.title === 'RULES' && destinations.rules.rules === 1
     && destinations.rules.settings === 0, JSON.stringify(destinations.rules));
@@ -54,14 +81,22 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN, settleMs: 1500 }, async ({ 
     destinations.rules.id !== destinations.settings.id);
 
   section('All Settings destinations are real and role-aware');
-  const settingsDestinations = await evaluate(`
+  const settingsDestinations = await evaluate(`return (async () => {
     const gear = document.querySelector('#fs-gear');
-    const openMenu = () => {
-      if (!document.getElementById('fs-menu')) gear.click();
-      return document.getElementById('fs-menu');
+    const waitFor = async (read) => {
+      const end = Date.now() + 5000;
+      let value;
+      while (!(value = read()) && Date.now() < end) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return value;
     };
-    const inspectMenu = () => {
-      const menu = openMenu();
+    const openMenu = async () => {
+      if (!document.getElementById('fs-menu')) gear.click();
+      return waitFor(() => document.getElementById('fs-menu'));
+    };
+    const inspectMenu = async () => {
+      const menu = await openMenu();
       return {
         destinations: ['rules','settings','provider','about'].map((id) => {
           const row = menu.querySelector('[data-menu="' + id + '"]');
@@ -71,22 +106,28 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN, settleMs: 1500 }, async ({ 
         commissioner: Boolean(menu.querySelector('[data-menu="commissioner"][data-menu-kind="destination"]')),
       };
     };
-    const click = (id) => {
-      const menu = openMenu();
-      menu.querySelector('[data-menu="' + id + '"]').click();
-      const panel = document.querySelector('.fs-panel.is-active');
+    const click = async (id) => {
+      const end = Date.now() + 5000;
+      let panel = null;
+      while (!panel && Date.now() < end) {
+        const menu = await openMenu();
+        const row = await waitFor(() => menu.querySelector('[data-menu="' + id + '"]'));
+        if (row) row.click();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        panel = document.querySelector('#panel-' + id + '.is-active');
+      }
       return { id: panel.id,
         title: panel.querySelector('.fs-tabhead__title').textContent,
         text: panel.textContent,
         providerLabel: (panel.querySelector('[data-provider-label]') || {}).textContent || '',
         providerFamily: (panel.querySelector('[data-provider-family]') || {}).dataset?.providerFamily || '' };
     };
-    const menu = inspectMenu();
-    const provider = click('provider');
-    const about = click('about');
+    const menu = await inspectMenu();
+    const provider = await click('provider');
+    const about = await click('about');
     const mastProvider = document.querySelector('.fs-source')?.textContent || '';
     return { menu, provider, about, mastProvider };
-  `);
+  })()`);
   check('Rules, League Settings, Provider Information and About & Legal are controls',
     settingsDestinations.menu.destinations.every((row) => row.tag === 'BUTTON'
       && row.kind === 'destination' && !row.pending),
@@ -115,10 +156,9 @@ await withPage({ origin: process.env.FS_TEST_ORIGIN, settleMs: 1500 }, async ({ 
       && /cannot be deposited, withdrawn or redeemed/.test(settingsDestinations.about.text)
       && /All Rights Reserved/.test(settingsDestinations.about.text),
     settingsDestinations.about.text);
-  const expectCommissioner = process.env.FS_TEST_EXPECT_COMMISSIONER === '1';
   check('Commissioner controls are separate and role-aware',
-    settingsDestinations.menu.commissioner === expectCommissioner,
-    JSON.stringify({ expected: expectCommissioner,
+    settingsDestinations.menu.commissioner === EXPECT_COMMISSIONER,
+    JSON.stringify({ expected: EXPECT_COMMISSIONER,
       rendered: settingsDestinations.menu.commissioner }));
 
   for (const [width, height] of VIEWPORTS) {

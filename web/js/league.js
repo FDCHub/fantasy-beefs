@@ -85,8 +85,8 @@ export const SWIPE_WORD = 'SWIPE';
  * shortening inside one tab's headings, not a renaming. Nothing reintroduces
  * the public-facing `Versus`, which remains an internal module name only.
  */
-export const MATCHUPS_HEADING = 'MATCHUPS';
-export const POOLS_HEADING = 'PROP POOLS';
+export const MATCHUPS_HEADING = 'FANTASYSTAKES MATCHUPS';
+export const POOLS_HEADING = 'FANTASYSTAKES PROP POOLS';
 
 /* ── The odds-refresh affordance on Play ────────────────────────────────────
  *

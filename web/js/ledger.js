@@ -18,7 +18,7 @@
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
-import { PanelComposer, escapeHtml } from './components.js';
+import { PanelComposer, bindAccordions, escapeHtml } from './components.js';
 import { currentWeek } from './league-model.js';
 import { weekPhaseLabel } from './phase.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
@@ -208,15 +208,17 @@ function ledgerSection(spec) {
   // A REAL BUTTON WITH REAL `aria-expanded`, matching `expandableRow` above
   // rather than inventing a second disclosure grammar for the same tab.
   return (
-    `<section class="fs-lsec${elevated ? ' is-elevated' : ''}` +
+    `<section class="fs-lsec fs-accordion${elevated ? ' is-elevated' : ''}` +
     `${open ? ' is-open' : ''}" data-section="${number}" data-disclosure>` +
-    '<button type="button" class="fs-lsec__head" data-lsec-toggle ' +
+    '<button type="button" class="fs-lsec__head fs-accordion__head" data-accordion-toggle data-lsec-toggle ' +
     `aria-expanded="${open ? 'true' : 'false'}">` +
-    `<span class="fs-lsec__num">${number}</span>` +
-    `<span class="fs-lsec__title">${escapeHtml(title)}</span>` +
-    '<span class="fs-lsec__chev" aria-hidden="true">›</span></button>' +
-    `<div class="fs-lsec__sub">${escapeHtml(sub)}</div>` +
-    `<div class="fs-lsec__body">${body}</div>` +
+    `<span class="fs-lsec__num fs-accordion__number">${number}</span>` +
+    '<span class="fs-accordion__main">' +
+    `<span class="fs-lsec__title fs-accordion__title">${escapeHtml(title)}</span>` +
+    `<span class="fs-lsec__sub fs-accordion__sub">${escapeHtml(sub)}</span>` +
+    '</span>' +
+    '<span class="fs-lsec__chev fs-accordion__chev" aria-hidden="true">›</span></button>' +
+    `<div class="fs-lsec__body fs-accordion__body">${body}</div>` +
     '</section>'
   );
 }
@@ -580,14 +582,7 @@ export function bindLedger(panel, api) {
   // WP3C — the section-level disclosures (§14.2). Same grammar as the row-level
   // one below: a real button, a real `aria-expanded`, and a class toggle that
   // changes nothing but what is visible.
-  panel.querySelectorAll('[data-lsec-toggle]').forEach((head) => {
-    head.addEventListener('click', () => {
-      const section = head.closest('[data-disclosure]');
-      if (!section) return;
-      const open = section.classList.toggle('is-open');
-      head.setAttribute('aria-expanded', String(open));
-    });
-  });
+  bindAccordions(panel);
 
   panel.querySelectorAll('[data-expand] .fs-lexp__head').forEach((head) => {
     head.addEventListener('click', () => {

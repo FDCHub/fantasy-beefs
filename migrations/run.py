@@ -82,6 +82,38 @@ def pending(engine) -> list:
     return [m for m in ACTIVE if m.identifier not in done]
 
 
+def _verify_identifiers(engine, identifiers: set[str]) -> list:
+    """Corroborate the manifest objects for the selected migration IDs."""
+    if not identifiers:
+        return []
+
+    inspector = inspect(engine)
+    present = set(inspector.get_table_names())
+    columns_by_table: dict = {}
+    problems: list = []
+
+    for migration in ACTIVE:
+        if migration.identifier not in identifiers:
+            continue
+        for table in migration.tables:
+            if table not in present:
+                problems.append(f"{migration.identifier}: table {table} missing")
+        for table, column in migration.columns:
+            if table not in present:
+                problems.append(
+                    f"{migration.identifier}: table {table} missing "
+                    f"(needed for column {column})")
+                continue
+            if table not in columns_by_table:
+                columns_by_table[table] = {
+                    c["name"] for c in inspector.get_columns(table)}
+            if column not in columns_by_table[table]:
+                problems.append(
+                    f"{migration.identifier}: {table}.{column} missing")
+
+    return problems
+
+
 def verify(engine) -> list:
     """Which APPLIED migrations cannot be corroborated by the live schema.
 
@@ -110,35 +142,54 @@ def verify(engine) -> list:
     A DATABASE WITH NO RECORD AT ALL RETURNS NOTHING HERE. It has claimed
     nothing, so it has contradicted nothing; `pending()` is what refuses it.
     """
-    done = applied_identifiers(engine)
-    if not done:
-        return []
+    return _verify_identifiers(engine, applied_identifiers(engine))
 
-    inspector = inspect(engine)
-    present = set(inspector.get_table_names())
-    columns_by_table: dict = {}
-    problems: list = []
 
+class FalseStampError(RuntimeError):
+    """An applied migration record contradicts the physical schema."""
+
+
+def _run_migration(migration, engine) -> list[str]:
+    """Run one legacy module against the runner's explicitly selected engine."""
+    module = importlib.import_module(migration.module)
+    had_engine = hasattr(module, "engine")
+    original_engine = getattr(module, "engine", None)
+    if had_engine:
+        module.engine = engine
+    try:
+        return module.upgrade()
+    finally:
+        if had_engine:
+            module.engine = original_engine
+
+
+def repair_false_stamps(engine=None) -> list:
+    """Explicitly re-run only applied migrations with missing objects.
+
+    False stamps remain fail-closed during ordinary startup and upgrade. This
+    named operator path is safe because ACTIVE migrations are additive and
+    idempotent, and success is accepted only after `verify()` corroborates the
+    physical schema.
+    """
+    from db.schema import engine as default_engine
+
+    engine = engine or default_engine
+    problems = verify(engine)
+    if not problems:
+        return ["nothing to repair — every applied migration is verifiable"]
+
+    bad_ids = {problem.split(":", 1)[0] for problem in problems}
+    lines: list[str] = []
     for migration in ACTIVE:
-        if migration.identifier not in done:
+        if migration.identifier not in bad_ids:
             continue
-        for table in migration.tables:
-            if table not in present:
-                problems.append(f"{migration.identifier}: table {table} missing")
-        for table, column in migration.columns:
-            if table not in present:
-                problems.append(
-                    f"{migration.identifier}: table {table} missing "
-                    f"(needed for column {column})")
-                continue
-            if table not in columns_by_table:
-                columns_by_table[table] = {
-                    c["name"] for c in inspector.get_columns(table)}
-            if column not in columns_by_table[table]:
-                problems.append(
-                    f"{migration.identifier}: {table}.{column} missing")
+        did = _run_migration(migration, engine)
+        lines.append(f"repaired {migration.identifier}: " + "; ".join(did))
 
-    return problems
+    remaining = verify(engine)
+    if remaining:
+        raise FalseStampError("; ".join(remaining))
+    return lines
 
 
 def _record(connection, migration, release: str, version: str) -> None:
@@ -244,6 +295,9 @@ def upgrade(engine=None, *, dry_run: bool = False) -> list:
                 + (", ".join(stamped) or "nothing to stamp")]
 
     ensure_table(engine)
+    contradictions = verify(engine)
+    if contradictions:
+        raise FalseStampError("; ".join(contradictions))
     todo = pending(engine)
     if not todo:
         return ["nothing pending — the database is at the manifest's head"]
@@ -255,11 +309,10 @@ def upgrade(engine=None, *, dry_run: bool = False) -> list:
                          f"({migration.module})")
             continue
 
-        module = importlib.import_module(migration.module)
         # THE MIGRATION'S OWN `upgrade()` DOES THE WORK. This file adds ordering
         # and a record; it does not reimplement, wrap or second-guess what each
         # migration does, all of which are separately certified.
-        did = module.upgrade()
+        did = _run_migration(migration, engine)
         with engine.begin() as connection:
             _record(connection, migration, identity.release, identity.version)
         lines.append(f"applied {migration.identifier}: " + "; ".join(did))
@@ -293,6 +346,15 @@ def stamp_all(engine=None) -> list:
     engine = engine or default_engine
     identity = release_identity(use_cache=False)
 
+    # A stamp is evidence only after the schema can corroborate every object
+    # that the manifest says the migration owns. This check happens before the
+    # first row is written, so a missing model registration can never recreate
+    # the false-head state that this runner is responsible for preventing.
+    contradictions = _verify_identifiers(
+        engine, {migration.identifier for migration in ACTIVE})
+    if contradictions:
+        raise FalseStampError("; ".join(contradictions))
+
     ensure_table(engine)
     done = applied_identifiers(engine)
     stamped: list[str] = []
@@ -313,6 +375,7 @@ def status(engine=None) -> dict:
     return {
         "applied": sorted(done),
         "pending": [m.identifier for m in ACTIVE if m.identifier not in done],
+        "unverifiable": verify(engine),
         "manifest_head": ACTIVE[-1].identifier if ACTIVE else None,
         "historical_not_run": len(HISTORICAL),
     }
@@ -322,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--repair-false-stamps", action="store_true")
     args = parser.parse_args(argv)
 
     if args.status:
@@ -329,12 +393,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"manifest head : {state['manifest_head']}")
         print(f"applied       : {', '.join(state['applied']) or 'none'}")
         print(f"pending       : {', '.join(state['pending']) or 'none'}")
+        print(f"unverifiable  : {'; '.join(state['unverifiable']) or 'none'}")
         print(f"historical    : {state['historical_not_run']} recorded, not run")
-        return 0 if not state["pending"] else 1
+        return 0 if not state["pending"] and not state["unverifiable"] else 1
+
+    if args.repair_false_stamps:
+        try:
+            for line in repair_false_stamps():
+                print(f"  · {line}")
+        except Exception as exc:
+            print(f"MIGRATION REPAIR FAILED: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
+            return 2
+        print("migration false-stamp repair complete.")
+        return 0
 
     try:
         for line in upgrade(dry_run=args.dry_run):
             print(f"  · {line}")
+    except FalseStampError as exc:
+        print("MIGRATION FAILED: FalseStampError — applied migration records "
+              f"contradict the physical schema: {exc}. Run `python -m "
+              "migrations.run --repair-false-stamps` only after reviewing "
+              "the named objects.", file=sys.stderr)
+        return 2
     except Exception as exc:
         # THE TYPE AND THE MIGRATION, NOT THE DRIVER'S MESSAGE — which can carry
         # a connection URL. A failed migration must block the release, so this

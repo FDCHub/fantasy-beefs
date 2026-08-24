@@ -265,6 +265,8 @@
   color: var(--bone);
   text-align: left;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(217, 164, 65, .18);
 }
 
 .fs-menu__row.is-pending {

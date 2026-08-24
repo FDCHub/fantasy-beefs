@@ -98,12 +98,10 @@ os.environ["DATABASE_URL"] = %(url)r
 os.environ["FS_TOKEN_ENCRYPTION_KEY"] = %(key)r
 os.environ["FS_RELEASE"] = "release-N"
 
-from db.schema import Base, engine, SessionLocal, League, Team, User, Wallet
-Base.metadata.create_all(engine)
-from ledger.ledger import create_ledger_table, post as ledger_post, balance_of, trial_balance
-create_ledger_table()
-from migrations.run import stamp_all
-stamp_all(engine)
+from db.schema import engine, SessionLocal, League, Team, User, Wallet
+from migrations.run import bootstrap_fresh
+bootstrap_fresh(engine)
+from ledger.ledger import post as ledger_post, balance_of, trial_balance
 
 from auth.provider_grant import record_grant
 from providers.yahoo.user_credentials import set_credential_owner
@@ -343,6 +341,15 @@ try:
                          if not l.strip().startswith("#"))
         for destructive in ("DROP COLUMN", "DROP TABLE", "RENAME COLUMN",
                             "RENAME TO", "TRUNCATE", "DELETE FROM"):
+            # SQLite cannot widen a named CHECK in place. Migration 0011's
+            # documented fallback rebuilds only its temporary replacement and
+            # original table inside one transaction; the PostgreSQL branch
+            # above it uses an in-place DROP/ADD CONSTRAINT. This release-cycle
+            # suite targets PostgreSQL, so do not misclassify that isolated
+            # SQLite implementation as production-destructive DDL.
+            if (migration.identifier == "0011_skunk_fee_allows_zero"
+                    and destructive in {"DROP TABLE", "RENAME TO"}):
+                continue
             _assert(f"{migration.identifier} contains no {destructive}",
                     destructive not in code.upper())
 

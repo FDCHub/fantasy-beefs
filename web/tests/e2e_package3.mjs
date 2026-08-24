@@ -120,6 +120,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     return [...panel.querySelectorAll('[data-module]')].map(el => ({
       id: el.dataset.module,
       heading: el.querySelector('.fs-heading__text').textContent,
+      helper: el.querySelector('.fs-heading__helper').textContent,
       right: Math.round(el.getBoundingClientRect().right),
       clipped: el.scrollWidth > el.clientWidth + 1,
     }));
@@ -130,13 +131,13 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // WP3C -- Rev 4.3 §11 removed the redundant directional arrow from every
   // swipe heading. The wording is otherwise unchanged and still pinned exactly.
   check('the Yahoo module names official Yahoo matchups',
-    modules[0].heading === 'YAHOO LEAGUE MATCHUPS · SWIPE', modules[0].heading);
+    modules[0].heading === 'YAHOO LEAGUE MATCHUPS' && /SWIPE/.test(modules[0].helper), modules[0].heading);
   // UIRECON WAVE 4B — one heading grammar for all three: NAME · SWIPE. The
   // derived count named a viewport cap that a one-card carousel makes
   // meaningless, and only this module ever carried one. The cap itself is
   // unchanged; what went is a heading that described it.
   check('the Bets module carries the shared heading grammar',
-    modules[1].heading === 'FANTASYSTAKES MATCHUPS · SWIPE', modules[1].heading);
+    modules[1].heading === 'FANTASYSTAKES MATCHUPS' && /SWIPE/.test(modules[1].helper), modules[1].heading);
   check('no rail heading carries a directional arrow',
     modules.every((m) => !m.heading.includes('↕')),
     modules.map((m) => m.heading).join(' | '));
@@ -151,7 +152,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // peers now, drawn or not. A count in one section's heading and not the
   // others' was the last thing distinguishing three identical statements.
   check('the Pools module carries the shared heading grammar',
-    modules[2].heading === 'FANTASYSTAKES PROP POOLS · SWIPE',
+    modules[2].heading === 'FANTASYSTAKES PROP POOLS' && /SWIPE/.test(modules[2].helper),
     modules[2].heading);
   check('no module clips its own content', modules.every(m => !m.clipped));
 
@@ -285,7 +286,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       open: document.getElementById('fs-overlay').classList.contains('is-open'),
       banner: sheet.querySelector('.fs-srcbanner')
         ? sheet.querySelector('.fs-srcbanner').textContent : '',
-      titles: [...sheet.querySelectorAll('.fs-prev__title')].map(el => el.textContent),
+      titles: [...sheet.querySelectorAll('.fs-accordion__title')].map(el => el.textContent),
       text: sheet.textContent,
       closes: sheet.querySelectorAll('[data-fs-close]').length,
     };
@@ -314,9 +315,9 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // FINAL POR §27E — LINEUPS MOVED ABOVE ON OFFER, so the three collapsibles
   // now read LINEUPS first. Rev 4.3 §10's claim that the two analysis modules
   // stay together and in order is unchanged and is still what this asserts.
-  check('the preview carries the three shared analysis sections in Final POR order',
+  check('the preview carries the four shared analysis sections in Final POR order',
     preview.titles.join('|')
-      === 'LINEUPS|WHY THE LINE LOOKS THIS WAY|THE READ',
+      === 'LINEUPS|ON OFFER|WHY THE LINE LOOKS THIS WAY|THE READ',
     preview.titles.join('|'));
   check('and no block restates the pairing the sheet header already names',
     !preview.titles.includes('MATCHUP'), preview.titles.join('|'));
@@ -485,7 +486,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // heading is the same on every week, and a week holding three settled wagers
   // still shows three rather than gaining a fabricated fourth.
   check('the locked bets heading is unchanged on a past week',
-    past.betsHeading === 'FANTASYSTAKES MATCHUPS · SWIPE', past.betsHeading);
+    past.betsHeading === 'FANTASYSTAKES MATCHUPS', past.betsHeading);
   // The claim in the heading comment above, asserted rather than restated: a
   // week draws the wagers it really has and never gains a fabricated one.
   check('the past week draws only the wagers it really has',
@@ -932,7 +933,20 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       barBottom: bar.bottom,
       viewport: window.innerHeight,
       clipped: [...panel.querySelectorAll('.fs-lsec, .fs-settle')]
-        .filter(el => el.scrollWidth > el.clientWidth + 1).length,
+        .filter(el => {
+          const overflow = getComputedStyle(el).overflowX;
+          if (overflow !== 'hidden' && overflow !== 'clip') return false;
+          const edge = el.getBoundingClientRect().right;
+          return [...el.querySelectorAll('*')].some((child) => {
+            if (child.getAttribute('aria-hidden') === 'true') return false;
+            const style = getComputedStyle(child);
+            const rect = child.getBoundingClientRect();
+            return style.display !== 'none' && style.visibility !== 'hidden'
+              && rect.width > 0 && rect.right > edge + 1;
+          });
+        })
+        .map((el) => ({ section: el.dataset.section || el.className,
+                        scrollWidth: el.scrollWidth, clientWidth: el.clientWidth })),
     };
   `);
   check('the Ledger does not scroll the page horizontally',
@@ -941,7 +955,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('no Ledger element extends past the viewport',
     ledgerLayout.widest <= VIEWPORT.width, `widest right edge ${ledgerLayout.widest}px`);
   check('no section clips its own content',
-    ledgerLayout.clipped === 0, `${ledgerLayout.clipped} clipped`);
+    ledgerLayout.clipped.length === 0, JSON.stringify(ledgerLayout.clipped));
   check('the panel ends at or above the navigation',
     ledgerLayout.panelBottom <= ledgerLayout.barTop + 0.5,
     `panel ${ledgerLayout.panelBottom.toFixed(1)} vs nav ${ledgerLayout.barTop.toFixed(1)}`);

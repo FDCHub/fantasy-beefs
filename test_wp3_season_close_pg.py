@@ -6,16 +6,15 @@ the certified sixteen-step close and `test_s5_p3_season_close_pg.py` certified
 its economics. NOTHING CALLED IT. `economy/season_close.py` states the fact in
 its own scope fence — "routes — nothing in this module is registered in
 api/main.py" — so a league could finish its season with no way to close it:
-`championship:{league_id}` was unreachable and every GM's expired Weekly Minimum
-sat in `expired_min:{team}` permanently. WP3 adds the commissioner action and
+the season-close orchestration had no production route. WP3 adds the
+commissioner action and
 proves the whole chain end to end:
 
     commissioner action -> POST /league/{id}/season/close
       -> require_league_commissioner
       -> verify_preconditions (steps 1-9b, pure reads)
       -> close_season_economy (steps 10-15)
-      -> season_reconciliation: reserve sweep, Championship 60/30/10,
-         expired Weekly Minimum return
+      -> season_reconciliation, with era-gated retired steps
       -> ledger postings + League.season_closed_at
       -> returned product state
 
@@ -150,8 +149,8 @@ def main() -> None:
     )
     from economy.economy_events import (
         championship_account, expired_min_account, min_account,
-        min_reserve_account, receivable_account, reserve_account,
-        skunk_account, wallet_account,
+        min_reserve_account, points_championship_account, receivable_account,
+        reserve_account, skunk_account, wallet_account,
     )
     from economy.season_allocation import activate_season_allocation
     from economy.skunk import assess_weekly_skunk
@@ -348,7 +347,9 @@ def main() -> None:
         state = {"trial": trial_balance(),
                  "pool": balance_of(f"pool:{lid}"),
                  "championship": balance_of(championship_account(lid)),
-                 "skunk": balance_of(skunk_account(lid))}
+                 "skunk": balance_of(skunk_account(lid)),
+                 "points_championship": balance_of(
+                     points_championship_account(lid, SEASON))}
         for tid in tids:
             state[f"wallet:{tid}"] = balance_of(wallet_account(tid))
             state[f"reserve:{tid}"] = balance_of(reserve_account(tid))
@@ -620,16 +621,19 @@ def main() -> None:
 
     print(f"     weekly minimum = {weekly_min}  reserve/GM = {reserve_each}  "
           f"expired_min/GM = {expired_each}")
-    _assert("the fixture reaches the close with a real Championship pot in "
-            "waiting: six reserves plus the Pool's remainder and swept pot",
+    _assert("the Final POR fixture has no retired per-GM reserve; its adapter "
+            "pot contains only the Pool remainder and swept occurrence",
             before["championship"] == POOL_REMAINDER_CENTS + POOL_SHARE_CENTS
-            and reserve_each > 0,
+            and reserve_each == 0,
             f"championship={before['championship']} reserve={reserve_each}")
-    _assert("every GM carries a real expired Weekly Minimum to reconcile",
+    _assert("Final POR week close leaves no expired-Minimum balance to return",
             all(before[f"expired_min:{t}"] == expired_each for t in tids)
-            and expired_each > 0, str(expired_each))
-    _assert("the Skunk pot is real and unpaid before the close",
-            before["skunk"] == 2 * 1000, str(before["skunk"]))
+            and expired_each == 0, str(expired_each))
+    _assert("Skunk assessments fund the current Points Championship, not the "
+            "retired Skunk account",
+            before["skunk"] == 0
+            and before["points_championship"] == 2 * 1000,
+            f"legacy={before['skunk']} points={before['points_championship']}")
     _assert("the pool account is already drained", before["pool"] == 0)
     _assert("trial balance is zero before the close", before["trial"] == 0)
 
@@ -729,12 +733,16 @@ def main() -> None:
     # and fail on the very first unplaced GM.
     unplaced = [(idx, t) for idx, t in enumerate(tids)
                 if idx not in EXPECTED_PODIUM]
+    points_awards = {
+        tids[1]: before["points_championship"] * 60 // 100,
+        tids[2]: before["points_championship"] * 30 // 100,
+        tids[4]: before["points_championship"] * 10 // 100,
+    }
     for idx, tid in unplaced:
         gained = after[f"wallet:{tid}"] - before[f"wallet:{tid}"]
-        expected = expired_each + (before["skunk"]
-                                   if idx == EXPECTED_SKUNK_WINNER else 0)
+        expected = points_awards.get(tid, 0)
         _assert(f"    an unplaced GM received NO championship money — only "
-                f"their own expired minimum{' and the Skunk pot they won' if idx == EXPECTED_SKUNK_WINNER else ''}",
+                f"their governed Points Championship award, if placed there",
                 gained == expected, f"{gained} vs {expected}")
 
     # ── Weekly Minimum reconciliation ───────────────────────────────────────
@@ -758,8 +766,8 @@ def main() -> None:
                                 EconomyEvent.event_type
                                 == "EXPIRED_MINIMUM_RECONCILIATION").count())
         db.rollback()
-    _assert("EXACTLY ONE reconciliation event per GM — the per-GM event key is "
-            "what makes it exactly-once", recon_events == N_TEAMS,
+    _assert("Final POR records no retired expired-Minimum reconciliation event",
+            recon_events == 0,
             str(recon_events))
 
     # ── Final reconciliation ────────────────────────────────────────────────
@@ -779,14 +787,14 @@ def main() -> None:
     # move the Skunk Pot, whose whole premise is season-long scoring. Both live
     # in this one suite deliberately, so a later change that collapses the two
     # authorities into one rule cannot pass.
-    _assert("the Skunk pot went to the highest Points For GM — who is NOT on "
-            "the podium, so the two authorities are visibly different",
+    _assert("the Points Championship paid 60/30/10 by regular-season Points "
+            "For, independently of the postseason podium",
             after[f"wallet:{tids[EXPECTED_SKUNK_WINNER]}"]
             - before[f"wallet:{tids[EXPECTED_SKUNK_WINNER]}"]
-            == expired_each + before["skunk"]
+            == points_awards[tids[EXPECTED_SKUNK_WINNER]]
             and EXPECTED_SKUNK_WINNER not in EXPECTED_PODIUM,
             f"{after[f'wallet:{tids[EXPECTED_SKUNK_WINNER]}'] - before[f'wallet:{tids[EXPECTED_SKUNK_WINNER]}']} "
-            f"vs {expired_each + before['skunk']}")
+            f"vs {points_awards[tids[EXPECTED_SKUNK_WINNER]]}")
     _assert("the Skunk loser still carries their receivable — the close "
             "collects no receivable",
             balance_of(receivable_account(tids[0])) == -2000,
@@ -1067,11 +1075,11 @@ def main() -> None:
     l_reason = (l_payload.get("detail", {}).get("reason_code")
                 if isinstance(l_payload, dict)
                 and isinstance(l_payload.get("detail"), dict) else None)
-    _assert("THE LOSER FAILS SAFELY AND BY NAME — it either replays the "
-            "completed close or is refused by a named governed precondition, "
+    _assert("THE CONCURRENT LOSER COMPLETES SAFELY — it observes "
+            "closed_now=false or a named governed precondition refusal, "
             "never a 500 and never a second stamp",
             (l_status == 200 and isinstance(l_payload, dict)
-             and l_payload.get("replayed") is True)
+             and l_payload.get("closed_now") is False)
             or (l_status == 409 and bool(l_reason)),
             f"status={l_status} reason={l_reason!r}")
 
@@ -1090,8 +1098,8 @@ def main() -> None:
     _assert("the season carries exactly one close stamp", stamps is not None)
     _assert("the Championship was distributed exactly once under the race",
             champ_events == 1, str(champ_events))
-    _assert("the reserve sweep was recorded exactly once under the race",
-            sweep_events == 1, str(sweep_events))
+    _assert("Final POR records no retired reserve-sweep event under the race",
+            sweep_events == 0, str(sweep_events))
 
     after = ledger_state(lid, tids)
     winner_gain = (after[f"wallet:{tids[EXPECTED_PODIUM[0]]}"]

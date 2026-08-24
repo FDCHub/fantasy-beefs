@@ -7,12 +7,14 @@ import os
 import subprocess
 import sys
 
-from test_support_app_server import COMMISSIONER_EMAIL
+from test_support_app_server import COMMISSIONER_EMAIL, GM_EMAIL, PASSWORD
 from test_support_s7_harness import ensure_authenticated_app
 
 origin = ensure_authenticated_app(seed_pool_slate=True, action_shape="full")
 env = dict(os.environ)
 env["FS_TEST_ORIGIN"] = origin
+env.setdefault("FS_TEST_AUTH_EMAIL", GM_EMAIL)
+env.setdefault("FS_TEST_AUTH_PASSWORD", PASSWORD)
 command = ["node", os.path.join("web", "tests", "finalpor_four_failures_browser.mjs")]
 root = os.path.dirname(os.path.abspath(__file__))
 gm_result = subprocess.run(command, env=env, cwd=root)

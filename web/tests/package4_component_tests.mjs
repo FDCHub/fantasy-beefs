@@ -102,14 +102,14 @@ check('exactly four top-level groups', RULE_GROUPS.length === 4, String(RULE_GRO
 check('the order is §24’s order',
   RULE_GROUPS.map((g) => g.title).join(' / ') === LOCKED_ORDER.join(' / '),
   RULE_GROUPS.map((g) => g.title).join(' / '));
-check('every group renders as a tappable row',
-  RULE_GROUPS.every((g) => panel.includes(`data-rule="${g.id}"`)));
-check('every row carries a disclosure affordance',
-  (panel.match(/fs-rulerow__chev/g) || []).length === RULE_GROUPS.length);
-check('the rows appear in the locked order in the markup',
+check('every group renders as a shared accordion',
+  RULE_GROUPS.every((g) => panel.includes(`data-accordion="rule-${g.id}"`)));
+check('every accordion carries the shared disclosure affordance',
+  (panel.match(/fs-accordion__chev/g) || []).length === RULE_GROUPS.length);
+check('the accordions appear in the locked order in the markup',
   RULE_GROUPS.every((g, i) => (i === 0
     ? true
-    : panel.indexOf(`data-rule="${g.id}"`) > panel.indexOf(`data-rule="${RULE_GROUPS[i - 1].id}"`))));
+    : panel.indexOf(`data-accordion="rule-${g.id}"`) > panel.indexOf(`data-accordion="rule-${RULE_GROUPS[i - 1].id}"`))));
 check('every group holds at least one rule',
   RULE_GROUPS.every((g) => g.rules.length > 0));
 check('every rule names its governing source',

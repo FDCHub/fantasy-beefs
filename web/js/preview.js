@@ -37,7 +37,7 @@
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
-import { escapeHtml } from './components.js';
+import { accordion, bindAccordions, escapeHtml } from './components.js';
 import {
   theRead, theReadFromPreview, whyTheLine, whyTheLineFromPreview,
 } from './narrative.js';
@@ -87,20 +87,11 @@ export function previewSheet(m, ctx = {}) {
       // density.
       lineupsSection(m, served) +
       identitySection(m, served) +
-      // ANALYSIS FIRST, BOTH OPEN. §10.
-      collapsible('WHY THE LINE LOOKS THIS WAY', paragraphs(why), { open: true }) +
-      collapsible('THE READ', paragraphs(read), { open: true }) +
+      collapsible('WHY THE LINE LOOKS THIS WAY', paragraphs(why)) +
+      collapsible('THE READ', paragraphs(read)) +
       closingNote +
       sourceFooter,
-    onMount: (host) => {
-      host.querySelectorAll('[data-collapse]').forEach((headEl) => {
-        headEl.addEventListener('click', () => {
-          const section = headEl.parentElement;
-          const open = section.classList.toggle('is-open');
-          headEl.setAttribute('aria-expanded', open ? 'true' : 'false');
-        });
-      });
-    },
+    onMount: bindAccordions,
   };
 }
 
@@ -151,22 +142,22 @@ function identitySection(m, served) {
   }
 
   const filtered = rows.filter((row) => row.value);
-  if (!filtered.length) return '';
+  if (!filtered.length) {
+    filtered.push({ label: 'Market', value: 'Not priced yet' });
+  }
 
   const heading = m.settled ? 'RESULT' : 'ON OFFER';
-  return (
-    '<section class="fs-prev is-open" data-preview-section="identity">' +
-    '<div class="fs-prev__head is-static">' +
-    `<span class="fs-prev__title">${heading}</span></div>` +
-    '<div class="fs-prev__body is-open">' +
-    filtered.map((row) => (
+  return accordion({
+    key: 'preview-offer',
+    title: heading,
+    className: 'fs-prev',
+    bodyHtml: filtered.map((row) => (
       '<div class="fs-prev__row">' +
       `<span class="fs-prev__label">${escapeHtml(row.label)}</span>` +
       `<span class="fs-prev__value">${escapeHtml(row.value)}</span>` +
       '</div>'
-    )).join('') +
-    '</div></section>'
-  );
+    )).join(''),
+  });
 }
 
 /** A per-slot PROJECTION, or the unresolved mark where none is retained. */
@@ -515,17 +506,12 @@ function lineupsSection(m, served) {
 }
 
 function collapsible(title, bodyHtml, options = {}) {
-  const open = options.open ? ' is-open' : '';
-  return (
-    `<section class="fs-prev${open}">` +
-    '<button type="button" class="fs-prev__head" data-collapse ' +
-    `aria-expanded="${options.open ? 'true' : 'false'}">` +
-    `<span class="fs-prev__title">${title}</span>` +
-    '<span class="fs-prev__chev" aria-hidden="true">›</span>' +
-    '</button>' +
-    `<div class="fs-prev__body">${bodyHtml}</div>` +
-    '</section>'
-  );
+  return accordion({
+    title,
+    bodyHtml,
+    open: options.open === true,
+    className: 'fs-prev',
+  });
 }
 
 function paragraphs(list) {

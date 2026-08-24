@@ -152,6 +152,7 @@ const READ_STATUS = `
     } : null,
     zones: zones.map((zone) => {
       const head = zone.querySelector('.fs-heading__text');
+      const helper = zone.querySelector('.fs-heading__helper');
       const rail = zone.querySelector('.fs-rail');
       const rs = rail ? getComputedStyle(rail) : null;
       const rb = rail ? rail.getBoundingClientRect() : null;
@@ -160,9 +161,11 @@ const READ_STATUS = `
       return {
         rail: zone.dataset.rail,
         heading: head ? head.textContent.trim() : null,
+        helper: helper ? helper.textContent.trim() : null,
         declaredCount: Number(zone.dataset.railCount),
         n: items.length,
         cards: items.filter((i) => i.querySelector('.fs-wcard')).length,
+        poolCards: items.filter((i) => i.querySelector('.fs-wcard--pool-status')).length,
         note: note ? note.textContent.trim() : null,
         noteWidth: note ? +note.getBoundingClientRect().width.toFixed(1) : null,
         railCW: rail ? rail.clientWidth : null,
@@ -261,12 +264,13 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
     check('they are the locked rails, in the locked order',
       m.zones.map((z) => z.rail).join(',') === RAILS.join(','),
       m.zones.map((z) => z.rail).join(','));
-    check('every heading reads exactly `LABEL · N · SWIPE`',
-      m.zones.every((z) => new RegExp(`^${WORDS[z.rail]} · \\d+ · SWIPE$`).test(z.heading)),
-      m.zones.map((z) => z.heading).join(' | '));
+    check('every heading uses the shared title plus `N · SWIPE` helper',
+      m.zones.every((z) => z.heading === WORDS[z.rail]
+        && /^\d+ · SWIPE$/.test(z.helper)),
+      m.zones.map((z) => `${z.heading} ${z.helper}`).join(' | '));
     check('every heading carries the shared swipe affordance',
-      m.zones.every((z) => z.heading.endsWith('· SWIPE')),
-      m.zones.map((z) => z.heading).join(' | '));
+      m.zones.every((z) => z.helper.endsWith('· SWIPE')),
+      m.zones.map((z) => z.helper).join(' | '));
 
     /* ══════════════════════════════════════════════════════════════════════
      * §3 · THE COUNT IS THE SERVER'S, NOT THIS FILE'S
@@ -292,21 +296,21 @@ await withPage({ port: 9436, origin: process.env.FS_TEST_ORIGIN },
     check('the server counts what the server served',
       RAILS.every((r) => served.counts[r] === served.lengths[r]),
       RAILS.map((r) => `${r} ${served.counts[r]}/${served.lengths[r]}`).join(' '));
-    check('every heading states the served count',
-      m.zones.every((z) => z.heading === `${WORDS[z.rail]} · ${served.counts[z.rail]} · SWIPE`),
-      m.zones.map((z) => z.heading).join(' | '));
+    check('every heading states Matchups plus lifecycle-appropriate Pool cards',
+      m.zones.every((z) => z.helper === `${served.counts[z.rail] + z.poolCards} · SWIPE`),
+      m.zones.map((z) => `${z.rail} ${z.helper}`).join(' | '));
     check('the showcase supplies 2-3 real cards in every Status category',
-      RAILS.every((r) => served.counts[r] >= 2 && served.counts[r] <= 3),
-      RAILS.map((r) => `${r}=${served.counts[r]}`).join(' '));
+      m.zones.every((z) => z.cards >= 2 && z.cards <= 3),
+      m.zones.map((z) => `${z.rail}=${z.cards}`).join(' '));
     check('every section declares the same count to the DOM',
-      m.zones.every((z) => z.declaredCount === served.counts[z.rail]),
+      m.zones.every((z) => z.declaredCount === served.counts[z.rail] + z.poolCards),
       m.zones.map((z) => `${z.rail}=${z.declaredCount}`).join(' '));
     check('every carousel holds exactly that many cards',
-      m.zones.every((z) => z.cards === served.counts[z.rail]),
+      m.zones.every((z) => z.cards === served.counts[z.rail] + z.poolCards),
       m.zones.map((z) => `${z.rail}=${z.cards}`).join(' '));
     check('the four counts are not all the same number',
-      new Set(RAILS.map((r) => served.counts[r])).size > 1,
-      RAILS.map((r) => `${r}=${served.counts[r]}`).join(' '));
+      new Set(m.zones.map((z) => z.cards)).size > 1,
+      m.zones.map((z) => `${z.rail}=${z.cards}`).join(' '));
 
     /* ══════════════════════════════════════════════════════════════════════
      * §4 · ONE CARD AT A TIME — the geometry, stated as a rule

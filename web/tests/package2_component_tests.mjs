@@ -495,25 +495,13 @@ check('unbound discovery draws an intentional state, never invented opponents',
 // step the whole string wrapped to two lines at 375px, and on Play that height
 // came straight out of the card zone beneath it. The vocabulary is unchanged;
 // what changed is which of `sectionHeading`'s two slots each half sits in.
-// UIRECON REV 1.4 PART 3 — THE SHORT FORMS, AND WHAT DID NOT CHANGE.
-//
-// Wave 1 locked `FANTASYSTAKES PROP POOLS` and `FANTASYSTAKES MATCHUPS` as the
-// first-reference wording on this tab. Rev 1.4 shortens BOTH headings to
-// `PROP POOLS` and `MATCHUPS`, because a GM reading a heading on the Play tab
-// is already inside FantasyStakes and the brand was spending the widest line of
-// each section restating it — which pushed the count and the swipe affordance
-// into whatever the helper slot had left.
-//
-// THE PRODUCT TERMS ARE UNCHANGED. `Matchups` and `Prop Pools` are still the
-// public nouns, and every surface that MIXES FantasyStakes results with the
-// Yahoo league's own — Wrap Up above all — still says FantasyStakes Matchups on
-// first reference. This is a shortening inside one tab, not a renaming.
-//
+// The final owner ruling restores the explicit FantasyStakes names so Play and
+// Wrap Up use the same product vocabulary. The helper still carries the count.
 // THE VERSUS HALF IS NOT SUPERSEDED and is asserted more strictly than before:
 // no public-facing `Versus` anywhere in the panel, not merely no
 // `FANTASYSTAKES VERSUS`.
-check('Prop Pools heading is the Rev 1.4 short form, with the served count',
-  league.includes('PROP POOLS') && !league.includes('FANTASYSTAKES PROP POOLS')
+check('Prop Pools heading uses the final explicit name, with the served count',
+  league.includes('FANTASYSTAKES PROP POOLS')
   && league.includes('4 THIS WEEK · SWIPE'));
 // TAGS STRIPPED BEFORE THE VERSUS CHECK. `Versus` survives as an INTERNAL
 // module and state name — `data-versus-state` is the Play rail's own empty-state
@@ -521,8 +509,8 @@ check('Prop Pools heading is the Rev 1.4 short form, with the served count',
 // raw HTML would fail on a machine-readable attribute nobody sees; testing the
 // text is the same thing the browser tier asserts against `innerText`.
 const leagueText = league.replace(/<[^>]*>/g, ' ');
-check('Play uses the Matchups short form and no public Versus',
-  league.includes('MATCHUPS') && !league.includes('FANTASYSTAKES MATCHUPS')
+check('Play uses the final FantasyStakes Matchups name and no public Versus',
+  league.includes('FANTASYSTAKES MATCHUPS')
   && !/versus/i.test(leagueText));
 check('League presents four Prop Pools', (league.match(/data-pool="/g) || []).length === 4);
 check('League carries the disclaimer once', countDisclaimers(league) === 1);
@@ -643,9 +631,9 @@ check('and the two analysis sections stay adjacent, after the lineups',
   && preview.body.indexOf('WHY THE LINE') < preview.body.indexOf('THE READ'));
 check('an unbound preview has no static identity block to draw',
   !/fs-prev__head is-static/.test(preview.body));
-check('the analysis sections are open by default; the lineups are not',
-  /is-open[^]*WHY THE LINE/.test(preview.body)
-  && preview.body.includes('aria-expanded="false"'));
+check('all four preview sections are collapsed initially',
+  !preview.body.includes('is-open')
+  && (preview.body.match(/aria-expanded="false"/g) || []).length >= 3);
 check('the preview says nothing is lost on close',
   /nothing you have entered is lost/i.test(preview.body));
 

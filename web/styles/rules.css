@@ -637,6 +637,9 @@
   table-layout: fixed;
 }
 
+.fs-rules .fs-accordion__body { padding-top: var(--fs-space-2); }
+.fs-rules .fs-rule:last-child { margin-bottom: 0; }
+
 .fs-vctable__h {
   padding: 0 var(--fs-space-2) var(--fs-space-2);
   font-size: 10px;

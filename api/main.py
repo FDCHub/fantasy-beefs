@@ -441,6 +441,19 @@ def _create_tables() -> None:
         return
 
     fresh = not existing
+    if fresh:
+        # One owner for fresh schema construction. `bootstrap_fresh` registers
+        # every ACTIVE additive model before create_all, creates the separate
+        # Ledger metadata, and only then stamps the manifest. The former local
+        # shortcut stamped RC2 0003-0006 without their six registered tables.
+        from migrations.run import bootstrap_fresh
+
+        stamped = bootstrap_fresh(engine)
+        if stamped:
+            print(f"[startup] fresh database — manifest stamped: "
+                  f"{', '.join(stamped)}")
+        return
+
     Base.metadata.create_all(engine)
 
     # PG-CERT-1 — THE LEDGER TABLE IS ON A DIFFERENT BASE, AND WAS BEING MISSED.
@@ -464,23 +477,6 @@ def _create_tables() -> None:
     # It is additive and safe to call repeatedly.
     from ledger.ledger import create_ledger_table
     create_ledger_table()
-
-    # PROD-HARDEN-1 — STAMP THE MANIFEST ON A DATABASE THAT WAS JUST CREATED.
-    #
-    # `create_all` produced everything the ACTIVE migrations add, so they are
-    # applied in fact and must be applied in record — otherwise `/ready` reports
-    # them pending forever and the platform withholds traffic from a healthy
-    # process. Stamped only for a database that did not exist a moment ago; an
-    # existing one is upgraded by `python -m migrations.run`, which records its
-    # own work.
-    if fresh:
-        from migrations.run import stamp_all
-
-        stamped = stamp_all(engine)
-        if stamped:
-            print(f"[startup] fresh database — manifest stamped: "
-                  f"{', '.join(stamped)}")
-
 
 # ── Auth schemas & endpoints ──────────────────────────────────────────────────
 
@@ -5182,11 +5178,12 @@ def action_me(
     sections = {name: list(state.section(name)) for name in ACTION_SECTIONS}
     # The showcase deliberately carries a full immutable season history, but
     # Status is a compact action surface. Keep its resolved Demo rail to the
-    # three most recent data-backed records so every public carousel contains
-    # the POR's testable 2-3 cards without deleting or fabricating history.
+    # two most recent data-backed Matchups; the Status read also adds the
+    # immediately preceding week's latest settled Pool result, keeping the
+    # combined resolved showcase at three without deleting history.
     if (league_row is not None and league_row.provider == "demo"
             and str(league_row.provider_league_key or "").startswith("demo.l.")):
-        sections["completed"] = sections["completed"][-3:]
+        sections["completed"] = sections["completed"][-2:]
 
     return ActionStateOut(
         team_id=state.team_id,

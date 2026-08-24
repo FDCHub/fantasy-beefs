@@ -241,6 +241,11 @@ def close_season(
         locked_league = (
             db.query(League)
             .filter(League.id == league_id)
+            # The orchestrator loads this League before reaching the terminal
+            # writer. Refresh it from the SELECT ... FOR UPDATE result rather
+            # than reusing a stale identity-map value that may still say OPEN
+            # after a concurrent close committed while this query waited.
+            .populate_existing()
             .with_for_update()
             .first()
         )

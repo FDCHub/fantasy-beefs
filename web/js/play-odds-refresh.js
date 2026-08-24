@@ -197,6 +197,14 @@ export async function refreshPairing(panel, teamId) {
   return board;
 }
 
+/** Re-read one pairing for a non-Play decision surface. No wager is mutated. */
+export async function refreshPairingContext(teamId) {
+  if (!CONTEXT) throw new Error('no board context');
+  const board = await requestMarketBoard(CONTEXT.leagueId, CONTEXT.week, teamId);
+  applyMarketRow(board);
+  return board;
+}
+
 /**
  * Bind Play's refresh controls.
  *

@@ -181,6 +181,73 @@
   gap: 1px;
 }
 
+/* Shared disclosure language: Rules, Account and Matchup Preview. */
+.fs-accordion {
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-card);
+  overflow: hidden;
+}
+
+.fs-accordion + .fs-accordion { margin-top: var(--fs-space-2); }
+
+.fs-accordion__head {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 9px var(--fs-space-4);
+  border: 0;
+  background: transparent;
+  color: var(--bone);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-accordion__head:focus-visible { outline: 1px solid var(--gold); outline-offset: -2px; }
+.fs-accordion__main { flex: 1 1 auto; min-width: 0; }
+.fs-accordion__title {
+  display: block;
+  font-size: 16px;
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.2;
+}
+.fs-accordion__sub {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--fs-c-text-muted);
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.fs-accordion__meta,
+.fs-accordion__number {
+  flex: 0 0 auto;
+  color: var(--fs-c-text-muted);
+  font-family: var(--fs-font-money);
+  font-size: 11px;
+}
+.fs-accordion__number { color: var(--gold); }
+.fs-accordion__chev {
+  flex: 0 0 auto;
+  color: var(--fs-c-text-muted);
+  font-size: 18px;
+  transition: transform .15s ease;
+}
+.fs-accordion.is-open > .fs-accordion__head .fs-accordion__chev { transform: rotate(90deg); }
+.fs-accordion__body { display: none; padding: 0 var(--fs-space-4) var(--fs-space-4); }
+.fs-accordion.is-open > .fs-accordion__body { display: block; }
+
+@media (max-height: 620px) {
+  .fs-accordion__head { min-height: 50px; padding-top: 6px; padding-bottom: 6px; }
+  .fs-accordion__sub { font-size: 10px; }
+}
+
 /* Context reads as a secondary line beneath its figure. It stays unbroken so
  * the four-cell summary cannot push context into the adjacent cell. */
 .fs-strip__context {
@@ -236,6 +303,14 @@
 }
 
 .fs-rail::-webkit-scrollbar { display: none; }
+
+/* All three product carousel families use native momentum/touch scrolling. */
+.fs-carousel,
+.fs-rail--carousel,
+.fs-rescar {
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
 
 .fs-rail > .fs-rail__item {
   flex: 0 0 auto;

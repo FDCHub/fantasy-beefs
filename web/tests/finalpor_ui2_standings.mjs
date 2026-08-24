@@ -31,7 +31,7 @@ import { createReporter, withPage } from './browser-harness.mjs';
 const report = createReporter();
 
 /** §26's locked column set, in order. */
-const COLUMNS = ['RK', 'TEAM', 'MATCHUPS', 'POOLS', 'SKUNK', 'FS SCORE'];
+const COLUMNS = ['RK', 'TEAM', 'MATCH', 'POOL', 'SKUNK', 'SCORE'];
 
 /** Certified phone viewports. A layout claim is worth its viewport and no more. */
 const VIEWPORTS = [
@@ -76,7 +76,7 @@ await withPage({ port: 9463, settleMs: 2500 }, async ({ evaluate, setViewport })
     return { labels: ths.map((th) => th.textContent.trim()) };
   `);
 
-  report.check('the OVERALL table draws exactly six columns',
+  report.check('the leaderboard draws exactly six columns',
     header.labels.length === 6, String(header.labels.length));
   report.check('  · and they are §26’s six, in order',
     JSON.stringify(header.labels) === JSON.stringify(COLUMNS),
@@ -215,16 +215,17 @@ await withPage({ port: 9463, settleMs: 2500 }, async ({ evaluate, setViewport })
         '.fs-tabbar__item[data-destination="standings"]');
       if (t) t.click(); }
     const el = document.querySelector('.fs-st__explainer');
-    return { text: el ? el.textContent.replace(/\\s+/g, ' ').trim() : null };
+    const credit = document.querySelector('.fs-st__creditline');
+    return { text: [el, credit].filter(Boolean).map((node) => node.textContent)
+      .join(' ').replace(/\\s+/g, ' ').trim() || null };
   `);
 
   report.section('UI-2 · the explanatory copy');
   report.check('the explainer is present', typeof copy.text === 'string',
     String(copy.text));
   for (const line of [
-    'Your FantasyStakes Score determines your championship standing.',
-    'FantasyStakes Score = Matchups + Prop Pools − Skunk Fees',
-    'Wallet balance does not affect championship position.',
+    'FantasyStakes standings combine Matchup net, Pool net and Skunk fees.',
+    'Virtual credits · display only · no cash value',
   ]) {
     report.check(`  · it says: ${line}`,
       (copy.text || '').includes(line), String(copy.text).slice(0, 160));

@@ -20,7 +20,7 @@ export const STANDINGS_TABLES = Object.freeze([
   // The table names WHICH standings it is; the tab names what they are for.
   Object.freeze({
     key: 'overall',
-    heading: 'OVERALL',
+    heading: '',
     // UIRECON REV 1.4 — `POOLS`, not `PROP POOLS`.
     //
     // Two words could not be drawn on one line in a figure column at any
@@ -51,18 +51,7 @@ export const STANDINGS_TABLES = Object.freeze([
     // SKUNK IS A POSITIVE MAGNITUDE and the Score has already subtracted it.
     // The server says so on the field and this shows what the server sent; the
     // one thing a client must never do here is subtract it again.
-    columns: Object.freeze(['RK', 'TEAM', 'MATCHUPS', 'POOLS', 'SKUNK',
-                            'FS SCORE']),
-  }),
-  Object.freeze({
-    key: 'versus',
-    heading: 'MATCHUP STANDINGS',
-    columns: Object.freeze(['RK', 'TEAM', 'W-L', 'NET']),
-  }),
-  Object.freeze({
-    key: 'pools',
-    heading: 'PROP POOL STANDINGS',
-    columns: Object.freeze(['RK', 'TEAM', 'WINS', 'NET']),
+    columns: Object.freeze(['RK', 'TEAM', 'MATCH', 'POOL', 'SKUNK', 'SCORE']),
   }),
 ]);
 

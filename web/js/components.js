@@ -76,6 +76,51 @@ export function sectionHeading(text, helper = '', action = '') {
 }
 
 /**
+ * Shared disclosure shell used by Rules, Account and Matchup Preview.
+ * Content and state remain owned by the caller; construction and affordance do
+ * not. `bodyHtml` is trusted application markup, just like `card()`.
+ */
+export function accordion(spec = {}) {
+  const {
+    title = '', bodyHtml = '', sub = '', meta = '', open = false,
+    key = '', className = '', numbered = '',
+  } = spec;
+  const classes = ['fs-accordion'];
+  if (open) classes.push('is-open');
+  if (className) classes.push(className);
+  const keyAttr = key ? ` data-accordion="${escapeHtml(key)}"` : '';
+  return (
+    `<section class="${classes.join(' ')}"${keyAttr}>`
+    + `<button type="button" class="fs-accordion__head" data-accordion-toggle aria-expanded="${open ? 'true' : 'false'}">`
+    + (numbered ? `<span class="fs-accordion__number">${escapeHtml(numbered)}</span>` : '')
+    + '<span class="fs-accordion__main">'
+    + `<span class="fs-accordion__title">${escapeHtml(title)}</span>`
+    + (sub ? `<span class="fs-accordion__sub">${escapeHtml(sub)}</span>` : '')
+    + '</span>'
+    + (meta ? `<span class="fs-accordion__meta">${escapeHtml(meta)}</span>` : '')
+    + '<span class="fs-accordion__chev" aria-hidden="true">›</span>'
+    + '</button>'
+    + `<div class="fs-accordion__body">${bodyHtml}</div>`
+    + '</section>'
+  );
+}
+
+/** Bind shared disclosures below a host. Safe to call more than once. */
+export function bindAccordions(host) {
+  if (!host) return;
+  host.querySelectorAll('[data-accordion-toggle]').forEach((head) => {
+    if (head.dataset.accordionBound === 'true') return;
+    head.dataset.accordionBound = 'true';
+    head.addEventListener('click', () => {
+      const section = head.closest('.fs-accordion');
+      if (!section) return;
+      const open = section.classList.toggle('is-open');
+      head.setAttribute('aria-expanded', String(open));
+    });
+  });
+}
+
+/**
  * Lightweight eyebrow — the rail/grid label form.
  *
  * @param {string} text

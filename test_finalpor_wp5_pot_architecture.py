@@ -99,6 +99,7 @@ def _build(*, final_por: bool, team_count: int = 4, configured: bool = True,
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     ledger_module.engine = engine
+    ledger_module.SessionLocal = sessionmaker(bind=engine)
     ledger_module._LedgerBase.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
 
@@ -617,6 +618,7 @@ ACT_SEASON = _config.ALLOCATION_SEASON
 act_engine = create_engine("sqlite://")
 Base.metadata.create_all(act_engine)
 ledger_module.engine = act_engine
+ledger_module.SessionLocal = sessionmaker(bind=act_engine)
 ledger_module._LedgerBase.metadata.create_all(act_engine)
 _dbs_prev_engine = _dbs.engine
 _dbs.engine = act_engine

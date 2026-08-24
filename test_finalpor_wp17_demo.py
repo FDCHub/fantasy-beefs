@@ -181,6 +181,12 @@ _assert("the week close is the real one, so the Minimum sweep is real",
 # -- D6/D7 . enough content for the carousels ---------------------------------
 
 print("\nWP17-D6 " + chr(0x00b7) + " enough play for every carousel")
+_assert("the showcase league uses the approved display name",
+        seed_mod.DEMO_LEAGUE_NAME == "Whispers Demo League",
+        seed_mod.DEMO_LEAGUE_NAME)
+_assert("Pain Sanders has eleven FantasyStakes opponent opportunities in the twelve-team showcase",
+        len(showcase.TEAMS) == 12
+        and sum(team.team_name != "Pain Sanders" for team in showcase.TEAMS) == 11)
 
 _assert("the demo season runs multiple completed weeks",
         showcase.COMPLETED_THROUGH_WEEK >= 2,
@@ -269,4 +275,4 @@ if _failures:
         print(f"  - {f}")
     sys.exit(1)
 print("WP-17 demo: every DECIDABLE assertion passes.")
-print("The demo itself is BLOCKED on PostgreSQL and is NOT certified as shown.")
+print("The rendered demo is BLOCKED in this SQLite-only harness; PostgreSQL was not exercised.")

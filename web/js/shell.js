@@ -142,7 +142,8 @@ import {
   unbindSettings,
 } from './settings-model.js';
 import {
-  bindSlate, markSlateUnavailable, setSlateEntryCents, unbindSlate,
+  bindPreviousSlate, bindSlate, markSlateUnavailable, setSlateEntryCents,
+  unbindPreviousSlate, unbindSlate,
 } from './pool-slate-model.js';
 import {
   bindSkunk, markSkunkUnavailable, unbindSkunk,
@@ -933,6 +934,8 @@ async function bindAuthoritativeData() {
 
   if (data && data.slate) bindSlate(data.slate);
   else markSlateUnavailable();
+  if (data && data.previousSlate) bindPreviousSlate(data.previousSlate);
+  else unbindPreviousSlate();
 
   // WP6A — the week's Skunk. An UNASSESSED week is a successful read carrying
   // `assessed: false`, which the model reports as "no callout" rather than as a
@@ -1467,6 +1470,7 @@ function clearAuthoritativeData() {
   unbindCommissioner();
   unbindSettings();
   unbindSlate();
+  unbindPreviousSlate();
   unbindSkunk();
   // WP3B — the standings and the economy go with the session too. A signed-out
   // page holding the previous league's table would be the same defect as one

@@ -22,7 +22,8 @@ from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from db.schema import Team
+from db.schema import League, Team
+from economy.championship_pots import pot_balances
 from ledger.ledger import balance_of
 
 
@@ -40,21 +41,22 @@ def get_my_account_summary(team_id: int, db: Session) -> MyAccountSummary:
     accounts) plus this specific team's own open receivable balance.
     Raises ValueError if the team doesn't exist.
 
-    FR-5.5 interim bridge (SC-1/SC-2, Opus-reviewed): championship_pot_cents
-    sums the bare "championship" account (still written by
-    shortfall_sweep.py) and the league-scoped "championship:{league_id}"
-    account (written by pool_engine.py's settle_pool()). Interim measure
-    until shortfall_sweep.py is converted to scoped keys (full FR-5.5
-    resolution, separate scope) — see payments/stripe_connect.py's
-    _championship_total() for the same bridge and its single-league-only
-    caveat.
+    The FantasyStakes Championship Pot is the current league-season pot. Its
+    authoritative balance is read through the same Final POR helper used by
+    League Settings; retired bare and league-only championship accounts are
+    deliberately not aggregated into this value.
     """
     team = db.query(Team).filter(Team.id == team_id).first()
     if not team:
         raise ValueError(f"Team {team_id} not found")
+    league = db.query(League).filter(League.id == team.league_id).first()
+    if not league:
+        raise ValueError(f"League {team.league_id} not found")
 
     skunk_pot_cents        = balance_of("skunk")
-    championship_pot_cents = balance_of("championship") + balance_of(f"championship:{team.league_id}")
+    championship_pot_cents = pot_balances(
+        db, league_id=team.league_id, season=league.season,
+    ).fantasystakes_cents
 
     # receivable:{team_id} is debited (negative) when money is owed; 0 or
     # positive means nothing outstanding. "Amount you still owe" is the

@@ -90,6 +90,7 @@ def _build(final_por: bool):
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     ledger_module.engine = engine
+    ledger_module.SessionLocal = sessionmaker(bind=engine)
     ledger_module._LedgerBase.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
 

@@ -64,12 +64,13 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
   section('§24 · the four rule groups render in the locked order');
 
   const rules = await evaluate(`
-    const rows = [...document.querySelectorAll('#fs-rule-groups .fs-rulerow')];
+    const rows = [...document.querySelectorAll('#fs-rule-groups .fs-accordion')];
     return {
       count: rows.length,
-      titles: rows.map(r => r.querySelector('.fs-rulerow__title').textContent),
+      titles: rows.map(r => r.querySelector('.fs-accordion__title').textContent),
       allButtons: rows.every(r => r.tagName === 'BUTTON'),
-      allChevrons: rows.every(r => Boolean(r.querySelector('.fs-rulerow__chev'))),
+      toggleCount: rows.filter(r => Boolean(r.querySelector('[data-accordion-toggle]'))).length,
+      allChevrons: rows.every(r => Boolean(r.querySelector('.fs-accordion__chev'))),
       clipped: rows.filter(r => r.scrollWidth > r.clientWidth + 1).length,
     };
   `);
@@ -79,32 +80,27 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     rules.titles.join(' / ')
       === 'The Basics / Your Credits / Weekly Play / Season Play',
     rules.titles.join(' / '));
-  check('every group is a tappable row', rules.allButtons === true);
+  check('each group has a real button control', rules.allButtons === false
+    && rules.toggleCount === 4);
   check('every row shows a disclosure affordance', rules.allChevrons === true);
   check('no row clips its own content', rules.clipped === 0);
 
   const ruleSheetState = await evaluate(`
     // §24 -- the wager-mode rules live in Weekly Play now. The ruling's own
     // copy is unchanged, which is what the assertions below actually check.
-    document.querySelector('[data-rule="weekly"]').click();
-    const sheet = document.getElementById('fs-sheet');
-    const close = sheet.querySelector('[data-fs-close]');
-    const s = sheet.getBoundingClientRect();
-    const c = close.getBoundingClientRect();
+    document.querySelector('[data-accordion="rule-weekly"] [data-accordion-toggle]').click();
+    const group = document.querySelector('[data-accordion="rule-weekly"]');
     return {
-      open: document.getElementById('fs-overlay').classList.contains('is-open'),
-      title: sheet.querySelector('.fs-sheet__title').textContent,
-      ruleCount: sheet.querySelectorAll('.fs-rule').length,
-      sources: sheet.querySelectorAll('.fs-rule__src').length,
-      text: sheet.textContent,
-      closes: sheet.querySelectorAll('[data-fs-close]').length,
-      fromRight: s.right - c.right,
-      fromLeft: c.left - s.left,
-      fromTop: c.top - s.top,
+      open: group.classList.contains('is-open'),
+      title: group.querySelector('.fs-accordion__title').textContent,
+      ruleCount: group.querySelectorAll('.fs-rule').length,
+      sources: group.querySelectorAll('.fs-rule__src').length,
+      text: group.textContent,
+      overlayOpen: document.getElementById('fs-overlay').classList.contains('is-open'),
     };
   `);
-  check('a rule group opens the shared sheet', ruleSheetState.open === true);
-  check('the sheet is titled with the group', ruleSheetState.title === 'Weekly Play');
+  check('a rule group expands in the shared accordion', ruleSheetState.open === true);
+  check('the accordion is titled with the group', ruleSheetState.title === 'Weekly Play');
   check('every rule in the group renders', ruleSheetState.ruleCount >= 6,
     String(ruleSheetState.ruleCount));
   check('every rule shows its governing source',
@@ -125,13 +121,8 @@ await withPage({ port: 9339 }, async ({ evaluate }) => {
     /never above the acceptance ceiling/i.test(ruleSheetState.text),
     ruleSheetState.text.slice(0, 160));
   check('betting vocabulary survives', /ML|Spread|O\/U/.test(ruleSheetState.text));
-  check('exactly one close control', ruleSheetState.closes === 1);
-  check('the close control is upper-left',
-    ruleSheetState.fromLeft >= 0 && ruleSheetState.fromLeft < ruleSheetState.fromRight
-    && ruleSheetState.fromTop >= 0,
-    `${ruleSheetState.fromLeft.toFixed(1)}px from left`);
-
-  await evaluate(`document.querySelector('#fs-sheet [data-fs-close]').click(); return true;`);
+  check('inline expansion does not open a modal', ruleSheetState.overlayOpen === false);
+  await evaluate(`document.querySelector('[data-accordion="rule-weekly"] [data-accordion-toggle]').click(); return true;`);
 
   /* ── Settings ─────────────────────────────────────────────────────────── */
 

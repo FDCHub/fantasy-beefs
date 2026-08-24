@@ -269,10 +269,9 @@ from demo import seed as _seed  # noqa: E402
 _assert("the visitor ordinal mirrors the seat the seeder actually uses",
         _showcase.VISITOR_ORDINAL == _seed.DEMO_SEAT_ORDINAL,
         f"{_showcase.VISITOR_ORDINAL} vs {_seed.DEMO_SEAT_ORDINAL}")
-_assert("exactly one slot is left open",
-        isinstance(_showcase.VISITOR_OPEN_PICK_SLOT, int)
-        and 1 <= _showcase.VISITOR_OPEN_PICK_SLOT <= 4,
-        str(_showcase.VISITOR_OPEN_PICK_SLOT))
+_assert("three slots are left open for the visitor",
+        tuple(_showcase.VISITOR_OPEN_PICK_SLOTS) == (1, 3, 4),
+        str(_showcase.VISITOR_OPEN_PICK_SLOTS))
 
 _gameplay = _strip_py_comments(_read_root("demo", "gameplay.py"))
 _reset = _strip_py_comments(_read_root("demo", "reset.py"))
@@ -308,9 +307,9 @@ _assert("the visitor is skipped on the live week's open slot",
 _assert("no other GM is skipped there",
         all(_showcase.visitor_skips_claim(_W, _S, o) is False
             for o in _ORDINALS if o != _O))
-_assert("no other slot of the live week is skipped",
-        all(_showcase.visitor_skips_claim(_W, s, _O) is False
-            for s in _SLOTS if s != _S))
+_assert("only the governed showcase slots are skipped",
+        all(_showcase.visitor_skips_claim(_W, s, _O)
+            == (s in _showcase.VISITOR_OPEN_PICK_SLOTS) for s in _SLOTS))
 _assert("no completed week is skipped, for anyone, on any slot",
         all(_showcase.visitor_skips_claim(w, s, o) is False
             for w in range(1, _W)
@@ -327,8 +326,9 @@ _skipped = [(w, s, o)
             for s in _SLOTS
             for o in _ORDINALS
             if _showcase.visitor_skips_claim(w, s, o)]
-_assert("exactly one claim in the entire season is skipped",
-        _skipped == [(_W, _S, _O)], str(_skipped))
+_assert("exactly the three showcase claims are skipped",
+        _skipped == [(_W, s, _O) for s in _showcase.VISITOR_OPEN_PICK_SLOTS],
+        str(_skipped))
 
 # ── THE CANONICAL FINGERPRINT COUNTS THE SKIP ────────────────────────────────
 #
@@ -355,8 +355,8 @@ _full_grid = (_showcase.POOL_SLOTS_PER_WEEK * _showcase.TEAM_COUNT
 _assert("the fingerprint expects the grid MINUS the skipped claims",
         _exp["pool_claims"] == _full_grid - len(_skipped),
         f'{_exp["pool_claims"]} vs {_full_grid} - {len(_skipped)}')
-_assert("which is one fewer than a full grid",
-        _full_grid - _exp["pool_claims"] == 1,
+_assert("which is three fewer than a full grid",
+        _full_grid - _exp["pool_claims"] == len(_showcase.VISITOR_OPEN_PICK_SLOTS),
         f'{_full_grid} - {_exp["pool_claims"]}')
 # DERIVED, NOT HARD-CODED. A literal `- 1` would pass the two assertions above
 # and silently stop tracking the fixture the moment the skip changed, which is

@@ -203,8 +203,8 @@ section('FantasyStakes Bets shows the week’s wagers, the viewer’s own first'
 
 const currentBets = weekBets(CURRENT_WEEK);
 check('the current week shows exactly four', currentBets.length === 4, String(currentBets.length));
-check('the heading is the locked Rev 4.2 wording',
-  week.includes(BETS_HEADING), BETS_HEADING);
+check('the heading uses the current FantasyStakes Matchups wording',
+  week.includes('FANTASYSTAKES MATCHUPS') && week.includes('SWIPE'));
 // WP3C — Rev 4.3 §11 removed the redundant directional arrow. The claim is
 // otherwise unchanged: the heading states the VIEWPORT treatment (how many are
 // shown) rather than a record count, and the word SWIPE carries the affordance.
@@ -225,10 +225,10 @@ check('and it carries no public-facing Versus',
 check('and it carries no directional arrow', !BETS_HEADING.includes('↕'));
 check('the current week shows live, not settled, wagers',
   currentBets.every((c) => !c.settled));
-check('the bets carry the Package 2 wager grammar',
-  week.includes('fs-wcard--lifecycle'));
-check('a bet is tappable through the shared wager grammar',
-  week.includes('data-card-action="wager"'));
+check('Wrap Up bets use the read-only result grammar',
+  week.includes('fs-wcard--result'));
+check('a bet opens its read-only recap through the shared grammar',
+  week.includes('data-card-action="wager-recap"'));
 
 section('FantasyStakes Pools shows all four launch Pools, one card at a time');
 
@@ -327,8 +327,8 @@ check('the past week shows settled wagers only',
 
 // The locked heading is presentation; the records are protocol. A week with
 // three settled wagers keeps the heading AND keeps three records.
-check('the locked heading is unchanged on a past week',
-  week.includes(BETS_HEADING), BETS_HEADING);
+check('the current heading is unchanged on a past week',
+  week.includes('FANTASYSTAKES MATCHUPS') && week.includes('SWIPE'));
 check('no fourth historical wager is fabricated to match the heading',
   pastBets.length === 3, String(pastBets.length));
 check('the settled record set is still the three Action holds',
@@ -471,7 +471,8 @@ check('65 + 28 + 90 reconciles to 183',
   `${p.spendableCents} + ${p.acceptedEscrowCents} + ${p.weeklyReserveNotReleasedCents} = ${p.wageringPositionCents}`);
 check('Wagering Position is +$183', p.wageringPositionCents === 18300);
 
-check('the section is the elevated one', ledger.includes('fs-lsec is-elevated'));
+check('the section is the elevated one',
+  /fs-lsec[^"']*is-elevated/.test(ledger));
 check('the memo states the pending-hold rule',
   /not counted again in Current Settle until a proposal is accepted/.test(ledger));
 check('the memo carries the $25 illustrative hold',

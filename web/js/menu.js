@@ -180,22 +180,22 @@ export function setMenuHook(hook) {
  * @param {{close: Function, push: Function}} api
  */
 function bindMenuSheet(host, api) {
-  host.addEventListener('click', (event) => {
-    const row = event.target.closest('[data-menu-kind]');
-    if (!row || !HOOK) return;
-
-    if (row.dataset.menuKind === 'sheet') {
-      // The economy setup replaces the menu level rather than stacking on it:
-      // the menu is a chooser, and closing the economy sheet should return the
-      // commissioner to the app, not to the list they chose from.
-      HOOK.openEconomy();
-      return;
-    }
-    if (row.dataset.menuKind === 'destination') {
-      // `goTo` closes the sheet as part of a destination change, so there is no
-      // separate close here — a second one would fight it.
-      HOOK.goTo(row.dataset.menuDestination, row.dataset.menuZone || null);
-    }
+  host.querySelectorAll('[data-menu-kind]').forEach((row) => {
+    row.addEventListener('click', () => {
+      if (!HOOK) return;
+      if (row.dataset.menuKind === 'sheet') {
+        // The economy setup replaces the menu level rather than stacking on it:
+        // the menu is a chooser, and closing the economy sheet should return the
+        // commissioner to the app, not to the list they chose from.
+        HOOK.openEconomy();
+        return;
+      }
+      if (row.dataset.menuKind === 'destination') {
+        // `goTo` closes the sheet as part of a destination change, so there is no
+        // separate close here — a second one would fight it.
+        HOOK.goTo(row.dataset.menuDestination, row.dataset.menuZone || null);
+      }
+    });
   });
 }
 

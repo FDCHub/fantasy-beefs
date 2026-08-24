@@ -41,8 +41,7 @@ import {
   slateMode,
   slateRows,
 } from './pool-slate-model.js';
-import { lifecycleCard, wagerSheet } from './action.js';
-import { poolQuestion, poolSheet } from './league.js';
+import { poolQuestion } from './league.js';
 import { previewSheet } from './preview.js';
 import { matchupMarketCells, wagerCard } from './wagercard.js';
 import { onActivate } from './interaction.js';
@@ -444,7 +443,7 @@ function betsModule() {
 
 function demoBetsBody() {
   return {
-    items: weekBets(activeWeek()).slice(0, BETS_SHOWN).map(lifecycleCard),
+    items: weekBets(activeWeek()).slice(0, BETS_SHOWN).map(matchupRecapCard),
     empty: '',
   };
 }
@@ -475,17 +474,8 @@ function versusBody() {
     return { items: [],
       empty: weekNote('empty', `No wagers for week ${activeWeek()}.`) };
   }
-  // UIRECON WAVE 4B — A SETTLED WAGER IS A RESULT, NOT A LIFECYCLE TILE.
-  //
-  // Wrap Up is where a GM reads what happened, and `lifecycleCard` is built to
-  // report where a wager IS — which rail it sits on, whose decision is
-  // outstanding. For a settled one that is the wrong question, so it gets the
-  // shared result shell instead: opponent, market and line, stake, outcome and
-  // the credits it moved. An unsettled wager showing on a past week keeps the
-  // lifecycle card, because "still open" is genuinely what it has to say.
   return {
-    items: rows.map((card) => (
-      card.settled ? matchupResultCard(card) : lifecycleCard(card))),
+    items: rows.map(matchupRecapCard),
     empty: '',
   };
 }
@@ -838,10 +828,10 @@ export function bindWeek(panel, api) {
   const bets = actionMode() === 'demo'
     ? weekBets(activeWeek())
     : SECTIONS.flatMap((section) => sectionCards(section));
-  panel.querySelectorAll('[data-card-action="wager"]').forEach((el) => {
+  panel.querySelectorAll('[data-card-action="wager-recap"]').forEach((el) => {
     onActivate(el, () => {
       const card = bets.find((c) => c.id === el.dataset.cardId);
-      if (card) api.openSheet(wagerSheet(card));
+      if (card) api.openSheet(matchupRecapSheet(card));
     });
   });
 
@@ -855,7 +845,7 @@ export function bindWeek(panel, api) {
     ? weekPools(activeWeek()) : slateRows();
   const openPool = (id) => {
     const pool = pools.find((p) => String(p.catalogNumber) === String(id));
-    if (pool) api.openSheet(poolSheet(pool));
+    if (pool) api.openSheet(poolRecapSheet(pool));
   };
   panel.querySelectorAll('[data-pool]').forEach((el) => {
     el.addEventListener('click', () => openPool(el.dataset.pool));
@@ -1034,7 +1024,77 @@ function matchupResultCard(card) {
     context: `${card.marketLabel}${line}${card.mode ? ` · ${modeWord(card)}` : ''}`,
     figures,
     footLabel: card.week || '',
+    tapAction: 'wager-recap',
+    tapId: card.id,
   });
+}
+
+function poolRecapSheet(pool) {
+  const picked = (pool.subjects || []).find((s) => s.subject_id === pool.mySubjectId);
+  const rows = [
+    ['Your pick', picked ? picked.label : 'Not entered'],
+    ['Pot', formatCredits(pool.potCents)],
+    ['State', pool.settled ? 'Resolved' : (pool.openForClaims ? 'Open' : 'Locked')],
+  ];
+  if (pool.settled) rows.push(['Result', String(pool.myResult || 'Settled').replace('_', ' ')]);
+  return {
+    title: pool.name,
+    sub: `Week ${activeWeek()} · read-only review`,
+    body: rows.map(([label, value]) => '<div class="fs-prev__row">'
+      + `<span class="fs-prev__label">${escapeHtml(label)}</span>`
+      + `<span class="fs-prev__value">${escapeHtml(value)}</span></div>`).join('')
+      + '<section class="fs-prev__section"><h3 class="fs-rule__head">FANTASY FOOTBALL DRIVERS</h3>'
+      + `<p>${escapeHtml(pool.question || pool.name || 'Pool outcome')}</p>`
+      + `<p>${escapeHtml(pool.rule || 'The official result determines the Pool outcome.')}</p>`
+      + '<p>The governed Pool definition is measured across the named fantasy-football results and evaluated once, at settlement.</p>'
+      + '</section>'
+      + '<div class="fs-note">Review only. Pool choices are made on Play.</div>',
+  };
+}
+
+/** Read-only recap for both settled and still-open selected-week wagers. */
+function matchupRecapCard(card) {
+  if (card.settled) {
+    return matchupResultCard(card);
+  }
+  const line = card.line != null && card.line !== '' ? ` ${card.line}` : '';
+  return resultCard({
+    identity: card.opponent,
+    badge: card.protocolState === 'accepted' ? 'LIVE' : 'PENDING',
+    badgeTone: 'neutral',
+    context: `${card.marketLabel}${line}${card.mode ? ` · ${modeWord(card)}` : ''}`,
+    figures: [
+      { label: 'Stake', value: formatCredits(card.yourStakeCents), exactCents: card.yourStakeCents },
+      ...(Number.isInteger(card.potCents)
+        ? [{ label: 'Pot', value: formatCredits(card.potCents), exactCents: card.potCents }]
+        : []),
+    ],
+    footLabel: card.week || `WK ${activeWeek()}`,
+    footValue: 'Read-only',
+    tapAction: 'wager-recap',
+    tapId: card.id,
+  });
+}
+
+function matchupRecapSheet(card) {
+  const rows = [
+    ['Market', `${card.marketLabel || 'Matchup'} ${card.line || ''}`.trim()],
+    ['Terms', String(card.mode || 'locked').toUpperCase()],
+    ['Your stake', formatCredits(card.yourStakeCents)],
+  ];
+  if (Number.isInteger(card.potCents)) rows.push(['Pot', formatCredits(card.potCents)]);
+  if (card.settled && Number.isInteger(card.netCents)) rows.push(['Net', formatSignedCredits(card.netCents)]);
+  return {
+    title: `vs ${card.opponent}`,
+    sub: `Week ${activeWeek()} · read-only review`,
+    body: '<section class="fs-rule"><h3 class="fs-rule__head">MARKET REVIEW</h3>'
+      + rows.map(([label, value]) => '<div class="fs-prev__row">'
+      + `<span class="fs-prev__label">${escapeHtml(label)}</span>`
+      + `<span class="fs-prev__value">${escapeHtml(value)}</span></div>`).join('')
+      + '</section><section class="fs-rule"><h3 class="fs-rule__head">FANTASY FOOTBALL DRIVERS</h3>'
+      + `<p>${escapeHtml(card.copy || 'The selected-week fantasy matchup and market terms provide the review context.')}</p></section>`
+      + '<div class="fs-note">Review only. Manage current FantasyStakes activity on Status.</div>',
+  };
 }
 
 /** LOCKED / DYNAMIC as one word, for the card's context line. */

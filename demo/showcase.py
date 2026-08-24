@@ -92,6 +92,7 @@ VISITOR_ORDINAL = 7
 #: The live-week Pool slot left unclaimed for the visitor. Slot 1 of 4 — the
 #: first Prop Pool they meet, so the openable one is the one they open.
 VISITOR_OPEN_PICK_SLOT = 1
+VISITOR_OPEN_PICK_SLOTS = (1, 3, 4)
 
 
 def visitor_skips_claim(week: int, slot: int, ordinal: int) -> bool:
@@ -110,7 +111,7 @@ def visitor_skips_claim(week: int, slot: int, ordinal: int) -> bool:
     settlement census is unchanged in size but one.
     """
     return (week == CURRENT_WEEK
-            and slot == VISITOR_OPEN_PICK_SLOT
+            and slot in VISITOR_OPEN_PICK_SLOTS
             and ordinal == VISITOR_ORDINAL)
 
 
