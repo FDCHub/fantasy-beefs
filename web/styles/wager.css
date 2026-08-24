@@ -876,3 +876,91 @@
  * token is the governed tertiary and sits near 4.6:1, so the line reads as
  * subordinate without becoming the defect. */
 .fs-refresh__line.is-quiet { color: var(--fs-c-text-faint); }
+
+/* ── FINAL POR (FREEZE) §3A · ODDS & MARKETS ────────────────────────────────
+ *
+ * Two pricing views of the same three markets, with the selected one marked
+ * unmistakably. The tabs are a real pressed/unpressed pair rather than a tint
+ * difference, because "which numbers am I looking at" is the one question this
+ * block exists to answer and a reader must never have to guess it. */
+.fs-odds__tabs {
+  display: flex;
+  gap: var(--fs-space-2);
+  margin-bottom: var(--fs-space-3);
+}
+
+.fs-odds__tab {
+  flex: 1 1 0;
+  min-height: 34px;
+  padding: 6px var(--fs-space-2);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  background: transparent;
+  color: var(--fs-r43-secondary);
+  font-family: inherit;
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.fs-odds__tab[data-selected="true"] {
+  background: var(--goldbg);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.fs-odds__tab:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+
+.fs-odds__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-4);
+  padding: 6px 0;
+}
+
+.fs-odds__row + .fs-odds__row { border-top: var(--fs-border-hair); }
+
+.fs-odds__market {
+  font-size: var(--fs-r43-card);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-odds__value {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-odds__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  margin-top: var(--fs-space-3);
+}
+
+.fs-odds__refresh {
+  min-height: 40px;
+  padding: 0 var(--fs-space-4);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  background: var(--tile);
+  color: var(--gold);
+  font-family: inherit;
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.fs-odds__refresh[disabled] { opacity: .6; cursor: default; }
+.fs-odds__refresh:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+
+.fs-odds__asof {
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-tertiary);
+  text-align: right;
+}

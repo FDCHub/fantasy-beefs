@@ -1348,3 +1348,108 @@
  * wherever a GM meets it. It stays a MODIFIER on a subject type — there is no
  * gold card, and no third kind of Pool. */
 .fs-wcard__figvalue.is-carried { color: var(--gold); }
+
+/* ── FINAL POR (FREEZE) §4 · THE PLAY MATCHUP CARD'S WAGER STATE ────────────
+ *
+ * A full card says what is running against this opponent. Two shapes: a live
+ * wager states its market, terms, stake and pot; a pairing with nothing yet
+ * states that and offers the way in. Both sit in the same slot at the foot of
+ * the card so the rail's cards stay one height. */
+.fs-playstate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  flex-wrap: wrap;
+  margin-top: var(--fs-space-3);
+  padding-top: var(--fs-space-3);
+  border-top: var(--fs-border-hair);
+}
+
+.fs-playstate__line { display: flex; align-items: baseline; gap: var(--fs-space-3); min-width: 0; }
+
+.fs-playstate__market {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-playstate__terms {
+  font-size: var(--fs-r43-meta);
+  letter-spacing: .06em;
+  color: var(--fs-r43-tertiary);
+}
+
+.fs-playstate__figs { display: flex; align-items: center; gap: var(--fs-space-4); }
+
+.fs-playstate__fig { display: flex; align-items: baseline; gap: 4px; }
+.fs-playstate__fig span { font-size: var(--fs-r43-meta); color: var(--fs-r43-tertiary); }
+.fs-playstate__fig strong {
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+}
+
+.fs-playstate__badge {
+  padding: 1px var(--fs-space-2);
+  border-radius: 3px;
+  background: var(--goldbg);
+  color: var(--gold);
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .06em;
+}
+
+.fs-playstate__note { font-size: var(--fs-r43-meta); color: var(--fs-r43-secondary); }
+
+.fs-playstate__cta {
+  min-height: 40px;
+  padding: 0 var(--fs-space-4);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  background: var(--tile);
+  color: var(--gold);
+  font-family: inherit;
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.fs-playstate__cta:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+
+/* ── §5 · THE PROP POOL CARD'S ENTRY STATE ─────────────────────────────────*/
+.fs-poolstate {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: var(--fs-border-hair);
+}
+
+.fs-poolstate__label {
+  font-size: 8px;
+  letter-spacing: .1em;
+  color: var(--fs-r43-tertiary);
+}
+
+.fs-poolstate__value {
+  font-size: 9px;
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-poolstate__cta {
+  font-size: 8px;
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .08em;
+  color: var(--gold);
+}

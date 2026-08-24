@@ -43,6 +43,9 @@ import {
   PENDING_FIGURE, PanelComposer, escapeHtml, sectionHeading, tabHeader,
 } from './components.js';
 import { formatCredits } from './credits.js';
+// FINAL POR (freeze) §4 — the card states the wager actually running against
+// this opponent, read from the same served action cards Status reads.
+import { actionMode, sectionCards } from './action-model.js';
 import { ILLUSTRATIVE, LEAGUE_IDENTITY } from './demo-state.js';
 import { POOLS, poolBadge } from './data/league-data.js';
 import {
@@ -461,8 +464,61 @@ function versusCard(opponent) {
     + '<button type="button" class="fs-previewrow" '
     + `data-preview-opponent="${id}">VIEW MATCHUP PREVIEW</button>`
     + `<div class="fs-markets">${cells}</div>`
+    // FINAL POR (freeze) §4 — the wager state, on the card.
+    + wagerStateRow(opponent, label)
     + '</div>'
   );
+}
+
+/* §4 — WHAT IS ACTUALLY RUNNING AGAINST THIS OPPONENT.
+ *
+ * Read from the served action cards — the same read model Status uses, so a
+ * wager cannot say one thing there and another here. A pairing with no wager
+ * yet is NOT given a placeholder price: §4 preserves the pricing flow, in
+ * which an offer exists only once a market and a stake have been entered, and
+ * the card states that plainly and offers the way in.
+ */
+function wagerStateRow(opponent, label) {
+  const id = escapeHtml(String(opponent.teamId));
+  const mine = openWagerAgainst(opponent.teamId);
+
+  if (mine) {
+    const terms = String(mine.mode || 'locked').toUpperCase();
+    const line = mine.line ? ` ${mine.line}` : '';
+    const pot = Number.isInteger(mine.potCents) ? formatCredits(mine.potCents) : '—';
+    return (
+      '<div class="fs-playstate" data-play-state="live">'
+      + '<div class="fs-playstate__line">'
+      + `<span class="fs-playstate__market">${escapeHtml(`${mine.marketLabel || 'Matchup'}${line}`)}</span>`
+      + `<span class="fs-playstate__terms">${escapeHtml(terms)}</span>`
+      + '</div>'
+      + '<div class="fs-playstate__figs">'
+      + `<span class="fs-playstate__fig"><span>STAKE</span><strong>${escapeHtml(formatCredits(mine.yourStakeCents))}</strong></span>`
+      + `<span class="fs-playstate__fig"><span>POT</span><strong>${escapeHtml(pot)}</strong></span>`
+      + `<span class="fs-playstate__badge">${escapeHtml(String(mine.badge || mine.stateWord || 'LIVE'))}</span>`
+      + '</div>'
+      + '</div>'
+    );
+  }
+
+  return (
+    '<div class="fs-playstate" data-play-state="open">'
+    + '<span class="fs-playstate__note">No wager yet — pick a market to price one.</span>'
+    + `<button type="button" class="fs-playstate__cta" data-card-challenge="${id}" `
+    + `aria-label="${label}">CHALLENGE</button>`
+    + '</div>'
+  );
+}
+
+/** Any wager of the acting GM's against this opponent that is still running. */
+function openWagerAgainst(teamId) {
+  if (actionMode() !== 'authoritative') return null;
+  for (const section of ['action', 'waiting', 'live']) {
+    const found = sectionCards(section)
+      .find((c) => c.opponentTeamId === teamId && !c.settled);
+    if (found) return found;
+  }
+  return null;
 }
 
 function versusZone() {
@@ -576,7 +632,36 @@ function poolCard(pool) {
     + `<span class="fs-pool__pot${pool.continuation ? ' is-carried' : ''}" `
     + `data-exact-cents="${pool.potCents}">${escapeHtml(formatCredits(pool.potCents))}</span>`
     + '</span>'
+    // FINAL POR (freeze) §5 — the reader's own entry state, on the card.
+    //
+    // Buy-in, entries and pot said what the POOL was; none of them said whether
+    // the reader was IN it, which is the first thing a GM scanning a slate
+    // wants and the one fact that required opening the detail. The pick is the
+    // served subject where there is one; where there is not, the card says so
+    // and names the way in.
+    + poolEntryState(pool)
     + '</button>'
+  );
+}
+
+/** §5 — entered with which subject, or not entered and how to enter. */
+function poolEntryState(pool) {
+  const picked = (pool.subjects || [])
+    .find((s) => s.subject_id === pool.mySubjectId);
+  if (picked) {
+    return (
+      '<span class="fs-poolstate" data-pool-state="entered">'
+      + '<span class="fs-poolstate__label">YOUR PICK</span>'
+      + `<span class="fs-poolstate__value">${escapeHtml(picked.label)}</span>`
+      + '</span>'
+    );
+  }
+  return (
+    '<span class="fs-poolstate" data-pool-state="open">'
+    + '<span class="fs-poolstate__label">NOT ENTERED</span>'
+    + `<span class="fs-poolstate__cta">${escapeHtml(
+      pool.openForClaims === false ? 'LOCKED' : 'ENTER POOL')}</span>`
+    + '</span>'
   );
 }
 

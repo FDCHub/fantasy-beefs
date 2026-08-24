@@ -292,6 +292,22 @@ export function poolDriver(pool) {
 }
 
 /**
+ * The first sentence of a read — the card-sized version of the same analysis.
+ *
+ * FINAL POR §6 — a carousel card carries the takeaway, the detail sheet
+ * carries the argument. Taking the card's line from the SAME read is what
+ * stops the two drifting: there is one analysis, printed at two lengths.
+ *
+ * @param {{sentences: string[]}|null} read
+ * @param {number} [count] how many leading sentences to keep
+ * @returns {string} '' when there is no read to take one from
+ */
+export function takeaway(read, count = 1) {
+  if (!read || !read.sentences || !read.sentences.length) return '';
+  return read.sentences.slice(0, count).join(' ');
+}
+
+/**
  * THE READ, rendered.
  *
  * @param {{sentences: string[], next: string}|null} read

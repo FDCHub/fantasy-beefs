@@ -33,7 +33,10 @@
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
-import { PanelComposer, escapeHtml, sectionHeading, tabHeader } from './components.js';
+import {
+  PENDING_FIGURE, PanelComposer, accordion, bindAccordions, escapeHtml,
+  sectionHeading, tabHeader,
+} from './components.js';
 import { counterStakeSheet } from './counter-stake.js';
 import { headingWithPhase } from './phase.js';
 import { SWIPE_WORD } from './league.js';
@@ -59,7 +62,11 @@ import {
 import { currentWeek } from './league-model.js';
 import { marketFor } from './market-model.js';
 import { previousSlateRows, slateRows } from './pool-slate-model.js';
-import { refreshPairingContext } from './play-odds-refresh.js';
+import { explainBoardRefusal, refreshPairingContext } from './play-odds-refresh.js';
+// §3B — the approved Matchup Preview lineup treatment, reused here.
+import { lineupsBody } from './preview.js';
+import { bindPreview, servedPreview } from './preview-model.js';
+import { apiFetch, currentIdentity } from './session.js';
 import { formatOdds } from './wager-model.js';
 import { moneyFigure, wagerCard } from './wagercard.js';
 import { onActivate } from './interaction.js';
@@ -841,11 +848,136 @@ export function bindAction(panel, api) {
  * @param {object} card
  * @returns {{title: string, sub: string, body: string}}
  */
+/* ── FINAL POR (FREEZE) §3 · THE DECISION WORKSPACE ─────────────────────────
+ *
+ * The three FantasyStakes markets, priced two ways, above the lineups the
+ * price rests on, above the three things a GM can do about it.
+ *
+ * WHY TWO COLUMNS RATHER THAN ONE THAT CHANGES. A single set of numbers that
+ * silently became "current" after a refresh is exactly the failure this
+ * structure exists to prevent: the reader could no longer see what they had
+ * been offered. Both are always on screen, the selected one is marked, and the
+ * offer column is rendered from the served card every time. */
+const ODDS_VIEWS = Object.freeze({ original: 'ORIGINAL OFFER', refreshed: 'REFRESHED ODDS' });
+
+/** A market's three rows, for one pricing view. */
+function marketLines(card, board) {
+  const dash = PENDING_FIGURE;
+  const ml = (v) => (Number.isInteger(v) ? formatOdds(v) : dash);
+  const num = (v) => (typeof v === 'number' ? (v > 0 ? `+${v}` : String(v)) : dash);
+  const tot = (v) => (typeof v === 'number' ? String(v) : dash);
+
+  // THE OFFER COLUMN IS THE CARD, NOT THE BOARD. `card.yourMoneyline` is what
+  // the proposal locked; the spread and total it was sent with are the card's
+  // own line where the offered market is that market, and unquoted otherwise —
+  // an offer prices ONE market, and inventing the other two would be inventing
+  // terms nobody sent.
+  const offeredIs = (kind) => String(card.marketId || card.marketLabel || '')
+    .toLowerCase().includes(kind);
+
+  return {
+    original: [
+      ['Moneyline', ml(card.yourMoneyline)],
+      ['Spread', offeredIs('spread') ? String(card.line || dash) : dash],
+      ['Over/Under', offeredIs('total') || offeredIs('over') || offeredIs('under')
+        ? String(card.line || dash) : dash],
+    ],
+    refreshed: [
+      ['Moneyline', board ? ml(board.acting_moneyline) : dash],
+      ['Spread', board ? num(board.acting_spread) : dash],
+      ['Over/Under', board ? tot(board.total_line) : dash],
+    ],
+  };
+}
+
+function oddsAndMarkets(card) {
+  const board = marketFor(card.opponentTeamId);
+  const lines = marketLines(card, board);
+
+  const column = (view) => lines[view].map(([label, value]) => (
+    '<div class="fs-odds__row">'
+    + `<span class="fs-odds__market">${escapeHtml(label)}</span>`
+    + `<span class="fs-odds__value fs-money">${escapeHtml(value)}</span>`
+    + '</div>'
+  )).join('');
+
+  const tab = (view) => (
+    `<button type="button" class="fs-odds__tab" data-odds-view="${view}"`
+    + `${view === 'original' ? ' aria-pressed="true" data-selected="true"' : ' aria-pressed="false"'}>`
+    + `${escapeHtml(ODDS_VIEWS[view])}</button>`
+  );
+
+  return collapsibleSection('ODDS & MARKETS',
+    '<div class="fs-odds__tabs" role="group" aria-label="Pricing view">'
+    + tab('original') + tab('refreshed')
+    + '</div>'
+    + '<div class="fs-odds__panel" data-odds-panel="original">' + column('original') + '</div>'
+    + '<div class="fs-odds__panel" data-odds-panel="refreshed" hidden>' + column('refreshed') + '</div>'
+    + '<div class="fs-odds__foot">'
+    + '<button type="button" class="fs-odds__refresh" data-odds-refresh '
+    + `data-opponent-team-id="${escapeHtml(String(card.opponentTeamId))}">REFRESH ODDS</button>`
+    + '<span class="fs-odds__asof" data-odds-asof>'
+    + escapeHtml(board && board.available ? 'Current board' : 'Not refreshed yet')
+    + '</span>'
+    + '</div>'
+    // THE RULE, ON THE SURFACE. A GM must not have to infer that refreshing is
+    // safe, and must not believe that Take it follows the refreshed number.
+    + '<div class="fs-note">Take it always accepts the original offer above. '
+    + 'Refreshed odds are for information — to act on them, send a Counter.</div>',
+    { open: true });
+}
+
+/** One accordion, in the Preview family — the same shell §3's two sections use. */
+function collapsibleSection(title, bodyHtml, options = {}) {
+  return accordion({
+    title,
+    bodyHtml,
+    open: options.open === true,
+    className: 'fs-prev',
+  });
+}
+
+/* §3B — THE APPROVED MATCHUP PREVIEW LINEUPS, REUSED RATHER THAN REBUILT.
+ *
+ * Drawn from whatever preview is bound when the sheet opens, and repainted in
+ * place once this pairing's own read lands. The unbound state is Preview's own
+ * sentence, not a placeholder roster. */
+function lineupsAccordion(card) {
+  return collapsibleSection('LINEUPS',
+    `<div data-lineups-body>${lineupsBody(servedPreview(), {
+      you: 'You', them: card.opponent,
+    })}</div>`, { open: false });
+}
+
+/** Fetch this pairing's preview and repaint the lineups in place. */
+function loadLineups(host, card) {
+  const slot = host.querySelector('[data-lineups-body]');
+  if (!slot) return;
+  /* THE LEAGUE AND THE WEEK, WITHOUT IMPORTING THE SHELL. `shell.js` imports
+   * this module, so reaching back into it for `currentLeagueId` would close an
+   * import cycle. Both facts are available from the models this file already
+   * depends on: the week is the league's authoritative one, and the acting
+   * league is the identity's own — the same two values the shell reads. */
+  const identity = currentIdentity();
+  const caps = (identity && identity.capabilities) || {};
+  const leagueId = caps.acting_context_ambiguous
+    ? null
+    : (typeof caps.acting_league_id === 'number' ? caps.acting_league_id : null);
+  const week = currentWeek();
+  if (leagueId === null || week === null || !Number.isInteger(card.opponentTeamId)) return;
+  apiFetch(`/league/${leagueId}/versus/preview`
+    + `?week=${week}&opponent_team_id=${card.opponentTeamId}`)
+    .then((view) => {
+      bindPreview(view);
+      slot.innerHTML = lineupsBody(servedPreview(), { you: 'You', them: card.opponent });
+    })
+    .catch(() => { /* the unbound sentence already standing is the honest state */ });
+}
+
 export function wagerSheet(card) {
   // A DERIVED STAKE THAT IS NOT YET PRICED HAS NO NUMBER. In Dynamic the
   // opponent's side is set at Final Lock, so the sheet says so rather than
-  // printing a placeholder that would read as a quote. The wording matches
-  // `modeCopy` — see the note there on why "at kickoff" was wrong.
+  // printing a placeholder that would read as a quote.
   const SET_AT_LOCK = 'Set at Final Lock';
   const theirStake = (card.opponentStakeCents === null
     || card.opponentStakeCents === undefined)
@@ -855,22 +987,6 @@ export function wagerSheet(card) {
     ? SET_AT_LOCK
     : formatCredits(card.potCents);
 
-  const marketRows = [
-    ['Market', `${card.marketLabel} ${card.line}`],
-    ['Terms', card.mode.toUpperCase()],
-    ['Your stake', formatCredits(card.yourStakeCents)],
-    ['Their stake', theirStake],
-    ['Pot', pot],
-  ];
-  if (card.mode === 'dynamic' && Number.isInteger(card.derivedCeilingCents)) {
-    // THE CEILING IS AUTHORITATIVE — the backend wrote it at the Handshake. It
-    // is the most a GM's opponent can end up staking, and it is a bound rather
-    // than a prediction.
-    marketRows.push(['Their stake ceiling', formatCredits(card.derivedCeilingCents)]);
-  }
-  if (card.settled) marketRows.push(['Net', formatSignedCredits(card.netCents)]);
-  if (card.expiresIn) marketRows.push(['Expires', card.expiresIn]);
-
   const rowHtml = ([label, value]) => (
     '<div class="fs-prev__row">' +
     `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
@@ -878,29 +994,93 @@ export function wagerSheet(card) {
     '</div>'
   );
 
-  const fantasyRows = [
-    ['Fantasy matchup', `You vs ${card.opponent}`],
+  const termRows = [
+    ['Terms', String(card.mode || 'locked').toUpperCase()],
+    ['Your stake', formatCredits(card.yourStakeCents)],
+    ['Their stake', theirStake],
+    ['Pot', pot],
   ];
-  if (card.score) {
-    fantasyRows.push([card.settled ? 'Final score' : 'Live score', card.score]);
+  if (card.mode === 'dynamic' && Number.isInteger(card.derivedCeilingCents)) {
+    termRows.push(['Their stake ceiling', formatCredits(card.derivedCeilingCents)]);
   }
+  if (card.settled) termRows.push(['Net', formatSignedCredits(card.netCents)]);
+  if (card.expiresIn) termRows.push(['Expires', card.expiresIn]);
+
+  const decidable = (card.section || lifecycleOf(card)) === 'action';
 
   return {
     title: `vs ${card.opponent}`,
-    sub: `${card.marketLabel} ${card.line} · ${card.mode.toUpperCase()}`,
+    sub: `${card.marketLabel} ${card.line} · ${String(card.mode || 'locked').toUpperCase()}`,
     body:
-      '<div class="fs-rule__head">FANTASY FOOTBALL BREAKDOWN</div>' +
-      fantasyRows.map(rowHtml).join('') +
-      (!card.score
-        ? '<div class="fs-note">The fantasy provider has not published a ' +
-          'score for this matchup yet. FantasyStakes will not estimate one.</div>'
-        : '') +
-      '<div class="fs-rule__head">BET MARKET BREAKDOWN</div>' +
-      marketRows.map(rowHtml).join('') +
-      `<div class="fs-note">${escapeHtml(card.copy || modeCopy(card))}</div>` +
-      responseControls(card),
-    onMount: (host, api) => bindResponseControls(host, api, card),
+      // §3 — ODDS & MARKETS FIRST, LINEUPS SECOND, CONTROLS LAST.
+      (decidable ? oddsAndMarkets(card) : '')
+      + (decidable ? lineupsAccordion(card) : '')
+      + collapsibleSection('THIS OFFER',
+        termRows.map(rowHtml).join('')
+        + `<div class="fs-note">${escapeHtml(card.copy || modeCopy(card))}</div>`,
+        { open: !decidable })
+      + responseControls(card),
+    onMount: (host, api) => {
+      bindResponseControls(host, api, card);
+      bindOddsView(host, card);
+      bindAccordions(host);
+      loadLineups(host, card);
+    },
   };
+}
+
+/* The pricing-view toggle and REFRESH ODDS, bound.
+ *
+ * REFRESH REPAINTS THE REFRESHED COLUMN AND NOTHING ELSE. It does not touch
+ * `card`, it does not touch the original column, and it does not re-render the
+ * sheet — so the offer a GM is looking at cannot change underneath them. */
+function bindOddsView(host, card) {
+  const panels = {
+    original: host.querySelector('[data-odds-panel="original"]'),
+    refreshed: host.querySelector('[data-odds-panel="refreshed"]'),
+  };
+  const select = (view) => {
+    Object.entries(panels).forEach(([name, el]) => {
+      if (el) el.hidden = name !== view;
+    });
+    host.querySelectorAll('[data-odds-view]').forEach((b) => {
+      const on = b.dataset.oddsView === view;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (on) b.setAttribute('data-selected', 'true');
+      else b.removeAttribute('data-selected');
+    });
+  };
+  host.querySelectorAll('[data-odds-view]').forEach((b) => {
+    b.addEventListener('click', () => select(b.dataset.oddsView));
+  });
+
+  const refresh = host.querySelector('[data-odds-refresh]');
+  if (!refresh) return;
+  refresh.addEventListener('click', async () => {
+    const asOf = host.querySelector('[data-odds-asof]');
+    refresh.disabled = true;
+    if (asOf) asOf.textContent = 'Refreshing…';
+    try {
+      await refreshPairingContext(Number(refresh.dataset.opponentTeamId));
+      const board = marketFor(card.opponentTeamId);
+      const lines = marketLines(card, board);
+      const panel = panels.refreshed;
+      if (panel) {
+        panel.innerHTML = lines.refreshed.map(([label, value]) => (
+          '<div class="fs-odds__row">'
+          + `<span class="fs-odds__market">${escapeHtml(label)}</span>`
+          + `<span class="fs-odds__value fs-money">${escapeHtml(value)}</span>`
+          + '</div>'
+        )).join('');
+      }
+      if (asOf) asOf.textContent = board && board.available ? 'Refreshed just now' : 'No board available';
+      select('refreshed');
+    } catch (error) {
+      if (asOf) asOf.textContent = explainBoardRefusal(error);
+    } finally {
+      refresh.disabled = false;
+    }
+  });
 }
 
 function poolStatusSheet(pool) {

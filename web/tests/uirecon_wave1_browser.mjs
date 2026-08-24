@@ -594,7 +594,15 @@ await withPage({ port: 9411 }, async ({ evaluate, setViewport }) => {
             '.fs-tabbar__item[data-destination="' + id + '"]');
           if (tab) tab.click(); }
         for (const el of document.querySelectorAll('#panel-' + id + ' .fs-wcard')) {
-          if (el.scrollHeight > el.clientHeight + 1) clipped.push(id + ':wcard');
+          // REPORT THE MEASUREMENT, NOT JUST THE VERDICT. The old marker said
+          // that a card clipped and nothing about by how much, which is not
+          // enough to act on. The two numbers come with it now. NO BACKTICKS
+          // IN THIS COMMENT: it sits inside a template literal.
+
+          if (el.scrollHeight > el.clientHeight + 1) {
+            clipped.push(id + ':wcard ' + Math.round(el.scrollHeight)
+              + '/' + Math.round(el.clientHeight));
+          }
         }
       }
       out.clipped = clipped;

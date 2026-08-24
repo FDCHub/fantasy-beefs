@@ -399,6 +399,56 @@ function liveNote(served) {
  * @param {object|null} served
  * @returns {string}
  */
+/* FINAL POR (freeze) §3B — THE LINEUP BODY, REUSABLE.
+ *
+ * The Action Required detail needs the SAME lineups the Matchup Preview draws
+ * — the owner approved that presentation and §3B says to reuse it rather than
+ * invent a second one. `lineupsSection` wraps this in Preview's own accordion;
+ * this is the body without the wrapper, so a caller can put it inside its own.
+ *
+ * IT INVENTS NOTHING WHEN UNBOUND. With no served preview it returns the same
+ * honest sentence Preview shows, because naming players from an unbound read
+ * would be inventing a roster.
+ *
+ * @param {object|null} served a served preview view
+ * @param {{you?: string, them?: string}} names fallback team names
+ * @returns {string}
+ */
+export function lineupsBody(served, names = {}) {
+  if (!served) {
+    return '<div class="fs-note">Starting lineups bind from the provider once '
+      + 'its read is wired for this matchup. Naming players here would be '
+      + 'inventing a roster no source supports.</div>';
+  }
+  const acting = served.acting || {};
+  const opponent = served.opponent || {};
+  const map = (row) => ({
+    position: row.position,
+    player: row.player_name,
+    projection: row.projected_points,
+    live: typeof row.live_points === 'number' ? row.live_points : null,
+    liveMeasured: row.live_measured === true,
+  });
+  const actingRows = (acting.lineup || []).map(map);
+  const opponentRows = (opponent.lineup || []).map(map);
+  if (!actingRows.length && !opponentRows.length) {
+    return '<div class="fs-note">Neither team has a starting lineup bound for '
+      + 'this week yet, so there are no projections to show.</div>';
+  }
+  return comparisonMatrix({
+    teams: [
+      { name: acting.team_name || names.you || 'You', rows: actingRows,
+        projectedTotal: typeof acting.projected_total === 'number'
+          ? acting.projected_total : null,
+        liveTotal: typeof acting.live_total === 'number' ? acting.live_total : null },
+      { name: opponent.team_name || names.them || 'Opponent', rows: opponentRows,
+        projectedTotal: typeof opponent.projected_total === 'number'
+          ? opponent.projected_total : null,
+        liveTotal: typeof opponent.live_total === 'number' ? opponent.live_total : null },
+    ],
+  }) + liveNote(served);
+}
+
 function lineupsSection(m, served) {
   if (served) {
     const acting = served.acting || {};

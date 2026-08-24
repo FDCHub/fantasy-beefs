@@ -50,7 +50,7 @@ import { skunkOfTheWeek, skunkWeek } from './skunk-model.js';
 import { seasonResultsSection } from './season-results.js';
 import { championshipResults } from './standings-model.js';
 import {
-  poolRead, providerMatchupRead, renderRead, wagerRead,
+  poolRead, providerMatchupRead, renderRead, takeaway, wagerRead,
 } from './wrapup-read.js';
 
 /** Locked Rev 4.2 subtitle. */
@@ -344,11 +344,17 @@ function providerMatchupCard(m) {
   const score = (side) => (side.points === null
     ? PENDING_FIGURE : side.points.toFixed(1));
 
-  const figures = m.final
-    ? [{ label: 'Final',
-         value: `${score(m.home)} — ${score(m.away)}` }]
-    : [{ label: 'Live',
-         value: `${score(m.home)} — ${score(m.away)}` }];
+  const bothScored = m.home.points !== null && m.away.points !== null;
+  const marginValue = bothScored
+    ? Math.abs(m.home.points - m.away.points).toFixed(1) : PENDING_FIGURE;
+
+  // §6A — THE MARGIN SITS BESIDE THE SCORE. It is subtraction on two published
+  // figures, and it is the number that says whether the week was ever in doubt.
+  const figures = [
+    { label: m.final ? 'Final' : 'Live',
+      value: `${score(m.home)} — ${score(m.away)}` },
+    { label: 'Margin', value: marginValue },
+  ];
 
   const winner = m.winnerTeamId === m.home.teamId ? m.home.name
     : (m.winnerTeamId === m.away.teamId ? m.away.name : null);
@@ -358,6 +364,8 @@ function providerMatchupCard(m) {
     context: m.involvesActingTeam ? `You are ${m.actingSide}` : '',
     markets: null,
     interactiveMarkets: false,
+    // §6A — the one-line read, from the same analysis the detail sheet prints.
+    copy: takeaway(providerMatchupRead(m)),
     figures,
     badge: 'YAHOO',
     badgeTone: m.involvesActingTeam ? 'gold' : 'neutral',
@@ -1091,6 +1099,11 @@ function resultCard(spec) {
     badge: spec.badge || '',
     badgeTone: spec.badgeTone || '',
     context: spec.context || '',
+    // FINAL POR (freeze) §6 — the one-line takeaway a full recap card carries.
+    // `resultCard` forwarded every other field and silently dropped this one,
+    // so the FantasyStakes and Prop Pool cards were built with a read and drew
+    // without it while the Yahoo card — which calls `wagerCard` directly — did.
+    copy: spec.copy || '',
     figures: spec.figures || [],
     footLabel: spec.footLabel || '',
     footValue: spec.footValue || '',
@@ -1129,6 +1142,12 @@ function matchupResultCard(card) {
     { label: 'Stake', value: formatCredits(card.yourStakeCents),
       exactCents: card.yourStakeCents },
   ];
+  // §6B — THE POT BELONGS ON THE CARD. Stake and net without it leaves a reader
+  // unable to see what the wager was actually for.
+  if (Number.isInteger(card.potCents)) {
+    figures.push({ label: 'Pot', value: formatCredits(card.potCents),
+      exactCents: card.potCents });
+  }
   if (Number.isInteger(card.netCents)) {
     figures.push({
       label: 'Credits',
@@ -1145,6 +1164,10 @@ function matchupResultCard(card) {
     badgeTone: outcome.tone,
     accent: outcome.accent,
     context: `${card.marketLabel}${line}${card.mode ? ` · ${modeWord(card)}` : ''}`,
+    // §6B — the sportsbook read, one line: the fantasy result and how it sat
+    // against the locked number. Two sentences, because the cover is the half
+    // a market reader is actually asking about.
+    copy: takeaway(wagerRead(card, actingMatchup(activeWeek())), 2),
     figures,
     footLabel: card.week || '',
     tapAction: 'wager-recap',
@@ -1287,7 +1310,13 @@ function poolResultCard(pool) {
   const result = POOL_RESULT_WORDS[pool.myResult]
     || { word: 'SETTLED', tone: 'neutral', accent: 'done' };
 
+  // §6C — BUY-IN BESIDE THE POT. What it cost to be in it is half of what a
+  // settled pool result means, and the card carried only the other half.
   const figures = [
+    ...(Number.isInteger(pool.entryCents)
+      ? [{ label: 'Buy-in', value: formatCredits(pool.entryCents),
+          exactCents: pool.entryCents }]
+      : []),
     { label: 'Pot', value: formatCredits(pool.potCents),
       exactCents: pool.potCents },
     { label: 'Entered', value: pool.entered === undefined
@@ -1318,6 +1347,8 @@ function poolResultCard(pool) {
     badgeTone: result.tone,
     accent: result.accent,
     context: `Your pick: ${mine}`,
+    // §6C — why it landed the way it did, in one line.
+    copy: takeaway(poolRead(pool, mine)),
     figures,
     footLabel: 'Winner',
     footValue: won,
