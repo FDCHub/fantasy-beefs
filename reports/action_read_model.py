@@ -489,6 +489,15 @@ def _settlement(db: Session, challenge_id: int, team_id: int
     if not mine:
         return False, None, None
     bet = mine[0]
+
+    # A no-fault void is terminal reporting state even though it is deliberately
+    # NOT a settlement and therefore leaves Bet.status pending.  The append-only
+    # VoidedWager row is the authority; response_status remains accepted so the
+    # acceptance audit trail and Weekly Minimum satisfaction are preserved.
+    from economy.wager_void import is_voided
+    if is_voided(db, bet_id=bet.id):
+        return True, 0, "void"
+
     if bet.status in ("pending", None):
         return False, None, None
 
@@ -515,6 +524,27 @@ def _settlement(db: Session, challenge_id: int, team_id: int
     stake_cents = int(round(float(bet.amount) * 100))
     credited = _settled_credit_cents(db, bet_id=bet.id, team_id=team_id)
     return True, credited - stake_cents, bet.status
+
+
+def _challenge_wager_escrow_cents(db: Session,
+                                  challenge: BeefChallenge) -> int:
+    """Actual escrow held for this challenge at its current lifecycle stage.
+
+    Before acceptance the Anchor is held in ``escrow:challenge:{id}``.  On
+    acceptance that balance migrates to the two immutable Bet escrows, so an
+    accepted Status card must read those accounts rather than report a false
+    zero from the now-empty challenge account.  A void drains both and the same
+    read naturally returns zero without inferring terminal state from balance.
+    """
+    bets = _bets_for(db, challenge.id)
+    if bets:
+        db.flush()
+        return sum(max(0, int(db.execute(
+            text("SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+                 "WHERE account = :account"),
+            {"account": f"escrow:{bet.id}"},
+        ).scalar() or 0)) for bet in bets)
+    return challenge_escrow_balance(db, challenge.id)
 
 
 def gm_action_state(db: Session, *, team_id: int, league_id: int,
@@ -642,7 +672,7 @@ def gm_action_state(db: Session, *, team_id: int, league_id: int,
             their_odds=(derived_odds if is_anchor else anchor_odds),
             your_moneyline=(anchor_ml if is_anchor else derived_ml),
             their_moneyline=(derived_ml if is_anchor else anchor_ml),
-            escrow_cents=challenge_escrow_balance(db, challenge.id),
+            escrow_cents=_challenge_wager_escrow_cents(db, challenge),
             derived_ceiling_cents=ceiling,
             derived_repriced=bool(dynamic
                                   and challenge.dynamic_handshake_at is not None),

@@ -459,6 +459,9 @@ function stateCopy(card) {
     if (card.outcome === 'lost') {
       return 'Final. Your stake went to the pot.';
     }
+    if (card.outcome === 'void') {
+      return 'Voided. Your stake was returned.';
+    }
     return 'Final. This Matchup is settled.';
   }
 
@@ -663,6 +666,7 @@ function pendingFigure(label) {
 }
 
 function badgeFor(card) {
+  if (card.settled && card.outcome === 'void') return 'VOIDED';
   if (card.settled) return card.won ? 'WON' : 'LOST';
   if (card.protocolState === 'accepted') return String(card.status || 'live').toUpperCase();
   if (card.protocolState === 'countered') return 'COUNTERED';
@@ -672,6 +676,7 @@ function badgeFor(card) {
 }
 
 function badgeToneFor(card) {
+  if (card.settled && card.outcome === 'void') return 'neutral';
   if (card.settled) return card.won ? 'positive' : 'negative';
   if (card.protocolState === 'accepted') {
     return ['ahead', 'covering'].includes(card.status) ? 'positive'

@@ -52,6 +52,7 @@ from economy.wager_void import (
 from economy.weekly_minimum import expire_week, release_week
 from ledger.ledger import SEASON_ALLOCATION_DOOR, post as ledger_post
 from reports.standings_read_model import VERSUS_DOORS, league_standings
+from reports.action_read_model import gm_action_state
 from ruleset import RULESET_FINAL_POR, stamp_ruleset
 
 _failures: list[str] = []
@@ -82,6 +83,7 @@ def _build(*, final_por: bool = True):
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
     ledger_module.engine = engine
+    ledger_module.SessionLocal = sessionmaker(bind=engine)
     ledger_module._LedgerBase.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
 
@@ -179,6 +181,15 @@ wallet_before = {t: _bal(db, f"wallet:{t}") for t in (1, 2)}
 
 _assert("both sides funded a real escrow",
         len(bets) == 2 and all(v > 0 for v in escrows.values()), str(escrows))
+before_action = gm_action_state(db, team_id=1, league_id=LEAGUE)
+before_card = next(c for c in before_action.cards
+                   if c.challenge_id == challenge_id)
+_assert("the accepted wager is LIVE before void",
+        before_card.section == "live" and not before_card.settled,
+        str(before_card))
+_assert("  · Status reports the accepted Bet escrows",
+        before_card.escrow_cents == sum(escrows.values()),
+        f"{before_card.escrow_cents} vs {sum(escrows.values())}")
 _assert("  · the stakes came out of the Weekly Minimum, min-first",
         all(min_before[t] == WEEKLY - STAKE for t in (1, 2)),
         str(min_before))
@@ -188,6 +199,21 @@ _assert("  · and no Wallet was touched to fund them",
 result = void_accepted_wager(db, challenge_id=challenge_id,
                              reason="NFL game cancelled", now=NOW)
 db.commit()
+
+after_action = gm_action_state(db, team_id=1, league_id=LEAGUE)
+after_card = next(c for c in after_action.cards
+                  if c.challenge_id == challenge_id)
+_assert("the voided wager moves to RESOLVED Action",
+        after_card.section == "completed" and after_card.settled,
+        str(after_card))
+_assert("  · its governed result is void at zero net and zero escrow",
+        (after_card.outcome == "void" and after_card.net_cents == 0
+         and after_card.escrow_cents == 0), str(after_card))
+_assert("  · its audit identity and accepted protocol state remain intact",
+        (after_card.challenge_id == challenge_id
+         and after_card.protocol_state == spec1.ACCEPTED), str(after_card))
+_assert("  · and Resolved exposes no wager-management controls",
+        after_card.controls == (), str(after_card.controls))
 
 _assert("the void refunded both sides",
         result.total_refunded_cents == sum(escrows.values()),
@@ -316,6 +342,13 @@ _assert("  · no Wallet moved",
         {t: _bal(db, f"wallet:{t}") for t in (1, 2)} == wallets_before,
         str({t: _bal(db, f"wallet:{t}") for t in (1, 2)}))
 _assert("  · still one row per bet", db.query(VoidedWager).count() == 2)
+replay_action = gm_action_state(db, team_id=1, league_id=LEAGUE)
+replay_card = next(c for c in replay_action.cards
+                   if c.challenge_id == challenge_id)
+_assert("  · replay cannot resurrect the wager in LIVE Action",
+        (replay_card.section == "completed" and replay_card.settled
+         and replay_card.outcome == "void" and replay_card.net_cents == 0),
+        str(replay_card))
 _assert("  · and the database itself would refuse a duplicate",
         "uq_voided_wager_bet" in {c.name for c in
                                   VoidedWager.__table__.constraints if c.name})
