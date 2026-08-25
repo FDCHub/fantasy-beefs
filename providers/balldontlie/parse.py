@@ -49,6 +49,7 @@ __all__ = [
     "parse_games",
     "parse_plays",
     "parse_players",
+    "parse_projections",
     "parse_teams",
     "parse_weekly_stats",
 ]
@@ -174,6 +175,24 @@ def parse_weekly_stats(payload: Any) -> list[WeeklyStatRow]:
             raw=row,
         ))
     return parsed
+
+
+def parse_projections(payload: Any) -> list[WeeklyStatRow]:
+    """`/fantasy/projections` -> rows. The SAME shape, and not the same meaning.
+
+    ONE ENVELOPE, ONE VOCABULARY, TWO MEANINGS. BALLDONTLIE's fantasy layer
+    publishes projections and finalized results in the same stat namespace —
+    which is the single best thing about this provider, because it removes an
+    entire class of mapping bugs between what was forecast and what happened. So
+    the parsing is genuinely identical and this is genuinely an alias.
+
+    IT IS A NAMED ALIAS RATHER THAN A REUSED CALL FOR ONE REASON: a forecast and
+    a result must never be confused downstream, and a caller writing
+    `parse_weekly_stats(projection_payload)` reads as though they had been. The
+    endpoint a row came from is recorded on the stored snapshot
+    (`source_kind`), and it starts being recorded here.
+    """
+    return parse_weekly_stats(payload)
 
 
 # ── games ────────────────────────────────────────────────────────────────────

@@ -220,6 +220,29 @@ ACTIVE: tuple = (
         summary="WP1 — provider_player_alias; durable Yahoo/FantasyStakes <-> BALLDONTLIE player identity. A bijection per provider: a plain unique on the provider key (spanning retired rows, so an identifier can never be reused) and a partial unique on (provider, player_id) WHERE status='active' (so a superseded mapping is retired rather than deleted)",
         tables=("provider_player_alias",),
     ),
+    # SPRINT 2B · COMPONENT PROJECTION STORAGE — where a BALLDONTLIE projection
+    # can live without pretending to be a league's fantasy points.
+    #
+    # ADDITIVE, AND DELIBERATELY BESIDE `projections` RATHER THAN INSIDE IT.
+    # `projections.projected_points` is a SCALAR that twelve modules read and
+    # that `odds/monte_carlo.py` draws a distribution around — a number written
+    # there moves a market line. A component projection is the upstream material
+    # that has not been scored by any league's rule set yet, so it has no scalar
+    # to be. Nothing in this migration reads, alters or reinterprets a
+    # `projections` row.
+    #
+    # APPEND-ONLY BY CONSTRUCTION. A projection is a forecast that changes, and
+    # BALLDONTLIE serves no point-in-time history, so this table is the only
+    # place that can hold what was knowable before kickoff. The unique key
+    # includes an observation digest that covers the payload but not the fetch
+    # time, so an unchanged re-fetch collides and is skipped while a genuinely
+    # moved projection lands beside its predecessor.
+    Migration(
+        identifier="0015_provider_component_projection",
+        module="migrations.add_provider_component_projection",
+        summary="Sprint 2B — provider_component_projection; append-only component projection snapshots keyed to the canonical player, unique on (provider, player_id, season, week, observation_digest) so an unchanged re-fetch is a no-op and a changed forecast is a new snapshot. `projections.projected_points` is untouched",
+        tables=("provider_component_projection",),
+    ),
 )
 
 

@@ -359,11 +359,20 @@ def _resolve(module, dotted: str):
     return target
 
 
+# THE COUNT IS PINNED SO A RULE CANNOT VANISH QUIETLY. It moved from 19 to 20
+# when Sprint 2B added 0F-20 — zero-omission is a RESULT rule, and an absent
+# PROJECTION component was not forecast rather than forecast at zero. Raising
+# this number is a deliberate act that says a nineteenth measured behaviour has
+# a twentieth sibling; nothing else about WP2's rules changed.
 _ids = [rule for rule, _, _ in N.RULES] + [r for r, _, _ in T.TRANSPORT_RULES]
 _assert("the Phase 0F register covers the payload rules AND the transport ones",
-        len(N.RULES) == 19 and len(T.TRANSPORT_RULES) == 4
+        len(N.RULES) == 20 and len(T.TRANSPORT_RULES) == 4
         and len(set(_ids)) == len(_ids),
         f"{len(N.RULES)} payload + {len(T.TRANSPORT_RULES)} transport")
+_assert("  · including 0F-20, which keeps a forecast's silence from being read "
+        "as a zero",
+        any(rule == "0F-20" and name == "normalize_projections"
+            for rule, _, name in N.RULES))
 _unresolved = ([n for _, _, n in N.RULES if _resolve(N, n) is None]
                + [n for _, _, n in T.TRANSPORT_RULES if _resolve(T, n) is None])
 _assert("  · and every registered rule names something that really exists",

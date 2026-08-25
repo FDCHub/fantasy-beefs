@@ -1,0 +1,191 @@
+{
+  "pages": [
+    {
+      "data": [
+        {
+          "id": 90001,
+          "season": 2025,
+          "week": 17,
+          "game_id": 424301,
+          "team": {
+            "id": 28,
+            "abbreviation": "SF",
+            "full_name": "San Francisco 49ers"
+          },
+          "player": {
+            "id": 27,
+            "first_name": "Brock",
+            "last_name": "Purdy",
+            "position": "QB",
+            "position_abbreviation": "QB"
+          },
+          "position": "QB",
+          "collected_at": "2025-12-24T18:05:00Z",
+          "stats": {
+            "passing_yards": 268.4,
+            "passing_touchdowns": 1.8,
+            "passing_interceptions": 0.7,
+            "rushing_yards": 14.2,
+            "rushing_touchdowns": 0.2,
+            "passing_300_to_399_yard_games": 0.24,
+            "passing_400_plus_yard_games": 0.04
+          }
+        },
+        {
+          "id": 90002,
+          "season": 2025,
+          "week": 17,
+          "game_id": 424302,
+          "team": {
+            "id": 2,
+            "abbreviation": "ATL",
+            "full_name": "Atlanta Falcons"
+          },
+          "player": {
+            "id": 475,
+            "first_name": "Bijan",
+            "last_name": "Robinson",
+            "position": "RB",
+            "position_abbreviation": "RB"
+          },
+          "position": "RB",
+          "collected_at": "2025-12-24T18:05:00Z",
+          "stats": {
+            "rushing_yards": 92.7,
+            "rushing_touchdowns": 0.7,
+            "targets": 4.6,
+            "receiving_yards": 33.1,
+            "receiving_touchdowns": 0.2,
+            "fumbles_lost": 0.1,
+            "rushing_100_to_199_yard_games": 0.38,
+            "rushing_200_plus_yard_games": 0.02
+          }
+        },
+        {
+          "id": 90003,
+          "season": 2025,
+          "week": 17,
+          "game_id": 424303,
+          "team": {
+            "id": 25,
+            "abbreviation": "DET",
+            "full_name": "Detroit Lions"
+          },
+          "player": {
+            "id": 113,
+            "first_name": "Amon-Ra",
+            "last_name": "St. Brown",
+            "position": "WR",
+            "position_abbreviation": "WR"
+          },
+          "position": "WR",
+          "collected_at": "2025-12-24T18:05:00Z",
+          "stats": {
+            "targets": 9.8,
+            "receiving_yards": 84.3,
+            "receiving_touchdowns": 0.6,
+            "rushing_yards": 1.1,
+            "receiving_100_to_199_yard_games": 0.29
+          }
+        }
+      ],
+      "meta": {
+        "next_cursor": 1,
+        "per_page": 100
+      }
+    },
+    {
+      "data": [
+        {
+          "id": 90004,
+          "season": 2025,
+          "week": 17,
+          "game_id": 424304,
+          "team": {
+            "id": 13,
+            "abbreviation": "LV",
+            "full_name": "Las Vegas Raiders"
+          },
+          "player": {
+            "id": 277679,
+            "first_name": "Brock",
+            "last_name": "Bowers",
+            "position": "TE",
+            "position_abbreviation": "TE"
+          },
+          "position": "TE",
+          "collected_at": "2025-12-24T18:05:00Z",
+          "stats": {
+            "targets": 8.1,
+            "receiving_yards": 61.9,
+            "receiving_touchdowns": 0.4
+          }
+        },
+        {
+          "id": 90005,
+          "season": 2025,
+          "week": 17,
+          "game_id": 424305,
+          "team": {
+            "id": 30,
+            "abbreviation": "JAX",
+            "full_name": "Jacksonville Jaguars"
+          },
+          "player": {
+            "id": 278371,
+            "first_name": "Cam",
+            "last_name": "Little",
+            "position": "Kicker",
+            "position_abbreviation": "PK"
+          },
+          "position": "K",
+          "collected_at": "2025-12-24T18:05:00Z",
+          "stats": {
+            "field_goals_made": 1.7,
+            "field_goal_attempts": 2.1,
+            "field_goals_made_yards": 68.4,
+            "field_goals_made_0_to_39": 0.9,
+            "field_goals_made_40_to_49": 0.5,
+            "field_goals_made_50_plus": 0.3,
+            "field_goals_missed": 0.4,
+            "field_goals_missed_0_to_39": 0.05,
+            "extra_points_made": 2.4,
+            "extra_point_attempts": 2.5
+          }
+        },
+        {
+          "id": 90006,
+          "season": 2025,
+          "week": 17,
+          "game_id": 424303,
+          "team": {
+            "id": 25,
+            "abbreviation": "DET",
+            "full_name": "Detroit Lions"
+          },
+          "player": null,
+          "position": "DST",
+          "collected_at": "2025-12-24T18:05:00Z",
+          "stats": {
+            "defensive_sacks": 2.4,
+            "defensive_interceptions": 0.8,
+            "opponent_fumble_recoveries": 0.6,
+            "defensive_safeties": 0.03,
+            "kicks_blocked": 0.05,
+            "interception_return_touchdowns": 0.07,
+            "fumble_return_touchdowns": 0.05,
+            "dst_points_allowed": 21.3,
+            "dst_yards_allowed": 331.5,
+            "dst_points_allowed_14_to_17": 0.18,
+            "dst_points_allowed_18_to_21": 0.21,
+            "dst_points_allowed_22_to_27": 0.24
+          }
+        }
+      ],
+      "meta": {
+        "next_cursor": null,
+        "per_page": 100
+      }
+    }
+  ]
+}

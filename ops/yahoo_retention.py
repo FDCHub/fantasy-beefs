@@ -61,7 +61,8 @@ from dataclasses import asdict, dataclass, field
 __all__ = [
     "DERIVED", "FOREIGN_PROVIDER_FIELDS", "PROVIDER_FACTS", "REQUIRES_RULING",
     "SAFE_WITHOUT_RULING", "YAHOO_DERIVED_RELATIONSHIPS", "Derived",
-    "ForeignProviderField", "ProviderField", "YahooDerivedRelationship",
+    "FOREIGN_PROVIDER_PAYLOAD_COLUMNS", "ForeignProviderField",
+    "ProviderField", "YahooDerivedRelationship",
     "foreign_provider_columns", "inventoried_columns", "related_columns",
     "report",
 ]
@@ -419,7 +420,72 @@ FOREIGN_PROVIDER_FIELDS: tuple = (
         purpose="the same audit observation as `provider_position`; a trade "
                 "moves this value and never the identity",
         if_deleted="as above — an audit aid is lost, not an identity",
+    ),    # ── Sprint 2B · component projection snapshots ──---------------------
+    #
+    # THE FIRST BALLDONTLIE MEASUREMENTS THIS PRODUCT PERSISTS. The WP1 rows
+    # above are a mapping — they say who a subject is. These say what
+    # BALLDONTLIE FORECAST that subject would do, which is provider content in
+    # the fullest sense and is squarely BALLDONTLIE's to set terms about.
+    #
+    # NO YAHOO VALUE IS STORED IN ANY OF THEM. The canonical `player_id` these
+    # rows hang off is a FantasyStakes primary key, and the components are
+    # BALLDONTLIE's own figures.
+    ForeignProviderField(
+        table="provider_component_projection", column="provider",
+        provider="balldontlie",
+        what="which non-Yahoo provider forecast this subject-week",
+        purpose="scopes the snapshot, so a second projection provider could be "
+                "stored beside this one without either being mistaken for the "
+                "other",
+        if_deleted="a forecast attributed to nobody, which no reader may use",
     ),
+    ForeignProviderField(
+        table="provider_component_projection", column="provider_player_key",
+        provider="balldontlie",
+        what="BALLDONTLIE's own identifier for the projected subject",
+        purpose="ties the snapshot back to the provider's record without "
+                "re-resolving it, and lets an operator audit a mapping against "
+                "the projection that used it",
+        if_deleted="the canonical player_id still identifies the subject; the "
+                   "provider-side trace of which record produced it is lost",
+    ),
+    ForeignProviderField(
+        table="provider_component_projection", column="provider_game_id",
+        provider="balldontlie",
+        what="BALLDONTLIE's identifier for the game the projection is for, "
+             "where the payload supplied one",
+        purpose="lets a projection be tied to a specific fixture rather than "
+                "only to a week number, which matters because postseason week "
+                "numbering restarts at 1",
+        if_deleted="a projection can still be found by season and week; the "
+                   "fixture-level tie is lost",
+    ),
+    ForeignProviderField(
+        table="provider_component_projection", column="provider_record_id",
+        provider="balldontlie",
+        what="the provider's own row identifier for the projection record, "
+             "where one is published",
+        purpose="correction detection — BALLDONTLIE publishes no revision "
+                "number or change feed, so a re-fetch and diff is the only way "
+                "to see a forecast move, and this is what a diff anchors on",
+        if_deleted="corrections must be detected from the payload digest "
+                   "alone, which still works but names nothing to an operator",
+    ),
+)
+
+
+#: NOT A PROVIDER-NAMED COLUMN, AND STILL PROVIDER CONTENT. The name scan in the
+#: C1 suite only flags columns spelled `provider_*` or `yahoo*`, so these two
+#: would pass unnoticed — and they are the largest BALLDONTLIE payload this
+#: product stores. Recorded here so the inventory is honest about volume rather
+#: than only about spelling.
+FOREIGN_PROVIDER_PAYLOAD_COLUMNS: tuple = (
+    ("provider_component_projection", "components",
+     "balldontlie", "the normalized component projection itself — forty-odd "
+     "forecast quantities per subject-week"),
+    ("provider_component_projection", "components_present",
+     "balldontlie", "which component keys the provider actually sent, kept "
+     "separate because this provider omits every zero"),
 )
 
 
@@ -535,6 +601,12 @@ REQUIRES_RULING: tuple = (
     "be retained — a question for BALLDONTLIE's terms, not Yahoo's. They are "
     "inventoried in FOREIGN_PROVIDER_FIELDS so the question has a list to be "
     "answered against, exactly as the Yahoo one does.",
+    "Whether BALLDONTLIE component projection SNAPSHOTS in "
+    "`provider_component_projection` may be retained, and for how long. This is "
+    "the larger of the two BALLDONTLIE questions by volume — every subject, "
+    "every week, every refresh — and the product has a specific reason to want "
+    "history: the provider serves none, so these rows are the only record of "
+    "what was knowable before a game. Again BALLDONTLIE's terms, not Yahoo's.",
 )
 
 
@@ -555,7 +627,8 @@ def related_columns() -> set:
 def foreign_provider_columns() -> set:
     """`(table, column)` pairs that are provider data from a provider that is
     NOT Yahoo. Accounted for by this inventory; not governed by it."""
-    return {(f.table, f.column) for f in FOREIGN_PROVIDER_FIELDS}
+    return ({(f.table, f.column) for f in FOREIGN_PROVIDER_FIELDS}
+            | {(t, c) for t, c, _, _ in FOREIGN_PROVIDER_PAYLOAD_COLUMNS})
 
 
 def report() -> dict:
@@ -566,6 +639,9 @@ def report() -> dict:
         "yahoo_derived_relationships": [
             asdict(r) for r in YAHOO_DERIVED_RELATIONSHIPS],
         "foreign_provider_fields": [asdict(f) for f in FOREIGN_PROVIDER_FIELDS],
+        "foreign_provider_payload_columns": [
+            {"table": t, "column": c, "provider": p, "what": w}
+            for t, c, p, w in FOREIGN_PROVIDER_PAYLOAD_COLUMNS],
         "derived": [asdict(d) for d in DERIVED],
         "safe_without_ruling": list(SAFE_WITHOUT_RULING),
         "requires_ruling": list(REQUIRES_RULING),
@@ -614,6 +690,9 @@ def _print_human(only_gate: bool = False) -> None:
         print(f"      what      : {f.what}")
         print(f"      purpose   : {f.purpose}")
         print(f"      if deleted: {f.if_deleted}")
+    for t, c, p, w in FOREIGN_PROVIDER_PAYLOAD_COLUMNS:
+        print(f"  {t}.{c}  [{p}]  (payload column, not provider-named)")
+        print(f"      what      : {w}")
     print()
     print(f"DERIVED FANTASYSTAKES STATE ({len(DERIVED)})")
     print("-" * 78)

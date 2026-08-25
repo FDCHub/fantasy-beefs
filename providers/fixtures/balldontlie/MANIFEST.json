@@ -11,6 +11,8 @@
     "fantasy_weekly_stats__per_page-100__season-2025__week-17.json": "fantasy/weekly_stats, two pages. Exercises 0F-1 zero omission, 0F-2 the empty stats block, 0F-16 the PK spelling and the stray DT, 0F-17 the null-player DST row, and cursor pagination.",
     "games__per_page-100__seasons-2025__weeks-1.json": "games for week 1 WITHOUT a postseason filter \u2014 the naive query. Exercises 0F-14 the postseason week collision, 0F-4 null quarter scores, and an unfinished game that has no score to read.",
     "plays__game_ids-424186__per_page-100.json": "plays for one game. Exercises 0F-5 scrambled order and non-monotonic ids, 0F-6 the null team, 0F-7 possession inversion, 0F-8 participant attribution, 0F-9 both blocked-kick slugs, 0F-12 the pick six, 0F-13 stat_yardage disagreeing with the text, and a record after end-of-game.",
-    "teams__per_page-100.json": "teams, for parser coverage."
-  }
+    "teams__per_page-100.json": "teams, for parser coverage.",
+    "fantasy_projections__per_page-100__season-2025__week-17.json": "fantasy/projections, two pages (Sprint 2B). Exercises the projection block as Phase 0 measured it: the weekly_stats vocabulary plus yardage and points-allowed BUCKET probabilities, `receptions` ABSENT so a PPR input must be derived from `targets`, kicker distance modelling, a null-player DST row, and a `collected_at` freshness stamp \u2014 which is what snapshot selection orders on. One representative subject per fantasy position: QB, RB, WR, TE, K, DST."
+  },
+  "sprint_2b_note": "The projections fixture is SYNTHETIC on the same terms as the rest of this corpus. It is a FORECAST fixture, not a result fixture: the two share one vocabulary and must never share one meaning, which is why a stored snapshot records the endpoint it came from."
 }

@@ -2579,6 +2579,131 @@ class ProviderPlayerAlias(Base):
     player = relationship("Player")
 
 
+class ProviderComponentProjection(Base):
+    """One provider's COMPONENT projection for one subject in one week.
+
+    SPRINT 2B — WHY THIS IS NOT A ROW IN `projections`. `Projection` holds a
+    SCALAR: `projected_points`, one number per (player, week, season, source),
+    already converted into a league's fantasy points. Twelve modules read that
+    number and two of them price money — `odds/monte_carlo.py` draws
+    `Normal(projected_points, ...)` and `betting/bet_engine.py` multiplies it by
+    an injury factor — so a value written there is a value that moves a line.
+
+    A BALLDONTLIE component projection is a DIFFERENT KIND OF THING. It is 40-odd
+    upstream quantities — passing yards, receptions, field goals made by distance
+    band, points allowed — that have not been through any league's scoring rules
+    yet. Converting them is CSPS's job (WP4), under a rule set that differs
+    between CULV Appreciation Society and Mr Whiskers Memorial League, so there
+    is no single scalar to write. Writing BALLDONTLIE's own point total there
+    instead would be worse than useless: it is scored under BALLDONTLIE's default
+    format, and the simulator would then re-apply a league's PPR delta to a
+    figure that already carried one — the double-conversion hazard the Phase 0
+    diligence names explicitly.
+
+    So the scalar path keeps its meaning, its source vocabulary and its
+    consumers, and this table holds the upstream material beside it.
+
+    ── WHY ONE JSON PAYLOAD AND NOT A ROW PER COMPONENT ─────────────────────
+
+    The component vocabulary belongs to the PROVIDER and moves when the provider
+    moves. A row-per-component design would turn one subject-week into ~40 rows,
+    need a component dimension table to keep those names honest, and make
+    "adding a category" a migration — while buying nothing, because nothing reads
+    one component in isolation: CSPS evaluates a whole subject-week under a whole
+    rule set. `projection_input_snapshot`, `required_stats` and
+    `league_activation_block_reasons` already store structured provider- and
+    catalog-shaped material as JSON in this schema, and this follows them,
+    including the `JSON().with_variant(JSONB(), "postgresql")` form so PostgreSQL
+    stores it as JSONB and SQLite still works.
+
+    `components_present` IS SEPARATE FROM `components`, AND THAT IS THE POINT.
+    `source_kind` decides what an ABSENT component means, and the two endpoints
+    do not agree:
+
+        `fantasy/weekly_stats`  an omitted field is a ZERO. The kicker missed
+                                none; the event did not happen (Phase 0F-1).
+
+        `fantasy/projections`   an omitted field was NOT FORECAST. `receptions`
+                                is the proof — the projection block carries none
+                                at all, and a PPR league must derive one from
+                                `targets`. Zero-filling it would hand a scorer a
+                                confident 0.0 for every pass-catcher alive.
+
+    So `components` holds what the normalizer produced under the rule for that
+    endpoint, and `components_present` records the keys the payload literally
+    carried. Storing both means a later reader can tell "forecast at zero" from
+    "not forecast" without re-fetching a projection that has since moved.
+
+    ── SNAPSHOTS, AND WHY HISTORY IS OURS TO KEEP ───────────────────────────
+
+    A projection is a forecast that changes. BALLDONTLIE publishes no
+    point-in-time history — Phase 0 measured `?date=2025-09-03` returning zero
+    rows, and an undated 2025 week-1 projection carrying a 2026 `collected_at`,
+    which is a backfill and not the pre-game forecast. So if this product ever
+    wants to know what was knowable before kickoff, THIS TABLE is the only place
+    that can hold it. Rows are therefore append-only: a new observation is a new
+    row, and nothing is overwritten.
+
+    `observation_digest` is what stops that becoming duplication. It is a
+    deterministic hash over the identity of the observation and its normalized
+    payload — NOT over `captured_at` — so re-fetching an unchanged projection
+    finds the row already present and writes nothing, while a projection that has
+    genuinely moved lands beside its predecessor.
+    """
+
+    __tablename__ = "provider_component_projection"
+    __table_args__ = (
+        UniqueConstraint("provider", "player_id", "season", "week",
+                         "observation_digest",
+                         name="uq_component_projection_observation"),
+        Index("ix_component_projection_lookup",
+              "provider", "player_id", "season", "week", "observed_at"),
+        Index("ix_component_projection_week", "provider", "season", "week"),
+    )
+
+    #: `source_kind` values — which endpoint the components came from. A
+    #: projection and a finalized stat line share one vocabulary and must never
+    #: share one meaning.
+    SOURCE_PROJECTION = "fantasy/projections"
+    SOURCE_WEEKLY_STATS = "fantasy/weekly_stats"
+
+    #: `provenance` values, mirroring the fixture corpus discipline: only a live
+    #: fetch may claim LIVE, and replayed synthetic material says so.
+    PROVENANCE_LIVE = "LIVE"
+    PROVENANCE_FIXTURE_SYNTHETIC = "FIXTURE_SYNTHETIC"
+
+    #: The normalized component vocabulary this row was written under. A change
+    #: in what a component NAME means bumps this, so a reader can tell rows
+    #: written under different meanings apart instead of averaging them.
+    VOCABULARY_V1 = "bdl.fantasy.v1"
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    provider            = Column(String,  nullable=False)
+    provider_player_key = Column(String,  nullable=False)
+    player_id           = Column(Integer, ForeignKey("players.id"),
+                                 nullable=False)
+    season              = Column(Integer, nullable=False)
+    week                = Column(Integer, nullable=False)
+    provider_game_id    = Column(String,     nullable=True)
+    nfl_team            = Column(String(4),  nullable=True)   # canonical
+    position            = Column(String,     nullable=True)   # canonical fantasy
+    source_kind         = Column(String,  nullable=False)
+    provenance          = Column(String,  nullable=False)
+    provider_record_id  = Column(String,  nullable=True)
+    vocabulary_version  = Column(String,  nullable=False)
+    components          = Column(JSON().with_variant(JSONB(), "postgresql"),
+                                 nullable=False)
+    components_present  = Column(JSON().with_variant(JSONB(), "postgresql"),
+                                 nullable=False)
+    observation_digest  = Column(String(64), nullable=False)
+    observed_at         = Column(DateTime, nullable=False)
+    captured_at         = Column(DateTime, nullable=False)
+    created_at          = Column(DateTime, nullable=False,
+                                 default=lambda: datetime.now(timezone.utc))
+
+    player = relationship("Player")
+
+
 # ── Settlement recovery audit ─────────────────────────────────────────────────
 
 class SettlementRecoveryAudit(Base):

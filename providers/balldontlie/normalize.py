@@ -67,6 +67,7 @@ __all__ = [
     "field_goal_kicker_id",
     "final_score",
     "kicker_settlement_source",
+    "normalize_projections",
     "normalize_weekly_stats",
     "ordered_plays",
     "pick_six_passer_id",
@@ -286,6 +287,58 @@ def normalize_weekly_stats(rows: Iterable[WeeklyStatRow], *,
                 # A non-numeric extra field is carried by the raw payload and is
                 # not a statistic. Skipping it here loses nothing and refusing
                 # the row would fail a whole week over a label.
+                continue
+        out.append(ProviderPlayerStats(
+            provider=PROVIDER,
+            player_key=subject_key(row),
+            week=int(week if week is not None else row.week),
+            values=values,
+            stat_ids_present=frozenset(values),
+            fantasy_points=_optional_points(row),
+        ))
+    return tuple(out)
+
+
+def normalize_projections(rows: Iterable[WeeklyStatRow], *,
+                         week: int | None = None
+                         ) -> tuple[ProviderPlayerStats, ...]:
+    """Projection rows -> components. 0F-1 IS DELIBERATELY NOT APPLIED.
+
+    THE ZERO-OMISSION RULE IS ABOUT RESULTS, AND A FORECAST IS NOT A RESULT.
+    On `/fantasy/weekly_stats` an absent `field_goals_missed` means the kicker
+    missed none — the event did not happen, and zero is the true value. On
+    `/fantasy/projections` an absent field means BALLDONTLIE DID NOT FORECAST
+    IT, which is a different statement and usually a louder one.
+
+    `receptions` proves it. Phase 0 found the projection block carries no
+    reception count at all — a PPR league must derive one from `targets` and a
+    catch rate — while `targets` is present. Zero-filling that field would hand
+    CSPS a confident `receptions: 0.0` for every pass-catcher in the league, and
+    a PPR projection built on it would be wrong for every one of them, silently,
+    with no missing key anywhere to notice.
+
+    So this carries exactly what the provider sent. A component that is absent
+    stays absent, `stat_ids_present` says so, and a scorer that needs it must
+    derive it or refuse — which is the same discipline `week_stat_source.py`
+    applies to Yahoo, arrived at from the opposite direction.
+
+    THE TWO ENDPOINTS THEREFORE NORMALIZE DIFFERENTLY, ON PURPOSE. That is the
+    one place in this package where the shared vocabulary does not imply shared
+    handling, and it is recorded as rule 0F-20 rather than left as a difference
+    between two function bodies.
+    """
+    out: list[ProviderPlayerStats] = []
+    for row in rows:
+        values: dict[str, float] = {}
+        for name, raw in row.stats.items():
+            if raw is None:
+                continue
+            try:
+                values[name] = _as_float(raw, name)
+            except ProviderParseError:
+                # A non-numeric field in a projection block is a label, not a
+                # forecast. Carried in `components_present` by the caller and
+                # not turned into a number here.
                 continue
         out.append(ProviderPlayerStats(
             provider=PROVIDER,
@@ -719,4 +772,7 @@ RULES: tuple[tuple[str, str, str], ...] = (
      "supported_stats"),
     ("0F-19", "dst_points_allowed excludes opponent defensive touchdowns; the "
               "extra-point treatment is unconfirmed", "points_allowed"),
+    ("0F-20", "zero-omission is a RESULT rule: an absent projection component "
+              "was not forecast, and is never zero-filled",
+     "normalize_projections"),
 )
