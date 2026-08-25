@@ -81,6 +81,22 @@ def find_stop_by_buyin_cents(buyin_cents: int) -> EconomyStop | None:
     return None
 
 
+def find_stop_by_min_reserve_cents(min_reserve_cents: int) -> EconomyStop | None:
+    """Exact-match lookup by the Weekly Minimum Reserve. Same guarantee as the
+    others: no nearest-stop fallback, no rounding.
+
+    WP-5 NEEDS THIS BECAUSE THE FINAL POR CHANGED WHICH FIGURE IDENTIFIES A
+    LEGACY STOP. A Final POR season's `SeasonAllocation.buyin_cents` is the
+    Weekly Minimum Reserve alone — the per-GM Championship Reserve leg is no
+    longer posted — so `find_stop_by_buyin_cents` cannot recognise a season
+    priced by a certified stop under the new rules. The Weekly Minimum Reserve
+    is unchanged by the Final POR and identifies the stop just as exactly."""
+    for stop in ECONOMY_STOPS:
+        if stop.min_reserve_cents == min_reserve_cents:
+            return stop
+    return None
+
+
 def find_stop_by_weekly_min_cents(weekly_min_cents: int) -> EconomyStop | None:
     """Exact-match lookup only — symmetric to find_stop_by_buyin_cents(),
     same guarantee: returns None if weekly_min_cents doesn't match one of
@@ -210,6 +226,14 @@ class ResolvedAllocationTerms:
     regular_season_week_count: int | None = None
     championship_contribution_cents: int | None = None
 
+    #: FINAL POR §14 / WP-5 — the ONE league-level Fantasy Football Championship
+    #: Pot the commissioner entered. None on the legacy stop path and on a
+    #: configured season that predates the setting: both mean NO AMOUNT WAS
+    #: ENTERED, and activation mints that pillar at zero. Deliberately separate
+    #: from `championship_contribution_cents`, which is the retired per-GM
+    #: contribution and still prices every legacy season.
+    ff_championship_pot_cents: int | None = None
+
     @property
     def season_opening_allocation_cents(self) -> int:
         """The canonical product term for `buyin_cents` (ECON-CONFIG-R6)."""
@@ -259,6 +283,8 @@ def terms_from_frozen_config(frozen) -> ResolvedAllocationTerms:
         weekly_bet_minimum_cents=weekly,
         regular_season_week_count=weeks,
         championship_contribution_cents=championship,
+        ff_championship_pot_cents=getattr(
+            frozen, "ff_championship_pot_cents", None),
     )
 
 
@@ -307,11 +333,36 @@ def assert_consistent_configured_state(db: Session, *, league_id: int,
            .first())
     if row is None:
         return False
-    if find_stop_by_buyin_cents(row.buyin_cents) is None:
+
+    # WHICH FIGURE IDENTIFIES A CERTIFIED STOP DEPENDS ON THE ERA (WP-5).
+    #
+    # The protection this check provides is unchanged: a season whose amounts
+    # match no certified stop can only have been priced by a configuration, so a
+    # missing frozen row is corruption and is named rather than papered over.
+    # What changed is the figure that answers "was this a certified stop?".
+    #
+    # Under the legacy era the per-GM advance was `min_reserve + reserve` and
+    # `buyin_cents` recorded it. Under the Final POR the Championship Reserve
+    # leg is not posted at all, so `buyin_cents` records the Weekly Minimum
+    # Reserve alone and can never equal a stop's `buyin_cents`. Reading the
+    # legacy figure for a Final POR season would report EVERY such season as
+    # corrupt. The Weekly Minimum Reserve is untouched by the Final POR and
+    # identifies the stop exactly as well, so the era chooses the lookup and
+    # neither era's guarantee is weakened.
+    from ruleset import is_final_por
+
+    if is_final_por(db, league_id=league_id, season=season):
+        recognised = find_stop_by_min_reserve_cents(row.min_reserve_cents)
+        figure, name = row.min_reserve_cents, "Weekly Minimum Reserve"
+    else:
+        recognised = find_stop_by_buyin_cents(row.buyin_cents)
+        figure, name = row.buyin_cents, "buy-in"
+
+    if recognised is None:
         raise InconsistentEconomyStateError(
-            f"league {league_id} season {season} was issued "
-            f"{row.buyin_cents} cents per team, which matches no certified "
-            f"legacy stop, yet no frozen economy configuration exists for it. "
+            f"league {league_id} season {season} was issued a {name} of "
+            f"{figure} cents per team, which matches no certified legacy "
+            f"stop, yet no frozen economy configuration exists for it. "
             f"The configuration that priced this season is missing; refusing "
             f"to substitute the legacy default.")
     return False

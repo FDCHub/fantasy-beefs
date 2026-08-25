@@ -22,7 +22,7 @@
  * ========================================================================== */
 
 import { assertIntegerCents } from './credits.js';
-import { currentSettleCents } from './ledger-model.js';
+import { currentSettleCents, skunkObligationCents} from './ledger-model.js';
 import { GM_POSITIONS, TOPOFF_REQUESTS, TOPOFF_STATES } from './data/commissioner-data.js';
 
 /* ── Seams ──────────────────────────────────────────────────────────────────*/
@@ -232,7 +232,8 @@ export function bindCommissioner(positions, reconciliation = null) {
     weeklyReserveNotReleasedCents: p.min_reserve_cents,
     heldCents: p.held_open_challenges_cents,
     weeklyMinOutOfCirculationCents: p.expired_min_cents,
-    skunkFeesCents: -p.receivable_cents,
+    // ERA-CORRECT: see `ledger-model.skunkObligationCents`.
+    skunkFeesCents: skunkObligationCents(p),
     // No authoritative source; zero in the identity, unresolved on screen.
     seasonWinningsCents: 0,
     seasonOpeningCents: p.season_advance_cents,

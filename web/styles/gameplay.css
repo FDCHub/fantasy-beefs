@@ -124,21 +124,105 @@
   outline-offset: 2px;
 }
 
-/* ── Market cells ─────────────────────────────────────────────────────────── */
+/* ── Market cells ─────────────────────────────────────────────────────────
+ *
+ * RETIRED INTO THE CHOICE-CELL PRIMITIVE — UIRECON Wave 1. The three rules that
+ * stood here raised the Play card's market cell to the Rev 4.3 scale, which was
+ * right, and did it on a screen-specific selector, which is how the drift this
+ * wave closes was made: `.fs-markets .fs-market__*` (specificity 0,2,0) beat
+ * anything `wager.css` said about the same control, so the Play card and the
+ * composer sized the SAME cell from two different sheets.
+ *
+ * AND THEY HAD INVERTED. Measured before this wave:
+ *
+ *                     Play card          composer
+ *     label            14px strong        13px strong
+ *     value            13px muted         14px number
+ *
+ * On the Play card the market's NAME was louder than the line it was offering,
+ * and in the composer it was the other way round. Neither is a screen's call to
+ * make: the value is the number being chosen and the label names it, so the
+ * primitive in `wager.css` sets label = fine/muted and value = body-sub/number
+ * for both, and the touch floor it already carries makes the `min-height` here
+ * redundant as well. Net height change on the Play card: nil — one step down on
+ * the label, one step up on the value. */
 
-.fs-markets .fs-market {
-  min-height: var(--fs-r43-touch);
+/* ══ THE PROP POOL PICK SURFACE — UIRECON Wave 3B ═════════════════════════
+ *
+ * WHAT WAS HERE BEFORE: nothing. `.fs-setform` — the class the pick control
+ * wore — appeared in the markup and in no stylesheet, and no `select` element
+ * is styled anywhere in this product. So the one control that takes a governed
+ * Prop Pool claim rendered as a user-agent dropdown on a near-black sheet,
+ * captioned with the census scope enum. The claim path underneath it was sound
+ * the whole time; the surface was the defect.
+ *
+ * IT IS THE WAVE 1 CHOICE CELL NOW. The grid below lays out `.fs-seg__opt`
+ * cells — the same control a GM taps to choose a market or a set of terms — so
+ * the geometry, the 44px floor, the gold selected treatment and the
+ * `aria-pressed` grammar are the primitive's and not this surface's. */
+
+/* THE QUESTION. It sits where the scope enum used to and reads as the sheet's
+ * own sentence: card-primary size, primary colour, above everything it governs. */
+.fs-poolq {
+  margin: var(--fs-space-2) 0 var(--fs-space-4);
+  font-size: var(--fs-c-size-body);
+  line-height: 1.35;
+  color: var(--fs-c-text);
 }
 
-.fs-markets .fs-market__label {
-  font-size: var(--fs-r43-card-secondary);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: .02em;
+.fs-poolpick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-3);
+  margin-top: var(--fs-space-4);
 }
 
-.fs-markets .fs-market__value {
-  font-size: var(--fs-r43-meta);
-  color: var(--fs-r43-secondary);
+/* EQUAL CELLS, WHATEVER THE LABELS DO. `1fr` columns and `grid-auto-rows: 1fr`
+ * together mean every cell in the grid is the size of the largest — a long team
+ * name cannot make its own cell taller than its neighbour's, which is the
+ * "equal dimensions" the brief asks of a selection cell. */
+.fs-poolpick__grid {
+  display: grid;
+  gap: var(--fs-c-gap-cell);
+  grid-auto-rows: 1fr;
+}
+
+/* ONE COLUMN FOR MATCHUPS, TWO FOR TEAMS, decided by the served scope in
+ * `league.js`. A matchup label names both sides and does not fit half a phone;
+ * a team name does. */
+.fs-poolpick__grid.is-single { grid-template-columns: 1fr; }
+.fs-poolpick__grid.is-double { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* A PICK LIST IS NOT A SEGMENTED ROW. The primitive holds its label to one line
+ * because a market label is two words; a team name is not, and truncating one
+ * would make two teams indistinguishable. `is-wrap` lets the label use the
+ * cell's height — which the grid has already equalised — instead of an
+ * ellipsis. */
+.fs-seg__opt.is-wrap {
+  padding: var(--fs-space-3) var(--fs-space-2);
+}
+
+.fs-seg__opt.is-wrap .fs-seg__label {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.25;
+}
+
+/* `Your pick` IS A ROW OF THE SHEET, and it reads as unresolved until the
+ * governed write returns. `is-pending` is the same amber the rest of the
+ * product uses for "not settled yet": what a GM has chosen but not yet sent is
+ * exactly that. */
+#fs-poolpick-held.is-pending { color: var(--amber); }
+
+.fs-poolpick__save { min-height: var(--fs-c-touch); }
+
+.fs-poolpick__error {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: var(--fs-c-size-fine);
+  line-height: 1.4;
+  color: var(--red);
 }
 
 /* ── Play · Pool cards ────────────────────────────────────────────────────── */
@@ -232,10 +316,35 @@
  * gives way, not the type size the POR fixed. */
 .fs-zone .fs-heading,
 .fs-railsec .fs-heading,
+.fs-wkmod .fs-heading,
 #panel-league .fs-heading,
 #panel-action .fs-heading,
 #panel-week .fs-heading {
-  margin: var(--fs-space-1) var(--fs-space-1) 0;
+  /* ── THE HEADING GAP IS A TOKEN NOW — UIRECON Wave 1 ────────────────────
+   *
+   * This bottom margin was `0`, on Play, Status and Wrap Up together, so every
+   * section title in the product sat flush against its own content. The
+   * comment above says why it was taken: at the SS5.1 section step the Rev 4.2
+   * margins made a 52px block, and on Play that came straight out of the card
+   * zones. It was the right call with the information available then, and it
+   * is the wrong shape — a spacing decision spent as a height budget.
+   *
+   * WHAT PAYS FOR IT NOW. The metric strip. Measured at 375x667 before this
+   * wave, two of Play's four strip labels wrapped to a second line and stretched
+   * every cell in the grid from 59.78px to 75.38px. Holding the labels to one
+   * line returns 15.6px to the panel; the two headings on Play spend 6px of it
+   * (5px of gap each, less the 2px of top margin they no longer take). Play
+   * ends this wave with MORE room below the strip than it started with, and
+   * the gap is real rather than borrowed.
+   *
+   * ONE TOKEN, EVERY CONSUMER. `--fs-c-gap-heading` is what the later waves
+   * bind FantasyStakes Matchups, Prop Pools and the three Wrap Up result
+   * carousels to, so "same heading-to-content spacing" is a fact about one
+   * declaration instead of a promise repeated in five places. `.fs-wkmod` is
+   * added to the selector list for the same reason — Wrap Up's modules matched
+   * this treatment by coincidence of the `#panel-week` selector, and now match
+   * it by name. */
+  margin: 0 var(--fs-space-1) var(--fs-c-gap-heading);
   align-items: center;
   /* The block's own leading, set explicitly for the same reason the span's is:
    * neither was declared, and at the section step the inherited value made the
@@ -422,19 +531,21 @@
   padding-bottom: var(--fs-space-3);
 }
 
-/* The Current Settle card is NEVER inside a disclosure — §14.2's "do not make
- * Current Settle or key top-level figures require expansion". This is the
- * styling; the structure is in `ledger.js`, where the card is a sibling of the
- * three sections rather than a child of one. */
+/* §14.2 — "do not make Current Settle or key top-level figures require
+ * expansion" — AND SECTION 4 STILL HONOURS IT (UIRECON Wave 2).
+ *
+ * The rule used to be kept by structure: Current Settle was a card outside the
+ * disclosures, so nothing could collapse it. Wave 2 makes it section 4 so it is
+ * a peer of the three sections it reconciles, and keeps §14.2 by STATE instead
+ * — `ledgerSection()` is called with `open: true`, so the figure is on screen
+ * the moment the tab is. The affordance is identical to its siblings; only the
+ * starting position differs, and it differs for the reason §14.2 gives.
+ *
+ * `.fs-settle__head` is retired with the bespoke card: the section's numbered
+ * header carries the title now, at the size every other section title uses. */
 .fs-settle__total {
   font-size: var(--fs-r43-strip-value);
   font-weight: var(--fs-weight-heavy);
-}
-
-.fs-settle__head {
-  font-size: var(--fs-r43-section);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: .01em;
 }
 
 .fs-settle__label {
@@ -639,4 +750,706 @@
 .fs-rules [data-rule],
 .fs-settings [data-setting] {
   min-height: var(--fs-r43-touch);
+}
+
+
+/* ============================================================================
+ * LANE C — Rev 1.4 §L1/§L2 · the Matchup Preview comparison matrix
+ *
+ * APPENDED, AND SCOPED TO CLASS NAMES NOTHING ELSE USES. `.fs-lineup*` in
+ * wager.css still dresses the Wave 4A stacked tables that other surfaces draw;
+ * nothing below overrides a rule that file states, so removing this block
+ * removes the matrix and disturbs nothing.
+ *
+ * ── WHY A GRID AND NOT TWO CARDS ────────────────────────────────────────────
+ *
+ * Wave 4A gave LINEUPS two `.fs-lineup` tables and let them stack on a phone,
+ * one full lineup above the other. That is two lineups on one screen and it is
+ * not a comparison: the quarterback a GM is weighing sits nine rows above the
+ * quarterback it is being weighed against, and at 320px the pair is never
+ * visible together. §L1 requires the two teams to remain HORIZONTALLY
+ * ADJACENT from 320px up, which two full-width cards cannot be and a
+ * three-column grid keyed by roster position trivially is.
+ *
+ * ── THE ONE RULE THAT KEEPS THE DOCUMENT FROM SCROLLING ─────────────────────
+ *
+ * `minmax(0, 1fr)`, not `1fr`. A grid track's default minimum is `auto`, which
+ * is the content's min-content width — so a long player name would push the
+ * track wider than its share and the row, the sheet and the document with it.
+ * Every team track is therefore allowed to shrink below its content, and the
+ * content inside it is told what to do when it does (ellipsis on the name,
+ * wrapping on the team heading). No pixel width appears anywhere below; a
+ * pinned width is how the last two layout caps in this product went stale.
+ *
+ * ── LIVE ABOVE PROJ, IN THAT ORDER, EVERYWHERE ──────────────────────────────
+ *
+ * §L2 asks a GM to compare what a starter HAS scored against what it was
+ * projected to score. The live figure therefore leads and carries the emphasis;
+ * the projection sits under it in the muted tone every secondary figure in this
+ * product uses. The team footer repeats the same pair at the same size, because
+ * a total that looked like a different KIND of number would invite reading it
+ * as a different kind of claim.
+ *
+ * ── THE TYPE FLOOR ──────────────────────────────────────────────────────────
+ *
+ * Nothing here goes below `--fs-size-eyebrow` (9px), which is the smallest size
+ * this product already ships, and it is used only for the two all-caps labels
+ * — LIVE and PROJ — that are read once and then recognised by position.
+ * Every figure and every name a GM actually reads sits at `--fs-size-fine` or
+ * above.
+ * ========================================================================== */
+
+.fs-cmp {
+  display: grid;
+  /* POS | team | team. The position key is content-width so a `RB/WR` row —
+     the case where the two lineups fill a slot differently — stays legible
+     without stealing a fixed share from both team columns on every other row. */
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  margin: var(--fs-space-2) 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.fs-cmp__head,
+.fs-cmp__row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: stretch;
+  min-width: 0;
+}
+
+/* SUBGRID IS AN ENHANCEMENT, NOT A REQUIREMENT. Where it is unavailable the
+   row falls back to the same three-track definition, so the columns still line
+   up — they simply stop sharing one sizing pass with the header. */
+@supports not (grid-template-columns: subgrid) {
+  .fs-cmp__head,
+  .fs-cmp__row {
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.fs-cmp__head {
+  border-bottom: var(--fs-border);
+  padding-bottom: var(--fs-space-2);
+}
+
+.fs-cmp__row + .fs-cmp__row,
+.fs-cmp__head + .fs-cmp__row { border-top: var(--fs-border-hair); }
+
+.fs-cmp__pos {
+  align-self: center;
+  padding: var(--fs-space-3) var(--fs-space-2) var(--fs-space-3) 0;
+  /* WP3C §30 — the Rev 4.3 scale's smallest step, not Rev 4.2's 10px. The
+   * matrix is dense, and dense is a job for the LAYOUT (three tracks, hairline
+   * rows, a stacked figure pair) rather than for a smaller typeface. */
+  font-size: var(--fs-r43-nav-label);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--fs-c-text-faint);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fs-cmp__team {
+  padding: 0 var(--fs-space-2) 0 var(--fs-space-2);
+  font-size: var(--fs-r43-nav-label);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--fs-c-text-muted);
+  text-transform: uppercase;
+  /* The one place wrapping is preferred to truncation: a team name is the
+     column's identity and half of one identifies nothing. */
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.fs-cmp__cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-1);
+  padding: var(--fs-space-3) var(--fs-space-2);
+  min-width: 0;
+}
+
+.fs-cmp__player {
+  font-size: var(--fs-r43-nav-label);
+  color: var(--fs-c-text);
+  /* ONE LINE PER PLAYER, so the two cells in a row stay the same height and the
+     row-to-row pairing reads across the matrix rather than drifting down it. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.fs-cmp__figs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-1);
+  min-width: 0;
+}
+
+.fs-cmp__fig {
+  display: flex;
+  align-items: baseline;
+  gap: var(--fs-space-2);
+  min-width: 0;
+}
+
+.fs-cmp__figlabel {
+  font-size: var(--fs-r43-nav-label);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--fs-c-text-faint);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fs-cmp__fignum {
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-nav-label);
+  color: var(--fs-c-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* THE LIVE FIGURE IS THE ONE A GM CAME FOR. It carries the primary tone and the
+   heavier weight; the projection beside it stays muted. Neither is coloured by
+   whether it is ahead of the other — the surface reports, it does not
+   editorialise. */
+.fs-cmp__fig.is-live .fs-cmp__fignum {
+  color: var(--fs-c-text);
+  font-weight: var(--fs-weight-strong);
+}
+
+.fs-cmp__cell.is-empty .fs-cmp__player { color: var(--fs-c-text-faint); }
+
+.fs-cmp__row.is-total {
+  border-top: var(--fs-border);
+  margin-top: var(--fs-space-2);
+}
+
+.fs-cmp__row.is-total .fs-cmp__figlabel { color: var(--fs-c-text-muted); }
+
+.fs-cmp__row.is-total .fs-cmp__fig.is-live .fs-cmp__fignum {
+  color: var(--fs-c-gold);
+}
+
+/* ── The wider presentations WIDEN THIS GRID; they do not re-lay it out ──────
+ *
+ * §L1 permits a broader comparison on tablet and desktop and requires the
+ * row-to-row relationship to survive it. So the only things that change above
+ * 520px are the type scale and the figure arrangement inside a cell: the same
+ * three tracks, the same rows, the same pairing. A media query that reflowed
+ * the matrix into two stacked lists would satisfy the letter of "broader" and
+ * destroy the thing the rule protects. */
+@media (min-width: 520px) {
+  .fs-cmp__team { font-size: var(--fs-r43-meta); }
+
+  .fs-cmp__player,
+  .fs-cmp__fignum { font-size: var(--fs-r43-meta); }
+
+  .fs-cmp__pos { font-size: var(--fs-r43-meta); }
+
+  /* Room for the two figures to sit on one line, which shortens every row and
+     puts more of the comparison on one screen. */
+  .fs-cmp__figs { flex-direction: row; gap: var(--fs-space-5); }
+}
+
+
+/* ══ PLAY · THE PROP POOL CAROUSEL — POR Rev 1.4, Part 4 ═══════════════════
+ *
+ * WHAT THIS SUPERSEDES, AND WHY IT IS NOT A PREFERENCE. Play's Pools were a
+ * 2×2 grid of quarter-tiles. `tabs.css` states the trade-off that produced
+ * them in its own words — "the card compresses and clips instead" — and Rev 4.3
+ * §K2 already had to invert half of it, letting the ZONE scroll so a card could
+ * keep its content. What neither could give a quarter-tile was a LINE OF PROSE:
+ * Rev 4.3 §8.5 moved the definition's settle condition off the card for exactly
+ * that reason, leaving a card that could say which Pool it was and nothing
+ * about what it asked.
+ *
+ * POR Rev 1.4 §3 makes that gap governed rather than cosmetic. Every drawable
+ * definition now carries a `public_question` written against its own mechanic,
+ * and a question has to be readable to be worth having. One card at a time is
+ * what buys the line it sits on.
+ *
+ * THE GEOMETRY IS THE MATCHUP CAROUSEL'S, BY REUSE AND NOT BY AGREEMENT. The
+ * markup places each card in `.fs-carousel__item` inside `.fs-carousel` — the
+ * same two elements the Matchups rail above uses. The outer width, the
+ * horizontal inset, the gutter, `scroll-snap-type: y mandatory`,
+ * `scroll-snap-stop: always`, the hidden scrollbar and `overflow-x: hidden` are
+ * therefore not restated here at all, which is the only way to guarantee the
+ * two rails cannot drift. Nothing below sets a width, an inset or a snap rule.
+ *
+ * SO WHAT IS BELOW IS THE CARD'S INSIDE, plus the two OUTER properties a card
+ * genuinely owns: it fills its item, and it takes the CARD radius the Matchup
+ * card takes rather than the tile radius a grid cell took. §4 permits
+ * content-specific internal layout and asks the outer geometry to feel like the
+ * Matchup carousel's; this is that line drawn explicitly.
+ *
+ * NO PIXEL CONSTANT DECIDES ANYTHING. `height: 100%` against the item is the
+ * whole "one complete card" rule, and it stays true at 320px and at 1024px
+ * without a media query — which is the lesson Wave 4 recorded when Wrap Up's
+ * measured height caps went stale against taller cards. */
+
+.fs-pool--card {
+  /* ONE CARD IS ONE ITEM. The carousel item is one viewport of the rail, so
+   * filling it is what makes a second card impossible to half-expose. */
+  height: 100%;
+  gap: var(--fs-space-2);
+  /* Identical to `.fs-wcard` (wager.css), deliberately: a Prop Pool card and a
+   * Matchup card are two contents in one card family. */
+  padding: var(--fs-space-4) 11px;
+  border-radius: var(--fs-radius-card);
+  /* Restores the clip `rev43.css §K2` released for the grid. A card that fills
+   * its item can no longer push the zone taller, so there is nothing for
+   * `overflow: visible` to rescue and a great deal for it to spill. */
+  overflow: hidden;
+}
+
+/* The badge row. A head element rather than a bare badge, so the TEAM/MATCHUP
+ * chip sits on its own line at the top exactly as the Matchup card's badge
+ * does, instead of being the first item of a flex column. */
+.fs-pool--card .fs-pool__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fs-space-2);
+}
+
+/* Readable at the Rev 4.3 floor. The 7px grid badge was sized for a quarter
+ * tile and §5.1 does not admit it anywhere a card has room. ROLLOVER stays a
+ * MODIFIER on this chip — `.fs-pool__badge.is-rollover` is untouched — because
+ * a rolling Pool is not a different kind of Pool. */
+.fs-pool--card .fs-pool__badge {
+  padding: 2px var(--fs-space-2);
+  border-radius: 4px;
+  font-size: var(--fs-r43-nav-label);
+}
+
+/* The branded name is the loudest thing on the card, at the same step the
+ * Matchup card's opponent identity takes. Three lines rather than the grid's
+ * two, though Rev 1.4 caps a public name at 18 characters so one is the
+ * expected case and the clamp is a guard, not a layout. */
+.fs-pool--card .fs-pool__name {
+  -webkit-line-clamp: 3;
+  font-size: var(--fs-c-size-body);
+  line-height: 1.2;
+}
+
+/* THE QUESTION — the reason this card exists. It takes the flexible track, so
+ * the name and the badge sit tight at the top and the foot stays pinned, and a
+ * long question shortens the gap rather than pushing the pot off the card. */
+.fs-pool--card .fs-pool__question {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--fs-c-size-body-sub);
+  line-height: 1.35;
+  color: var(--fs-c-text-muted);
+}
+
+/* Entry, entered and pot, at a size a phone can read. The 8px foot was another
+ * quarter-tile measurement. `.fs-pool__pot.is-carried` keeps its gold, which is
+ * how a carried pot is marked without a gold card. */
+.fs-pool--card .fs-pool__foot {
+  padding-top: var(--fs-space-2);
+  font-size: var(--fs-c-size-label);
+}
+
+
+/* ══ PARALLEL CARD GEOMETRY — RC4 MOBILE RECONCILIATION ════════════════════
+ *
+ * THE OWNER RULE THIS BLOCK EXISTS FOR, IN ONE SENTENCE: peer card families
+ * measure the same. On Play a Matchup card and a Prop Pool card are one outer
+ * width and one outer height; on Wrap Up a Yahoo result, a FantasyStakes
+ * Matchup result and a FantasyStakes Prop Pool result are one outer width and
+ * one outer height. Content differences change what is INSIDE a card and never
+ * the box it is drawn in.
+ *
+ * ── WHAT THE DEPLOYED RC4 BUILD ACTUALLY DID, MEASURED ─────────────────────
+ *
+ *   PLAY, 320x568   Matchups zone 133.11px · heading 88.59px · rail 44.52px
+ *                   for a card whose content is 155px. The item carries
+ *                   `min-height: 100%`, so it grew to the card and the rail
+ *                   clipped it — a third of a Matchup card, cut off exactly
+ *                   where PROP POOLS begins.
+ *   PLAY, 375x667   the same shape: rail 98.81px, card 155px.
+ *   PLAY            Prop Pool cards measured 135.97px against Matchup cards at
+ *                   155px — two families, two heights, in adjacent sections.
+ *   WRAP UP, 390    Yahoo 132.30px · FantasyStakes Matchup 150.06px ·
+ *                   FantasyStakes Prop Pool 45px. Three peer sections, three
+ *                   card heights, and the third one not a card at all.
+ *
+ * ── WHY A HEIGHT NEGOTIATION WAS THE WRONG SHAPE ───────────────────────────
+ *
+ * Play's zones sat at `flex: 1 1 0` so that neither could grow at the other's
+ * expense, and each rail took what its own heading left. That is a fair split
+ * of a quantity that is not the surface's to divide: the CARD is the fixed
+ * thing, and 276px of panel does not contain two of them. The rails therefore
+ * clipped, silently, because a scroll container reports nothing when its
+ * content does not fit.
+ *
+ * SO THE DECK IS SIZED BY ITS CONTENT AND THE SURFACE SCROLLS. `min-height:
+ * max-content` on the grid makes every rail row at least as tall as the tallest
+ * card any rail holds; a phone too short for both sections scrolls vertically,
+ * which is what Wrap Up has done since Wave 4B and the reason Wrap Up never
+ * produced this defect.
+ *
+ * ── AND THE EQUALITY IS STRUCTURAL, NOT A TUNED NUMBER ─────────────────────
+ *
+ * The rail rows are a matched set of `minmax(0, 1fr)` tracks in ONE grid. Grid
+ * resolves a set of equal `fr` tracks to one size — under an intrinsic
+ * constraint to the largest track's content, and with room to spare by an equal
+ * share — so the families cannot measure differently at any width, in any
+ * orientation, at any type scale, without the grid itself being wrong. There is
+ * no pixel constant here to go stale, which is the lesson Wave 4 recorded when
+ * Wrap Up's measured height CAPS went stale against taller cards.
+ *
+ * A heading must therefore not share a track with a rail: Play's MATCHUPS
+ * heading carries a refresh control and an `Odds updated` stamp that PROP POOLS
+ * does not, so equal ZONES would have produced unequal RAILS. `display:
+ * contents` on the zone and on the Wrap Up module is what puts each heading in
+ * its own `auto` row and each rail in a shared `1fr` one.
+ *
+ * ── THE SECTION BOUNDARY IS ENFORCED BY THE BOX, NOT BY ARITHMETIC ─────────
+ *
+ * Every rail is `overflow-y: hidden` inside its own grid track. No section can
+ * occupy the next section's space even if a browser sized the tracks wrongly:
+ * the worst available failure is a short rail, never a card drawn over the
+ * heading beneath it. Nothing here is positioned, offset or given a negative
+ * margin. */
+
+/* ── Play · the deck ──────────────────────────────────────────────────────── */
+
+/* THE SCROLLER. `.fs-zones` was the equal-billing parent; it is now the region
+ * that scrolls when a phone cannot hold both complete sections. `overflow-x:
+ * hidden` is what guarantees the tab itself never scrolls sideways however wide
+ * a rail's content is. */
+#panel-league .fs-zones {
+  display: block;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* THE BOTTOM BREATHING ROOM COMES BACK. `rev43.css` released it — "every
+   * pixel spent below the zones comes out of a wager card" — because the two
+   * sections were dividing a fixed panel height and the Matchup card had none
+   * to give. The deck is sized by its content now and the region scrolls, so
+   * the padding costs a card nothing and buys the last card a gap above the
+   * navigation instead of a flush edge against it. */
+  padding-bottom: var(--fs-space-4);
+}
+
+/* NEITHER ZONE DRAWS A BOX. Both are pure grouping — they carry no border, no
+ * padding and no background — so removing their boxes removes nothing visible
+ * and puts four elements on the deck's four rows: heading, rail, heading, rail.
+ * The elements themselves stay in the DOM, so `.fs-zone--bets .fs-carousel` and
+ * every other zone-scoped selector still resolves. */
+#panel-league .fs-playdeck > .fs-zone {
+  display: contents;
+}
+
+.fs-playdeck {
+  display: grid;
+  /* heading · rail · heading · rail. The two rail tracks are the matched pair;
+   * `minmax(0, 1fr)` rather than a bare `1fr` so neither can be pushed past its
+   * peer by its own content. */
+  grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  /* SIZED BY THE TALLEST CARD IN EITHER FAMILY. Without this the deck takes the
+   * height it is given and the taller family is clipped — which is the defect
+   * being repaired, one level up. */
+  min-height: max-content;
+  /* The row gap is zero because the two section spacings are different: a
+   * heading sits `--fs-c-gap-heading` above its own rail (its own margin, the
+   * shared token) and a section sits `--fs-space-4` below the one before it. */
+  row-gap: 0;
+}
+
+/* THE SECTION STEP, ON THE SECOND SECTION'S HEADING. This is the controlled gap
+ * between the Matchups rail and the PROP POOLS heading — an explicit structural
+ * separation rather than whatever two adjacent boxes happened to leave. */
+#panel-league .fs-zone--pools > .fs-heading {
+  margin-top: var(--fs-space-4);
+}
+
+/* ── Play · the two rails ─────────────────────────────────────────────────── */
+
+/* HORIZONTAL, ONE COMPLETE CARD AT A TIME, AND THE SAME RULES FOR BOTH.
+ *
+ * The rail was a VERTICAL snap list whose viewport was whatever height the zone
+ * had left. A vertical viewport can be shorter than its card; a horizontal one
+ * cannot be narrower than its item, because the item is defined as one viewport
+ * wide. That is the whole reason the direction changed — not a preference for
+ * swiping, but that width is the axis this layout can actually guarantee.
+ *
+ * IT IS THE RESULT CAROUSEL'S GEOMETRY, DELIBERATELY. `flex: 0 0 100%` items,
+ * `x mandatory`, `scroll-snap-stop: always`, `overscroll-behavior-x: contain`
+ * and a hidden scrollbar are the rules Wrap Up's rails have carried since Wave
+ * 4B; Play now reads and behaves the same way, which is what "peer card
+ * families use the same carousel viewport geometry" means. */
+#panel-league .fs-carousel {
+  display: flex;
+  align-items: stretch;
+  gap: var(--fs-c-gap-cell);
+  /* The rail fills its grid track and no more; the track is the shared height. */
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: auto;
+  /* THE SECTION BOUNDARY. Nothing in this rail can be drawn in the next
+   * section's space, whatever its content measures. */
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  /* A swipe past the last card stops here rather than chaining into the deck
+   * and then the document. */
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+#panel-league .fs-carousel::-webkit-scrollbar { display: none; }
+
+/* EXACTLY ONE VIEWPORT WIDE. `flex: 0 0 100%` cannot shrink to let a neighbour
+ * peek in and cannot grow past the viewport, so a partial next card is not a
+ * thing this rail can draw. The `gap` above sits BETWEEN items and is therefore
+ * never visible at rest. */
+#panel-league .fs-carousel__item {
+  flex: 0 0 100%;
+  width: auto;
+  min-width: 0;
+  /* The vertical rail's item took `min-height: 100%` and a bottom pad; both
+   * belonged to the axis that is gone. */
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 0;
+  display: flex;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+/* The card fills its item, so the two families line up even when one has more
+ * to say than the other. */
+#panel-league .fs-carousel__item > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+}
+
+/* A CARD MAY NOT SPILL ITS OWN SHELL. The deck's `max-content` floor means the
+ * shell is already at least the tallest card's content, so this clips nothing
+ * in practice — it is the guard that keeps a card inside its section if it ever
+ * did. The certification measures `scrollHeight` against `clientHeight` on
+ * every card at every viewport rather than trusting that. */
+#panel-league .fs-carousel__item > .fs-wcard {
+  overflow: hidden;
+}
+
+/* ── Wrap Up · the deck ───────────────────────────────────────────────────── */
+
+/* THREE TRUE PEERS. The three modules were three boxes in a block column, each
+ * rail as tall as its own content — 132.30 / 150.06 / 45 measured at 390. They
+ * are now the six rows of one grid, with the three rail rows a matched set, so
+ * the Yahoo result card, the FantasyStakes Matchup result card and the
+ * FantasyStakes Prop Pool result card cannot measure differently. */
+.fs-wkdeck {
+  display: grid;
+  grid-template-rows:
+    auto minmax(0, 1fr)
+    auto minmax(0, 1fr)
+    auto minmax(0, 1fr);
+  min-height: max-content;
+  row-gap: 0;
+}
+
+/* The module keeps its identity and its data attributes and gives up its box,
+ * for the same reason Play's zones do: a heading and a rail must sit on
+ * separate tracks or the rails cannot be a matched set. Every `.fs-wkmod ...`
+ * selector still resolves — the element is still in the DOM and still the
+ * ancestor it was. */
+.fs-wkdeck > .fs-wkmod {
+  display: contents;
+}
+
+/* THE SEPARATOR MOVES ONTO THE HEADING, UNCHANGED. `.fs-wkmod` carried
+ * `margin-top`, `padding-top` and a `border-top`; the heading now carries all
+ * three, at the same values, so the rule is drawn in the same place, at the
+ * same weight, across the same width, the same distance below the section
+ * above it.
+ *
+ * THE `#panel-week` PREFIX IS LOAD-BEARING AND NOT DECORATION. The shared
+ * heading rule earlier in this file is a selector LIST, and one of its members
+ * is `#panel-week .fs-heading` — an ID, so `margin: 0 ...` from that shorthand
+ * outranks any class-only selector however long. Measured without the prefix:
+ * `border-top` and `padding-top` applied and `margin-top` silently did not. */
+#panel-week .fs-wkdeck > .fs-wkmod > .fs-heading {
+  margin-top: var(--fs-space-2);
+  padding-top: var(--fs-space-3);
+  border-top: var(--fs-border);
+}
+
+#panel-week .fs-wkdeck > .fs-wkmod:first-child > .fs-heading {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* The rail fills its track — the shared height — rather than its own content. */
+.fs-wkdeck .fs-rescar {
+  height: 100%;
+  min-height: 0;
+}
+
+/* THE CARD FILLS ITS ITEM BY STRETCHING, NOT BY A PERCENTAGE. `.fs-rescar` is
+ * `align-items: stretch` and the item is a flex row, so a child already takes
+ * the item's full height — and takes it MINUS its own margins, which a
+ * `height: 100%` does not. The empty-state note is the case that proves the
+ * difference: `.fs-note` carries 18px of vertical margin, so at 100% it made
+ * the rail's `scrollHeight` exceed its `clientHeight` by exactly that, and a
+ * rail that reports overflow is a rail that is clipping something. */
+.fs-wkdeck .fs-rescar__item > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Wrap Up · one shell, no status rail — RC4 ────────────────────────────── */
+
+/* WHAT THE LIVE CARD SHOWED. A FantasyStakes Matchup result card at WK 11 drew
+ * a 3px LIVE-green rule down its left edge — `rgb(151, 196, 89)` — beside a
+ * Yahoo card and a Prop Pool card carrying the shared hairline. Wave 4B had
+ * already retired the GOLD edge on this same section for the same reason and
+ * stopped at the one accent it could see.
+ *
+ * A LIFECYCLE ACCENT IS A PLAY AND STATUS SIGNAL. There, four rails of cards
+ * are at four different stages at once and the edge distinguishes them. Wrap Up
+ * reports one week's outcomes: the badge says LIVE, WON, LOST or NOT ENTERED in
+ * words, the figure carries its own sign, and a coloured rule beside them adds
+ * a fourth telling of the same fact in the one place it also breaks the parity
+ * the three sections are built for.
+ *
+ * NOTHING REPLACES IT — not a right edge, not a tinted fill, not a rule under
+ * the head. The status stays where it was already stated, in the badge and in
+ * the words.
+ *
+ * THE YAHOO RAIL IS DELIBERATELY UNTOUCHED, exactly as Wave 4B left it: a
+ * provider's FINAL is a statement about the fixture and the only mark that card
+ * has for it, and it is the section this pass was not asked to re-rule. */
+.fs-wkmod[data-module="bets"] .fs-rescar__item > .fs-wcard,
+.fs-wkmod[data-module="pools"] .fs-rescar__item > .fs-wcard {
+  border-left-color: var(--line2);
+}
+
+/* A CARRIED POT IS GOLD, ON EVERY SURFACE THAT DRAWS ONE. `.fs-pool__pot`
+ * (tabs.css) and the retired `.fs-poolrow__figvalue` (ledger.css) both marked a
+ * rollover this way; the Wrap Up Prop Pool result card takes the same modifier
+ * rather than a colour of its own, so one Pool that carried reads the same
+ * wherever a GM meets it. It stays a MODIFIER on a subject type — there is no
+ * gold card, and no third kind of Pool. */
+.fs-wcard__figvalue.is-carried { color: var(--gold); }
+
+/* ── FINAL POR (FREEZE) §4 · THE PLAY MATCHUP CARD'S WAGER STATE ────────────
+ *
+ * A full card says what is running against this opponent. Two shapes: a live
+ * wager states its market, terms, stake and pot; a pairing with nothing yet
+ * states that and offers the way in. Both sit in the same slot at the foot of
+ * the card so the rail's cards stay one height. */
+.fs-playstate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  flex-wrap: wrap;
+  margin-top: var(--fs-space-3);
+  padding-top: var(--fs-space-3);
+  border-top: var(--fs-border-hair);
+}
+
+.fs-playstate__line { display: flex; align-items: baseline; gap: var(--fs-space-3); min-width: 0; }
+
+.fs-playstate__market {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-playstate__terms {
+  font-size: var(--fs-r43-meta);
+  letter-spacing: .06em;
+  color: var(--fs-r43-tertiary);
+}
+
+.fs-playstate__figs { display: flex; align-items: center; gap: var(--fs-space-4); }
+
+.fs-playstate__fig { display: flex; align-items: baseline; gap: 4px; }
+.fs-playstate__fig span { font-size: var(--fs-r43-meta); color: var(--fs-r43-tertiary); }
+.fs-playstate__fig strong {
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+}
+
+.fs-playstate__badge {
+  padding: 1px var(--fs-space-2);
+  border-radius: 3px;
+  background: var(--goldbg);
+  color: var(--gold);
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .06em;
+}
+
+.fs-playstate__note { font-size: var(--fs-r43-meta); color: var(--fs-r43-secondary); }
+
+.fs-playstate__cta {
+  min-height: 40px;
+  padding: 0 var(--fs-space-4);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  background: var(--tile);
+  color: var(--gold);
+  font-family: inherit;
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.fs-playstate__cta:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+
+/* ── §5 · THE PROP POOL CARD'S ENTRY STATE ─────────────────────────────────*/
+.fs-poolstate {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: var(--fs-border-hair);
+}
+
+.fs-poolstate__label {
+  font-size: 8px;
+  letter-spacing: .1em;
+  color: var(--fs-r43-tertiary);
+}
+
+.fs-poolstate__value {
+  font-size: 9px;
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-poolstate__cta {
+  font-size: 8px;
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .08em;
+  color: var(--gold);
 }

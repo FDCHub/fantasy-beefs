@@ -834,12 +834,30 @@ _assert("§8 (step 19): and the GM who never picked received nothing",
         balance_of(f"wallet:{_ABSTAINER}") == _wallets_pre_settle[_ABSTAINER],
         str(balance_of(f"wallet:{_ABSTAINER}")))
 
-_zero = by_key.get("matchups_with_zero_total_turnovers", {})
+# FOUND BY OUTCOME, NOT BY KEY — POR Rev 1.4 §4.2. This read
+# `by_key["matchups_with_zero_total_turnovers"]`, which assumed WHICH definition
+# the digest would place in a MATCHUP slot. The weekly slate is now a governed
+# 3 TEAM + 1 MATCHUP, so that slot went to a different MATCHUP QUALIFIER and the
+# lookup returned an empty dict — a working rollover reported as a missing one.
+#
+# The claim was never about a particular contest: it is that an occurrence NO
+# GM could win rolls its whole pot forward instead of paying. Asserted over the
+# served classification, it holds for EVERY such occurrence in the week and
+# survives any future rotation ruling.
+_zeroes = [s for s in ps.get("settled", [])
+           if s.get("classification") == "ZERO_ELIGIBLE_CLAIMS"]
+_assert("§8 (step 20): the week produced at least one genuine "
+        "ZERO_ELIGIBLE_CLAIMS outcome, so the rollover path is exercised",
+        bool(_zeroes),
+        str([(s.get("definition_key"), s.get("classification"))
+             for s in ps.get("settled", [])]))
 _assert("§8 (step 20): a genuine ZERO_ELIGIBLE_CLAIMS outcome rolls over "
         "rather than paying anyone",
-        _zero.get("classification") == "ZERO_ELIGIBLE_CLAIMS"
-        and _zero.get("distributed_cents") == 0
-        and _zero.get("rolled_over_cents") == 150, str(_zero))
+        bool(_zeroes) and all(
+            z.get("distributed_cents") == 0
+            and z.get("rolled_over_cents") == z.get("pot_cents")
+            for z in _zeroes),
+        str(_zeroes)[:220])
 _assert("§8 (step 20): no occurrence paid out more than its pot",
         all(s["distributed_cents"] <= s["pot_cents"]
             for s in ps.get("settled", [])))
@@ -1606,9 +1624,22 @@ for _wk, _slot, _iid, _key, _cents, _cls, _pot in _live:
           f"[{_cls}]; {claim_count(_iid)} governed claim(s) were submitted")
 
 # ── REQUIRED PROOFS 1-3 — the pre-sweep facts WP6D established, kept ─────────
-_assert("§15.1: PRE-SWEEP — exactly two Pool occurrences carry a live rollover, "
-        "300 cents each",
-        len(_live) == 2 and all(row[4] == 300 for row in _live),
+# HOW MANY POTS ROLL IS A ROTATION OUTCOME, NOT A LIFECYCLE CLAIM.
+#
+# This read "exactly two, 300 cents each" — two weeks of an unclaimed QUALIFIER
+# accumulating one 150-cent share apiece. POR Rev 1.4 §4.2 gives the weekly
+# slate a governed 3 TEAM + 1 MATCHUP, and nine of the fifteen rollover-eligible
+# definitions are MATCHUP-scoped, so a week now draws fewer of them and the
+# carries that survive to the season boundary differ in number and in size.
+#
+# WHAT §15 IS ACTUALLY ABOUT is that a live carry reaches the boundary at all,
+# that it is a SUBJECT-layer ZERO_ELIGIBLE_CLAIMS carry (§15.2, unchanged), that
+# it survived a real claim phase (§15.3, unchanged), and that its cents are
+# still sitting inside `pool:{league}` rather than having been posted anywhere
+# (§15.3b). Those four are the proof; the count and the amount were description.
+_assert("§15.1: PRE-SWEEP — at least one Pool occurrence carries a live "
+        "rollover into the season boundary, and every carry is positive",
+        len(_live) >= 1 and all(row[4] > 0 for row in _live),
         str([(row[3], row[4]) for row in _live]))
 _assert("§15.2: PRE-SWEEP — both are SUBJECT-layer ZERO_ELIGIBLE_CLAIMS, not "
         "zero-winning-ticket rollovers, so this is a legitimate carry and not "
@@ -1619,9 +1650,12 @@ _assert("§15.3: PRE-SWEEP — each carried REAL governed PoolClaim rows, so the
         "pot survived a full claim phase rather than an empty one",
         all(claim_count(row[2]) > 0 for row in _live),
         str([(row[3], claim_count(row[2])) for row in _live]))
+# THE IDENTITY IS THE POINT, NOT THE FIGURE. `== 600` was the total two
+# 300-cent carries happened to make; what a rollover must never do is post, and
+# that is `pool balance == sum of live carries` at any total.
 _assert("§15.3b: PRE-SWEEP — the carried cents are still inside pool:{league}; "
         "a rollover is a column transfer, never a posting",
-        _pool_before == _carry_total == 600,
+        _pool_before == _carry_total and _carry_total > 0,
         f"pool={_pool_before} carries={_carry_total}")
 
 # ── ALL NINE PREREQUISITES, ASKED AS ONE CALL ────────────────────────────────
@@ -1692,12 +1726,21 @@ _assert("§15.4c: and each carries the SUBJECT-zero classification it was "
         "settled under — the disposal did not reclassify anything",
         all(s["classification"] == "ZERO_ELIGIBLE_CLAIMS" for s in _sweeps),
         str([s.get("classification") for s in _sweeps]))
-_assert("§15.5: EXACTLY 600 cents leaves rollover state",
-        _body.get("terminal_rollover_swept_cents") == 600
-        and _body.get("terminal_rollover_disposed_cents") == 600
-        and sum(s["amount_cents"] for s in _sweeps) == 600,
+# EVERY CARRIED CENT, AND NOT ONE MORE. `600` was the total two 300-cent
+# carries happened to make under the pre-Rev-1.4 draw; POR Rev 1.4 §4.2's
+# governed 3 TEAM + 1 MATCHUP mix leaves a different set of carries at the
+# boundary. `_carry_total` is measured from those carries at §15.3b, so the
+# claim — that exactly what was carried leaves rollover state, swept and
+# disposed and posted, with nothing invented and nothing stranded — is now
+# stated against the money itself.
+_assert(f"§15.5: EXACTLY {_carry_total} cents — every carried cent and no "
+        f"other — leaves rollover state",
+        _body.get("terminal_rollover_swept_cents") == _carry_total
+        and _body.get("terminal_rollover_disposed_cents") == _carry_total
+        and sum(s["amount_cents"] for s in _sweeps) == _carry_total,
         f"swept={_body.get('terminal_rollover_swept_cents')} "
-        f"disposed={_body.get('terminal_rollover_disposed_cents')}")
+        f"disposed={_body.get('terminal_rollover_disposed_cents')} "
+        f"carried={_carry_total}")
 _assert("§15.5b: none of the disposals is a replay — this call moved the money",
         all(s["replayed"] is False for s in _sweeps),
         str([s.get("replayed") for s in _sweeps]))
@@ -1744,10 +1787,16 @@ _assert("§15.7b: and no POSTSEASON occurrence exists at all, before or after �
 _assert("§15: exactly one ROLLOVER_EXPIRY_SWEEP event exists per carried "
         "occurrence, each with a real posting — the audit row IS the "
         "exactly-once guarantee (uq_pool_economic_event_instance)",
-        len(_sweep_event_rows) == 2
+        len(_sweep_event_rows) == len(_live)
         and all(p is not None for _, _, p in _sweep_event_rows)
-        and sorted(a for _, a, _ in _sweep_event_rows) == [300, 300],
-        str(_sweep_event_rows))
+        # ONE EVENT PER CARRY, EACH FOR EXACTLY THAT CARRY'S CENTS. Compared
+        # against the carries measured before the close rather than against a
+        # pinned pair of amounts, so a rotation ruling that changes how many
+        # pots roll cannot make this pass or fail for the wrong reason.
+        and sorted(a for _, a, _ in _sweep_event_rows)
+        == sorted(row[4] for row in _live),
+        f"{_sweep_event_rows} vs carries "
+        f"{sorted((row[2], row[4]) for row in _live)}")
 
 # ── REQUIRED PROOFS 8, 9 — the postseason catalog is untouched ───────────────
 #
@@ -1801,13 +1850,14 @@ _assert("§15.8: NO postseason Pool definition was activated — the league's "
 # ── REQUIRED PROOF 6 — the money reached Championship BEFORE distribution ────
 _champ_pot = _body.get("championship_pot_cents", 0)
 _reserve_swept = _body.get("reserve_swept_cents", 0)
-_assert("§15.6: the 600 cents reached championship:{league} BEFORE the "
-        "Championship distribution — the distributed pot is exactly the "
-        "pre-close balance PLUS the swept rollover PLUS the reserve sweep, so "
-        "the carry was paid out rather than left sitting in the account",
-        _champ_pot == _champ_before + 600 + _reserve_swept,
-        f"pot={_champ_pot} = champ_before {_champ_before} + rollover 600 + "
-        f"reserves {_reserve_swept}")
+_assert(f"§15.6: the {_carry_total} carried cents reached "
+        f"championship:{{league}} BEFORE the Championship distribution — the "
+        f"distributed pot is exactly the pre-close balance PLUS the swept "
+        f"rollover PLUS the reserve sweep, so the carry was paid out rather "
+        f"than left sitting in the account",
+        _champ_pot == _champ_before + _carry_total + _reserve_swept,
+        f"pot={_champ_pot} = champ_before {_champ_before} + rollover "
+        f"{_carry_total} + reserves {_reserve_swept}")
 _assert("§15.6b: and the reserve sweep itself is the full governed obligation",
         _reserve_swept == sum(_reserve_before.values())
         == OPENING_CHAMPIONSHIP * TEAM_COUNT,

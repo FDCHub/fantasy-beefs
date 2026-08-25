@@ -1,9 +1,9 @@
 """
 Pool catalog and stat vocabulary — the metadata that DRIVES the common engine.
 
-Product authority : spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_3.md
+Product authority : spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_4.md
 Implementation    : spec/SPEC_Pool_Rotation_Implementation_Scope_Rev1_3.md §C1
-Catalog data      : spec/pool_catalog_rev1_3.json
+Catalog data      : spec/pool_catalog_rev1_4.json
 Stat vocabulary   : spec/pool_stat_vocabulary_rev1_0.json
 
 THE CATALOG IS DATA, NOT CODE (POR §3.1 / AP-323). Eighty active definitions do
@@ -44,7 +44,12 @@ from typing import Any, Mapping
 _SPEC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                          "spec")
 
-CATALOG_PATH = os.path.join(_SPEC_DIR, "pool_catalog_rev1_3.json")
+# REV 1.4, adopted by owner ruling 2026-08-21. Rev 1.3 remains on disk as
+# historical authority and is still loadable BY EXPLICIT PATH — several suites
+# load it deliberately, to prove the branded naming pass moved no governed
+# field. It is no longer what the runtime reads.
+CATALOG_PATH = os.path.join(_SPEC_DIR, "pool_catalog_rev1_4.json")
+CATALOG_PATH_REV1_3 = os.path.join(_SPEC_DIR, "pool_catalog_rev1_3.json")
 VOCABULARY_PATH = os.path.join(_SPEC_DIR, "pool_stat_vocabulary_rev1_0.json")
 
 # POR §1.1 — retired numbers and keys are reserved PERMANENTLY and never reused.
@@ -100,6 +105,9 @@ REASON_BLOCKED_REASON_MISMATCH = "BLOCKED_REASON_MISMATCH"
 REASON_SHAPE_MISMATCH = "SHAPE_MISMATCH"
 #: WP1B §10 — a postseason-eligible matchup-vs-matchup Pool.
 REASON_PROHIBITED_POSTSEASON_STRUCTURE = "PROHIBITED_POSTSEASON_STRUCTURE"
+#: POR Rev 1.4 §4.2 — the artifact's weekly scope composition and the pure
+#: selector's default have drifted apart, or the block is not well formed.
+REASON_SCOPE_MIX_MISMATCH = "SCOPE_MIX_MISMATCH"
 
 
 # ── Stat vocabulary ───────────────────────────────────────────────────────────
@@ -201,6 +209,22 @@ class PoolDefinitionSpec:
     key: str
     catalog_number: int
     display_name: str
+    #: POR Rev 1.4 §3 — the plain-English question a GM is answering when they
+    #: pick. A GOVERNED PEER of display_name and the ONLY authority for that
+    #: sentence: no surface may compose one from scope, key or display name, and
+    #: the app's old scope-derived prompt — "Which team do you think takes this
+    #: Prop Pool?" — said the same thing on all sixty-four.
+    #:
+    #: It carries NO SETTLEMENT AUTHORITY. Where it and a predicate,
+    #: metric_expression or threshold_condition could be read as disagreeing,
+    #: the governed field wins and the question is the defect (§3.2). This
+    #: mirrors the existing treatment of display_terms in the proposal
+    #: lifecycle, for the same reason.
+    #:
+    #: None on the 16 definitions no league can currently draw (§7). Branding a
+    #: contest nobody can play would put a sentence into the register that has
+    #: never appeared on a surface and may not be right by the time it does.
+    public_question: str | None
     category: str
     scope: str
     mechanic: str
@@ -248,6 +272,11 @@ class PoolCatalog:
     definitions: tuple[PoolDefinitionSpec, ...]
     retired_numbers: frozenset[int]
     revision: str
+    #: POR Rev 1.4 §4.2 — the governed scope composition of the normal weekly
+    #: slate, as an ORDERED tuple of (scope, slots). None on a catalog that
+    #: declares none, which every pre-Rev-1.4 artifact does; None means "rank
+    #: without a quota", never a guess at what the ruling would have been.
+    weekly_scope_mix: tuple[tuple[str, int], ...] | None = None
 
     def by_key(self, key: str) -> PoolDefinitionSpec:
         for d in self.definitions:
@@ -270,7 +299,7 @@ def _tuple_or_empty(value: Any) -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def load_catalog(path: str = CATALOG_PATH) -> PoolCatalog:
-    """Load, validate and freeze the Rev1.3 catalog.
+    """Load, validate and freeze the governed catalog — Rev 1.4 by default.
 
     Validation is total: every rule below is checked against EVERY row, and the
     first violation raises. A partially valid catalog is not returned, because a
@@ -439,6 +468,7 @@ def load_catalog(path: str = CATALOG_PATH) -> PoolCatalog:
             key=key,
             catalog_number=number,
             display_name=row["display_name"],
+            public_question=row.get("public_question"),
             category=row["category"],
             scope=row["scope"],
             mechanic=row["mechanic"],
@@ -484,7 +514,76 @@ def load_catalog(path: str = CATALOG_PATH) -> PoolCatalog:
         definitions=tuple(specs),
         retired_numbers=retired_numbers,
         revision=str(raw.get("revision", "1.3")),
+        weekly_scope_mix=_weekly_scope_mix(path, raw),
     )
+
+
+def _weekly_scope_mix(path: str, raw: Mapping[str, Any],
+                      ) -> tuple[tuple[str, int], ...] | None:
+    """Read and CHECK POR Rev 1.4 §4.2's weekly scope composition.
+
+    THE ARTIFACT CARRIES THE RULING; THE SELECTOR CARRIES THE DEFAULT. Both
+    have to exist — the mix is a product ruling and belongs in the catalog,
+    and betting/pool_rotation.py is pure and may not read a file — so the only
+    real risk is the two drifting apart. This refuses the load when they
+    disagree, which is the treatment every other POR conformance item gets in
+    this module: the last moment the artifact can be rejected as a whole rather
+    than diagnosed one broken week at a time.
+
+    A catalog declaring no composition returns None rather than the default.
+    Rev 1.3 declares none and is still loaded by name in several suites; giving
+    a historical artifact Rev 1.4's mix would let it answer a question it never
+    ruled on.
+    """
+    from betting.pool_rotation import DEFAULT_SCOPE_MIX, DEFAULT_SLOT_COUNT
+
+    block = raw.get("weekly_slate_composition")
+    if block is None:
+        return None
+
+    try:
+        mix = tuple((str(e["scope"]), int(e["slots"])) for e in block["scopes"])
+        slot_count = int(block["slot_count"])
+        phase = str(block["phase"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise PoolCatalogError(
+            REASON_MALFORMED_CATALOG,
+            f"{path} carries a weekly_slate_composition that is not "
+            f"{{phase, slot_count, scopes:[{{scope, slots}}]}}: {exc}",
+        ) from exc
+
+    if sum(count for _, count in mix) != slot_count:
+        raise PoolCatalogError(
+            REASON_SCOPE_MIX_MISMATCH,
+            f"{path}: weekly_slate_composition allots "
+            f"{sum(count for _, count in mix)} slots across scopes but "
+            f"declares slot_count {slot_count}. POR §4 is exactly four "
+            f"active Pools per fantasy week.",
+        )
+    if slot_count != DEFAULT_SLOT_COUNT:
+        raise PoolCatalogError(
+            REASON_SCOPE_MIX_MISMATCH,
+            f"{path}: weekly_slate_composition declares slot_count "
+            f"{slot_count}; the governed weekly slate is {DEFAULT_SLOT_COUNT}.",
+        )
+    if phase != "REGULAR":
+        raise PoolCatalogError(
+            REASON_SCOPE_MIX_MISMATCH,
+            f"{path}: weekly_slate_composition declares phase {phase!r}. The "
+            f"composition governs the REGULAR phase only — the postseason "
+            f"subset is fixed and the championship round is themed "
+            f"(WP1B §12).",
+        )
+    if mix != DEFAULT_SCOPE_MIX:
+        raise PoolCatalogError(
+            REASON_SCOPE_MIX_MISMATCH,
+            f"{path}: weekly_slate_composition {mix} disagrees with "
+            f"betting.pool_rotation.DEFAULT_SCOPE_MIX {DEFAULT_SCOPE_MIX}. "
+            f"The artifact and the pure selector must state ONE rule, and the "
+            f"order is part of it — it is the priority in which fresh-slot "
+            f"deficits are satisfied.",
+        )
+    return mix
 
 
 # ONE identifier pattern for both expressions and predicates. It deliberately
@@ -591,6 +690,11 @@ def seed_definitions(db, catalog: PoolCatalog | None = None) -> dict[str, int]:
 
         row.catalog_number = spec.catalog_number
         row.display_name = spec.display_name
+        # POR Rev 1.4 §3 — rewritten in place beside display_name on every
+        # re-seed, because the two are a pair: a branded name whose question
+        # still described the previous revision's mechanic would be worse than
+        # either alone. None on the 16 non-drawable definitions, by design.
+        row.public_question = spec.public_question
         row.category = spec.category
         row.scope = spec.scope
         row.mechanic = spec.mechanic
@@ -643,6 +747,14 @@ def spec_from_row(row) -> PoolDefinitionSpec:
         key=row.key,
         catalog_number=row.catalog_number,
         display_name=row.display_name,
+        # POR Rev 1.4 §3. `getattr` rather than attribute access because a
+        # persisted row is only guaranteed to carry this column once migration
+        # 0008 has run, and this function is the ONE place a database row
+        # becomes a spec — so a pre-migration database degrades to "no question"
+        # here rather than raising somewhere no reader could interpret it. That
+        # is the same value the 16 non-drawable definitions carry permanently,
+        # and every consumer already handles it.
+        public_question=getattr(row, "public_question", None),
         category=row.category,
         scope=row.scope,
         mechanic=row.mechanic,

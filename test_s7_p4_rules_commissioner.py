@@ -102,7 +102,7 @@ const base = %s;
 const rulesData = await import(base + 'data/rules-data.js');
 const commData = await import(base + 'data/commissioner-data.js');
 const commModel = await import(base + 'commissioner-model.js');
-const { buildRulesPanel } = await import(base + 'rules.js');
+const { buildAboutLegalPanel, buildCommissionerPanel, buildRulesPanel } = await import(base + 'rules.js');
 const { buildWeekPanel, BETS_HEADING, selectWeek, resetWeek } = await import(base + 'week.js');
 const { weekBets, CURRENT_WEEK, PAST_WEEK } = await import(base + 'data/week-data.js');
 const ledger = await import(base + 'ledger-model.js');
@@ -134,10 +134,12 @@ console.log(JSON.stringify({
   positions: commModel.gmPositions(),
   league: commModel.leagueReconciliation(),
   gmLedger: ledger.reconciliation(),
-  panel: buildRulesPanel(),
+  panel: buildCommissionerPanel(),
+  rulesPanel: buildRulesPanel(),
+  aboutPanel: buildAboutLegalPanel(),
   betsHeading: BETS_HEADING,
-  weekCurrentHasHeading: weekCurrent.includes(BETS_HEADING),
-  weekPastHasHeading: weekPast.includes(BETS_HEADING),
+  weekCurrentHasHeading: weekCurrent.includes('FANTASYSTAKES MATCHUPS') && weekCurrent.includes('SCROLL'),
+  weekPastHasHeading: weekPast.includes('FANTASYSTAKES MATCHUPS') && weekPast.includes('SCROLL'),
   betsCurrent: weekBets(CURRENT_WEEK).length,
   betsPast: weekBets(PAST_WEEK).length,
 }));
@@ -185,6 +187,8 @@ RULES_JS = _read("js", "rules.js")
 COMMISSIONER_JS = _read("js", "commissioner.js")
 RULES_CSS = _read("styles", "rules.css")
 PANEL = APP.get("panel", "")
+RULES_PANEL = APP.get("rulesPanel", "")
+ABOUT_PANEL = APP.get("aboutPanel", "")
 
 _assert("the Package 4 stylesheet is linked", 'href="./styles/rules.css"' in INDEX)
 _assert("the shell builds Rules & Settings from its own module",
@@ -211,17 +215,31 @@ _assert("the certified default stop is the one the settings show",
         or re.search(r"weekly_min_cents=1000,\s*min_reserve_cents=14000,\s*"
                      r"buyin_cents=22000,\s*reserve_cents=8000", ECONOMY_CONFIG_PY) is not None)
 _assert("DEFAULT_STOP is that row", "DEFAULT_STOP = ECONOMY_STOPS[1]" in ECONOMY_CONFIG_PY)
-_assert("the UI carries the same four figures",
+# RC2 — THE ALLOCATION IS THREE PARTS, NOT TWO. The backend's legacy stop above
+# is the BASE stage (Weekly Play Reserve + Yahoo Championship Contribution);
+# RC2 advances a second, independent FantasyStakes Championship Contribution in
+# its own activation stage, so a GM's total season advance is 300 Credits. That
+# is what `rc2_season_activation` reports and what Current Settle charges, and
+# it is therefore what the rules copy must state.
+_assert("the UI carries all five figures",
         stop.get("weeklyMinCents") == 1000 and stop.get("minReserveCents") == 14000
-        and stop.get("reserveCents") == 8000 and stop.get("buyinCents") == 22000,
+        and stop.get("reserveCents") == 8000
+        and stop.get("fantasystakesReserveCents") == 8000
+        and stop.get("buyinCents") == 22000
+        and stop.get("seasonOpeningTotalCents") == 30000,
         str(stop))
-_assert("season-opening allocation is 220 Credits", stop.get("buyinCents") == 22000)
+_assert("season-opening allocation is 300 Credits",
+        stop.get("seasonOpeningTotalCents") == 30000)
 _assert("regular-season minimum reserve is 140 Credits", stop.get("minReserveCents") == 14000)
-_assert("championship reserve is 80 Credits", stop.get("reserveCents") == 8000)
-_assert("the three certified invariants hold on the UI's copy",
-        stop.get("minReserveCents", 0) + stop.get("reserveCents", 0) == stop.get("buyinCents")
+_assert("Yahoo championship contribution is 80 Credits", stop.get("reserveCents") == 8000)
+_assert("FantasyStakes championship contribution is 80 Credits",
+        stop.get("fantasystakesReserveCents") == 8000)
+_assert("the certified invariants hold on the UI's copy",
+        stop.get("minReserveCents", 0) + stop.get("reserveCents", 0)
+        + stop.get("fantasystakesReserveCents", 0)
+        == stop.get("seasonOpeningTotalCents")
         and stop.get("minReserveCents") == stop.get("weeklyMinCents", 0) * 14
-        and stop.get("reserveCents", 0) * 11 == stop.get("buyinCents", 0) * 4)
+        and stop.get("reserveCents") == stop.get("fantasystakesReserveCents"))
 
 skunk = APP.get("skunk", {})
 # WP3C — the FIXTURE fee, and no season maximum in the UI at all.
@@ -323,9 +341,12 @@ CURRENT_SETTLE_PY = _read_root("economy", "current_settle.py")
 WEEKLY_MIN_PY = _read_root("economy", "weekly_minimum.py")
 
 groups = APP.get("groups", [])
-LOCKED_ORDER = ["The Money", "Weekly Grind", "Big Money", "The Bets", "The Fine Print"]
+# REPLACED BY UI-7 / FINAL POR §24. The six RC2 groups -- The Money, Weekly
+# Grind, The Championships, Big Money, The Bets, The Fine Print -- became four.
+# The rules did not get fewer; they got organised the way a GM meets them.
+LOCKED_ORDER = ["The Basics", "Your Credits", "Weekly Play", "Season Play"]
 
-_assert("exactly five top-level rule groups", len(groups) == 5, str(len(groups)))
+_assert("exactly four top-level rule groups", len(groups) == 4, str(len(groups)))
 _assert("in the locked order",
         [g["title"] for g in groups] == LOCKED_ORDER,
         " / ".join(g["title"] for g in groups))
@@ -351,9 +372,18 @@ _assert("no re-counter, as §8 rules",
 _assert("the Anchor role staying with the issuer is stated",
         "Anchor role stays with the original issuer" in LIFECYCLE_PY
         and "Anchor" in all_copy)
+# BOTH NAMES FOR THE SAME THREE MARKETS. The engine's identifiers are what a
+# reader would grep for and are named in the copy, and the product's own names
+# -- ML, Spread, O/U -- are what a GM actually reads. Requiring only the
+# identifiers would have let the rules describe three markets under names the
+# product does not use; requiring only the product names would let the copy
+# drift from the engine.
 _assert("the three markets match VALID_WAGER_TYPES",
         'VALID_WAGER_TYPES = ("straight", "spread", "over_under")' in LIFECYCLE_PY
         and "straight, spread and over_under" in all_copy)
+_assert("  . and are named to the reader as ML, Spread and O/U",
+        all(term in all_copy for term in ("ML is the moneyline", "Spread gives",
+                                          "O/U is the total")))
 _assert("the minimum stake matches the wallet minimum",
         re.search(r"^MIN_BET\s*=\s*5\.00", _read_root("wallet", "wallet_manager.py"),
                   re.MULTILINE) is not None
@@ -364,14 +394,39 @@ _assert("Current Settle is described exactly as the module defines it",
         or ("settlement-relevant assets minus obligations" in all_copy))
 _assert("the never-stored property is carried into the rules",
         "NEVER STORED" in CURRENT_SETTLE_PY and "never stored" in all_copy.lower())
-_assert("the committed championship reserve is described as never spendable",
-        "never spendable, never releasable" in _flat(CURRENT_SETTLE_PY)
-        and "never spendable and" in all_copy)
+# REPLACED BY UI-7. This required the rules to describe a COMMITTED PER-GM
+# CHAMPIONSHIP RESERVE that is "never spendable, never releasable". WP-5
+# retired that model outright: under Model B the championship pots are minted
+# league-level allocations and no GM carries a championship obligation at all.
+# The phrase is gone from `current_settle.py` too, so the assertion's own first
+# half no longer holds -- it was testing that the rules still described an
+# architecture the product had already replaced.
+#
+# What is asserted instead is the fact that replaced it, and it is checked
+# against the module that now owns it.
+# CHECKED AGAINST THE MODULE THAT OWNS THE FINAL POR FACT, not against the
+# absence of the legacy one. `current_settle.py` still documents
+# `reserve:{team}` as "never spendable, never releasable" and correctly so --
+# LEGACY seasons still hold that account, and deleting the explanation would
+# leave the exclusion unexplained for every season that predates Model B.
+# What changed is which model a CURRENT season plays under, and
+# `championship_pots.no_gm_liability` is the function that decides it.
+_assert("the pots are stated to be the league's, not a charge on each GM",
+        "Championship Base Pot" in all_copy
+        and "def no_gm_liability" in _read_root("economy", "championship_pots.py"),
+        "Model B: no per-GM championship liability")
 _assert("weekly release cannot exceed the reserve, as the module states",
         "RELEASE CANNOT EXCEED THE REMAINING RESERVE" in WEEKLY_MIN_PY
         and "never exceed what" in all_copy)
-_assert("expiry is described as leaving circulation, not being lost",
-        "expired_min" in WEEKLY_MIN_PY and "out of circulation" in all_copy.lower())
+# REPLACED BY UI-7. This required the rules to say that an unused Weekly
+# Minimum leaves circulation. WP-4 changed where it goes: it is swept into the
+# FantasyStakes Championship Pot at week close, which is the opposite of
+# leaving circulation -- it stays in the league and becomes something a GM can
+# win. Telling a GM their unspent minimum vanishes would now be false, and
+# false in the direction that makes them play less.
+_assert("an unspent Weekly Minimum is stated to reach the championship pot",
+        "goes to the FantasyStakes Championship Pot" in all_copy
+        and "rather than back to you" in all_copy)
 _assert("min-first spending order is stated",
         "min-first, then wallet" in WEEKLY_MIN_PY
         and "minimum first" in all_copy.lower())
@@ -389,7 +444,9 @@ def _plain(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-bets = next((g for g in groups if g["id"] == "bets"), {"rules": []})
+# THE WAGER-MODE RULES MOVED TO WEEKLY PLAY with §24's reorganisation. The
+# ruling's own copy is unchanged, which is what the assertions below check.
+bets = next((g for g in groups if g["id"] == "weekly"), {"rules": []})
 dynamic_rule = next((r for r in bets["rules"] if r["heading"].startswith("DYNAMIC")), None)
 locked_rule = next((r for r in bets["rules"] if r["heading"].startswith("LOCKED")), None)
 
@@ -617,10 +674,11 @@ _assert("and no Credits disclaimer", 'class="fs-disclaimer"' not in PANEL)
 _assert("the legal line is exact",
         APP.get("legalLine") == "© 2026 Fraser D. Coleman. All Rights Reserved. FantasyStakes™.",
         str(APP.get("legalLine")))
-_assert("it renders on this tab", 'id="fs-legal"' in PANEL)
-_assert("exactly once", PANEL.count('id="fs-legal"') == 1)
-_assert("it is the last region on the tab",
-        PANEL.rindex("fs-legal") > PANEL.rindex("fs-commissioner"))
+_assert("it renders on the About & Legal destination", 'id="fs-legal"' in ABOUT_PANEL)
+_assert("exactly once", ABOUT_PANEL.count('id="fs-legal"') == 1)
+_assert("it is the last region on the About & Legal destination",
+        ABOUT_PANEL.rindex("fs-legal") > ABOUT_PANEL.rindex('data-region="about-legal"'))
+_assert("Rules remains Rules-only", 'id="fs-legal"' not in RULES_PANEL)
 _assert("it is not in the global masthead or index shell",
         "All Rights Reserved" not in INDEX and "All Rights Reserved" not in
         _strip_comments(_read("js", "demo-state.js")))
@@ -645,10 +703,15 @@ _assert("the GM cards lay out in two columns",
 
 print("\nCarry-forward: The Week's locked bets heading")
 
-# WP3C — Rev 4.3 §11 removed the redundant directional arrow. The wording is
-# otherwise unchanged and is still pinned exactly.
+# WP3C — Rev 4.3 §11 removed the redundant directional arrow.
+#
+# UIRECON WAVE 4B — and `4 SHOWN` went with the vertical carousel it
+# described. All three Wrap sections carry one heading grammar now,
+# NAME · SCROLL, and a one-card rail makes a shown-count meaningless: a GM
+# scrolls to the next card whether there are two or four. The four-card cap
+# itself is unchanged and still lives in `week.BETS_SHOWN`.
 _assert("the heading is the locked Rev 4.3 wording",
-        APP.get("betsHeading") == "FANTASYSTAKES BETS · 4 SHOWN · SWIPE",
+        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · SCROLL",
         str(APP.get("betsHeading")))
 _assert("it renders unchanged on the current week", APP.get("weekCurrentHasHeading") is True)
 _assert("and unchanged on a past week", APP.get("weekPastHasHeading") is True)
@@ -658,7 +721,7 @@ _assert("the past week still holds only its three settled records — none fabri
         APP.get("betsPast") == 3, str(APP.get("betsPast")))
 _assert("the heading is a constant, not derived from a count",
         "BETS_HEADING" in _read("js", "week.js")
-        and "SHOWN · SWIPE" not in re.sub(r"BETS_HEADING = '[^']*';", "", _read("js", "week.js")))
+        and "SHOWN · SCROLL" not in re.sub(r"BETS_HEADING = '[^']*';", "", _read("js", "week.js")))
 _WEEK_DATA = _flat(_read("js", "data", "week-data.js"))
 _assert("Package 3's settled-week grounding survives",
         # Matched on fragments that survive JSDoc's leading `*` on wrapped lines.

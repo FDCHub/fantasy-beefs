@@ -207,6 +207,11 @@ function normaliseCard(row) {
     status: row.status,
     mode: row.mode,
     week: row.week ? `WK ${row.week}` : '',
+    // THE NUMBER, BESIDE THE LABEL. `week` is a rendered string and cannot be
+    // compared; the Locked odds comparison needs to know whether the market
+    // board on screen was priced for THIS card's week before it may call a
+    // board line "current". A card from an earlier week has no current price.
+    weekNumber: Number.isInteger(row.week) ? row.week : null,
 
     // WHOSE MOVE, straight from the server. The renderer offers controls from
     // this and from nothing else.
@@ -215,6 +220,12 @@ function normaliseCard(row) {
 
     marketLabel: marketLabel(row),
     line: lineLabel(row),
+    // THE ODDS OF RECORD for this GM's side, verbatim from the contract. On a
+    // Locked wager this is the figure that froze when the challenge was
+    // OFFERED, and it is what `LOCKED ODDS` reports. Carried rather than
+    // re-derived: a price the surface recomputed could disagree with the one
+    // settlement will pay.
+    yourMoneyline: Number.isInteger(row.your_moneyline) ? row.your_moneyline : null,
 
     yourStakeCents: stake,
     opponentStakeCents: theirs,
@@ -228,6 +239,11 @@ function normaliseCard(row) {
 
     settled: Boolean(row.settled),
     netCents: Number.isInteger(row.net_cents) ? row.net_cents : null,
+    // UIRECON WAVE 4B — `bets.status` for this GM's side, verbatim. `won`
+    // below is a PRESENTATION convenience derived from the net and has always
+    // been one; `outcome` is what the row actually says, and it is the only
+    // thing that can tell a push from a void.
+    outcome: typeof row.outcome === 'string' ? row.outcome : null,
     won: row.settled && Number.isInteger(row.net_cents) ? row.net_cents >= 0 : false,
 
     expiresAt: row.expires_at || null,

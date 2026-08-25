@@ -4,11 +4,15 @@
  *
  * "What can I play?" — Rev 4.3 §4.
  *
- * TWO ZONES UNDER THE STRIP, and both Rev 4.2 shapes are deliberately kept:
- * FantasyStakes Versus is a vertical carousel presenting one card at a time,
- * and FantasyStakes Pools is a compact 2×2 grid. OR-3 preserved both, and
- * Rev 4.3 §8.5 is explicit that Play's Pools must NOT become Status-style
- * horizontal rails for the sake of cross-tab consistency.
+ * TWO SECTIONS UNDER THE STRIP, AND THEY ARE ONE CARD FAMILY IN TWO CONTENTS.
+ * Matchups and Prop Pools are each a horizontal carousel presenting exactly one
+ * complete card at a time, at one shared outer width and one shared outer
+ * height. Rev 4.2's vertical rail and 2×2 Pool grid are both superseded — the
+ * grid by POR Rev 1.4 §4, which needs a line for the governed question, and the
+ * vertical rail by the RC4 mobile reconciliation, which measured it clipping its
+ * own card on a real phone. Rev 4.3 §8.5's concern was that Play's Pools must not
+ * become STATUS-style rails of several small tiles; one complete card per
+ * viewport is the opposite of that, and is what both sections now do.
  *
  * WHAT WP3C CHANGED, AND WHY EACH ONE MATTERED
  *
@@ -39,13 +43,20 @@ import {
   PENDING_FIGURE, PanelComposer, escapeHtml, sectionHeading, tabHeader,
 } from './components.js';
 import { formatCredits } from './credits.js';
+// FINAL POR (freeze) §4 — the card states the wager actually running against
+// this opponent, read from the same served action cards Status reads.
+import { actionMode, sectionCards } from './action-model.js';
 import { ILLUSTRATIVE, LEAGUE_IDENTITY } from './demo-state.js';
 import { POOLS, poolBadge } from './data/league-data.js';
 import {
   LEAGUE_MODE_DEMO, currentWeek, leagueMode, leagueName,
 } from './league-model.js';
 import { attributionFooter } from './attribution.js';
-import { marketFor } from './market-model.js';
+import { marketComputedAt, marketFor, marketMode } from './market-model.js';
+import {
+  BOARD_STAMP_ID, oddsStamp, refreshControl, refreshStatus,
+} from './odds-refresh.js';
+import { bindPlayOddsRefresh } from './play-odds-refresh.js';
 import { formatSpread } from './narrative.js';
 import { weekPhaseLabel } from './phase.js';
 import { SLATE_MODE_DEMO, slateMode, slateRows } from './pool-slate-model.js';
@@ -59,8 +70,74 @@ import {
   boundAvailableCents, boundWeeklyMinLiveCents,
 } from './ledger-model.js';
 
-/** Rev 4.3 §11 — the word SWIPE, and no directional arrow. */
-export const SWIPE_WORD = 'SWIPE';
+/* FINAL POR — THE INSTRUCTIONAL WORD IS `SCROLL`, AND NO DIRECTIONAL ARROW.
+ *
+ * `SWIPE` is retired from every rendered surface. The rails are horizontal
+ * carousels on a phone and on a trackpad alike, and `SCROLL` is the one word
+ * that describes both without naming a gesture only one of them has. The
+ * constant keeps its internal name — it is imported by name in several suites
+ * and the identifier is not the copy. */
+export const SWIPE_WORD = 'SCROLL';
+
+/* ── Section headings — Rev 1.4 Part 3 ──────────────────────────────────────
+ *
+ * SHORT FORMS, BECAUSE THE TAB IS ALREADY INSIDE FANTASYSTAKES. Both headings
+ * used to open with the brand — `FANTASYSTAKES MATCHUPS`, `FANTASYSTAKES PROP
+ * POOLS` — which spent the widest line of each section restating the one word
+ * a GM on this tab cannot be in any doubt about, and pushed the count and the
+ * swipe affordance into the helper slot's remaining space.
+ *
+ * THE PRODUCT TERMS ARE UNCHANGED. `Matchups` and `Prop Pools` are still the
+ * public nouns everywhere they are introduced — Wrap Up, Rules, Standings and
+ * the Account ledger all still say FantasyStakes Matchups, because those
+ * surfaces mix FantasyStakes results with the Yahoo league's own. This is a
+ * shortening inside one tab's headings, not a renaming. Nothing reintroduces
+ * the public-facing `Versus`, which remains an internal module name only.
+ */
+export const MATCHUPS_HEADING = 'FANTASYSTAKES MATCHUPS';
+export const POOLS_HEADING = 'FANTASYSTAKES PROP POOLS';
+
+/* ── The odds-refresh affordance on Play ────────────────────────────────────
+ *
+ * TWO LEVELS, ONE PROMISE. The heading control re-reads the whole board; each
+ * card's control re-reads that one pairing. Both are the same glyph and both
+ * re-run the SAME server-side pricing the cards were drawn from, so a GM never
+ * has to work out which of two refreshes they just used.
+ *
+ * WHY PLAY IS WHERE THIS BELONGS. Play is the screen where prices are shopped:
+ * eleven opponents, three markets each, all of them simulated against
+ * projections that move. Before this the only refresh in the product was on a
+ * wager that already existed — a GM could re-read a price they had committed to
+ * and not one they were considering.
+ *
+ * THE STAMP IS THE SERVER'S. `marketComputedAt()` is the `computed_at` the
+ * board came back with, so `Odds updated 11:47 AM` reports when a Monte Carlo
+ * finished rather than when a response landed.
+ *
+ * DEMO DRAWS NO CONTROL. The illustrative fixture has no board to re-read, and
+ * a glyph whose first press is a no-op is worse than an absent one.
+ */
+export const BOARD_REFRESH_LABEL = 'Refresh odds for all matchups';
+
+/** @returns {string} the heading control, or '' when there is no board. */
+function boardRefreshControl() {
+  if (marketMode() !== 'authoritative') return '';
+  return refreshControl({
+    scope: 'board',
+    label: BOARD_REFRESH_LABEL,
+    extraClass: 'fs-oddsref--heading',
+  });
+}
+
+/** @returns {string} the heading's stamp line, or '' when there is no board. */
+function boardRefreshStamp() {
+  if (marketMode() !== 'authoritative') return '';
+  return refreshStatus({
+    id: BOARD_STAMP_ID,
+    text: oddsStamp(marketComputedAt()),
+    extraClass: 'fs-oddsref__stamp--board',
+  });
+}
 
 /**
  * @returns {string}
@@ -105,14 +182,27 @@ export function buildLeaguePanel() {
     id: 'fs-strip-league',
     label: 'Play summary',
     cells: [
-      { label: 'Net Winnings',
+      // UIRECON WAVE 1 — LABELS ARE HELD TO ONE LINE, AND THAT IS A MEASUREMENT.
+      //
+      // `Net Winnings` and `Weekly Min Left` each wrapped to two lines at both
+      // 375x667 and 390x844, and because grid rows stretch to the tallest cell
+      // that made EVERY cell in the strip 75.38px instead of 59.78px — 15.6px
+      // taken off the panel below by two labels that were unreadable on one
+      // line anyway. The primitive now refuses to wrap, so the labels are
+      // reworded to fit rather than truncated.
+      //
+      // THE BUDGET IS THE 320px CELL, which is 68px wide once the label
+      // reclaims the cell's horizontal padding. Measured in the browser at the
+      // rendered 13px: `Net Won` 52px, `Min Left` 48.2px. `Wallet` and
+      // `Available` already fitted and are untouched.
+      { label: 'Net Won',
         cents: production ? 0 : ILLUSTRATIVE.netWinningsCents,
         signed: true,
         pending: unresolved },
       { label: 'Wallet',
         cents: production ? (boundWalletFigure() ?? 0) : ILLUSTRATIVE.walletCents,
         pending: production && boundWalletFigure() === null },
-      { label: 'Weekly Min Left',
+      { label: 'Min Left',
         cents: production ? (boundWeeklyMinLiveCents() ?? 0)
                           : ILLUSTRATIVE.weeklyMinLeftCents,
         pending: production && boundWeeklyMinLiveCents() === null },
@@ -138,20 +228,48 @@ export function buildLeaguePanel() {
   // Credits in the strip. It is a source disclosure at the foot of the page,
   // not a label attached to any figure.
   //
-  // IT ENDS THE POOLS ZONE RATHER THAN THE PANEL, AND THAT IS A MEASURED
-  // DECISION. Play's two zones split whatever height the panel has left, and
-  // at 375x667 the Versus carousel has exactly none to give: measured at HEAD,
-  // the rail was 128px for a card that needs 128px. A block placed after the
-  // zones takes its height from BOTH of them, and the wager card is the one
-  // that cannot afford it — it clipped its own markets the moment the line was
-  // added there. The Pools grid is compact and has the room, so the line ends
-  // that zone instead. It is still the last thing on the surface, still one
-  // instance, still above the bottom navigation.
+  // ── THE PLAY DECK — RC4 MOBILE RECONCILIATION ────────────────────────────
+  //
+  // WHAT WAS HERE, AND WHY IT FAILED ON A REAL PHONE. The two zones split
+  // whatever height the panel had left, at `flex: 1 1 0` each, and each zone's
+  // rail took what its own heading did not. Measured on the deployed RC4 build
+  // at 320x568: the Matchups zone was 133.11px, its heading block 88.59px of
+  // that, and the rail 44.52px — for a card whose content is 155px. The card
+  // did not shrink and could not: `.fs-carousel__item` carries
+  // `min-height: 100%`, so it grew to its content and the rail clipped it a
+  // third of the way down, exactly where the PROP POOLS heading begins. That is
+  // the "Matchup card runs under the Prop Pools section" report, and the earlier
+  // certification could not see it because it compared the card to the ITEM and
+  // the item to the RAIL — never the rail to the card.
+  //
+  // A HEIGHT NEGOTIATION IS THE WRONG SHAPE FOR THIS SURFACE. Two card zones
+  // cannot both be given a complete card out of 276px of panel; the fixed
+  // quantity is the CARD, and the screen has to yield to it. So the deck below
+  // is sized by its content and the surface scrolls vertically when a phone is
+  // too short — the same construction Wrap Up has used since Wave 4B, and the
+  // reason Wrap Up never produced this defect.
+  //
+  // `.fs-playdeck` IS WHAT MAKES THE TWO CARD FAMILIES ONE SIZE. It is a grid
+  // of four rows — heading, rail, heading, rail — and the two rail rows are a
+  // matched pair of `minmax(0, 1fr)`, so they resolve to the SAME height at
+  // every width, whichever family's content is taller. Neither zone contributes
+  // a box of its own (`display: contents`), which is what keeps a heading out
+  // of its rail's track: Matchups carries a refresh control and a stamp that
+  // Prop Pools does not, and equal ZONES would therefore have produced unequal
+  // RAILS. See `gameplay.css` — "PARALLEL CARD GEOMETRY".
+  //
+  // THE ATTRIBUTION LEAVES THE POOLS ZONE. It ended that zone because a block
+  // after the zones took height from both of them, and at 375x667 the Matchup
+  // card had none to give. The deck no longer negotiates height with anything,
+  // so the source line goes back where it reads correctly: after both sections,
+  // last on the surface, one instance, inside the scroll and above the nav.
   composer.add(
     '<div class="fs-zones">' +
+    '<div class="fs-playdeck">' +
     `<div class="fs-zone fs-zone--bets">${versusZone()}</div>` +
-    '<div class="fs-zone fs-zone--pools">'
-    + poolsZone() + attributionFooter() + '</div>' +
+    `<div class="fs-zone fs-zone--pools">${poolsZone()}</div>` +
+    '</div>' +
+    attributionFooter() +
     '</div>',
   );
 
@@ -193,14 +311,14 @@ const VERSUS_COPY = Object.freeze({
   },
   [VERSUS_STATE_FIELD_UNKNOWN]: {
     heading: 'Postseason field not settled yet',
-    body: 'Versus is limited to teams still alive on the championship track. '
+    body: 'Matchups are limited to teams still alive on the championship track. '
       + 'That field is not confirmed for this week yet, so no matchups are '
       + 'offered.',
   },
   [VERSUS_STATE_NONE_ELIGIBLE]: {
-    heading: 'No Versus matchups this week',
+    heading: 'No Matchups this week',
     body: 'Only teams still on the championship track can be played in the '
-      + 'postseason. Pools stay open to you either way.',
+      + 'postseason. Prop Pools stay open to you either way.',
   },
 });
 
@@ -325,13 +443,82 @@ function versusCard(opponent) {
       ? `<span class="fs-wcard__context">${escapeHtml(opponent.owner)}</span>`
       : '')
     + '</button>'
+    // THE PER-CARD REFRESH, in the head's trailing slot.
+    //
+    // `.fs-wcard__head` is a `space-between` row whose first child is the
+    // challenge button, so a second child lands hard right — the upper-right
+    // corner, where a market-refresh control belongs and where it collides with
+    // nothing. It is INSIDE the head and OUTSIDE the challenge button, because
+    // a button inside a button is invalid HTML and would make the refresh
+    // unreachable by keyboard.
+    + (marketMode() === 'authoritative'
+      ? refreshControl({
+        scope: 'pairing',
+        target: opponent.teamId,
+        label: `Refresh odds for ${opponent.name}`,
+        extraClass: 'fs-oddsref--card',
+      })
+      : '')
     + '</div>'
     // §9 — a clear FULL-WIDTH action row, directly above the markets.
     + '<button type="button" class="fs-previewrow" '
     + `data-preview-opponent="${id}">VIEW MATCHUP PREVIEW</button>`
     + `<div class="fs-markets">${cells}</div>`
+    // FINAL POR (freeze) §4 — the wager state, on the card.
+    + wagerStateRow(opponent, label)
     + '</div>'
   );
+}
+
+/* §4 — WHAT IS ACTUALLY RUNNING AGAINST THIS OPPONENT.
+ *
+ * Read from the served action cards — the same read model Status uses, so a
+ * wager cannot say one thing there and another here. A pairing with no wager
+ * yet is NOT given a placeholder price: §4 preserves the pricing flow, in
+ * which an offer exists only once a market and a stake have been entered, and
+ * the card states that plainly and offers the way in.
+ */
+function wagerStateRow(opponent, label) {
+  const id = escapeHtml(String(opponent.teamId));
+  const mine = openWagerAgainst(opponent.teamId);
+
+  if (mine) {
+    const terms = String(mine.mode || 'locked').toUpperCase();
+    const line = mine.line ? ` ${mine.line}` : '';
+    const pot = Number.isInteger(mine.potCents) ? formatCredits(mine.potCents) : '—';
+    return (
+      '<div class="fs-playstate" data-play-state="live">'
+      + '<div class="fs-playstate__line">'
+      + `<span class="fs-playstate__market">${escapeHtml(`${mine.marketLabel || 'Matchup'}${line}`)}</span>`
+      + `<span class="fs-playstate__terms">${escapeHtml(terms)}</span>`
+      + '</div>'
+      + '<div class="fs-playstate__figs">'
+      + `<span class="fs-playstate__fig"><span>STAKE</span><strong>${escapeHtml(formatCredits(mine.yourStakeCents))}</strong></span>`
+      + `<span class="fs-playstate__fig"><span>POT</span><strong>${escapeHtml(pot)}</strong></span>`
+      + `<span class="fs-playstate__badge">${escapeHtml(String(mine.badge || mine.stateWord || 'LIVE'))}</span>`
+      + '</div>'
+      + '</div>'
+    );
+  }
+
+  return (
+    '<div class="fs-playstate" data-play-state="open">'
+    + '<span class="fs-playstate__note">No wager yet — pick a market to price one.</span>'
+    + `<button type="button" class="fs-playstate__cta" data-card-challenge="${id}" `
+    + `aria-label="${label}">CHALLENGE</button>`
+    + '</div>'
+  );
+}
+
+/** Any wager of the acting GM's against this opponent that is still running. */
+function openWagerAgainst(teamId) {
+  if (actionMode() !== 'authoritative') return null;
+  for (const section of ['action', 'waiting', 'live']) {
+    const found = sectionCards(section)
+      .find((c) => c.opponentTeamId === teamId && !c.settled);
+    if (found) return found;
+  }
+  return null;
 }
 
 function versusZone() {
@@ -340,7 +527,7 @@ function versusZone() {
   if (state !== VERSUS_STATE_READY) {
     const copy = VERSUS_COPY[state] || VERSUS_COPY[VERSUS_STATE_NO_DATA];
     return (
-      sectionHeading('FANTASYSTAKES VERSUS')
+      sectionHeading(MATCHUPS_HEADING)
       + `<div class="fs-emptyzone" data-versus-state="${escapeHtml(state)}">`
       + `<div class="fs-emptyzone__head">${escapeHtml(copy.heading)}</div>`
       + `<p class="fs-emptyzone__body">${escapeHtml(copy.body)}</p>`
@@ -362,8 +549,9 @@ function versusZone() {
   // metadata step beside it, which is what it is for and what §5's "fewer
   // readable facts" asks for.
   return (
-    sectionHeading('FANTASYSTAKES VERSUS',
-      `${count} OPPONENT${count === 1 ? '' : 'S'} · ${SWIPE_WORD}`)
+    sectionHeading(MATCHUPS_HEADING,
+      `${count} OPPONENT${count === 1 ? '' : 'S'} · ${SWIPE_WORD}`,
+      boardRefreshControl() + boardRefreshStamp())
     + `<div class="fs-carousel" id="fs-bets-carousel" role="list">${cards}</div>`
   );
 }
@@ -384,13 +572,36 @@ function poolRows() {
 }
 
 /**
- * One compact Pool card.
+ * One Pool card, sized for the carousel — Rev 1.4 Part 4.
  *
- * ESSENTIAL INFORMATION ONLY — Rev 4.3 §8.5. The Rev 4.2 card carried the
- * definition's full settle condition as a line of microcopy under the name,
- * which at 2×2 on a phone was three lines of 8px text nobody could read. Type,
- * name, entry and pot/entries stay; the explanation moves to the detail sheet,
- * which is where §8.5 puts it and where it is already rendered in full.
+ * WHY THE 2×2 GRID WENT. Four Pools shared one zone as quarter-tiles, and the
+ * consequence was structural rather than aesthetic: a quarter of a phone holds
+ * a two-line clamped name and nothing else, which is why Rev 4.3 §8.5 had to
+ * move the definition's settle condition off the card and into the sheet. The
+ * card could show WHICH Pool but never WHAT it asks, so the only way to learn
+ * what a contest measured was to open it — four times.
+ *
+ * Rev 1.4 gives the catalog a `public_question`, and a question needs a line to
+ * sit on. One card at a time is what buys that line.
+ *
+ * THE SAME CAROUSEL AS THE MATCHUPS ABOVE, LITERALLY. The card is placed in
+ * `.fs-carousel__item` inside `.fs-carousel` — the identical elements the
+ * Matchups rail uses, not a parallel implementation that agrees today. So the
+ * outer width, the item width, the gutter, the horizontal snap, the gesture,
+ * the hidden scrollbar and the "never half a card" guarantee are the same rules
+ * and cannot drift apart.
+ *
+ * AND SINCE RC4 THE OUTER HEIGHT IS SHARED TOO, which reuse alone did not give:
+ * each rail took the height its own zone had left, so the Pool card measured
+ * 135.97px against the Matchup card's 155px in adjacent sections. Both rails
+ * are now a matched pair of grid tracks, so the two families are one size by
+ * construction. Only the card's INSIDE is Pool-specific, which is what §4 asks
+ * for.
+ *
+ * WHAT THE CARD STILL CARRIES. The TEAM/MATCHUP badge and the ROLLOVER
+ * modifier on it — a rolling Pool is not a different kind of Pool — the entry,
+ * the entered count and the pot, with the carried pot still marked. Nothing was
+ * dropped to make room; the room came from the layout.
  *
  * @param {object} pool
  * @returns {string}
@@ -402,17 +613,55 @@ function poolCard(pool) {
     ? `${pool.entered} in` : PENDING_FIGURE;
 
   return (
-    `<button type="button" class="fs-pool" data-pool="${escapeHtml(String(pool.catalogNumber))}">`
+    `<button type="button" class="fs-pool fs-pool--card" `
+    + `data-pool="${escapeHtml(String(pool.catalogNumber))}">`
+    + '<span class="fs-pool__head">'
     + `<span class="fs-pool__badge ${badgeClass}${pool.continuation ? ' is-rollover' : ''}">`
     + `${escapeHtml(badge)}</span>`
+    + '</span>'
     + `<span class="fs-pool__name">${escapeHtml(pool.name)}</span>`
+    // THE QUESTION IS THE CARD'S SUBTITLE, and it is the server's sentence.
+    // `poolQuestion` prefers the catalog's `public_question` and falls back to
+    // the scope-derived prompt only where the catalog carries none.
+    + `<span class="fs-pool__question${hasPoolQuestion(pool) ? '' : ' is-missing'}"`
+    + `${hasPoolQuestion(pool) ? '' : ' data-question-missing'}>`
+    + `${escapeHtml(poolQuestion(pool))}</span>`
     + '<span class="fs-pool__foot">'
     + `<span class="fs-pool__entry">${escapeHtml(formatCredits(pool.entryCents))}`
     + ` · ${escapeHtml(entered)}</span>`
     + `<span class="fs-pool__pot${pool.continuation ? ' is-carried' : ''}" `
     + `data-exact-cents="${pool.potCents}">${escapeHtml(formatCredits(pool.potCents))}</span>`
     + '</span>'
+    // FINAL POR (freeze) §5 — the reader's own entry state, on the card.
+    //
+    // Buy-in, entries and pot said what the POOL was; none of them said whether
+    // the reader was IN it, which is the first thing a GM scanning a slate
+    // wants and the one fact that required opening the detail. The pick is the
+    // served subject where there is one; where there is not, the card says so
+    // and names the way in.
+    + poolEntryState(pool)
     + '</button>'
+  );
+}
+
+/** §5 — entered with which subject, or not entered and how to enter. */
+function poolEntryState(pool) {
+  const picked = (pool.subjects || [])
+    .find((s) => s.subject_id === pool.mySubjectId);
+  if (picked) {
+    return (
+      '<span class="fs-poolstate" data-pool-state="entered">'
+      + '<span class="fs-poolstate__label">YOUR PICK</span>'
+      + `<span class="fs-poolstate__value">${escapeHtml(picked.label)}</span>`
+      + '</span>'
+    );
+  }
+  return (
+    '<span class="fs-poolstate" data-pool-state="open">'
+    + '<span class="fs-poolstate__label">NOT ENTERED</span>'
+    + `<span class="fs-poolstate__cta">${escapeHtml(
+      pool.openForClaims === false ? 'LOCKED' : 'ENTER POOL')}</span>`
+    + '</span>'
   );
 }
 
@@ -426,7 +675,7 @@ function poolsZone() {
     // the grid.
     const undrawn = slateMode() === 'undrawn';
     return (
-      sectionHeading('FANTASYSTAKES POOLS')
+      sectionHeading(POOLS_HEADING)
       + `<div class="fs-emptyzone" data-pools-state="${escapeHtml(slateMode())}">`
       + `<div class="fs-emptyzone__head">${
         undrawn ? 'No Pools drawn yet' : 'Pools unavailable'}</div>`
@@ -438,9 +687,17 @@ function poolsZone() {
     );
   }
 
+  // THE COUNT IS THE SERVED ONE. `poolRows()` is the drawn slate in production
+  // and the illustrative fixture in demo; either way it is what the surface is
+  // about to render, so the heading cannot claim a week has four Pools while
+  // showing three.
+  const cards = rows
+    .map((p) => `<div class="fs-carousel__item" role="listitem">${poolCard(p)}</div>`)
+    .join('');
+
   return (
-    sectionHeading('FANTASYSTAKES POOLS', `${rows.length} THIS WEEK`)
-    + `<div class="fs-pools" id="fs-pools-grid">${rows.map(poolCard).join('')}</div>`
+    sectionHeading(POOLS_HEADING, `${rows.length} THIS WEEK · ${SWIPE_WORD}`)
+    + `<div class="fs-carousel" id="fs-play-pools" role="list">${cards}</div>`
   );
 }
 
@@ -461,6 +718,13 @@ function poolsZone() {
  * @param {{openComposer: Function, openSheet: Function}} api
  */
 export function bindLeague(panel, api) {
+  // THE ODDS-REFRESH CONTROLS BIND FIRST, and by delegation from the panel
+  // rather than per control. Play is redrawn on every authoritative refresh and
+  // each redraw replaces the card elements underneath; a listener attached to a
+  // button would be gone after the first one. `bindPlayOddsRefresh` is
+  // idempotent, so calling it on every build costs one dataset read.
+  bindPlayOddsRefresh(panel);
+
   panel.querySelectorAll('[data-card-action="challenge"]').forEach((card) => {
     const cardId = card.dataset.cardId;
 
@@ -524,6 +788,74 @@ export function bindLeague(panel, api) {
  * @param {object} pool
  * @returns {{title: string, sub: string, body: string}}
  */
+/**
+ * §29's Fantasy Football drivers for a Prop Pool.
+ *
+ * UI-5 GAP 2 CLOSED. §29 asks a Pool expansion for *concise FF drivers plus
+ * Pool/market analysis*. The Pool half was there -- the question, the settle
+ * rule, the entry, the pot, the count entered -- and the football half was not,
+ * so a reader learned what they were being asked and nothing about the field it
+ * would be answered on.
+ *
+ * EVERY LINE BELOW IS SLATE CONTENT ALREADY PUBLISHED. The metric expression is
+ * the catalog's own settle condition; the scope is the catalog's; the subjects
+ * are the admissible ones the pick control already renders, so naming them here
+ * discloses nothing that was not already on the screen. Nothing is derived from
+ * a projection, because the slate carries none.
+ *
+ * WHAT IT DELIBERATELY DOES NOT SAY IS WHO IS WINNING. An open Pool has no
+ * standing -- the metric is evaluated at settlement by the Pool engine, and a
+ * running order computed in the browser would be a second evaluation that could
+ * disagree with the one that pays. A settled Pool shows the winners settlement
+ * actually wrote, which is a read rather than a computation.
+ *
+ * @param {object} pool a slate row
+ * @returns {string}
+ */
+function poolFootballDrivers(pool) {
+  const rows = [];
+  const row = (label, value) => (
+    '<div class="fs-prev__row">' +
+    `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
+    `<span class="fs-prev__value">${escapeHtml(value)}</span></div>`
+  );
+
+  // WHAT ON THE FIELD DECIDES IT. `rule` is the definition's metric
+  // expression; the em dash is the slate's own "the catalog carries none".
+  if (pool.rule && pool.rule !== '\u2014') rows.push(row('Decided by', pool.rule));
+
+  rows.push(row('Measured across',
+    pool.subject === 'matchup'
+      ? 'One fantasy matchup'
+      : 'Every fantasy team in the league'));
+
+  const subjects = Array.isArray(pool.subjects) ? pool.subjects : [];
+  if (subjects.length) {
+    rows.push(row('In contention', String(subjects.length)));
+  }
+
+  // THE WINNERS ARE SETTLEMENT'S, and only a settled Pool has any.
+  if (pool.settled && Array.isArray(pool.winningSubjects)
+      && pool.winningSubjects.length) {
+    rows.push(row(pool.winningSubjects.length > 1 ? 'Winners' : 'Winner',
+      pool.winningSubjects.join(', ')));
+  }
+
+  if (!rows.length) return '';
+
+  return (
+    '<div class="fs-rule__head">FANTASY FOOTBALL DRIVERS</div>' +
+    rows.join('') +
+    (pool.settled
+      ? ''
+      // SAID PLAINLY, because "who is ahead" is the first thing a reader looks
+      // for and its absence would otherwise read as a page that failed to load.
+      : '<div class="fs-note">No running order is shown while a Pool is open. '
+        + 'The metric is evaluated once, at settlement, by the Pool engine \u2014 '
+        + 'a standing computed here could disagree with the one that pays.</div>')
+  );
+}
+
 export function poolSheet(pool) {
   const outcomeRows = pool.settled
     ? '<div class="fs-prev__row"><span class="fs-prev__label">Outcome</span>' +
@@ -540,8 +872,19 @@ export function poolSheet(pool) {
     sub: `${poolBadge(pool)} · catalog #${pool.catalogNumber}`,
     body:
       outcomeRows +
-      '<div class="fs-prev__row"><span class="fs-prev__label">Subject</span>' +
-      `<span class="fs-prev__value">${escapeHtml(pool.subject)}</span></div>` +
+      // UIRECON WAVE 3B — THE QUESTION, WHERE THE SCOPE ENUM USED TO BE.
+      //
+      // A row reading `Subject · Matchup` stood here. It named the census scope
+      // the engine validates against, which is a true fact and not one a GM
+      // asked for, and it was the same word the pick control below used as its
+      // caption — so the sheet introduced itself with an enum twice. What a GM
+      // needs before choosing is what they are being asked, and that is derived
+      // from the served scope rather than invented.
+      `<p class="fs-poolq">${escapeHtml(poolQuestion(pool))}</p>` +
+      // FOOTBALL FIRST, THEN THE MARKET. §29 lists the FF drivers before the
+      // Pool analysis, and it reads in that order too: what is being played
+      // for on the field, and then what it costs and pays.
+      poolFootballDrivers(pool) +
       '<div class="fs-prev__row"><span class="fs-prev__label">Settles on</span>' +
       `<span class="fs-prev__value fs-money">${escapeHtml(pool.rule)}</span></div>` +
       '<div class="fs-prev__row"><span class="fs-prev__label">Entry</span>' +
@@ -644,26 +987,156 @@ function poolPickControl(pool) {
       + '</div>';
   }
 
-  const options = ['<option value="">— choose —</option>'].concat(
-    pool.subjects.map((s) => (
-      `<option value="${s.subject_id}"`
-      + (current && current.subject_id === s.subject_id ? ' selected' : '')
-      + `>${escapeHtml(s.label)}</option>`
-    )),
-  ).join('');
+  // NOTHING TO CHOOSE FROM IS A REAL STATE. The census can admit no subjects —
+  // an unplayed week, a scope the league cannot fill — and the server says so
+  // by serving an empty list. Offering an empty grid and a Submit button would
+  // be offering a press that is certain to be refused.
+  if (!pool.subjects.length) {
+    return held + '<div class="fs-note is-warn">No eligible '
+      + escapeHtml(pool.subject) + 's for this week yet.</div>';
+  }
+
+  // ── THE CHOICE CELLS — UIRECON Wave 3B ───────────────────────────────────
+  //
+  // WHAT THIS REPLACES. A native `<select>` inside a `.fs-setform` that had no
+  // CSS in any stylesheet — so the one control in the product that takes a
+  // governed Prop Pool claim rendered as an unstyled user-agent dropdown on the
+  // app's near-black ground, captioned with a scope enum. It was the least
+  // usable control on the most playable surface.
+  //
+  // IT IS THE WAVE 1 CHOICE CELL. The same `.fs-seg__opt` a GM taps to pick a
+  // market or a set of terms, with the same geometry, the same 44px floor, the
+  // same gold selected treatment and the same `aria-pressed` grammar. A pick is
+  // a pick wherever the product asks for one.
+  //
+  // EVERY OPTION IS THE SERVER'S. `subject_id` and `label` are carried straight
+  // from `PoolSlotOut.subjects`, which the read model projects from the same
+  // census `pool_claims._validate_subject` checks a submission against. Nothing
+  // here enumerates a team, names a matchup, or filters the list.
+  const cells = pool.subjects.map((s) => {
+    const selected = Boolean(current && current.subject_id === s.subject_id);
+    return (
+      '<button type="button" class="fs-seg__opt is-wrap'
+      + (selected ? ' is-selected' : '') + '" '
+      + `data-poolpick-subject="${escapeHtml(String(s.subject_id))}" `
+      + `aria-pressed="${selected}">`
+      + `<span class="fs-seg__label">${escapeHtml(s.label)}</span>`
+      + '</button>'
+    );
+  }).join('');
+
+  // ONE COLUMN FOR MATCHUPS, TWO FOR TEAMS, and the served scope decides. A
+  // matchup label names both sides — `Gravy Train vs The Braintrust` — and does
+  // not fit half a phone; a team name does.
+  const columns = pool.scope === 'MATCHUP' ? 'is-single' : 'is-double';
 
   return (
-    held +
-    `<form class="fs-setform" id="fs-poolpick-form" data-instance="${pool.poolInstanceId}">` +
-    '<label class="fs-setform__label" for="fs-poolpick">' +
-    `${escapeHtml(pool.subject)}</label>` +
-    `<select class="fs-setform__input" id="fs-poolpick">${options}</select>` +
-    '<button type="submit" class="fs-btn fs-btn--gold fs-setform__save" ' +
-    `id="fs-poolpick-save">${current ? 'Change pick' : 'Submit pick'}</button>` +
-    '<p class="fs-setform__error" id="fs-poolpick-error" role="alert" ' +
-    'aria-live="polite"></p>' +
-    '</form>'
+    `<form class="fs-poolpick" id="fs-poolpick-form" `
+    + `data-instance="${pool.poolInstanceId}">`
+    + `<div class="fs-poolpick__grid ${columns}" role="group" `
+    + `aria-label="${escapeHtml(poolQuestion(pool))}">${cells}</div>`
+    + held
+    + '<button type="submit" class="fs-btn fs-btn--gold fs-poolpick__save" '
+    + `id="fs-poolpick-save">${current ? 'Change Pick' : 'Submit Pick'}</button>`
+    + '<p class="fs-poolpick__error" id="fs-poolpick-error" role="alert" '
+    + 'aria-live="polite"></p>'
+    + '</form>'
   );
+}
+
+/**
+ * The neutral state for a drawable Pool that arrived without its question.
+ *
+ * IT DESCRIBES THE ABSENCE, NOT THE CONTEST. Every word that could pass for
+ * product copy about what a GM is picking is exactly what must not be here: the
+ * point of removing the derivation is that this file no longer has an opinion
+ * about what any Pool asks. Four words that say a governed field is missing are
+ * honest; a sentence a GM could mistake for the question is not.
+ */
+export const MISSING_QUESTION_TEXT = 'Question unavailable';
+
+/**
+ * Drawable Pools seen without a `public_question`, for the integrity path.
+ *
+ * A SET, NOT A COUNTER, so a test can name the offender. Cleared by nothing:
+ * the register is per-page-load and a single occurrence is the whole signal.
+ * @type {Set<string>}
+ */
+const MISSING_QUESTIONS = new Set();
+
+/**
+ * Which drawable Pools have rendered without a governed question this session.
+ *
+ * EXPOSED SO THE DEFECT IS OBSERVABLE rather than only visible. A card that
+ * quietly drew a neutral placeholder would look like a design choice; this is
+ * what lets a certification assert that it never happens, and what a developer
+ * reads when it does.
+ *
+ * @returns {string[]} definition keys or catalog numbers, ascending
+ */
+export function missingPoolQuestions() {
+  return [...MISSING_QUESTIONS].sort();
+}
+
+/**
+ * What this Prop Pool is asking — the CATALOG'S sentence, and ONLY that.
+ *
+ * ── THE DERIVATION IS GONE, NOT DEMOTED ─────────────────────────────────────
+ *
+ * Wave 3 composed this sentence from `scope`, because the catalog held no
+ * written question and no field was to be invented here to supply one. POR
+ * Rev 1.4 §3 added `public_question` as governed catalog content and the
+ * derivation was left in place as a fallback. That fallback is now REMOVED for
+ * every Pool a league can draw.
+ *
+ * WHY A FALLBACK WAS THE WRONG SHAPE EVEN THOUGH IT NEVER FIRED. A client-side
+ * generator that produces plausible product copy is indistinguishable, on the
+ * surface, from the governed field it stands in for — so the one situation it
+ * exists for, a Pool whose catalog data is broken, is precisely the situation in
+ * which it hides the breakage. §3.2 makes the catalog the sole authority for
+ * this sentence; a second author in the browser contradicts that whether or not
+ * it is preferred.
+ *
+ * SO A MISSING QUESTION IS AN INTEGRITY EVENT. It is registered, warned about
+ * once per definition, and rendered as `MISSING_QUESTION_TEXT` — and the Play
+ * tab keeps working, because a broken row must not cost a GM the other three.
+ *
+ * THE 16 NON-DRAWABLE DEFINITIONS ARE NOT THIS CASE. §7 leaves them without a
+ * question on purpose; they are never drawn, so they never reach this function.
+ *
+ * EXPORTED FOR WRAP UP — RC4 MOBILE RECONCILIATION. The Prop Pool result card
+ * carries the same sentence the Play card asks, and it must be the SAME
+ * sentence from the SAME source: a second reader with its own preference is how
+ * two surfaces come to describe one contest differently. Nothing about the rule
+ * changes by being exported — the catalog is still the sole authority, a
+ * missing question is still an integrity event, and there is still no client
+ * that can compose one.
+ *
+ * @param {object} pool a row from `slateRows()` or the illustrative fixture
+ * @returns {string}
+ */
+export function poolQuestion(pool) {
+  if (pool && pool.question) return pool.question;
+
+  const subject = String(
+    (pool && (pool.definitionKey || pool.catalogNumber)) || 'unknown');
+  if (!MISSING_QUESTIONS.has(subject)) {
+    MISSING_QUESTIONS.add(subject);
+    // ONE WARNING PER DEFINITION. The card renders on every panel build, and a
+    // per-render warning would bury the first one under its own repetitions.
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn(
+        `[FantasyStakes] Prop Pool ${subject} was drawn without a governed `
+        + 'public_question. POR Rev 1.4 §3 makes the catalog the sole authority '
+        + 'for this sentence, so none is composed here.');
+    }
+  }
+  return MISSING_QUESTION_TEXT;
+}
+
+/** @returns {boolean} whether this row carries its governed question. */
+function hasPoolQuestion(pool) {
+  return Boolean(pool && pool.question);
 }
 
 /**
@@ -688,18 +1161,54 @@ export function bindPoolPickForm(host, ctx) {
   const form = host.querySelector('#fs-poolpick-form');
   if (!form) return;
 
-  const select = form.querySelector('#fs-poolpick');
   const save = form.querySelector('#fs-poolpick-save');
   const error = form.querySelector('#fs-poolpick-error');
   const held = host.querySelector('#fs-poolpick-held');
+  const cells = [...form.querySelectorAll('[data-poolpick-subject]')];
   let inFlight = false;
+
+  /** The pressed cell's served subject id, or NaN when none is pressed. */
+  const chosen = () => {
+    const pressed = cells.find((c) => c.getAttribute('aria-pressed') === 'true');
+    return pressed
+      ? Number.parseInt(pressed.dataset.poolpickSubject, 10) : Number.NaN;
+  };
+
+  // SELECTING IS LOCAL; SUBMITTING IS GOVERNED. Pressing a cell moves the
+  // selection and updates `Your pick` so the GM can see what they are about to
+  // send — it posts nothing. The claim is written only by the submit handler
+  // below, through the same governed command as before.
+  cells.forEach((cell) => {
+    cell.addEventListener('click', () => {
+      if (inFlight) return;
+      cells.forEach((other) => {
+        const isThis = other === cell;
+        other.classList.toggle('is-selected', isThis);
+        other.setAttribute('aria-pressed', String(isThis));
+      });
+      // `Your pick` FOLLOWS THE SELECTION, AND SAYS IT IS NOT YET SENT.
+      //
+      // WP6C's rule is that a CONFIRMATION must be the server's persisted
+      // claim and never the value the GM chose, and that rule is kept below.
+      // This is a different statement: it is what the GM is about to submit,
+      // which they are entitled to read before pressing. `is-pending` is what
+      // keeps the two apart on screen — the row is drawn as unresolved until
+      // the governed write returns and rewrites it from `selected_subject_id`.
+      if (held) {
+        held.textContent = cell.querySelector('.fs-seg__label').textContent;
+        held.classList.add('is-pending');
+      }
+      error.textContent = '';
+      save.textContent = 'Submit Pick';
+    });
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (inFlight) return;
 
     error.textContent = '';
-    const subjectId = Number.parseInt(select.value, 10);
+    const subjectId = chosen();
     if (!Number.isInteger(subjectId)) {
       error.textContent = 'Choose one first.';
       return;
@@ -716,20 +1225,29 @@ export function bindPoolPickForm(host, ctx) {
         poolInstanceId: Number.parseInt(form.dataset.instance, 10),
         subjectId,
       });
-      // THE CONFIRMATION IS THE SERVER'S. The label redrawn below is looked up
-      // from `selected_subject_id` — what was PERSISTED — not from the value
-      // the GM chose. The two agree on every success, and on the one occasion
-      // they would not, the GM is shown what the database holds.
-      const option = Array.from(select.options).find(
-        (o) => Number.parseInt(o.value, 10) === body.selected_subject_id);
-      if (held && option) held.textContent = option.textContent;
-      select.value = String(body.selected_subject_id);
+      // THE CONFIRMATION IS THE SERVER'S. The cell matched below is found by
+      // `selected_subject_id` — what was PERSISTED — not by the value the GM
+      // chose. The two agree on every success, and on the one occasion they
+      // would not, the GM is shown what the database holds. The only thing that
+      // changed in Wave 3B is where the label is read from: the pressed choice
+      // cell rather than a `<select>` option.
+      const confirmed = cells.find((c) => Number.parseInt(
+        c.dataset.poolpickSubject, 10) === body.selected_subject_id);
+      if (held && confirmed) {
+        held.textContent = confirmed.querySelector('.fs-seg__label').textContent;
+        held.classList.remove('is-pending');
+      }
+      cells.forEach((c) => {
+        const isConfirmed = c === confirmed;
+        c.classList.toggle('is-selected', isConfirmed);
+        c.setAttribute('aria-pressed', String(isConfirmed));
+      });
       save.textContent = 'Pick recorded';
       ctx.onClaimed(body);
     } catch (refusal) {
       error.textContent = ctx.explain(refusal);
       save.disabled = false;
-      save.textContent = 'Submit pick';
+      save.textContent = 'Submit Pick';
     } finally {
       inFlight = false;
     }

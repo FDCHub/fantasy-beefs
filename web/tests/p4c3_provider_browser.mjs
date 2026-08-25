@@ -90,8 +90,9 @@ await withPage({ port: 9381, settleMs: 1700 }, async ({ evaluate }) => {
 
   /* ── The League strip ─────────────────────────────────────────────────── */
 
-  const netWinnings = league.cells.find((c) => c.label === 'Net Winnings');
-  report.check('Net Winnings is unresolved — it has no posted source',
+  // UIRECON WAVE 1 — the cell is labelled `Net Won`; same cell, same source.
+  const netWinnings = league.cells.find((c) => c.label === 'Net Won');
+  report.check('Net Won is unresolved — it has no posted source',
     netWinnings && netWinnings.value === '—',
     netWinnings ? netWinnings.value : 'cell missing');
   report.check('and carries no exact cents behind it',
@@ -126,9 +127,17 @@ await withPage({ port: 9381, settleMs: 1700 }, async ({ evaluate }) => {
     };
     return {
       text: panel.textContent,
-      yahooCards: yahoo ? yahoo.querySelectorAll('.fs-vcar__item').length : -1,
+      // UIRECON WAVE 4B — COUNT LIST ENTRIES, NOT RAIL SLOTS. A section with
+      // nothing to show puts its explanatory note in the same one-viewport-wide
+      // wrapper the cards use, so the note occupies its own width rather than
+      // shrinking to its text; that wrapper deliberately carries no listitem
+      // role, because it is not one. Counting the role is what keeps "no cards
+      // were drawn" distinct from "one slot exists".
+      yahooCards: yahoo
+        ? yahoo.querySelectorAll('.fs-rescar__item[role="listitem"]').length : -1,
       yahooNote: note(yahoo),
-      betCards: bets ? bets.querySelectorAll('.fs-vcar__item').length : -1,
+      betCards: bets
+        ? bets.querySelectorAll('.fs-rescar__item[role="listitem"]').length : -1,
       betNote: note(bets),
     };
   `));
@@ -202,7 +211,9 @@ await withPage({ port: 9381, settleMs: 1700 }, async ({ evaluate }) => {
   const pools = await evaluate(asyncProbe(`
     const panel = document.getElementById('panel-week');
     const mod = panel.querySelector('[data-module="pools"]');
-    return { rows: mod ? mod.querySelectorAll('.fs-poolrow').length : -1 };
+    // RC4 - the Prop Pool item is the shared result card now.
+    return { rows: mod
+      ? mod.querySelectorAll('.fs-rescar__item > .fs-wcard').length : -1 };
   `));
   report.check('the Pool slate binding is preserved',
     pools.rows >= 0, String(pools.rows));

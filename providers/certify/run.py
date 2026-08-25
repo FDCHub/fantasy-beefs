@@ -609,6 +609,113 @@ def c6_truth_table(evidence, tdb):
                         "UNKNOWN -> finalized_at stays NULL")
 
 
+# -- C-7 . THE PROTECTED-FIELD CLASSIFIER (WEBDEPLOY-1a) ---------------------
+#
+# Lifted out of `c7_immutability` so the gate can EXERCISE it against synthetic
+# sources rather than only run it over the tree. A control whose own scoping
+# rule is never tested is a control that can be widened by accident.
+
+#: The four fields whose mutation could retract or rewrite a finalized result.
+_LOAD_BEARING_MATCHUP_FIELDS = ("finalized_at", "home_score", "away_score",
+                                "winner_team_id")
+
+_ORM_ASSIGN_PATTERN = re.compile(
+    r"\.(" + "|".join(_LOAD_BEARING_MATCHUP_FIELDS) + r")\s*=(?!=)")
+
+#: CERTIFIED WRITERS THAT ARE SCOPED TO A FUNCTION, NOT TO A PATH.
+#:
+#: `allowed_orm` below exempts whole FILES, which is right for the provider
+#: writers: those modules exist to be the writer and contain nothing else.
+#: `demo/states.py` is not like that -- it is a 370-line module that also drives
+#: the season, the championship and the close, so exempting the file would
+#: silently license every future function written in it.
+#:
+#: So the demo writer is certified by (file, module-level function name), and
+#: the enclosing function of each assignment is resolved from the AST. The
+#: consequences are exact, and the negative self-check inside the gate proves
+#: every one of them: a different file under demo/ fails, a second function in
+#: `demo/states.py` fails, a file elsewhere that merely NAMES its function
+#: `finalize_week` fails, and a `demo/states.py` that will not parse fails.
+#:
+#: `demo/states.py::finalize_week` posts the synthetic showcase fixture's result
+#: onto matchup rows the seeder already created. It calls `assert_demo_league`
+#: as its first statement -- provider binding, demo namespace, showcase
+#: namespace and season, all four, read from the persisted row -- so it refuses
+#: a Yahoo league, an unbound league, a league merely NAMED the demo league, a
+#: non-showcase demo league and a retired showcase before it reads a row. It
+#: writes `finalized_at` only to a fixed non-NULL instant; no path through it
+#: returns the column to NULL.
+_CERTIFIED_FUNCTION_WRITERS = {
+    "demo/states.py": ("finalize_week",),
+}
+
+
+def _enclosing_qualname(source: str, lineno: int):
+    """Dotted name of the innermost function containing `lineno`, or None.
+
+    FAILS CLOSED. A source that will not parse has no enclosing function as far
+    as this is concerned, so nothing in it can be certified.
+    """
+    import ast as _ast
+
+    try:
+        tree = _ast.parse(source)
+    except SyntaxError:
+        return None
+
+    best = None
+    best_span = None
+
+    def walk(node, prefix):
+        nonlocal best, best_span
+        for child in _ast.iter_child_nodes(node):
+            name = getattr(child, "name", None)
+            if name and isinstance(child, (_ast.FunctionDef,
+                                           _ast.AsyncFunctionDef,
+                                           _ast.ClassDef)):
+                qual = prefix + name
+                start = child.lineno
+                end = getattr(child, "end_lineno", start)
+                is_func = isinstance(child, (_ast.FunctionDef,
+                                             _ast.AsyncFunctionDef))
+                if is_func and start <= lineno <= end:
+                    span = end - start
+                    # Innermost wins: the narrowest span containing the line.
+                    if best_span is None or span < best_span:
+                        best, best_span = qual, span
+                walk(child, qual + ".")
+            else:
+                walk(child, prefix)
+
+    walk(tree, "")
+    return best
+
+
+def _protected_field_sites(rel: str, source: str):
+    """Classify every protected-field assignment in one file.
+
+    Returns ``(uncertified, certified)`` as ``"rel:lineno"`` entries. Certified
+    means the assignment sits inside a module-level function that THIS file is
+    permitted to have -- see `_CERTIFIED_FUNCTION_WRITERS`. Everything else
+    comes back uncertified, including an assignment elsewhere in a file that
+    does contain a certified function.
+    """
+    permitted = _CERTIFIED_FUNCTION_WRITERS.get(rel, ())
+    uncertified = []
+    certified = []
+    for lineno, line in enumerate(source.split(chr(10)), 1):
+        if not _ORM_ASSIGN_PATTERN.search(line):
+            continue
+        if line.strip().startswith("#"):
+            continue
+        entry = rel + ":" + str(lineno)
+        if permitted and _enclosing_qualname(source, lineno) in permitted:
+            certified.append(entry)
+        else:
+            uncertified.append(entry)
+    return uncertified, certified
+
+
 @gate("C-7", "FINALITY IMMUTABILITY — no path returns finalized_at to NULL")
 def c7_immutability(evidence, tdb):
     from providers.base import Finality
@@ -669,13 +776,12 @@ def c7_immutability(evidence, tdb):
     # reason the check is AST-based rather than another regex.
     import ast as _ast
 
-    LOAD_BEARING = ("finalized_at", "home_score", "away_score", "winner_team_id")
-    orm_pattern = re.compile(
-        r"\.(" + "|".join(LOAD_BEARING) + r")\s*=(?!=)")
+    LOAD_BEARING = _LOAD_BEARING_MATCHUP_FIELDS
     sql_pattern = re.compile(
         r"\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+matchups\b", re.IGNORECASE)
 
     orm_offenders: list[str] = []
+    orm_certified: list[str] = []
     sql_offenders: list[str] = []
 
     for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
@@ -688,9 +794,12 @@ def c7_immutability(evidence, tdb):
             rel = os.path.relpath(path, REPO_ROOT).replace("\\", "/")
             source = open(path, encoding="utf-8", errors="replace").read()
 
-            for lineno, line in enumerate(source.split("\n"), 1):
-                if orm_pattern.search(line) and not line.strip().startswith("#"):
-                    orm_offenders.append(f"{rel}:{lineno}")
+            # WEBDEPLOY-1a - classified rather than merely collected: an
+            # assignment inside a certified (file, function) pair is
+            # separated here, and everything else stays an offender.
+            uncertified, certified = _protected_field_sites(rel, source)
+            orm_offenders.extend(uncertified)
+            orm_certified.extend(certified)
 
             # Raw SQL, via the AST so docstrings are not counted as executable.
             try:
@@ -750,9 +859,73 @@ def c7_immutability(evidence, tdb):
     sql_production = [o for o in sql_offenders
                       if not _is_fixture(o) and not o.startswith(allowed_sql)]
 
+    # -- WEBDEPLOY-1a . THE SCOPING RULE, EXERCISED RATHER THAN ASSERTED -----
+    #
+    # The classifier now grants exactly one non-provider writer, so the question
+    # "how narrow is that grant" has to have a mechanical answer. These cases
+    # run the real classifier over synthetic sources and would fail this gate if
+    # the grant ever widened. They are the negative regression the certification
+    # rests on; deleting them removes the only proof that `demo/` is not exempt.
+    REJECTED = (
+        # A DIFFERENT FILE UNDER demo/, WITH THE VERY SAME FUNCTION NAME. This
+        # is the case that proves the grant is (file, function) and not a
+        # function name, and not a `demo/` prefix.
+        ("demo/evil_writer.py",
+         "def finalize_week(db, row):" + chr(10) + "    row.finalized_at = None" + chr(10)),
+        # A SECOND FUNCTION IN THE CERTIFIED FILE. The file is not exempt; one
+        # function in it is.
+        ("demo/states.py",
+         "def other_function(row):" + chr(10) + "    row.finalized_at = None" + chr(10)),
+        # A METHOD, in the certified file, whose name matches. `Cls.finalize_week`
+        # is not `finalize_week`.
+        ("demo/states.py",
+         "class Cls:" + chr(10) + "    def finalize_week(self, row):" + chr(10)
+         + "        row.home_score = 1" + chr(10)),
+        # A NESTED FUNCTION INSIDE THE CERTIFIED ONE. Innermost scope wins, so a
+        # closure cannot inherit the grant.
+        ("demo/states.py",
+         "def finalize_week(db, row):" + chr(10) + "    def inner():" + chr(10)
+         + "        row.winner_team_id = 1" + chr(10) + "    inner()" + chr(10)),
+        # MODULE SCOPE IN THE CERTIFIED FILE. No enclosing function, no grant.
+        ("demo/states.py", "row.away_score = 3" + chr(10)),
+        # A FILE THAT WILL NOT PARSE. Fails closed rather than defaulting open.
+        ("demo/states.py",
+         "def finalize_week(:" + chr(10) + "    row.finalized_at = 1" + chr(10)),
+        # AND THE PRODUCTION PACKAGES, which have no grant of any kind.
+        ("economy/season_close.py",
+         "def finalize_week(row):" + chr(10) + "    row.home_score = 1" + chr(10)),
+        ("api/main.py",
+         "def finalize_week(row):" + chr(10) + "    row.finalized_at = None" + chr(10)),
+        ("providers/yahoo/sync.py",
+         "def finalize_week(row):" + chr(10) + "    row.finalized_at = None" + chr(10)),
+    )
+    for rel, synthetic in REJECTED:
+        bad, good = _protected_field_sites(rel, synthetic)
+        require(bad and not good,
+                f"C-7 scoping is too wide: {rel!r} was accepted as a certified "
+                f"finality writer (certified={good}, rejected={bad})")
+
+    ACCEPTED = ("demo/states.py",
+                "def finalize_week(db, league, teams, week):" + chr(10)
+                + "    row.home_score = 1" + chr(10)
+                + "    row.finalized_at = _now()" + chr(10))
+    bad, good = _protected_field_sites(*ACCEPTED)
+    require(len(good) == 2 and not bad,
+            f"the one certified writer was not recognized by its own "
+            f"classifier (certified={good}, rejected={bad})")
+    evidence.append(
+        f"the function-scoped grant is exercised, not asserted: "
+        f"{len(REJECTED)} synthetic writers rejected (including a same-named "
+        f"function in another demo/ file, a second function and a method in "
+        f"the certified file, a nested closure, module scope, and a file that "
+        f"will not parse), 1 certified writer accepted")
+
     require(not orm_production,
             f"load-bearing Matchup fields are assigned outside the guarded "
-            f"provider writers: {orm_production}")
+            f"provider writers: {orm_production}. Whole-file grants live in "
+            f"`allowed_orm`; the only function-scoped grant is "
+            f"`_CERTIFIED_FUNCTION_WRITERS`, and widening either is a release "
+            f"decision, not a way to make a tree green.")
     require(not sql_production,
             f"raw SQL mutates `matchups` outside the guarded provider writers "
             f"and migrations: {sql_production}. This is the exact shape of the "
@@ -770,6 +943,12 @@ def c7_immutability(evidence, tdb):
         f"ORM assignments: 0 unauthorized production writers; permitted "
         f"writers are {list(allowed_orm)}; {len(orm_fixtures)} test-fixture "
         f"assignment(s) listed, not hidden")
+    evidence.append(
+        f"function-scoped grants (WEBDEPLOY-1a): "
+        f"{ {k: list(v) for k, v in _CERTIFIED_FUNCTION_WRITERS.items()} } "
+        f"-> {len(orm_certified)} certified assignment(s) {orm_certified}; "
+        f"the enclosing function is resolved from the AST, so the file "
+        f"itself is NOT exempt")
     evidence.append(
         f"raw SQL DML on `matchups`: {len(sql_offenders)} executable "
         f"occurrence(s) repo-wide, 0 outside migrations and the guarded "

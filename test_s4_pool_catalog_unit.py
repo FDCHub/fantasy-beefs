@@ -17,10 +17,12 @@ implementation.
 
 import copy
 import json
+import io
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, ROOT)
 
 from betting.pool_catalog import (  # noqa: E402
     CATALOG_PATH,
@@ -183,12 +185,25 @@ def main() -> None:
         _assert(f"#{number} declares no field-goal or extra-point operand",
                 not any(s in d.required_stats for s in
                         ("field_goals_made", "extra_points_made")))
-    _assert("#18 display name is the Rev1.3 name (§1.8)",
+    # THE NAMES MOVED; THE SCORING BASIS DID NOT. Rev 1.3 §1.8 fixed both of
+    # these by name AND by scoring basis, and this suite has always asserted
+    # both. The owner ruling of 2026-08-21 supersedes the NAMING half only — POR
+    # Rev 1.4 §2 — so the assertions above, which are the SCORING half, are
+    # untouched and these two are re-pointed at the ruled names. #77 is
+    # `Kicker Duel`: the proposal's `Double Kickers` was refused.
+    _assert("#18 display name is the Rev1.4 ruled name (Rev 1.4 §2)",
             catalog.by_key("most_kicking_points").display_name
-            == "Highest Scoring Kicker")
-    _assert("#77 display name is the Rev1.3 name (§1.8)",
+            == "Kicker Chaos",
+            catalog.by_key("most_kicking_points").display_name)
+    _assert("#77 display name is the Rev1.4 ruled name (Rev 1.4 §2)",
             catalog.by_key("highest_combined_kicker_points").display_name
-            == "Highest Scoring Kicker Matchup")
+            == "Kicker Duel",
+            catalog.by_key("highest_combined_kicker_points").display_name)
+    _assert("the superseded kicker names appear on no active definition",
+            not ({"Highest Scoring Kicker", "Highest Scoring Kicker Matchup",
+                  "Most Kicking Points", "Highest Combined Kicker Points",
+                  "Double Kickers"}
+                 & {d.display_name for d in defs}))
 
     print("\n-- POR §1.4 canonical vocabulary and alias resolution --")
     _assert("every required stat is a canonical vocabulary name",
@@ -293,9 +308,224 @@ def _expression_on_non_closed(raw) -> None:
     raise AssertionError("#76 not present; control cannot be constructed")
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# POR REVISION 1.4 — the branded naming pass, public_question, and the weekly
+# scope composition.
+#
+# WHY THE DRIFT CHECK IS THE FIRST THING HERE. Rev 1.4 claims to change two
+# presentation fields and one selection rule and NOTHING ELSE. That claim is
+# only worth what proves it, and the only proof that cannot be gamed is a
+# field-by-field comparison against the superseded artifact, run on every
+# invocation rather than asserted once at authoring time. So §R1 loads Rev 1.3
+# from `CATALOG_PATH_REV1_3` — which exists precisely so this can be done — and
+# requires zero drift on every field of every definition except the two Rev 1.4
+# is allowed to touch.
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: The two fields Rev 1.4 is permitted to change or add. Everything else on
+#: every one of the 80 definitions must be byte-identical to Rev 1.3.
+REV14_PRESENTATION_FIELDS = frozenset({"display_name", "public_question"})
+
+#: POR Rev 1.4 §5.3 and §2 — the owner's amendments, asserted by exact string.
+#: These are RULINGS, not preferences, and a later edit that "improved" one
+#: would be superseding an owner decision by accident.
+OWNER_RULED_NAMES = {
+    "most_kicking_points": "Kicker Chaos",              # §2, approved as proposed
+    "highest_combined_kicker_points": "Kicker Duel",    # §2, Double Kickers refused
+    "most_offensive_touches": "Heavy Usage",            # §5.3, replaces Workload
+    "highest_combined_yards_per_touch": "Touch Efficiency",   # §5.3
+    "matchups_where_both_teams_had_100plus_rushing_yards": "Ground Tandem",  # §5.3
+    "matchups_where_neither_team_lost_a_fumble": "Fumble Free",  # §6
+}
+
+
+def rev14() -> None:
+    """POR Rev 1.4 conformance — §9.2 items 1 through 10."""
+    from betting.pool_catalog import CATALOG_PATH_REV1_3
+    from betting.pool_rotation import DEFAULT_SCOPE_MIX
+
+    catalog = load_catalog()
+    defs = catalog.definitions
+
+    print("\n-- Rev 1.4 §9.2/1 — the runtime catalog IS Rev 1.4 --")
+    with open(CATALOG_PATH, "r", encoding="utf-8") as fh:
+        raw = json.load(fh)
+    _assert("the runtime CATALOG_PATH resolves to the Rev 1.4 artifact",
+            os.path.basename(CATALOG_PATH) == "pool_catalog_rev1_4.json",
+            os.path.basename(CATALOG_PATH))
+    _assert("its revision is 1.4", catalog.revision == "1.4", catalog.revision)
+    _assert("its status is Product of Record",
+            raw.get("status") == "Product of Record", str(raw.get("status")))
+    _assert("it names the Rev 1.4 POR as its governing spec",
+            raw.get("governing_spec")
+            == "spec/SPEC_Pool_Catalog_Rotation_POR_Rev1_4.md",
+            str(raw.get("governing_spec")))
+    _assert("the Rev 1.4 POR exists un-suffixed and no _PROPOSED artifact is "
+            "left pretending to be active",
+            os.path.exists(os.path.join(
+                ROOT, "spec", "SPEC_Pool_Catalog_Rotation_POR_Rev1_4.md"))
+            and not os.path.exists(os.path.join(
+                ROOT, "spec",
+                "SPEC_Pool_Catalog_Rotation_POR_Rev1_4_PROPOSED.md")))
+
+    print("\n-- Rev 1.4 §9.2/2 — ZERO governed-field drift against Rev 1.3 --")
+    with open(CATALOG_PATH_REV1_3, "r", encoding="utf-8") as fh:
+        raw13 = json.load(fh)
+    by13 = {d["key"]: d for d in raw13["definitions"]}
+    by14 = {d["key"]: d for d in raw["definitions"]}
+    _assert("Rev 1.3 is still Product of Record in its own historical sense, "
+            "and byte-unchanged in every field this compares",
+            raw13.get("status") == "Product of Record", str(raw13.get("status")))
+    _assert("the same 80 keys, no addition, no retirement, no renumbering",
+            set(by13) == set(by14) and len(by14) == 80,
+            f"{len(by13)} vs {len(by14)}")
+    _assert("the retired block is identical",
+            raw13["retired"] == raw["retired"])
+    _assert("the declared counts are identical",
+            raw13["counts"] == raw["counts"])
+    drift = []
+    for key, old in by13.items():
+        new = by14[key]
+        for field in set(old) | set(new):
+            if field in REV14_PRESENTATION_FIELDS:
+                continue
+            if old.get(field) != new.get(field):
+                drift.append((key, field, old.get(field), new.get(field)))
+    _assert("NO governed field moved on any of the 80 definitions — no key, "
+            "predicate, metric_expression, threshold, scope, evaluator shape, "
+            "eligibility flag, rollover flag or tie rule",
+            not drift, str(drift[:4]) if drift else "0 differences")
+
+    print("\n-- Rev 1.4 §9.2/3-5 — the naming set --")
+    eligible = [d for d in defs if d.definition_runtime_eligible]
+    _assert("64 definitions are runtime-eligible", len(eligible) == 64,
+            str(len(eligible)))
+    unnamed = [d.key for d in eligible if not (d.display_name or "").strip()]
+    _assert("every eligible definition carries a display_name", not unnamed,
+            str(unnamed[:4]))
+    unasked = [d.key for d in eligible if not (d.public_question or "").strip()]
+    _assert("every eligible definition carries a public_question (§3)",
+            not unasked, str(unasked[:4]))
+    renamed = [d.key for d in eligible
+               if d.display_name == by13[d.key]["display_name"]]
+    _assert("all 64 were actually renamed from their Rev 1.3 name",
+            not renamed, str(renamed[:4]))
+    names = [d.display_name for d in defs]
+    dupes = sorted({nm for nm in names if names.count(nm) > 1})
+    _assert("no two active definitions share a display_name", not dupes,
+            str(dupes))
+    over = [(d.key, d.display_name) for d in eligible
+            if len(d.display_name) > 18 or len(d.display_name.split()) > 4]
+    _assert("every public name is at most four words and 18 characters",
+            not over, str(over[:3]))
+    longer = [(d.key, by13[d.key]["display_name"], d.display_name)
+              for d in eligible
+              if len(d.display_name) >= len(by13[d.key]["display_name"])]
+    _assert("every public name is strictly SHORTER than the Rev 1.3 name the "
+            "card rendered before it, so no card can grow or wrap further",
+            not longer, str(longer[:2]))
+
+    print("\n-- Rev 1.4 §9.2/4 — the 16 non-drawable are left alone --")
+    left = [d for d in defs if not d.definition_runtime_eligible]
+    _assert("16 definitions are not runtime-eligible", len(left) == 16,
+            str(len(left)))
+    _assert("none of them was renamed",
+            all(d.display_name == by13[d.key]["display_name"] for d in left),
+            str([d.key for d in left
+                 if d.display_name != by13[d.key]["display_name"]]))
+    _assert("none of them carries a public_question (§7)",
+            all(d.public_question is None for d in left),
+            str([d.key for d in left if d.public_question is not None]))
+    _assert("exactly 3 are BLOCKED and 13 are source-mapping incomplete",
+            sum(1 for d in left if d.dependency_state == "BLOCKED") == 3
+            and sum(1 for d in left
+                    if d.dependency_state == "ENABLED") == 13)
+
+    print("\n-- Rev 1.4 §9.2/6 — the owner-ruled names are exact --")
+    for key, ruled in OWNER_RULED_NAMES.items():
+        actual = catalog.by_key(key).display_name
+        _assert(f"#{catalog.by_key(key).catalog_number} {key} is {ruled!r}",
+                actual == ruled, actual)
+
+    print("\n-- Rev 1.4 §9.2/7 — the fewest-vs-zero convention (§6) --")
+    # READ FROM THE MECHANIC, NOT FROM A LIST OF NUMBERS. `direction == MIN`
+    # and a predicate ending `== 0` are what make a contest one kind or the
+    # other, so a definition added later is covered by this without anyone
+    # remembering to extend a fixture.
+    min_set = [d for d in eligible if d.direction == "MIN"]
+    zero_set = [d for d in eligible
+                if (d.predicate or "").strip().endswith("== 0")]
+    _assert("the active set is 6 MIN contests and 3 exact-zero qualifiers",
+            len(min_set) == 6 and len(zero_set) == 3,
+            f"{len(min_set)} MIN / {len(zero_set)} zero")
+    _assert("the two families are disjoint",
+            not ({d.key for d in min_set} & {d.key for d in zero_set}))
+    free_min = [(d.key, d.display_name) for d in min_set
+                if "free" in d.display_name.lower()]
+    _assert("NO MIN contest reserves the word Free", not free_min,
+            str(free_min))
+    unfree_zero = [(d.key, d.display_name) for d in zero_set
+                   if "free" not in d.display_name.lower()]
+    _assert("EVERY exact-zero qualifier uses Free", not unfree_zero,
+            str(unfree_zero))
+
+    print("\n-- Rev 1.4 §9.2/8-10 — the weekly scope composition (§4.2) --")
+    _assert("the catalog carries the composition as data",
+            catalog.weekly_scope_mix == (("TEAM", 3), ("MATCHUP", 1)),
+            str(catalog.weekly_scope_mix))
+    _assert("  · and it agrees with the pure selector's default",
+            catalog.weekly_scope_mix == DEFAULT_SCOPE_MIX)
+    _assert("the composition block is REGULAR-phase, four slots",
+            raw["weekly_slate_composition"]["phase"] == "REGULAR"
+            and raw["weekly_slate_composition"]["slot_count"] == 4)
+    # THE LOADER REFUSES A DRIFTED ARTIFACT. Without this the two statements of
+    # the rule could diverge and only a hand comparison would notice.
+    _raises("a catalog whose composition disagrees with the selector is "
+            "refused at load", lambda: _load_mutated(_drift_scope_mix),
+            "SCOPE_MIX_MISMATCH")
+    _raises("a composition whose scopes do not sum to its slot_count is "
+            "refused at load", lambda: _load_mutated(_unbalanced_scope_mix),
+            "SCOPE_MIX_MISMATCH")
+
+    print("\n-- Rev 1.4 §3.2 — public_question carries no settlement power --")
+    # The evaluator boundary is the proof: a question is not an operand, not a
+    # predicate and not an expression, so nothing that settles a Pool can read
+    # one. Asserted structurally rather than by inspection.
+    from betting import pool_evaluators
+    src = io.open(pool_evaluators.__file__, encoding="utf-8").read()
+    _assert("betting/pool_evaluators.py never mentions public_question",
+            "public_question" not in src)
+    _assert("no public_question contains a catalog operand name or a scope "
+            "enum",
+            not [d.key for d in eligible
+                 if any(tok in (d.public_question or "")
+                        for tok in ("SUM_BOTH_TEAMS", "EACH_TEAM",
+                                    "metric_expression", "RANK_EXTREMUM",
+                                    "QUALIFIER"))])
+    # §3.1 — configurable thresholds say "the target", never a literal, because
+    # a league that reconfigured one would be shown a number its own settlement
+    # does not use.
+    literal = [(d.key, d.public_question) for d in eligible
+               if d.threshold_configurable
+               and str(d.threshold_default) in (d.public_question or "")]
+    _assert("a configurable threshold's question states no literal (§3.1)",
+            not literal, str(literal[:2]))
+
+
+def _drift_scope_mix(raw) -> None:
+    raw["weekly_slate_composition"]["scopes"] = [
+        {"scope": "TEAM", "slots": 1}, {"scope": "MATCHUP", "slots": 3}]
+
+
+def _unbalanced_scope_mix(raw) -> None:
+    raw["weekly_slate_composition"]["scopes"] = [
+        {"scope": "TEAM", "slots": 3}, {"scope": "MATCHUP", "slots": 2}]
+
+
 if __name__ == "__main__":
-    print("\n=== S4-P1 catalog unit suite (Rev1.3) ===")
+    print("\n=== S4-P1 catalog unit suite (Rev1.4) ===")
     main()
+    rev14()
     print(f"\n  {len(_failures)} failure(s)")
     if _failures:
         for f in _failures:

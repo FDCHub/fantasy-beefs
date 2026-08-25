@@ -146,11 +146,18 @@ _assert("an unbound Versus model returns an empty list, never a fixture",
         "if (MODE !== VERSUS_MODE_AUTHORITATIVE) return [];" in VERSUS_JS)
 _assert("Play's Pools read the governed slate, gated on demo mode",
         "slateMode() === SLATE_MODE_DEMO ? POOLS : slateRows()" in LEAGUE_JS)
-# THE IDENTIFIER, NOT THE WORD. `FANTASYSTAKES POOLS` is a heading and says
+# THE IDENTIFIER, NOT THE WORD. `FANTASYSTAKES PROP POOLS` is a heading and says
 # nothing about the constant; counting bare occurrences would count it twice.
+#
+# UIRECON WAVE 1 renamed the heading to the locked public term; UIRECON REV 1.4
+# PART 3 shortened it again, to `PROP POOLS`, and hoisted it into a named
+# constant. Stripping the SHORTER string covers both spellings — the Wave 1 form
+# contains it — so this keeps counting identifiers rather than headings. The
+# claim is untouched: the demo `POOLS` constant is reachable only through the
+# `slateMode()` gate above.
 _POOLS_IDENT = re.findall(r"(?<![A-Z_'\"])POOLS(?![A-Z_])",
                           _strip_comments(LEAGUE_JS)
-                          .replace("FANTASYSTAKES POOLS", ""))
+                          .replace("PROP POOLS", ""))
 _assert("and the demo Pool constant is reachable ONLY through that gate",
         len(_POOLS_IDENT) == 2, f"{len(_POOLS_IDENT)} references")
 
@@ -345,9 +352,18 @@ for name, src in (("Play", LEAGUE_JS), ("Status", ACTION_JS),
 _section("8 · One readability system, not two")
 
 _sizes = re.findall(r"font-size:\s*([^;]+);", GAMEPLAY_CSS)
+# UIRECON WAVE 1 ADDED A SECOND ACCEPTED PREFIX, AND IT IS NOT A SECOND SCALE.
+# `--fs-c-*` is the canonical ALIAS layer: every one of those names is defined
+# in `tokens.css` as exactly `var(--fs-r43-…)`, and `test_uirecon_wave1.py`
+# asserts each alias resolves to its target one by one. A shared primitive reads
+# the alias so it names ONE answer instead of choosing between the Rev 4.2 and
+# Rev 4.3 scales — which is this section's own claim, not an exception to it.
+# A raw px value is still a failure, and that is what this catches.
+_ACCEPTED_SCALE = ("--fs-r43-", "--fs-c-size-")
 _assert("every font-size in the WP3C sheet is a Rev 4.3 token",
-        all("--fs-r43-" in v for v in _sizes),
-        ", ".join(v.strip() for v in _sizes if "--fs-r43-" not in v) or "all tokens")
+        all(any(p in v for p in _ACCEPTED_SCALE) for v in _sizes),
+        ", ".join(v.strip() for v in _sizes
+                  if not any(p in v for p in _ACCEPTED_SCALE)) or "all tokens")
 # THE DECLARATIONS, NOT THE PROSE. A comment may name the figure it is
 # explaining; what must not appear is a `44px` in a rule.
 _CSS_CODE = re.sub(r"/\*[\s\S]*?\*/", " ", GAMEPLAY_CSS)

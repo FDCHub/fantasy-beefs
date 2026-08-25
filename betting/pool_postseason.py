@@ -12,6 +12,13 @@ subjects_for` still builds facts for exactly the ids it is handed;
 the same three arguments it always did. Contracting one tuple contracts the whole
 pipeline, which is why this package is small.
 
+RC2 adds one ordering prerequisite before postseason resolution: the regular-
+season FantasyStakes Championship Score snapshot must already exist. Postseason
+Pool play still moves Credits, but it is outside the FantasyStakes Championship
+race; publishing a postseason Pool before the snapshot would let its economics
+reach the live competitive read model first and contaminate the score being
+frozen.
+
 ── THE RESOLVER IS INJECTED, NOT IMPORTED ────────────────────────────────────
 
 `betting/` imports nothing from `providers/` and this module does not change
@@ -149,6 +156,16 @@ def resolve_universe(db, *, league_id: int, week: int, state,
     complete, and settle.
     """
     from db.schema import Matchup
+    from economy.championship_scoring_gate import (
+        require_championship_frozen_for_postseason,
+    )
+
+    # This function is the postseason subject-resolution seam. Before it can
+    # publish any field, prove the regular-season Championship Score has already
+    # been frozen. The gate is a read in this same transaction and moves no
+    # money.
+    require_championship_frozen_for_postseason(
+        db, league_id=league_id, week=week)
 
     if state is None:
         raise PostseasonSubjectError(

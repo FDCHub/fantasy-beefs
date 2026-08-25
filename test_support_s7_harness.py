@@ -41,6 +41,7 @@ _SERVER = None
 
 def ensure_authenticated_app(*, seed_pool_slate: bool = False,
                              action_shape: str | None = None,
+                             seed_priceable_versus: bool = False,
                              authenticate_as: str | None = None) -> str:
     """Guarantee `FS_TEST_ORIGIN` names a running, signed-in application.
 
@@ -60,8 +61,14 @@ def ensure_authenticated_app(*, seed_pool_slate: bool = False,
 
     from test_support_app_server import GM_EMAIL, PASSWORD, AppServer
 
+    # `seed_priceable_versus` is passed through for UIRECON Wave 3, whose
+    # composer suite has to see the PRICED market states — a moneyline, a signed
+    # spread and a total — rather than the refusal every unseeded league gives.
+    # A suite that only ever met the unavailable state would certify parity
+    # across three identical empty cards.
     _SERVER = AppServer(seed_pool_slate=seed_pool_slate,
-                        action_shape=action_shape).start()
+                        action_shape=action_shape,
+                        seed_priceable_versus=seed_priceable_versus).start()
     atexit.register(_stop)
 
     os.environ["FS_TEST_ORIGIN"] = _SERVER.origin

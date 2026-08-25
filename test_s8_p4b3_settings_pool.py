@@ -294,7 +294,10 @@ const out = { demo: {}, unavailable: {}, drawn: {}, undrawn: {} };
 out.demo.settingsMode = S.settingsMode();
 out.demo.slateMode = P.slateMode();
 out.demo.rows = S.settingsRows().length;
-out.demo.poolsInPanel = (W.buildWeekPanel().match(/class="fs-poolrow"/g) || []).length;
+// RC4 - the Wrap Up Prop Pool item is the shared result card now, not a 45px
+// list row, so a Pool is counted by the attribute that makes it a Pool rather
+// than by the class of the component that used to draw it.
+out.demo.poolsInPanel = (W.buildWeekPanel().match(/data-card-action="pool"/g) || []).length;
 
 S.markSettingsUnavailable();
 P.markSlateUnavailable();
@@ -302,7 +305,7 @@ out.unavailable.settingsMode = S.settingsMode();
 out.unavailable.slateMode = P.slateMode();
 out.unavailable.rulesHasSettingsMoney =
   R.buildRulesPanel().includes('fs-setrow__value');
-out.unavailable.pools = (W.buildWeekPanel().match(/class="fs-poolrow"/g) || []).length;
+out.unavailable.pools = (W.buildWeekPanel().match(/data-card-action="pool"/g) || []).length;
 
 P.bindSlate(%s);
 out.drawn.mode = P.slateMode();
@@ -310,12 +313,12 @@ out.drawn.rows = P.slateRows().length;
 out.drawn.continuations = P.slateRows().filter(r => r.continuation).length;
 out.drawn.names = P.slateRows().map(r => r.name);
 out.drawn.honours = P.slateHonoursSlotContract();
-out.drawn.poolsInPanel = (W.buildWeekPanel().match(/class="fs-poolrow"/g) || []).length;
+out.drawn.poolsInPanel = (W.buildWeekPanel().match(/data-card-action="pool"/g) || []).length;
 
 P.bindSlate({ drawn: false, slots: [], slot_count: 4 });
 out.undrawn.mode = P.slateMode();
 out.undrawn.rows = P.slateRows().length;
-out.undrawn.poolsInPanel = (W.buildWeekPanel().match(/class="fs-poolrow"/g) || []).length;
+out.undrawn.poolsInPanel = (W.buildWeekPanel().match(/data-card-action="pool"/g) || []).length;
 
 S.bindSettings(%s);
 out.bound = {

@@ -1,0 +1,98 @@
+name: RC2 Championship Certification
+
+on:
+  push:
+    branches:
+      - release/fantasystakes-1.0.0-rc2
+  pull_request:
+    branches:
+      - postmvp/wired-product-reconciliation
+
+jobs:
+  championship:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The migration certification builds its "before" database by checking
+          # out the immutable RC1 baseline commit into a temporary worktree and
+          # running RC1's own models. A shallow clone does not contain it, and a
+          # simulated RC1 schema would make that certification circular.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile RC2 modules
+        run: |
+          python -m py_compile \
+            api/main_rc2.py \
+            api/championship_routes.py \
+            economy/fantasystakes_championship_allocation.py \
+            economy/fantasystakes_championship_settlement.py \
+            economy/rc2_season_activation.py \
+            economy/championship_scoring_gate.py \
+            reports/championship_read_model.py \
+            reports/championship_corrections.py \
+            economy/championship_result_correction.py \
+            reports/grand_champion.py
+      - name: Import RC2 application and package surfaces
+        run: |
+          python -c "import economy; import reports"
+          python -c "import reports.standings_read_model"
+          python -c "import api.main_rc2"
+      - name: Championship scoring certification
+        run: python test_rc2_championship.py
+      - name: Championship field certification
+        run: python test_rc2_championship_field.py
+      - name: Versus product boundary certification
+        run: python test_rc2_versus_product_boundary.py
+      - name: Authoritative correction and payout finality certification
+        run: python test_rc2_championship_correction.py
+      - name: Championship economy certification
+        run: python test_rc2_championship_economy.py
+      - name: Grand Champion certification
+        run: python test_rc2_grand_champion.py
+      - name: RC1 money-path regression checks
+        run: |
+          python test_shortfall_reporting.py
+          python test_s8_p4c4_pool_certification.py
+          python test_wp3b_standings_read_model.py
+          python test_ledger.py
+          # The legacy single-GM wager path. RC2 puts a governance guard at its
+          # engine funnel, so these three prove the guard stays inert for a
+          # league that carries no FantasyStakes state.
+          python test_bet_funded_retirement.py
+          python test_ledger_bet_conversion.py
+          python test_stake_precision_validation.py
+      # THE TWO SUPPORTED LIFECYCLES, PROVED SEPARATELY.
+      #
+      # An earlier revision of this step pointed DATABASE_URL at a SQLite path
+      # that did not exist and ran `python -m migrations.run`. SQLite created an
+      # empty file, and `0001_yahoo_identity` correctly refused to reflect a
+      # `users` table that no migration builds — because migrations carry an
+      # EXISTING database forward and never construct one. That was this harness
+      # asserting a third lifecycle the product does not have.
+      #
+      # A fresh database is built by the application startup hook from the
+      # registered models and then stamped; an existing database is upgraded by
+      # `python -m migrations.run`. The suite below drives both, and builds its
+      # RC1 baseline from the RC1 commit rather than simulating one.
+      - name: Migration apply and replay certification
+        run: python test_rc2_migration_certification.py
+      - name: Migration dry-run and status on a bootstrapped database
+        env:
+          DATABASE_URL: sqlite:///./rc2_ci_migrations.db
+        run: |
+          python -c "
+          from fastapi.testclient import TestClient
+          import api.main_rc2 as rc2
+          with TestClient(rc2.app):
+              pass
+          "
+          python -m migrations.run --dry-run
+          python -m migrations.run --status
+          python -m migrations.run

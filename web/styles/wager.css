@@ -69,48 +69,139 @@
   text-overflow: ellipsis;
 }
 
-/* ── Three-cell market row ─────────────────────────────────────────────────*/
+/* ══ THE CHOICE CELL — one primitive, UIRECON Wave 1 ═══════════════════════
+ *
+ * WHAT WAS WRONG. The product had two components for one idea — "a selectable
+ * cell, one of a row of peers" — built eighteen months apart and never
+ * reconciled. Measured before this wave:
+ *
+ *                      .fs-market (Play card)   .fs-seg__opt (composer)
+ *     radius                       6px                    8px
+ *     min-height                  40px                   44px
+ *     label size                   8px                   11px
+ *     value size                  11px                   10px
+ *     vertical centring           none                   none
+ *
+ * A GM taps the ML cell on a Play card and then taps the ML cell in the
+ * composer, and those are the same choice presented as two different controls.
+ * The 8px label was also below the Rev 4.3 SS5.1 floor for metadata, on the
+ * surface the app opens onto.
+ *
+ * NEITHER ALIGNED ITS CONTENT VERTICALLY. Both set `align-items: center` —
+ * which on a flex COLUMN is the horizontal axis — and neither set
+ * `justify-content`, so the content sat at the top of a min-height box and a
+ * label-only cell (LOCKED / DYNAMIC) rode higher than a label-and-value one
+ * (ML / SPR / O/U). That is the "content truly centered in both axes" failure
+ * exactly, and it is one missing declaration.
+ *
+ * ONE SELECTOR LIST, NOT A NEW CLASS. The primitive is applied to the class
+ * names that already exist rather than by rewriting markup to `.fs-choice`.
+ * That keeps Wave 1 free of any JS change: every handler binds on
+ * `data-market` / `data-composer-market` / `data-composer-mode` /
+ * `data-composer-side`, every suite selects on the existing class, and NOTHING
+ * about what these controls DO changes. The markup consolidation, if it is
+ * ever worth doing, is a later wave's cosmetic tidy — the shared behaviour is
+ * already guaranteed by the shared rule.
+ * ═════════════════════════════════════════════════════════════════════════ */
 
-.fs-markets {
-  display: flex;
-  gap: var(--fs-space-2);
-  margin-top: var(--fs-space-3);
-}
-
-.fs-market {
+.fs-market,
+.fs-seg__opt {
   flex: 1;
   display: flex;
   flex-direction: column;
+  /* BOTH AXES. `align-items` centres across the column (horizontal) and
+   * `justify-content` centres along it (vertical). The second one is the fix. */
   align-items: center;
-  gap: 1px;
-  min-height: 40px;
-  padding: var(--fs-space-2) 0;
-  background: var(--tile);
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--fs-c-touch);
+  padding: var(--fs-space-2) var(--fs-space-1);
+  min-width: 0;
+  background: var(--fs-c-surface-inset);
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--fs-c-radius-cell);
   font-family: inherit;
   cursor: pointer;
 }
 
-.fs-market__label {
-  font-size: 8px;
-  letter-spacing: .1em;
-  color: var(--g1);
-}
-
-.fs-market__value {
-  font-family: var(--fs-font-money);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-size-fine);
+/* THE LABEL — the name of the choice. One line, centred.
+ *
+ * AT THE CARD-SECONDARY STEP, NOT THE METADATA ONE, and that is a governed
+ * classification rather than a preference. Rev 4.3 SS5.1 puts a market label in
+ * card secondary text (14–15px) and WP3C's certification asserts the floor
+ * directly — `market labels are at least 14px`. The Play card already honoured
+ * it; the composer's segment label was still at the Rev 4.2 fine step of 11px.
+ * So the primitive raises the SMALLER of the two to the governed size rather
+ * than lowering the larger to meet it. */
+.fs-market__label,
+.fs-seg__label {
+  max-width: 100%;
+  font-size: var(--fs-c-size-body-sub);
   font-weight: var(--fs-weight-strong);
-  color: var(--bone);
+  letter-spacing: var(--fs-c-track-label);
+  line-height: 1.15;
+  text-align: center;
+  color: var(--fs-c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* THE VALUE — the line being offered. Absent on a label-only cell, which is
+ * why the cell centres rather than stacking from the top.
+ *
+ * ONE STEP BELOW THE LABEL, which keeps WP3C's hierarchy on the Play card and
+ * imposes it on the composer, where the two had been the other way round. The
+ * face is the canonical tabular monospace either way: this is a number, and it
+ * is drawn as one wherever it appears. */
+.fs-market__value,
+.fs-seg__value {
+  max-width: 100%;
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-c-size-fine);
+  font-weight: var(--fs-c-weight-number);
+  letter-spacing: var(--fs-c-track-number);
+  line-height: 1.15;
+  text-align: center;
+  color: var(--fs-c-text);
+  white-space: nowrap;
+}
+
+/* SELECTED IS ONE TREATMENT. Gold border, gold tint, gold label — identical on
+ * a Play market cell, a composer market cell, a terms cell and an over/under
+ * cell. Rev 4.2 gave the market cell a border-and-fill and the segment cell a
+ * border-fill-and-colour; they are the same state and now say so. */
+.fs-market.is-selected,
+.fs-seg__opt.is-selected {
+  background: var(--fs-c-gold-fill);
+  border-color: var(--fs-c-gold);
+  color: var(--fs-c-gold);
+}
+
+.fs-market.is-selected .fs-market__label,
+.fs-seg__opt.is-selected .fs-seg__label { color: var(--fs-c-gold); }
+
+.fs-market:focus-visible,
+.fs-seg__opt:focus-visible {
+  outline: 1px solid var(--fs-c-gold);
+  outline-offset: 1px;
+}
+
+/* ── Three-cell market row ─────────────────────────────────────────────────*/
+
+.fs-markets {
+  display: flex;
+  gap: var(--fs-c-gap-cell);
+  margin-top: var(--fs-space-3);
+}
+
+/* Market tone is the one thing a market cell carries that a terms cell does
+ * not: whether the line favours this GM. It rides the VALUE only, so it can
+ * never be confused with the selected state, which rides the cell. */
 .fs-market.is-fav .fs-market__value { color: var(--green2); }
-.fs-market.is-dog .fs-market__value { color: var(--gold); }
-.fs-market.is-neu .fs-market__value { color: var(--bone); }
-.fs-market.is-selected { border-color: var(--gold); background: var(--goldbg); }
-.fs-market:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+.fs-market.is-dog .fs-market__value { color: var(--fs-c-gold); }
+.fs-market.is-neu .fs-market__value { color: var(--fs-c-text); }
 
 /* ── Figures ───────────────────────────────────────────────────────────────*/
 
@@ -210,43 +301,152 @@
   color: var(--g1);
 }
 
-.fs-seg { display: flex; gap: var(--fs-space-2); }
+/* ══ THE MARKET BLOCK — UIRECON Wave 3A ═══════════════════════════════════
+ *
+ * THE SLOTS THE CARD STANDS ON. Three rows, rendered for every market, each at
+ * a height the content cannot change:
+ *
+ *     __line   one row  ·  what the market is, and the number it offers
+ *     side     one row  ·  the touch floor, whether it holds a statement or
+ *                          two real buttons
+ *     __note   two rows ·  reserved, so a longer sentence cannot push the card
+ *
+ * WHY THE NOTE IS RESERVED RATHER THAN LEFT TO GROW. It is the one slot whose
+ * content genuinely varies in length — a one-line moneyline sentence, a spread
+ * sentence naming both teams, or a server refusal. Reserving two lines and
+ * clamping at two is what makes the row a fixed quantity at every width; the
+ * copy is written to fit it, and the clamp is the guard rather than the plan.
+ *
+ * THIS BLOCK HAD NO CSS AT ALL BEFORE THIS WAVE. `.fs-marketdetail` appeared in
+ * the markup and in no stylesheet, which is why a priced spread rendered as
+ * `Gravy Train PKGravy Train and The Braintrust are level` — two rows with
+ * nothing separating them. Every rule below is new. */
 
-.fs-seg__opt {
-  flex: 1;
+.fs-marketdetail {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-height: 44px;
-  padding: var(--fs-space-2) 0;
-  background: var(--tile);
-  border: 1px solid transparent;
-  border-radius: var(--fs-radius-cell);
-  font-family: inherit;
-  color: var(--g1);
-  cursor: pointer;
+  gap: var(--fs-c-gap-cell);
+  margin-top: var(--fs-space-3);
 }
 
-.fs-seg__opt.is-selected {
-  background: var(--goldbg);
-  border-color: var(--gold);
-  color: var(--gold);
+/* THE LINE: what the market is, and its number. Label left, figure right, on
+ * one row — the same left/right grammar the economics rows below use, so a GM
+ * reads the card in one column of labels and one of figures. */
+.fs-marketdetail__line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  min-height: 22px;
 }
 
-.fs-seg__opt:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
-
-.fs-seg__label {
-  font-size: var(--fs-size-fine);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: .08em;
+.fs-marketdetail__linelabel {
+  font-size: var(--fs-c-size-fine);
+  letter-spacing: var(--fs-c-track-label);
+  color: var(--fs-c-text-muted);
+  white-space: nowrap;
 }
 
-.fs-seg__value {
-  font-family: var(--fs-font-money);
+/* The figure is a number and is drawn as one — the canonical tabular monospace
+ * every other figure in the product uses. */
+.fs-marketdetail__linevalue {
+  font-family: var(--fs-c-font-number);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-size-micro);
+  font-size: var(--fs-c-size-metric);
+  font-weight: var(--fs-c-weight-number);
+  letter-spacing: var(--fs-c-track-number);
+  line-height: 1.1;
+  color: var(--fs-c-text);
+  white-space: nowrap;
 }
+
+/* TWO RESERVED LINES. `min-height` holds the row open and the clamp holds it
+ * shut, so the slot is the same height whether it carries a short sentence, a
+ * long one, or a refusal the server worded. */
+.fs-marketdetail__note {
+  min-height: calc(2 * 1.45em);
+  font-size: var(--fs-c-size-fine);
+  line-height: 1.45;
+  color: var(--fs-c-text-muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* THE SIDE ROW IS THE CHOICE CELL'S ROW, whatever is standing in it. Over/Under
+ * puts two real buttons here; Moneyline and Spread put one static cell. Both
+ * take the primitive's geometry, so the row is one height and the primary
+ * action below it never moves. */
+.fs-seg--side { min-height: var(--fs-c-touch); }
+
+/* A STATEMENT, NOT A CONTROL. Identical box to the choice cell beside it — the
+ * primitive at the top of this sheet gives it that — and none of the
+ * affordance: no pointer, no press state, and a muted label so it does not
+ * invite a tap it would not answer. */
+.fs-seg__opt.is-static {
+  cursor: default;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--line2);
+}
+
+.fs-seg__opt.is-static .fs-seg__label { color: var(--fs-c-text-muted); }
+
+/* ── The terms explanation ─────────────────────────────────────────────────
+ *
+ * THE STACK IS WHAT KEEPS THE CARD STILL. Both mode bodies occupy one grid
+ * cell, so the block is as tall as the longer of them at whatever width the
+ * viewport is, and choosing terms swaps which is visible rather than changing
+ * how much room the block takes. `visibility` — not `display` — because the
+ * hidden body must still contribute its height. */
+.fs-modenote__stack { display: grid; }
+
+.fs-modenote__stack > .fs-modenote__body {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+.fs-modenote__stack > .fs-modenote__body.is-active { visibility: visible; }
+
+/* ── The opponent fallback selector ────────────────────────────────────────
+ *
+ * Drawn only for a composer handed no authoritative opponent — the Play card
+ * normally answers this before the sheet opens. It had no CSS either; these are
+ * the shared field and button treatments, so the fallback looks like the rest
+ * of the card rather than like unstyled markup. */
+.fs-oppsel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-c-gap-cell);
+  margin-bottom: var(--fs-space-4);
+}
+
+.fs-oppsel__label {
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--fs-c-text-muted);
+}
+
+.fs-oppsel__btn {
+  min-height: var(--fs-c-touch);
+  text-align: left;
+}
+
+.fs-oppsel__btn.is-selected {
+  background: var(--fs-c-gold-fill);
+  border-color: var(--fs-c-gold);
+  color: var(--fs-c-gold);
+}
+
+/* The segmented ROW. Its cells are the shared choice cell defined at the top of
+ * this sheet — `.fs-seg__opt`, `.fs-seg__label` and `.fs-seg__value` are styled
+ * there, alongside `.fs-market`, because they are the same control. The block
+ * that stood here restated all three at slightly different values and, being
+ * later in the sheet, quietly won; deleting it is what makes the primitive
+ * actually apply. */
+.fs-seg { display: flex; gap: var(--fs-c-gap-cell); }
 
 .fs-preview-open {
   margin-top: 0;
@@ -485,4 +685,282 @@
   letter-spacing: .08em;
   color: var(--g2);
   text-align: center;
+}
+/* ══ LINEUPS — UIRECON Wave 4A ═════════════════════════════════════════════
+ *
+ * THE PROJECTIONS THE PRICE RESTS ON. Before this wave the Matchup Preview was
+ * handed empty lineups by construction, so this block had nothing to style and
+ * `.fs-spl`'s five-column split table was all there was. That table stays for
+ * the UNBOUND preview, where there genuinely is no roster to name; these rules
+ * are for the bound one, where there is.
+ *
+ * TWO TEAMS, ONE CONSTRUCTION. `lineupTable()` renders both sides — the acting
+ * GM's and the opponent's — so they are not "styled the same", they are the
+ * same call with different data. Nothing below distinguishes them: no accent,
+ * no emphasis, no ordering cue. The only difference on screen is the team name
+ * each carries, which is the identity the POR permits and no more.
+ *
+ * SIDE BY SIDE WHERE THERE IS ROOM, STACKED WHERE THERE IS NOT. A lineup row is
+ * a position, a name and a figure; two of them fit a tablet and neither fits
+ * half a phone. The grid switches on available width rather than on a device
+ * guess, and the phone case is the default because that is the case the product
+ * is designed around. */
+
+.fs-lineups {
+  display: grid;
+  gap: var(--fs-space-4);
+  grid-template-columns: 1fr;
+}
+
+/* 560px is where two lineup columns each clear the width a name needs without
+ * truncating — measured against the longest showcase team name rather than
+ * chosen. Below it the two stack, which is the phone layout. */
+@media (min-width: 560px) {
+  .fs-lineups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.fs-lineup {
+  min-width: 0;
+  border: var(--fs-c-border);
+  border-radius: var(--fs-c-radius-cell);
+  padding: var(--fs-space-3);
+  background: var(--fs-c-surface-inset);
+}
+
+.fs-lineup__team {
+  font-size: var(--fs-c-size-body-sub);
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.3;
+  color: var(--fs-c-text);
+  /* One line, and an ellipsis rather than a wrap, so two stacked lineups have
+   * identical heading heights whatever the two names are. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-bottom: var(--fs-space-2);
+}
+
+/* ONE GRID FOR THE HEAD AND EVERY ROW, so the projection column is a column
+ * rather than three separately-aligned figures. `minmax(0, 1fr)` on the name is
+ * what lets a long player name ellipsize instead of pushing the figure out of
+ * the card — the horizontal-overflow rule the shell POR fixes. */
+.fs-lineup__head,
+.fs-lineup__row {
+  display: grid;
+  grid-template-columns: 3.5em minmax(0, 1fr) 3.5em;
+  gap: var(--fs-space-2);
+  align-items: baseline;
+  /* Every row is the same height whatever it holds — the parallel-construction
+   * requirement for a lineup, stated once here rather than per row type. */
+  min-height: 26px;
+  padding: 3px 0;
+}
+
+.fs-lineup__head {
+  font-size: var(--fs-size-eyebrow);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--fs-c-text-faint);
+  border-bottom: var(--fs-border-hair);
+}
+
+.fs-lineup__row + .fs-lineup__row { border-top: var(--fs-border-hair); }
+
+.fs-lineup__pos {
+  font-size: var(--fs-c-size-fine);
+  color: var(--fs-c-text-muted);
+  white-space: nowrap;
+}
+
+.fs-lineup__name {
+  min-width: 0;
+  font-size: var(--fs-c-size-fine);
+  color: var(--fs-c-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The figure is a number and is drawn as one — the canonical tabular monospace,
+ * right-aligned so the column reads down. */
+.fs-lineup__proj {
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-c-size-fine);
+  color: var(--fs-c-text);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* THE TOTAL IS THE SERVER'S SUM, and it is marked as the row that closes the
+ * lineup rather than as another starter. */
+.fs-lineup__row.is-total {
+  margin-top: var(--fs-space-2);
+  border-top: 1px solid var(--edge);
+}
+
+.fs-lineup__row.is-total .fs-lineup__name {
+  font-weight: var(--fs-weight-strong);
+  color: var(--fs-c-text-muted);
+}
+
+.fs-lineup__row.is-total .fs-lineup__proj {
+  font-weight: var(--fs-c-weight-number);
+  color: var(--fs-c-gold);
+}
+
+/* ══ `↻ REFRESH ODDS` — UIRECON Rev 1.4 ════════════════════════════════════
+ *
+ * THE VISUAL WEIGHT IS THE ARGUMENT. This control re-reads a line; it does not
+ * decide anything about the wager. So it is drawn quieter than the response
+ * buttons a GM uses to accept, counter or decline — no fill, no gold, a hairline
+ * edge — while still meeting the governed touch floor, because a control small
+ * enough to look harmless but too small to hit is a worse outcome than either.
+ *
+ * THE STAMP SITS BESIDE THE CONTROL, NOT UNDER IT. `Updated 10:42 AM` answers
+ * the question the button raises — how old is what I am looking at — so the two
+ * read as one statement rather than as a control and an unrelated caption.
+ *
+ * THE NOTE IS BELOW BOTH AND STAYS COLLAPSED WHILE EMPTY. A card that reserved
+ * two lines of space for a confirmation nobody has asked for yet would shift
+ * every card beneath it the moment one arrived, and the shared grammar's whole
+ * claim is that a Matchup keeps one shape as it moves. */
+
+.fs-wcard__aside {
+  margin-top: var(--fs-space-3);
+}
+
+.fs-refresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fs-space-2);
+}
+
+/* THE WIDE BUTTON IS GONE — UIRECON refine-refresh pass.
+ *
+ * `.fs-refresh__btn` was a full-width control reading `↻ REFRESH ODDS`. It is
+ * superseded by `.fs-oddsref` in `components.css`: the same verb as a small
+ * glyph, shared with Play's two refresh controls, so one gesture means one
+ * thing across the product. `.fs-refresh` below survives as the LAYOUT that
+ * holds the glyph, its stamp and its confirmation note.
+ */
+
+/* THE TIMESTAMP IS A NUMBER AND IS DRAWN AS ONE — the canonical tabular
+ * monospace, so a stamp that ticks from 10:09 to 10:42 does not change width
+ * and nudge the control beside it. */
+.fs-refresh__stamp {
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-micro);
+  color: var(--g1);
+  white-space: nowrap;
+}
+
+.fs-refresh__note {
+  flex-basis: 100%;
+  font-size: var(--fs-size-micro);
+  color: var(--g1);
+}
+
+.fs-refresh__note:empty { display: none; }
+
+.fs-refresh__line { display: block; }
+
+/* `Wager unchanged` is the line that has to survive a skim, and it is drawn
+ * quieter than the line above it deliberately: it is a reassurance, not a
+ * result, and a reassurance that shouts reads as an apology for something.
+ *
+ * `--fs-c-text-faint` AND NOT `--g2`. Rev 4.3 §5.2 measured `--g2` at about
+ * 2.3:1 on the app background, which is under WCAG AA and is exactly the
+ * "extremely low-contrast text" the section was written to remove. The faint
+ * token is the governed tertiary and sits near 4.6:1, so the line reads as
+ * subordinate without becoming the defect. */
+.fs-refresh__line.is-quiet { color: var(--fs-c-text-faint); }
+
+/* ── FINAL POR (FREEZE) §3A · ODDS & MARKETS ────────────────────────────────
+ *
+ * Two pricing views of the same three markets, with the selected one marked
+ * unmistakably. The tabs are a real pressed/unpressed pair rather than a tint
+ * difference, because "which numbers am I looking at" is the one question this
+ * block exists to answer and a reader must never have to guess it. */
+.fs-odds__tabs {
+  display: flex;
+  gap: var(--fs-space-2);
+  margin-bottom: var(--fs-space-3);
+}
+
+.fs-odds__tab {
+  flex: 1 1 0;
+  min-height: 34px;
+  padding: 6px var(--fs-space-2);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  background: transparent;
+  color: var(--fs-r43-secondary);
+  font-family: inherit;
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.fs-odds__tab[data-selected="true"] {
+  background: var(--goldbg);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.fs-odds__tab:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+
+.fs-odds__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-4);
+  padding: 6px 0;
+}
+
+.fs-odds__row + .fs-odds__row { border-top: var(--fs-border-hair); }
+
+.fs-odds__market {
+  font-size: var(--fs-r43-card);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-odds__value {
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-odds__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fs-space-3);
+  margin-top: var(--fs-space-3);
+}
+
+.fs-odds__refresh {
+  min-height: 40px;
+  padding: 0 var(--fs-space-4);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-tile);
+  background: var(--tile);
+  color: var(--gold);
+  font-family: inherit;
+  font-size: var(--fs-r43-meta);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+
+.fs-odds__refresh[disabled] { opacity: .6; cursor: default; }
+.fs-odds__refresh:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+
+.fs-odds__asof {
+  font-size: var(--fs-r43-meta);
+  color: var(--fs-r43-tertiary);
+  text-align: right;
 }

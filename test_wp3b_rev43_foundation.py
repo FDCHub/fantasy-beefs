@@ -171,8 +171,38 @@ _assert("every network call goes through session.js, the app's one door",
 
 _section("2 · Standings never ranks on Wallet — Rev 4.3 §7.1")
 
-_assert("no standings module mentions a wallet",
-        not re.search(r"wallet", STANDINGS_JS + STANDINGS_MODEL_JS, re.I))
+# A3.2 — the owner ruled that the Standings explainer must say, in words, that
+# a Wallet balance does not count toward the Championship Score. That sentence
+# is the OPPOSITE of ranking on a wallet, so the guard now asserts what it was
+# always protecting rather than the mere absence of a seven-letter string:
+# the ranking model may not know the word at all, and the view may say it only
+# to deny it — never attached to a figure, and never read off a served row.
+_assert("the ranking model does not mention a wallet anywhere",
+        not re.search(r"wallet", STANDINGS_MODEL_JS, re.I))
+# Property access, not prose: `row.wallet_cents` has no space after the dot,
+# while the ruled sentence ends "...score wins. Wallet balance does not count."
+_assert("the standings view reads no wallet field from a served row",
+        not re.search(r"\w\.wallet\w*|wallet\w*\s*:|\[['\"]wallet", STANDINGS_JS, re.I))
+_assert("the standings view never draws a wallet figure",
+        not re.search(r"wallet[^.!?\n]{0,40}(formatCredits|formatSignedCredits"
+                      r"|_cents|\$)", STANDINGS_JS, re.I))
+_STANDINGS_WALLET_WORDS = re.findall(r"[^\n]*wallet[^\n]*", STANDINGS_JS, re.I)
+# FINAL POR UI-2 §26 — the ruled denial is now "Wallet balance does not affect
+# championship position." The CLAIM is unchanged and is still the one that
+# matters: the view may say the word only to DENY it, never attached to a
+# figure and never read off a served row. Both of those are asserted directly
+# above and neither is relaxed here. What is restated is the sentence, and the
+# comment prefixes are widened to the block-comment body a longer rationale
+# actually uses.
+_RULED_DENIALS = (
+    "Wallet balance does not affect championship position",
+    "Wallet balance does not count",          # the pre-§26 sentence, for legacy
+)
+_assert("every wallet mention in the view is the ruled denial or a comment",
+        all(any(d in line for d in _RULED_DENIALS)
+            or line.lstrip().startswith(("*", "//", "/*"))
+            for line in _STANDINGS_WALLET_WORDS),
+        str(_STANDINGS_WALLET_WORDS))
 _assert("the ranking figure is read from the served row, never recomputed",
         "return Number(row.net_cents)" in STANDINGS_MODEL_JS)
 _assert("the rank itself is the server's, not an index",
@@ -182,8 +212,24 @@ _assert("the rank itself is the server's, not an index",
 READ_MODEL = _read_root("reports", "standings_read_model.py")
 _assert("the backend read model exists",
         os.path.isfile(os.path.join(ROOT, "reports", "standings_read_model.py")))
-_assert("it derives Overall from the two competitive nets, not from a balance",
-        "self.versus_net_cents + self.pool_net_cents" in READ_MODEL)
+# FINAL POR §8 — REPLACED, NOT RELAXED.
+#
+# This asserted the literal source string `self.versus_net_cents +
+# self.pool_net_cents`, which encoded the RC2 two-term identity. The Final POR
+# makes FantasyStakes Score a THREE-term figure, so the old string is now the
+# wrong answer and keeping it would have pinned the obsolete rule in place.
+#
+# The claim WP3B was making survives intact and is what is asserted here: Overall
+# is derived from competitive nets rather than from any balance. The Skunk term
+# is a competitive penalty, not a balance, so the original intent is unchanged.
+_assert("it derives Overall from the competitive terms, not from a balance",
+        "self.versus_net_cents + self.pool_net_cents - self.skunk_fees_cents"
+        in READ_MODEL)
+_assert("  · and the Skunk term is era-gated, so legacy seasons keep two terms",
+        "is_final_por(db, league_id=league_id, season=league.season)" in READ_MODEL)
+_assert("  · Overall still reads no Wallet or Current Settle figure",
+        "current_settle_cents" not in READ_MODEL
+        and "wallet_balance" not in READ_MODEL)
 _assert("it composes the certified position read rather than re-attributing",
         "league_positions(db, league_id=league_id)" in READ_MODEL)
 _assert("it sums BOTH spend accounts, so min-funded spend is not missed",

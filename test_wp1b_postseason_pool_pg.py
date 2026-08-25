@@ -156,7 +156,7 @@ def case_catalog() -> None:
 
 def case_guard() -> None:
     _section("W1B-2 · matchup-vs-matchup is refused at catalog load")
-    raw = json.load(open("spec/pool_catalog_rev1_3.json", encoding="utf-8"))
+    raw = json.load(open("spec/pool_catalog_rev1_4.json", encoding="utf-8"))
     victim = next(r for r in raw["definitions"]
                   if r["scope"] == "MATCHUP"
                   and r["evaluator_family"] == "RANK_EXTREMUM")

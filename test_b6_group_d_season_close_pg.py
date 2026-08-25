@@ -347,6 +347,27 @@ def main(tdb) -> None:
     _assert("S9-1 the replay echoes the CALLER's operator, not the original",
             rep1.operator == "operator:someone-else", repr(rep1.operator))
 
+    # The production orchestrator loads League before calling close_season().
+    # Prove the lock query refreshes that identity-map object after another
+    # session commits the close; otherwise the second caller falsely reports a
+    # second successful stamp even though PostgreSQL serialized the statements.
+    tdb.reset()
+    lg_stale = seed_league("stale identity-map replay")
+    with SessionLocal() as stale_db:
+        preloaded = (stale_db.query(League)
+                     .filter(League.id == lg_stale).first())
+        _assert("S9-1 stale-session setup observed the season OPEN",
+                preloaded.season_closed_at is None)
+        winner = close_once(lg_stale, "operator:winner")
+        stale_replay = close_season(
+            lg_stale, "operator:blocked-loser", db=stale_db)
+    _assert("S9-1 a preloaded stale session refreshes under FOR UPDATE and "
+            "replays instead of stamping twice",
+            winner.closed_now is True
+            and stale_replay.closed_now is False
+            and stale_replay.closed_at == winner.closed_at,
+            f"winner={winner.closed_now} loser={stale_replay.closed_now}")
+
     # ── S9-2 — conflicting timestamp ──────────────────────────────────────
     print("\nS9-2  a DIFFERENT closed_at is refused (§9.2 once-only)")
     tdb.reset()

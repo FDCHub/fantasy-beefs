@@ -1,59 +1,15 @@
 /* ============================================================================
  * FantasyStakes — production data snapshot
- * Sprint 8 Package 4
  *
- * WHAT THIS IS. One place that loads the authoritative reads a signed-in GM's
- * session needs, holds them for the life of the page, and hands them to the
- * view models. It owns no arithmetic and no presentation: every figure it
- * carries came from a backend read model and is passed through untouched, in
- * exact integer cents.
- *
- * IT MAKES NO NETWORK CALL OF ITS OWN. Everything goes through `apiFetch` in
- * session.js, which is still the application's only door — the certification
- * suite scans every other module for `fetch(` and this one is not an
- * exception to that.
- *
- * WHY A SNAPSHOT RATHER THAN PER-COMPONENT FETCHING. The Rev 4.2 tabs render
- * synchronously from view models, and that is worth keeping: it is what makes
- * the derivations checkable and the components testable without a server. So
- * the data is loaded ONCE, before the panels are built, and the view models
- * read it synchronously afterwards. A component that fetched for itself would
- * also have to decide what to draw while waiting, and five tabs would answer
- * that question five ways.
- *
- * PARTIAL LOADS ARE NORMAL AND ARE NOT ERRORS. A GM is not a commissioner, so
- * the commissioner reads will 403 for most sessions; a league may have no Pool
- * slate drawn yet. Each read is therefore settled independently and a refusal
- * leaves that slice `null`. The view models treat `null` as "no authoritative
- * source in this session" and fall back to the accepted unresolved
- * presentation — which is exactly what the POR asks for, and is why a failed
- * commissioner read must not take the Ledger tab down with it.
- *
- * NOTHING HERE INVENTS A VALUE. Where the backend has no source for a field
- * the Sprint 7 Ledger showed — season winnings, award splits, the activity
- * nets — this module carries nothing for it, and the view model keeps the
- * illustrative-neutral treatment. P3 named those fields; P4 does not fill them.
+ * One place loads authoritative reads and passes exact server values to the
+ * view models. RC2 adds the FantasyStakes Championship read beside standings;
+ * the browser does not derive Championship Score or final placement.
  * ========================================================================== */
 
 import { ApiError, apiFetch, currentIdentity } from './session.js';
 
-/**
- * The loaded snapshot, or null before the first load.
- * @type {object|null}
- */
 let snapshot = null;
 
-/**
- * Settle a read without letting a refusal fail the whole load.
- *
- * A 401 is deliberately NOT swallowed: it means the session ended, and
- * `apiFetch` has already dropped the identity, so the shell is about to show
- * the gate. Turning that into `null` here would leave the app rendering an
- * empty-but-signed-in view of a session that no longer exists.
- *
- * @param {Promise<any>} promise
- * @returns {Promise<any|null>}
- */
 async function optional(promise) {
   try {
     return await promise;
@@ -67,25 +23,9 @@ async function optional(promise) {
  * Load every authoritative read this session can see, in parallel.
  *
  * @param {{leagueId: number, week?: number}} context
- * @returns {Promise<object>} the snapshot
+ * @returns {Promise<object>}
  */
 export async function loadProductionData({ leagueId, week }) {
-  // ── THE WEEK COMES FIRST, AND IT COMES FROM THE BACKEND ──────────────────
-  //
-  // S8-P4C-3 inverted this function's shape. It used to take `week` from the
-  // caller, and the caller took it from `data/week-data.js` — an illustrative
-  // constant — so every week-scoped production read asked for week 5 no matter
-  // what week the league was actually in.
-  //
-  // The context read is now awaited BEFORE the week-scoped ones, because their
-  // request URLs depend on its answer. A `week` argument is still accepted and
-  // still wins when supplied, so component suites and any caller with a
-  // specific week in mind are unaffected — but production passes none and gets
-  // the provider's own.
-  //
-  // NULL SURVIVES. If no provider refresh has stated a week, `resolvedWeek`
-  // stays null and the week-scoped reads are NOT issued: asking for "week null"
-  // would 404, and asking for week 5 would be the bug this replaced.
   const context = await optional(apiFetch(`/league/${leagueId}/context/me`));
   const resolvedWeek = (week !== undefined && week !== null)
     ? week
@@ -97,89 +37,96 @@ export async function loadProductionData({ leagueId, week }) {
     && identity.capabilities.commissioner_league_ids.includes(leagueId),
   );
 
-  const [ledger, settings, slate, positions, reconciliation, action,
-         weekMatchups, lifecycle, skunk, standings] = await Promise.all([
+  const [ledger, settings, slate, previousSlate, positions, reconciliation, action,
+         weekMatchups, previousWeekMatchups, lifecycle, skunk, standings, championship,
+         championshipResults, championshipCorrections,
+         championshipConfig] = await Promise.all([
     optional(apiFetch(`/league/${leagueId}/ledger/me`)),
     optional(apiFetch(`/league/${leagueId}/settings`)),
     resolvedWeek === null
       ? Promise.resolve(null)
       : optional(apiFetch(`/league/${leagueId}/pool/slate/${resolvedWeek}`)),
-    // Asked for only when the server has already said this user holds
-    // commissioner authority here. Requesting it regardless would work — the
-    // route would refuse — but it would mean every GM's page load generated a
-    // 403 in the operator's logs, which is noise that hides real refusals.
+    resolvedWeek === null || resolvedWeek <= 1
+      ? Promise.resolve(null)
+      : optional(apiFetch(`/league/${leagueId}/pool/slate/${resolvedWeek - 1}`)),
     isCommissioner ? optional(apiFetch(`/league/${leagueId}/ledger/positions`))
                    : Promise.resolve(null),
     isCommissioner ? optional(apiFetch(`/league/${leagueId}/ledger/reconciliation`))
                    : Promise.resolve(null),
-    // The GM's own Action tab. Team-less by design — the route resolves the
-    // acting team from the session, so there is no id here to substitute.
     optional(apiFetch(`/league/${leagueId}/action/me`)),
-    // The provider-backed matchups for the authoritative week.
     resolvedWeek === null
       ? Promise.resolve(null)
       : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek}/matchups`)),
-    // WP4 — the commissioner lifecycle state. A pure read: it measures nothing,
-    // calls no provider and writes nothing, which is precisely why it can be
-    // loaded on every page load while POST /pool/activate cannot. Asked for
-    // only when the server has already said this session holds commissioner
-    // authority here, on the same "do not manufacture 403s" grounds as the two
-    // reads above.
+    /* FINAL POR §6 — THE WEEK THAT FINISHED IS FETCHED TOO.
+     *
+     * Wrap Up reviews a completed week, and only the CURRENT one was ever
+     * loaded — so the previous week's module could only ever say "week N has
+     * not been loaded". The pool slate already fetched its previous week for
+     * exactly this reason; the matchups now do the same, on the same guard. */
+    resolvedWeek === null || resolvedWeek <= 1
+      ? Promise.resolve(null)
+      : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek - 1}/matchups`)),
     isCommissioner ? optional(apiFetch(`/league/${leagueId}/lifecycle`))
                    : Promise.resolve(null),
-    // WP6A — the week's Skunk outcome. Read by EVERY member, not only the
-    // commissioner: the Skunk is the week's headline result and the whole
-    // league sees it. What a GM cannot do is CAUSE one, and that is enforced on
-    // Week Close rather than by withholding the read.
     resolvedWeek === null
       ? Promise.resolve(null)
       : optional(apiFetch(`/league/${leagueId}/week/${resolvedWeek}/skunk`)),
-    // WP3B — the competitive standings. NOT WEEK-SCOPED, deliberately: a
-    // standings table is season-to-date, so it is the one surface here that
-    // stays readable in a league whose provider has not yet stated a week.
-    // Asked for by EVERY member on the same grounds as the Skunk read — the
-    // league table is not a commissioner's private view.
     optional(apiFetch(`/league/${leagueId}/standings`)),
+    // RC2 — server-owned Championship Score / cutoff state. During the regular
+    // season this is the live chase; after the cutoff it is the immutable
+    // regular-season snapshot even while ordinary FantasyStakes play continues.
+    optional(apiFetch(`/league/${leagueId}/championship`)),
+    // RC2 season results: lifecycle, frozen podium, recorded awards and the
+    // Yahoo podium, all server-derived. The browser recomputes none of it.
+    optional(apiFetch(`/league/${leagueId}/championship/results`)),
+    // Append-only correction audit. Member-scoped, so the whole league can read
+    // why a championship figure changed.
+    optional(apiFetch(`/league/${leagueId}/championship/corrections`)),
+    // The governed championship contributions. Commissioner-editable until
+    // activation freezes them; the surface reads this rather than assuming a
+    // default, so a league that configured its own amount sees its own amount.
+    optional(apiFetch(`/league/${leagueId}/championship/config`)),
   ]);
+
+  // Keep one standings binding seam in shell.js. RC2 championship state rides
+  // beside the existing three server-ranked standings arrays; no ranking or
+  // money is recomputed here.
+  const standingsWithChampionship = standings
+    ? Object.freeze({ ...standings, championship, championshipResults })
+    : null;
 
   snapshot = Object.freeze({
     leagueId,
     context,
     week: resolvedWeek,
     weekMatchups,
+    previousWeekMatchups,
     ledger,
     settings,
     slate,
+    previousSlate,
     positions,
     reconciliation,
     action,
     lifecycle,
     skunk,
-    standings,
+    standings: standingsWithChampionship,
+    championship,
+    championshipResults,
+    championshipCorrections,
+    championshipConfig,
   });
   return snapshot;
 }
 
-/** The loaded snapshot, or null. @returns {object|null} */
 export function productionData() {
   return snapshot;
 }
 
-/** Drop the snapshot — used on sign-out so no league state survives it. */
 export function clearProductionData() {
   snapshot = null;
 }
 
-/**
- * Whether an authoritative slice is present for this session.
- *
- * The view models ask this rather than testing truthiness themselves, because
- * `0` is a perfectly good authoritative figure and `null` is the absence of
- * one — a distinction a truthiness test loses exactly where money is involved.
- *
- * @param {string} slice
- * @returns {boolean}
- */
 export function hasAuthoritative(slice) {
   return Boolean(snapshot && snapshot[slice] !== null
                  && snapshot[slice] !== undefined);

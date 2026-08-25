@@ -152,13 +152,43 @@ def build_league(db, synthetic, *, name: str, wallet_cents: int = 100_000):
     championship join is the production join. Wallets are funded through a real
     ledger posting, never by writing the display mirror.
     """
-    from db.schema import League, Matchup, Team, Wallet
+    from db.schema import (
+        League, LeagueSeasonEconomyConfig, Matchup, SeasonAllocation, Team,
+        Wallet,
+    )
     from ledger.ledger import post as ledger_post
+
+    # ── THE PROVIDER CLOCK IS PART OF THE FIXTURE, NOT AN AFTERTHOUGHT ──────
+    #
+    # This helper builds a league mirroring a SYNTHETIC POSTSEASON fixture whose
+    # weeks run through the championship, so the league it produces has by
+    # construction reached — and played — its postseason. Leaving
+    # `provider_current_week` unset said the opposite: that the provider had
+    # reported nothing at all.
+    #
+    # That is not cosmetic. `economy/championship_scoring_gate.py` makes the
+    # first governed postseason action freeze the regular-season Championship
+    # Score, and `freeze_fantasystakes_championship` refuses to freeze a league
+    # that has not reached its Yahoo postseason boundary:
+    #
+    #     [FS_CHAMPIONSHIP_TOO_EARLY] league 1 has not reached its Yahoo
+    #     postseason boundary (provider_current_week=None,
+    #     playoff_start_week=15). Refusing to freeze early.
+    #
+    # So every postseason case built here was refused before it began. The
+    # refusal was PRODUCTION BEHAVING CORRECTLY — a regular-season score must
+    # not be frozen while the provider still says the regular season is running
+    # — and the fixture was simply not establishing the prerequisite a real
+    # league establishes by being synced. Setting the clock to the last week the
+    # provider actually reported is what a real league carries at that point;
+    # the gate is left exactly as it is.
+    reported_through = max(synthetic.weeks) if synthetic.weeks else None
 
     league = League(season=synthetic.season, name=name,
                     projection_source="fantasypros",
                     season_final_week=synthetic.season_final_week,
-                    playoff_start_week=synthetic.playoff_start_week)
+                    playoff_start_week=synthetic.playoff_start_week,
+                    provider_current_week=reported_through)
     db.add(league)
     db.flush()
 
@@ -178,6 +208,45 @@ def build_league(db, synthetic, *, name: str, wallet_cents: int = 100_000):
     for team in teams.values():
         ledger_post([("world", -wallet_cents), (f"wallet:{team.id}", wallet_cents)],
                     door="buy_in_paid", session=db)
+
+    # ── THE CERTIFIED CHAMPIONSHIP PREREQUISITE CHAIN ────────────────────────
+    #
+    # Postseason action is gated on the regular-season Championship Score being
+    # frozen, and the freeze in turn refuses until the FantasyStakes
+    # Championship has been ACTIVATED:
+    #
+    #     [FS_CHAMPIONSHIP_NOT_ACTIVATED] league N season S has no
+    #     FantasyStakes Championship allocation, so no championship field has
+    #     been funded. Complete championship activation before freezing.
+    #
+    # `test_rc2_championship.py` proves that refusal is intended, so the answer
+    # is to perform the lifecycle rather than to weaken the gate. These are the
+    # same base economy rows that suite establishes — an economy config and the
+    # per-team Season-Opening Allocation — followed by the certified activation
+    # call. Nothing here computes economics; `activate_fantasystakes_championship_stage`
+    # funds the field.
+    db.add(LeagueSeasonEconomyConfig(
+        league_id=league.id, season=synthetic.season,
+        weekly_bet_minimum_cents=1_000,
+        championship_contribution_cents=8_000,
+        skunk_fee_cents=1_000,
+        regular_season_week_count=synthetic.playoff_start_week - 1,
+        active_team_count=synthetic.team_count,
+        start_week_used=1,
+        playoff_start_week_used=synthetic.playoff_start_week,
+        frozen_at=None,
+    ))
+    for team in teams.values():
+        db.add(SeasonAllocation(
+            league_id=league.id, team_id=team.id, season=synthetic.season,
+            buyin_cents=22_000, min_reserve_cents=14_000, reserve_cents=8_000))
+    db.flush()
+
+    from economy.rc2_season_activation import (
+        activate_fantasystakes_championship_stage,
+    )
+
+    activate_fantasystakes_championship_stage(league.id, db)
 
     for week, matchups in sorted(synthetic.weeks.items()):
         for m in matchups:

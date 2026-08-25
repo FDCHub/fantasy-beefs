@@ -347,10 +347,15 @@ _assert("the Ledger title is the locked wording",
         APP.get("ledgerTitle") == "FANTASYSTAKES LEDGER")
 _assert("the Rules title is the locked wording",
         APP.get("rulesTitle") == "RULES & SETTINGS")
-# WP3C — Rev 4.3 §11 removed the redundant directional arrow from every swipe
-# heading. Wording otherwise unchanged and still pinned exactly.
+# WP3C — Rev 4.3 §11 removed the redundant directional arrow.
+#
+# UIRECON WAVE 4B — and `4 SHOWN` went with the vertical carousel it
+# described. All three Wrap sections carry one heading grammar now,
+# NAME · SCROLL, and a one-card rail makes a shown-count meaningless: a GM
+# scrolls to the next card whether there are two or four. The four-card cap
+# itself is unchanged and still lives in `week.BETS_SHOWN`.
 _assert("The Week's bets heading is the locked viewport treatment",
-        APP.get("betsHeading") == "FANTASYSTAKES BETS · 4 SHOWN · SWIPE")
+        APP.get("betsHeading") == "FANTASYSTAKES MATCHUPS · SCROLL")
 _assert("no rendered heading carries a directional arrow (§11)",
         "↕" not in ALL_PANELS, "↕ found")
 _assert("the legal line is exact and lives on Rules & Settings only",
@@ -367,8 +372,16 @@ MARKETS = APP.get("markets", [])
 _assert("three markets, persisted as the lifecycle's own values",
         [m["persisted"] for m in MARKETS] == ["straight", "spread", "over_under"],
         ", ".join(m["persisted"] for m in MARKETS))
-_assert("the display labels are ML, Spread and O/U",
-        [m["label"] for m in MARKETS] == ["ML", "Spread", "O/U"])
+# UIRECON WAVE 3A — `label` carries the locked public wording and is what the
+# composer's market selector draws; `short` keeps the abbreviations for the
+# narrow three-cell rows on the Play card and the Status rails. Both are pinned,
+# so a later change cannot quietly move one onto the other.
+_assert("the public display labels are Moneyline, Spread and Over/Under",
+        [m["label"] for m in MARKETS] == ["Moneyline", "Spread", "Over/Under"],
+        ", ".join(m["label"] for m in MARKETS))
+_assert("the narrow-cell abbreviations are unchanged",
+        [m["short"] for m in MARKETS] == ["ML", "SPR", "O/U"],
+        ", ".join(m["short"] for m in MARKETS))
 
 # WP3C — PLAY IS UNBOUND IN THIS PROBE, so it renders its intentional empty
 # state rather than cards. The probe imports the modules directly and binds no
@@ -577,11 +590,37 @@ _FORMS = re.findall(r"<form\b[^>]*", APP_RENDERED_SOURCE + INDEX)
 # carried NO control at all, and the only shipped pick surface wrote a legacy
 # row the settlement engine never reads. This list growing by one is what
 # closing that gap looks like.
+# GOVERNED REVISION, RC2 SPRINT A. Two more: the commissioner's FantasyStakes
+# Championship contribution form and the authoritative correction form. Both are
+# commissioner-only, both post through `championship-command.js` to routes behind
+# `require_league_commissioner`, and both are refused server-side by the RC2
+# lifecycle guards regardless of what the browser drew — the contribution outside
+# its governed range or after the freeze, the correction after payout or against
+# a pool that is not a WINNER_DISTRIBUTION. Neither carries an amount field for
+# the correction: it submits a corrected RESULT and the server re-derives the
+# economics, which is the property `_CHAMPIONSHIP_CMD` below asserts.
 _GOVERNED_FORMS = {"fs-gate-form", "fs-pool-entry-form", "fs-poolpick-form"}
+_GOVERNED_CHAMPIONSHIP_FORMS = {'data-fs-champ-form="config"',
+                                'data-fs-champ-form="correction"'}
 _assert("every form in the application is enumerated and governed",
-        len(_FORMS) == len(_GOVERNED_FORMS)
-        and all(any(name in f for f in _FORMS) for name in _GOVERNED_FORMS),
+        len(_FORMS) == len(_GOVERNED_FORMS) + len(_GOVERNED_CHAMPIONSHIP_FORMS)
+        and all(any(name in f for f in _FORMS) for name in _GOVERNED_FORMS)
+        and all(any(name in f for f in _FORMS)
+                for name in _GOVERNED_CHAMPIONSHIP_FORMS),
         str(_FORMS))
+
+# The championship forms reach the server ONLY through the certified routes, and
+# the correction has no way to name an amount. A cents field here would let a
+# commissioner hand-post economics, which is exactly what the RC2 correction
+# architecture exists to prevent.
+_CHAMPIONSHIP_CMD = _strip_comments(_read("js", "championship-command.js"))
+_assert("the championship forms post to the governed championship routes",
+        "'/championship/config'" in _CHAMPIONSHIP_CMD.replace("`", "'")
+        or "/championship/config`" in _CHAMPIONSHIP_CMD)
+_assert("and the correction submits a result, never an amount",
+        "/championship/corrections`" in _CHAMPIONSHIP_CMD
+        and not re.search(r"(amount|cents|score)_?\w*\s*:", _CHAMPIONSHIP_CMD
+                          .split("export function submitCorrection")[-1]))
 _assert("the mutating form targets the governed command, not the legacy route",
         "/settings/pool-entry" in APP_SOURCE
         and "'/pool/config'" not in APP_SOURCE)

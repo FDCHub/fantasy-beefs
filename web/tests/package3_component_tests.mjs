@@ -160,7 +160,16 @@ section('A Yahoo matchup opens the shared Matchup Preview');
 const yahooPreview = previewSheet(slate[1]);
 // WP3C — the Rev 4.3 §10 preview: no market block, analysis before lineups.
 // See the equivalent note in package2_component_tests.mjs.
-for (const heading of ['MATCHUP', 'WHY THE LINE LOOKS THIS WAY', 'THE READ',
+// UIRECON WAVE 4A — THE MATCHUP IS NAMED ONCE.
+//
+// A `MATCHUP` block listing both team names sat under a sheet subtitle
+// that had just given both team names — the same two facts twice inside
+// about sixty pixels, and in the bound state the second copy carried two
+// blank values. The slot now carries what the subtitle does not: the
+// market on offer (`ON OFFER`) for a live pairing, or the final score
+// (`RESULT`) for a settled one. An UNBOUND preview has neither, so it
+// renders no second block at all — which is what these fixtures are.
+for (const heading of ['WHY THE LINE LOOKS THIS WAY', 'THE READ',
   'LINEUPS']) {
   check(`the preview carries ${heading}`, yahooPreview.body.includes(heading));
 }
@@ -194,22 +203,34 @@ section('FantasyStakes Bets shows the week’s wagers, the viewer’s own first'
 
 const currentBets = weekBets(CURRENT_WEEK);
 check('the current week shows exactly four', currentBets.length === 4, String(currentBets.length));
-check('the heading is the locked Rev 4.2 wording',
-  week.includes(BETS_HEADING), BETS_HEADING);
+check('the heading uses the current FantasyStakes Matchups wording',
+  week.includes('FANTASYSTAKES MATCHUPS') && week.includes('SCROLL'));
 // WP3C — Rev 4.3 §11 removed the redundant directional arrow. The claim is
 // otherwise unchanged: the heading states the VIEWPORT treatment (how many are
-// shown) rather than a record count, and the word SWIPE carries the affordance.
+// shown) rather than a record count, and the word SCROLL carries the affordance.
+// UIRECON WAVE 1 — the locked public term.
+//
+// UIRECON WAVE 4B — `4 SHOWN` IS GONE, AND THE CAP IT NAMED IS NOT. The three
+// Wrap sections carry one heading grammar now (NAME · SCROLL), and a one-card
+// carousel makes a shown-count meaningless: a GM scrolls to the next card
+// whether there are two or four. `BETS_SHOWN` still bounds the section, which
+// the next assertion holds to, so what this wave removed is a heading that
+// described the viewport — not the viewport itself.
 check('the locked heading states the viewport treatment, not a record count',
-  BETS_HEADING === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · SCROLL', BETS_HEADING);
+check('and the four-card cap it used to advertise still bounds the section',
+  BETS_SHOWN === 4, String(BETS_SHOWN));
+check('and it carries no public-facing Versus',
+  !BETS_HEADING.includes('VERSUS'), BETS_HEADING);
 check('and it carries no directional arrow', !BETS_HEADING.includes('↕'));
 check('the current week shows live, not settled, wagers',
   currentBets.every((c) => !c.settled));
-check('the bets carry the Package 2 wager grammar',
-  week.includes('fs-wcard--lifecycle'));
-check('a bet is tappable through the shared wager grammar',
-  week.includes('data-card-action="wager"'));
+check('Wrap Up bets use the read-only result grammar',
+  week.includes('fs-wcard--result'));
+check('a bet opens its read-only recap through the shared grammar',
+  week.includes('data-card-action="wager-recap"'));
 
-section('FantasyStakes Pools shows all four launch Pools without a carousel');
+section('FantasyStakes Pools shows all four launch Pools, one card at a time');
 
 const currentPools = weekPools(CURRENT_WEEK);
 check('four Pools', currentPools.length === 4, String(currentPools.length));
@@ -218,8 +239,30 @@ check('the four are the governing catalog’s launch Pools',
     === POOLS.map((p) => p.catalogNumber).join(','));
 check('every Pool keeps its catalog rule',
   currentPools.every((p, i) => p.rule === POOLS[i].rule));
-check('the Pools module is rows, not a second carousel',
-  week.includes('fs-poolrows') && !week.includes('id="fs-week-pools" class="fs-vcar'));
+// UIRECON WAVE 4B — THE POOLS MODULE IS A CAROUSEL NOW, DELIBERATELY. It was
+// the one Wrap section built differently from its two peers: a flat column of
+// buttons beside two carousels, for a third thing a GM reads exactly the same
+// way. All three share `resultSection()` today.
+//
+// RC4 MOBILE RECONCILIATION — AND NOW ONE CARD FAMILY TOO. Wave 4B unified the
+// rail and left the ITEM split: a settled Pool drew the shared result card and
+// an OPEN one kept its compact `.fs-poolrow`, on the reasoning that "you have a
+// pick to make" is a different statement from "here is what happened".
+//
+// That distinction was never about the BOX. Measured on the deployed RC4 build
+// at Week 11, where every Pool on the slate is open, all four items drew the row
+// and the third carousel measured 45px against 132.30px of Yahoo and 150.06px
+// of FantasyStakes Matchup — a strip beside two carousels, in a tab whose whole
+// construction is three peers. Both states take the shared shell now; what
+// differs is what they SAY inside it, which is where §11 puts the difference.
+check('the Pools module shares the one Wrap carousel',
+  week.includes('id="fs-pools-carousel"') && week.includes('fs-rescar'));
+check('an open Pool draws the shared result card, not a list row',
+  !week.includes('fs-poolrow') && week.includes('fs-wcard--result'));
+check('  · and it still says what an OPEN Pool has to say',
+  week.includes('Your pick') && /OPEN|PREGAME|LOCKED/.test(week));
+check('the retired vertical carousel is gone from every module',
+  !week.includes('fs-vcar'));
 check('rollover stays a modifier on a subject type',
   currentPools.every((p) => ['TEAM', 'MATCHUP'].includes(p.scope)));
 
@@ -284,8 +327,8 @@ check('the past week shows settled wagers only',
 
 // The locked heading is presentation; the records are protocol. A week with
 // three settled wagers keeps the heading AND keeps three records.
-check('the locked heading is unchanged on a past week',
-  week.includes(BETS_HEADING), BETS_HEADING);
+check('the current heading is unchanged on a past week',
+  week.includes('FANTASYSTAKES MATCHUPS') && week.includes('SCROLL'));
 check('no fourth historical wager is fabricated to match the heading',
   pastBets.length === 3, String(pastBets.length));
 check('the settled record set is still the three Action holds',
@@ -339,8 +382,12 @@ check('the Credits disclaimer appears exactly once',
 const weekCells = [
   ['Available', 6500, '$65'],
   ['In Play', 2800, '$28'],
-  ['Held', 2500, '$25'],
-  ['Weekly Min Left', 1000, '$10'],
+// FINAL POR §30 — `HELD` became `ESCROW`. The VALUE is unchanged: still
+// held_open_challenges_cents, still reported beside the position, still never
+// added to any total. Only the label changed, plus the `included in In Play`
+// context that keeps the subset relationship visible.
+  ['Escrow', 2500, '$25'],
+  ['Min Left', 1000, '$10'],
 ];
 for (const [label, cents, drawn] of weekCells) {
   check(`the week strip carries ${label} at ${drawn}`,
@@ -356,15 +403,15 @@ check('there are exactly two strips',
 
 const seasonCells = [
   ['Bet Record', '14–7'],
-  ['Versus + Pools', '+$126'],
-  ['Awards / Adj.', '+$32'],
-  ['Current Settle', '−$45'],
+  ['Play Net', '+$126'],
+  ['Season Adj', '+$32'],
+  ['Settle', '−$45'],
 ];
 for (const [label, drawn] of seasonCells) {
   check(`My Season carries ${label} at ${drawn}`,
     ledger.includes(`>${label}</div>`) && ledger.includes(drawn), drawn);
 }
-check('Current Settle is the gold cell of the My Season strip',
+check('the Settle cell is the gold cell of the My Season strip',
   /id="fs-strip-season"[\s\S]*?is-gold/.test(ledger));
 
 /* ── Ledger · section 1 ─────────────────────────────────────────────────── */
@@ -424,7 +471,8 @@ check('65 + 28 + 90 reconciles to 183',
   `${p.spendableCents} + ${p.acceptedEscrowCents} + ${p.weeklyReserveNotReleasedCents} = ${p.wageringPositionCents}`);
 check('Wagering Position is +$183', p.wageringPositionCents === 18300);
 
-check('the section is the elevated one', ledger.includes('fs-lsec is-elevated'));
+check('the section is the elevated one',
+  /fs-lsec[^"']*is-elevated/.test(ledger));
 check('the memo states the pending-hold rule',
   /not counted again in Current Settle until a proposal is accepted/.test(ledger));
 check('the memo carries the $25 illustrative hold',
@@ -483,7 +531,7 @@ check('Net Pools is not one of them',
   !CURRENT_SETTLE_TERMS.includes('netPoolsCents'));
 check('adding the activity nets again would change the figure — so it is not done',
   r.currentSettleCents + act.netVersusCents + act.netPoolsCents !== r.currentSettleCents);
-check('My Season’s Versus + Pools is the two nets, and is not re-added',
+check('My Season’s Play Net is the two nets, and is not re-added',
   r.versusPlusPoolsCents === act.netVersusCents + act.netPoolsCents
   && r.versusPlusPoolsCents === 12600);
 

@@ -120,6 +120,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     return [...panel.querySelectorAll('[data-module]')].map(el => ({
       id: el.dataset.module,
       heading: el.querySelector('.fs-heading__text').textContent,
+      helper: el.querySelector('.fs-heading__helper').textContent,
       right: Math.round(el.getBoundingClientRect().right),
       clipped: el.scrollWidth > el.clientWidth + 1,
     }));
@@ -128,11 +129,15 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     modules.map(m => m.id).join(',') === 'yahoo,bets,pools',
     modules.map(m => m.id).join(','));
   // WP3C -- Rev 4.3 §11 removed the redundant directional arrow from every
-  // swipe heading. The wording is otherwise unchanged and still pinned exactly.
+  // scroll heading. The wording is otherwise unchanged and still pinned exactly.
   check('the Yahoo module names official Yahoo matchups',
-    modules[0].heading === 'YAHOO LEAGUE MATCHUPS · SWIPE', modules[0].heading);
-  check('the Bets module states its derived count',
-    modules[1].heading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', modules[1].heading);
+    modules[0].heading === 'YAHOO LEAGUE MATCHUPS' && /SCROLL/.test(modules[0].helper), modules[0].heading);
+  // UIRECON WAVE 4B — one heading grammar for all three: NAME · SCROLL. The
+  // derived count named a viewport cap that a one-card carousel makes
+  // meaningless, and only this module ever carried one. The cap itself is
+  // unchanged; what went is a heading that described it.
+  check('the Bets module carries the shared heading grammar',
+    modules[1].heading === 'FANTASYSTAKES MATCHUPS' && /SCROLL/.test(modules[1].helper), modules[1].heading);
   check('no rail heading carries a directional arrow',
     modules.every((m) => !m.heading.includes('↕')),
     modules.map((m) => m.heading).join(' | '));
@@ -143,9 +148,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // satisfy — so this week is legitimately undrawn and the module names itself
   // without a count. The four-slot contract is certified against a DRAWN slate
   // in test_s8_p4b3_settings_pool.py.
-  check('the Pools module names itself, with a count only when drawn',
-    modules[2].heading === 'FANTASYSTAKES POOLS'
-    || modules[2].heading === 'FANTASYSTAKES POOLS · 4 THIS WEEK',
+  // UIRECON WAVE 4B — the Pools module carries the same grammar as its two
+  // peers now, drawn or not. A count in one section's heading and not the
+  // others' was the last thing distinguishing three identical statements.
+  check('the Pools module carries the shared heading grammar',
+    modules[2].heading === 'FANTASYSTAKES PROP POOLS' && /SCROLL/.test(modules[2].helper),
     modules[2].heading);
   check('no module clips its own content', modules.every(m => !m.clipped));
 
@@ -160,8 +167,8 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       count: cards.length,
       badges: cards.map(c => c.querySelector('.fs-wcard__badge').textContent),
       first: cards[0].querySelector('.fs-wcard__identity').textContent,
-      snap: getComputedStyle(zone.querySelector('.fs-vcar')).scrollSnapType,
-      scrolls: getComputedStyle(zone.querySelector('.fs-vcar')).overflowY,
+      snap: getComputedStyle(zone.querySelector('.fs-rescar')).scrollSnapType,
+      scrolls: getComputedStyle(zone.querySelector('.fs-rescar')).overflowX,
       anyChallenge: cards.some(c => /Challenge/.test(c.textContent)),
       interactiveMarkets: zone.querySelectorAll('[data-market]').length,
       // WP5: counted, not dereferenced. A provider matchup draws NO market row
@@ -178,8 +185,13 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('every card is badged YAHOO', yahoo.badges.every(b => b === 'YAHOO'));
   check('the viewer’s own matchup leads the carousel',
     yahoo.first.includes(served.actingTeamName), yahoo.first);
-  check('the carousel snaps vertically', yahoo.snap === 'y mandatory', yahoo.snap);
-  check('the carousel scrolls vertically', yahoo.scrolls === 'auto', yahoo.scrolls);
+  // UIRECON WAVE 4B — THE AXIS CHANGED AND THE CLAIM DID NOT. What this pair
+  // has always asserted is that the module presents one card at a time and
+  // snaps rather than drifting. The rail is horizontal now because a vertical
+  // one had to be capped in pixels to bound it, and that cap went stale against
+  // Rev 4.3's taller cards; items exactly one viewport wide need no cap.
+  check('the carousel snaps', yahoo.snap === 'x mandatory', yahoo.snap);
+  check('the carousel is what scrolls', yahoo.scrolls === 'auto', yahoo.scrolls);
   check('no Yahoo card offers a challenge', yahoo.anyChallenge === false);
   check('Yahoo market cells are not tappable', yahoo.interactiveMarkets === 0);
   // THE REQUIREMENT, PRESERVED AND STRENGTHENED. Sprint 7 checked that five of
@@ -193,44 +205,80 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     yahoo.invented === 0,
     `${yahoo.marketCells} market cell(s), ${yahoo.invented} carrying a value`);
 
-  /* ── WP5 · the Matchup Preview, and where it is reachable ──────────────────
+  /* ── UI-5 GAP 1 · what a provider matchup opens, and what it may contain ──
    *
-   * SPRINT 7 TAPPED A YAHOO CARD AND EXPECTED A PREVIEW. In the bound product a
-   * provider matchup card carries NO tap affordance: `providerMatchupCard` sets
-   * `tapAction: ''`, and `bindWeek` binds the preview lookup only in demo mode
-   * ("THE FIXTURE LOOKUPS ARE DEMO-ONLY").
+   * THIS BLOCK USED TO REQUIRE AN ABSENCE. `providerMatchupCard` set
+   * `tapAction: ''`, so a served matchup carried no affordance and opened
+   * nothing, and this suite certified that -- for a stated reason: the Matchup
+   * Preview's four sections are Sportsbook View, Starting Lineups &
+   * Projections, Why The Line Looks This Way and The Read, and the provider
+   * gateway captures none of the four. Opening THAT sheet over a served
+   * matchup would mean manufacturing all of it.
    *
-   * THAT IS DELIBERATE AND IT IS ALSO A REAL CAPABILITY GAP. The preview's four
-   * sections are Sportsbook View, Starting Lineups & Projections, Why The Line
-   * Looks This Way and The Read — sportsbook analysis the provider gateway does
-   * not capture. Opening it over a served matchup would mean manufacturing all
-   * four, which is the one thing this build consistently refuses. Drawing no
-   * affordance is the honest option, and it is reported as a product gap rather
-   * than certified away.
+   * THE REASONING WAS RIGHT AND THE CONCLUSION WAS TOO NARROW. §29 requires
+   * the Yahoo section to carry a Fantasy Football Breakdown, and UI-5 recorded
+   * the absence as a gap rather than certifying it away. What resolved it was
+   * separating two questions that had been answered as one: the PREVIEW cannot
+   * be opened over provider data, and a BREAKDOWN can -- because the provider
+   * does state team totals, finality, a winner and a refresh time, and the
+   * margin between two stated figures is subtraction rather than analysis.
    *
-   * SO THE CLAIM IS SPLIT, AND NEITHER HALF IS DROPPED:
-   *   · production — a provider card offers no preview and opens no sheet;
-   *   · the preview itself — still certified in the shared sheet, driven
-   *     through the real modules, so the four sections, the source banner and
-   *     the upper-left close control remain browser-certified rather than
-   *     demoted to a source check.
+   * SO THE CLAIM IS INVERTED AND MADE STRICTER. The card must now expand, and
+   * what it opens must contain the facts the provider stated, must NOT be the
+   * Matchup Preview, and must say outright that no per-player detail exists
+   * rather than leaving a reader to assume it is loading.
    */
-  const notTappable = await evaluate(`
+  const providerSheet = await evaluate(`return (async () => {
     const card = document.querySelector('[data-module="yahoo"] .fs-wcard');
-    card.click();
+    const target = card.matches('[data-card-action]')
+      ? card : card.querySelector('[data-card-action]');
+    if (target) target.click();
+    await new Promise((r) => setTimeout(r, 400));
+    const sheet = document.getElementById('fs-sheet');
     return {
-      sheetOpened: document.getElementById('fs-overlay').classList.contains('is-open'),
-      tapAffordances: document.querySelectorAll(
+      affordances: document.querySelectorAll(
         '[data-module="yahoo"] [data-card-action]').length,
-      foot: card.querySelector('.fs-wcard__footvalue')
-        ? card.querySelector('.fs-wcard__footvalue').textContent.trim() : '',
+      opened: document.getElementById('fs-overlay').classList.contains('is-open'),
+      // FINAL POR 8 - the three Wrap Up details share one section primitive,
+      // .fs-wrapsec__head. The old .fs-rule__head was the Yahoo sheet's own
+      // and is what the unified family replaced. NO BACKTICKS IN THIS COMMENT:
+      // it sits inside a template literal, and one would close it early.
+      heads: [...sheet.querySelectorAll('.fs-wrapsec__head')].map(
+        (el) => el.textContent.trim()),
+      previewTitles: [...sheet.querySelectorAll('.fs-prev__title')].map(
+        (el) => el.textContent.trim()),
+      // DOUBLED, AND IT MATTERS. This lives inside a TEMPLATE LITERAL, which
+      // processes escapes before the code reaches the browser -- a single
+      // backslash-s is not a recognised escape and collapses to a bare s, so
+      // the normaliser became /s+/g and replaced every lowercase s in the
+      // sheet with a space. The assertions then read "no lineup breakdown to
+      // show" as "no lineup breakdown to how" and failed on text that was
+      // perfectly correct.
+      text: sheet.textContent.replace(/\\s+/g, ' ').trim(),
     };
+  })();`);
+  check('a served provider matchup DOES expand', providerSheet.opened === true,
+    `${providerSheet.affordances} affordance(s)`);
+  check('  · into a Fantasy Football Breakdown',
+    providerSheet.heads.some((h) => /FANTASY FOOTBALL BREAKDOWN/i.test(h)),
+    JSON.stringify(providerSheet.heads));
+  check('  · and NOT into the Matchup Preview',
+    !providerSheet.previewTitles.some(
+      (t) => /SPORTSBOOK|WHY THE LINE|THE READ|LINEUPS/i.test(t)),
+    JSON.stringify(providerSheet.previewTitles));
+  check('  · it states the margin between the two provider figures',
+    /Margin/.test(providerSheet.text), providerSheet.text.slice(0, 140));
+  // THE ABSENCE IS STATED, NOT IMPLIED BY SILENCE -- which is the whole reason
+  // this can satisfy §29 without fabricating the section §29 forbids.
+  check('  · and says outright that no lineup breakdown exists',
+    /not per-player scoring/.test(providerSheet.text)
+    && /will not estimate one/.test(providerSheet.text),
+    providerSheet.text.slice(-200));
+  await evaluate(`
+    const c = document.querySelector('#fs-sheet [data-fs-close]');
+    if (c) c.click();
+    return true;
   `);
-  check('a served provider matchup offers no preview affordance',
-    notTappable.tapAffordances === 0 && notTappable.foot === '',
-    `${notTappable.tapAffordances} affordance(s), foot "${notTappable.foot}"`);
-  check('and tapping it opens nothing rather than an invented analysis',
-    notTappable.sheetOpened === false);
 
   const preview = await evaluate(`return (async () => {
     const { previewSheet } = await import('/app/js/preview.js');
@@ -242,7 +290,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       open: document.getElementById('fs-overlay').classList.contains('is-open'),
       banner: sheet.querySelector('.fs-srcbanner')
         ? sheet.querySelector('.fs-srcbanner').textContent : '',
-      titles: [...sheet.querySelectorAll('.fs-prev__title')].map(el => el.textContent),
+      titles: [...sheet.querySelectorAll('.fs-accordion__title')].map(el => el.textContent),
       text: sheet.textContent,
       closes: sheet.querySelectorAll('[data-fs-close]').length,
     };
@@ -257,10 +305,26 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // WP3C -- Rev 4.3 §10: no odds-market block, and analysis before the dense
   // lineup table. Same rebuild the package 2 suite measures; asserted here on
   // the Yahoo-sourced preview as well, because both open the same sheet.
-  check('the preview carries the four shared sections in the §10 order',
+  // UIRECON WAVE 4A — THE MATCHUP BLOCK IS GONE, AND NOTHING REPLACES IT HERE.
+  //
+  // That block was a label/value pair naming the two teams, which the sheet
+  // subtitle already carried — one fact stated twice, and the duplicate was the
+  // one a GM read first. Its slot now carries the MARKET on offer, which is the
+  // thing the three modules below it explain.
+  //
+  // A YAHOO FIXTURE HAS NO MARKET ON OFFER, so on this preview that slot is
+  // correctly empty and the sheet is the three analysis modules alone. The
+  // priced FantasyStakes preview, which does carry one, is asserted on the
+  // four-section order in test_uirecon_wave4.py.
+  // FINAL POR §27E — LINEUPS MOVED ABOVE ON OFFER, so the three collapsibles
+  // now read LINEUPS first. Rev 4.3 §10's claim that the two analysis modules
+  // stay together and in order is unchanged and is still what this asserts.
+  check('the preview carries the four shared analysis sections in Final POR order',
     preview.titles.join('|')
-      === 'MATCHUP|WHY THE LINE LOOKS THIS WAY|THE READ|LINEUPS',
+      === 'LINEUPS|ON OFFER|WHY THE LINE LOOKS THIS WAY|THE READ',
     preview.titles.join('|'));
+  check('and no block restates the pairing the sheet header already names',
+    !preview.titles.includes('MATCHUP'), preview.titles.join('|'));
   check('and it carries no odds-market block',
     !preview.titles.includes('SPORTSBOOK VIEW'));
   check('it says this is not a FantasyStakes wager',
@@ -291,11 +355,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     };
   `);
   // WP5 — AT MOST FOUR, AND NEVER INVENTED. Sprint 7 asserted exactly four
-  // because the illustrative week always had four. `4 SHOWN` is the locked
-  // VIEWPORT treatment — week.js records that a three-wager week must not
-  // redraw the heading as "3 SHOWN" — so the heading is not a card count, and
-  // the real claim is the one week.js states: at most four, and "the shortfall
-  // is never made up by inventing a wager that no protocol record supports".
+  // because the illustrative week always had four. UIRECON Wave 4B retired the
+  // heading that advertised the cap and kept the cap itself in
+  // `week.BETS_SHOWN`, which is where the real claim always lived: at most
+  // four, and "the shortfall is never made up by inventing a wager that no
+  // protocol record supports".
   check('the Bets module shows at most the four the heading presents',
     bets.count <= 4, `${bets.count} card(s)`);
   check('and invents no wager when the bound week holds fewer',
@@ -327,15 +391,22 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
 
   const pools = await evaluate(`
     const zone = document.querySelector('[data-module="pools"]');
-    const rows = [...zone.querySelectorAll('.fs-poolrow')];
-    const box = zone.querySelector('.fs-poolrows').getBoundingClientRect();
+    // RC4 - AN OPEN PROP POOL IS A CARD NOW, NOT A 45px LIST ROW. Everything
+    // asserted below is asserted of the same facts in the same order; only the
+    // element carrying them changed, and it changed so that this section
+    // measures the same as the two carousels above it.
+    const rows = [...zone.querySelectorAll('.fs-rescar__item > .fs-wcard')];
+    const rail = zone.querySelector('.fs-rescar');
+    const items = rail ? [...rail.querySelectorAll(':scope > .fs-rescar__item')] : [];
     return {
       count: rows.length,
-      badges: rows.map(r => r.querySelector('.fs-poolrow__badge').textContent),
-      names: rows.map(r => r.querySelector('.fs-poolrow__name').textContent),
+      badges: rows.map(r => (r.querySelector('.fs-wcard__context') || {}).textContent || ''),
+      names: rows.map(r => (r.querySelector('.fs-wcard__identity') || {}).textContent || ''),
       allVisible: rows.every(r => r.getBoundingClientRect().height > 0),
-      noCarousel: zone.querySelectorAll('.fs-vcar').length === 0,
-      scrolls: zone.querySelector('.fs-poolrows').scrollHeight > box.height + 1,
+      sharesTheWrapCarousel: Boolean(rail),
+      oneCardWide: items.length === 0 || items.every(
+        (i) => Math.abs(i.getBoundingClientRect().width - rail.clientWidth) <= 1),
+      scrollsVertically: rail ? rail.scrollHeight > rail.clientHeight + 1 : false,
     };
   `);
   // GOVERNED REVISION, S8-P4B-3 — and the claim it replaces is the important
@@ -343,8 +414,17 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // An undrawn week renders none, which is exactly what is asserted here.
   check('an undrawn week renders no Pools rather than the launch four',
     pools.count === 0 || pools.count === 4, String(pools.count));
-  check('they are rows, not another carousel', pools.noCarousel === true);
-  check('the module does not scroll internally', pools.scrolls === false);
+  // UIRECON WAVE 4B — THE POOLS MODULE IS THE SAME CAROUSEL AS ITS TWO PEERS.
+  // It was the one Wrap section built differently: a flat column of buttons
+  // beside two carousels, for a third thing a GM reads exactly the same way.
+  // The rows survive inside it — an OPEN Pool has a pick to make rather than a
+  // result to report — and the claim underneath both versions of this check is
+  // the same one: the module never becomes a scroller of its own inside the tab.
+  check('the module shares the one Wrap carousel',
+    pools.sharesTheWrapCarousel === true);
+  check('and presents exactly one card at a time', pools.oneCardWide === true);
+  check('the module does not scroll vertically',
+    pools.scrollsVertically === false);
   check('every Pool carries a subject-type badge',
     pools.badges.every(b => /^(TEAM|MATCHUP)/.test(b)), pools.badges.join(' | '));
   check('rollover appears only as a modifier on a type',
@@ -356,7 +436,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // its catalog number are certified against a DRAWN slate in
   // test_s8_p4b3_settings_pool.py, where the fixture provides one.
   const poolSheetText = await evaluate(`
-    const row = document.querySelector('[data-module="pools"] .fs-poolrow');
+    const row = document.querySelector('[data-module="pools"] .fs-rescar__item > .fs-wcard');
     if (!row) return null;
     row.click();
     const text = document.getElementById('fs-sheet').textContent;
@@ -384,7 +464,9 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       betsHeading: panel.querySelector('[data-module="bets"] .fs-heading__text').textContent,
       betsText: panel.querySelector('[data-module="bets"]').textContent,
       betsCount: panel.querySelectorAll('[data-module="bets"] .fs-wcard').length,
-      poolStates: [...panel.querySelectorAll('.fs-poolrow__state')].map(el => el.textContent),
+      // RC4 - a Prop Pool's state is the shared card's badge now.
+      poolStates: [...panel.querySelectorAll(
+        '[data-module="pools"] .fs-wcard__badge')].map(el => el.textContent),
       strips: panel.querySelectorAll('.fs-strip').length,
       modules: panel.querySelectorAll('[data-module]').length,
     };
@@ -402,11 +484,13 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     `${past.final} of ${past.cards}`
     + (past.cards === 0 ? ' — the provider stated no matchups for this week' : ''));
   check('no past matchup still presents as pregame', past.pregame === 0);
-  // Locked copy, identical on both weeks: `4 SHOWN` is the viewport treatment,
-  // not a count of records, and a week holding three settled wagers still shows
-  // three rather than gaining a fabricated fourth.
+  // Locked copy, identical on both weeks. UIRECON Wave 4B replaced `4 SHOWN`
+  // with the shared NAME · SCROLL grammar the other two Wrap sections use; the
+  // claim here is unchanged and is the one the next assertion holds to — the
+  // heading is the same on every week, and a week holding three settled wagers
+  // still shows three rather than gaining a fabricated fourth.
   check('the locked bets heading is unchanged on a past week',
-    past.betsHeading === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', past.betsHeading);
+    past.betsHeading === 'FANTASYSTAKES MATCHUPS', past.betsHeading);
   // The claim in the heading comment above, asserted rather than restated: a
   // week draws the wagers it really has and never gains a fabricated one.
   check('the past week draws only the wagers it really has',
@@ -540,7 +624,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   // PRODUCTION build against the P4B-1 authoritative fixture, so these are
   // posted ledger figures rather than prototype constants.
   //
-  //   Available $65, In Play $28, Weekly Min Left $10 — KEEP EXACT. Unchanged,
+  //   Available $65, In Play $28, Min Left $10 — KEEP EXACT. Unchanged,
   //   and now proven end-to-end from economy/current_settle.py.
   //
   //   Held $25 -> $0 — REVISE EXACT. P4B-0 established that the reachable
@@ -571,13 +655,21 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   const weekExpected = [
     ['Available', ledger.available_cents],
     ['In Play', ledger.in_play_cents],
-    ['Held', ledger.held_open_challenges_cents],
-    ['Weekly Min Left', ledger.weekly_min_live_cents],
+// FINAL POR §30 — `HELD` became `ESCROW`. The VALUE is unchanged: still
+// held_open_challenges_cents, still reported beside the position, still never
+// added to any total. Only the label changed, plus the `included in In Play`
+// context that keeps the subset relationship visible.
+    ['Escrow', ledger.held_open_challenges_cents],
+    ['Min Left', ledger.weekly_min_live_cents],
   ];
   for (const [i, [label, cents]] of weekExpected.entries()) {
+    // THE FIGURE IS THE PREFIX, because a cell may carry secondary context
+    // after it — Final POR §30 gives Escrow `· included in In Play` so the
+    // subset relationship is visible. `startsWith` asserts the money exactly
+    // and lets a cell explain itself; `exact` below is unaffected either way.
     check(`week strip cell ${i + 1} is ${label}, as the Ledger served it`,
       strips.week[i].label === label
-      && strips.week[i].value === `$${Math.round(cents / 100)}`,
+      && strips.week[i].value.startsWith(`$${Math.round(cents / 100)}`),
       `${strips.week[i].label} ${strips.week[i].value} vs served $${cents / 100}`);
     check(`${label} keeps its exact cents`,
       Number(strips.week[i].exact) === cents,
@@ -586,17 +678,19 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
 
   // GOVERNED REVISION, S8-P4B-2R — two cells.
   //
-  //   Awards / Adj. +$32 -> unresolved. P3 proved season winnings has no
+  //   Season Adj +$32 -> unresolved. P3 proved season winnings has no
   //   authoritative source. Two of the cell's three components ARE sourced,
   //   which is the trap: printing +$8 would put a partial subtotal under a
   //   label meaning the whole, and $0 would assert a zero nobody measured.
   //
-  //   Current Settle −$45 -> −$69. Moves by exactly the unsourced +$24 that is
+  //   Settle −$45 -> −$69. Moves by exactly the unsourced +$24 that is
   //   no longer invented. Asserted exactly, not loosely.
   //
-  //   Bet Record and Versus + Pools are P4C-owned domains, untouched.
-  const seasonExpected = [['Bet Record', '14–7'], ['Versus + Pools', '+$126'],
-    ['Awards / Adj.', '—'], ['Current Settle', '−$69']];
+  //   Bet Record and Play Net are P4C-owned domains, untouched.
+  // UIRECON WAVE 1 — the labels are held to one line at 320px and carry the
+  // locked vocabulary. The FIGURES are unchanged and are still the claim.
+  const seasonExpected = [['Bet Record', '14–7'], ['Play Net', '+$126'],
+    ['Season Adj', '—'], ['Settle', '−$69']];
   for (const [i, [label, value]] of seasonExpected.entries()) {
     check(`My Season cell ${i + 1} is ${label} ${value}`,
       strips.season[i].label === label && strips.season[i].value === value,
@@ -638,10 +732,18 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       })),
     }));
   `);
-  check('the Ledger has three numbered sections', sections.length === 3, String(sections.length));
-  check('they are Advances, Wagering Summary and Season Adjustments',
+  // UIRECON WAVE 2 — Current Settle is section 4, built by the same
+  // `ledgerSection()` as the three that explain into it. Four numbered
+  // sections, one construction.
+  check('the Ledger has four numbered sections', sections.length === 4, String(sections.length));
+  // FINAL POR §30 — section 1 is `OPENING FANTASYSTAKES ALLOCATION`. `Advances`
+  // read as a loan against a balance; what the section reports is the season's
+  // opening allocation of virtual credits. Four sections, one construction —
+  // the claim UIRECON Wave 2 was making — is unchanged.
+  check('they are Opening Allocation, Wagering Summary, Season Adjustments and Current Settle',
     sections.map(s => s.title).join(' | ')
-      === 'FANTASYSTAKES ADVANCES | WAGERING SUMMARY | SEASON ADJUSTMENTS + WINNINGS',
+      === 'OPENING FANTASYSTAKES ALLOCATION | WAGERING SUMMARY'
+        + ' | SEASON ADJUSTMENTS + WINNINGS | CURRENT SETTLE',
     sections.map(s => s.title).join(' | '));
   check('the Wagering Summary is the elevated section',
     sections[1].elevated === true && !sections[0].elevated && !sections[2].elevated);
@@ -683,11 +785,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
     }
     return out;
   `);
-  const versus = groups['VERSUS ACTIVITY'];
+  const versus = groups['MATCHUP ACTIVITY'];
   check('184 − 78 reconciles to 106 on screen',
     versus[0].cents + versus[1].cents === versus[2].cents,
     `${versus[0].cents} + ${versus[1].cents} = ${versus[2].cents}`);
-  const poolGroup = groups['POOL ACTIVITY'];
+  const poolGroup = groups['PROP POOL ACTIVITY'];
   check('45 − 25 reconciles to 20 on screen',
     poolGroup[0].cents + poolGroup[1].cents === poolGroup[2].cents,
     `${poolGroup[0].cents} + ${poolGroup[1].cents} = ${poolGroup[2].cents}`);
@@ -742,7 +844,11 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('the card contains no button', settle.isButton === false);
   check('the card carries no tap action', settle.hasAction === false);
   check('the card is not marked tappable', settle.tappable === false);
-  check('the card does not present as clickable', settle.cursor === 'default', settle.cursor);
+  // The BODY is inert. The section header above it is a disclosure toggle
+  // like every other section's, which is the one control Wave 2 added and the
+  // one this block is not about: what must never happen is the reconciliation
+  // itself presenting as a door to somewhere else.
+  check('the card does not present as clickable', settle.cursor !== 'pointer', settle.cursor);
   check('there is no View Full Reconciliation on the card',
     !/View Full Reconciliation/i.test(settle.text));
 
@@ -831,7 +937,20 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
       barBottom: bar.bottom,
       viewport: window.innerHeight,
       clipped: [...panel.querySelectorAll('.fs-lsec, .fs-settle')]
-        .filter(el => el.scrollWidth > el.clientWidth + 1).length,
+        .filter(el => {
+          const overflow = getComputedStyle(el).overflowX;
+          if (overflow !== 'hidden' && overflow !== 'clip') return false;
+          const edge = el.getBoundingClientRect().right;
+          return [...el.querySelectorAll('*')].some((child) => {
+            if (child.getAttribute('aria-hidden') === 'true') return false;
+            const style = getComputedStyle(child);
+            const rect = child.getBoundingClientRect();
+            return style.display !== 'none' && style.visibility !== 'hidden'
+              && rect.width > 0 && rect.right > edge + 1;
+          });
+        })
+        .map((el) => ({ section: el.dataset.section || el.className,
+                        scrollWidth: el.scrollWidth, clientWidth: el.clientWidth })),
     };
   `);
   check('the Ledger does not scroll the page horizontally',
@@ -840,7 +959,7 @@ await withPage({ port: 9337 }, async ({ evaluate }) => {
   check('no Ledger element extends past the viewport',
     ledgerLayout.widest <= VIEWPORT.width, `widest right edge ${ledgerLayout.widest}px`);
   check('no section clips its own content',
-    ledgerLayout.clipped === 0, `${ledgerLayout.clipped} clipped`);
+    ledgerLayout.clipped.length === 0, JSON.stringify(ledgerLayout.clipped));
   check('the panel ends at or above the navigation',
     ledgerLayout.panelBottom <= ledgerLayout.barTop + 0.5,
     `panel ${ledgerLayout.panelBottom.toFixed(1)} vs nav ${ledgerLayout.barTop.toFixed(1)}`);

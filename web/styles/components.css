@@ -47,43 +47,126 @@
 .fs-strip {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--fs-space-2);
+  /* FOUR EQUAL COLUMNS, AND `minmax(0,1fr)` RATHER THAN `1fr`.
+   *
+   * A grid track defaults to `min-width: auto`, so a `1fr` column refuses to
+   * shrink below its content's minimum. With the labels held to one line
+   * (below) that minimum is the label's full width, and the widest label would
+   * then set its own column wider than the other three — four cells that are
+   * only equal while their contents happen to be. `minmax(0, 1fr)` makes the
+   * equality structural. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--fs-c-gap-cell);
   margin: 0 var(--fs-gutter) var(--fs-space-4);
 }
 
+/* ── The metric cell — UIRECON Wave 1 ───────────────────────────────────────
+ *
+ * ONE CONSTRUCTION, EVERY CONSUMER. Play, Status and Account's two strips all
+ * render through `summaryStrip()`, so they were already one component in the
+ * markup; they were not one component on screen, because the cell was a plain
+ * block with a left-aligned label over a centred value and no height of its
+ * own. Three things followed from that and all three are fixed here rather
+ * than per screen:
+ *
+ *   THE LABEL AND THE VALUE WERE ON DIFFERENT AXES. `text-align: left` on the
+ *   label and `text-align: center` on the value, in a cell 84px wide.
+ *
+ *   THE VALUE WAS NOT VERTICALLY CENTRED. It was simply the second box in a
+ *   block, so it sat directly under the label with the cell's slack below it.
+ *
+ *   A WRAPPED LABEL RESIZED THE WHOLE STRIP. Measured at 375x667 before this
+ *   wave: `Net Winnings` and `Weekly Min Left` each took two lines, and because
+ *   grid rows stretch to the tallest cell every cell in the strip became
+ *   75.38px instead of 59.78px — 15.6px taken from the panel below by two
+ *   labels nobody could read on one line anyway.
+ *
+ * THE CELL IS NOW A COLUMN: a label row that cannot wrap, and a value row that
+ * takes the rest and centres its content on both axes. There is no per-screen
+ * override of any of this, and there is no place left for one to be needed. */
 .fs-strip__cell {
-  background: var(--tile);
+  display: flex;
+  flex-direction: column;
+  background: var(--fs-c-surface-inset);
   border: 1px solid transparent;
-  border-radius: var(--fs-radius-cell);
-  padding: 8px var(--fs-space-3);
+  border-radius: var(--fs-c-radius-cell);
+  padding: 8px var(--fs-c-pad-cell);
+  /* The cell owns no width of its own; the grid track does. `min-width: 0`
+   * lets the flex column shrink inside it so an over-long value ellipsizes
+   * instead of pushing the cell wider than its column. */
+  min-width: 0;
 }
 
 /* One cell per strip may carry the anchor/gold treatment (POR §1.4). */
 .fs-strip__cell.is-anchor { border-color: var(--edge); }
 .fs-strip__cell.is-gold   { border-color: var(--edge); }
 
+/* THE LABEL: top row, centred, one line, always.
+ *
+ * `flex: 0 0 auto` keeps it the fixed row of the column. The three properties
+ * after it are the no-wrap contract — a label that outgrows its cell
+ * ellipsizes rather than taking a second line and resizing the strip. Every
+ * label in the product is reworded to fit; the ellipsis is the guard that
+ * stops a future one from silently costing 15.6px of panel. */
 .fs-strip__label {
-  min-height: 22px;
+  flex: 0 0 auto;
+  /* THE LABEL TAKES THE CELL'S FULL WIDTH, PADDING INCLUDED.
+   *
+   * The cell's horizontal padding exists to keep the VALUE off the border; a
+   * centred single line of 13px text needs no such protection, and at 320px
+   * the two 7px insets were 14px of a 68px cell — a fifth of the budget, spent
+   * on nothing. Reclaiming it is what lets `Bet Record` and `Upside left` stay
+   * whole words at the smallest certified width instead of being abbreviated
+   * to fit a margin. */
+  margin-left: calc(-1 * var(--fs-c-pad-cell));
+  margin-right: calc(-1 * var(--fs-c-pad-cell));
   margin-bottom: 3px;
-  font-size: var(--fs-size-eyebrow);
+  font-size: var(--fs-c-size-label);
+  letter-spacing: var(--fs-c-track-label);
   line-height: 1.2;
-  text-align: left;
-  color: var(--g1);
+  text-align: center;
+  color: var(--fs-c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.fs-strip__cell.is-gold .fs-strip__label { color: var(--gold); }
+.fs-strip__cell.is-gold .fs-strip__label { color: var(--fs-c-gold); }
 
-/* Rev4.2: stronger value typography. Money never reflows on update, so the
- * value is tabular monospace at a fixed weight. */
+/* THE VALUE: takes the rest of the cell and centres itself in it, on both axes.
+ *
+ * `display: flex` with both centres is what makes the vertical centring real —
+ * `text-align` can only do the horizontal half, and the vertical half is the
+ * one the POR's "truly centered" is about. A cell whose neighbour is taller
+ * now centres its figure in the same box rather than hanging from the label.
+ *
+ * Money and odds are tabular monospace and never reflow on update. */
 .fs-strip__value {
-  font-family: var(--fs-font-money);
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  /* THE SAME WIDTH BUDGET AS THE LABEL, and for the same reason.
+   *
+   * Measured at 320x568: the cell is 68px, and with 7px of padding either side
+   * the value had 54px to draw in. `+$126` at the SS5.1 metric step needs 58px
+   * of tabular monospace, so it overflowed its own box by 4px — inside the
+   * cell, but only because the padding happened to absorb it, and a longer
+   * figure would not have been so lucky. The label already reclaims this
+   * padding; a centred single line of figures has exactly as little use for it,
+   * and having the two rows share one budget is what makes them one column
+   * rather than two boxes that agree by coincidence. */
+  margin-left: calc(-1 * var(--fs-c-pad-cell));
+  margin-right: calc(-1 * var(--fs-c-pad-cell));
+  font-family: var(--fs-c-font-number);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-size-value);
-  font-weight: var(--fs-weight-strong);
-  letter-spacing: -.02em;
+  font-size: var(--fs-c-size-metric);
+  font-weight: var(--fs-c-weight-number);
+  letter-spacing: var(--fs-c-track-number);
+  line-height: 1.1;
   text-align: center;
-  color: var(--bone);
+  color: var(--fs-c-text);
 }
 
 .fs-strip__cell.is-gold   .fs-strip__value,
@@ -93,13 +176,87 @@
 .fs-strip__value.is-negative { color: var(--red); }
 .fs-strip__value.is-pending  { color: var(--amber); }
 
-/* Rank/context reads as context, not as a second figure — secondary grey,
- * including its separator (POR §2.3). */
+.fs-strip__value.has-context {
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Shared disclosure language: Rules, Account and Matchup Preview. */
+.fs-accordion {
+  background: var(--card);
+  border: var(--fs-border);
+  border-radius: var(--fs-radius-card);
+  overflow: hidden;
+}
+
+.fs-accordion + .fs-accordion { margin-top: var(--fs-space-2); }
+
+.fs-accordion__head {
+  display: flex;
+  align-items: center;
+  gap: var(--fs-space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: 9px var(--fs-space-4);
+  border: 0;
+  background: transparent;
+  color: var(--bone);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-accordion__head:focus-visible { outline: 1px solid var(--gold); outline-offset: -2px; }
+.fs-accordion__main { flex: 1 1 auto; min-width: 0; }
+.fs-accordion__title {
+  display: block;
+  font-size: 16px;
+  font-weight: var(--fs-weight-strong);
+  line-height: 1.2;
+}
+.fs-accordion__sub {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--fs-c-text-muted);
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.fs-accordion__meta,
+.fs-accordion__number {
+  flex: 0 0 auto;
+  color: var(--fs-c-text-muted);
+  font-family: var(--fs-font-money);
+  font-size: 11px;
+}
+.fs-accordion__number { color: var(--gold); }
+.fs-accordion__chev {
+  flex: 0 0 auto;
+  color: var(--fs-c-text-muted);
+  font-size: 18px;
+  transition: transform .15s ease;
+}
+.fs-accordion.is-open > .fs-accordion__head .fs-accordion__chev { transform: rotate(90deg); }
+.fs-accordion__body { display: none; padding: 0 var(--fs-space-4) var(--fs-space-4); }
+.fs-accordion.is-open > .fs-accordion__body { display: block; }
+
+@media (max-height: 620px) {
+  .fs-accordion__head { min-height: 50px; padding-top: 6px; padding-bottom: 6px; }
+  .fs-accordion__sub { font-size: 10px; }
+}
+
+/* Context reads as a secondary line beneath its figure. It stays unbroken so
+ * the four-cell summary cannot push context into the adjacent cell. */
 .fs-strip__context {
   font-family: var(--fs-font-ui);
-  font-size: var(--fs-size-micro);
+  font-size: 8px;
   font-weight: var(--fs-weight-regular);
-  color: var(--g1);
+  color: var(--fs-c-text-muted);
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 /* ── Credits disclaimer ────────────────────────────────────────────────────
@@ -146,6 +303,14 @@
 }
 
 .fs-rail::-webkit-scrollbar { display: none; }
+
+/* All three product carousel families use native momentum/touch scrolling. */
+.fs-carousel,
+.fs-rail--carousel,
+.fs-rescar {
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
 
 .fs-rail > .fs-rail__item {
   flex: 0 0 auto;
@@ -206,7 +371,19 @@
 .fs-sheet {
   position: relative;
   width: 100%;
-  max-height: 80%;
+  /* FINAL POR §29 — AN EXPANSION IS BOUNDED AT ~75% AND SCROLLS INSIDE ITSELF.
+   *
+   * This was 80%, which measured 80.06vh at 375x667 and is the one width where
+   * the bound actually binds. §29 asks for ~75vh, and tightening it costs
+   * nothing that was not already paid for: `overflow-y: auto` below means the
+   * content that no longer fits scrolls rather than being clipped, which is the
+   * behaviour §29 specifies in the same sentence.
+   *
+   * THE BOUND IS THE POINT, not the exact number. A sheet that can grow to fill
+   * the viewport stops reading as an overlay on top of a surface and starts
+   * reading as a new page — and the reader loses the context they expanded FROM,
+   * which is the whole reason the card expands in place. */
+  max-height: 75%;
   overflow-y: auto;
   background: var(--card);
   border: var(--fs-border);
@@ -251,6 +428,17 @@
  * `right: auto` is explicit rather than merely omitted, because the shorthand
  * this replaced set it and a half-applied override would leave the control
  * stretched across the whole sheet. */
+/* THE UNIVERSAL CLOSE-X — LOCKED UPPER-LEFT by owner ruling, re-confirmed
+ * after the Final POR addendum. It supersedes every older upper-right
+ * reference. The one still standing is Final POR §29; Rev 4.3 §25 already
+ * specifies upper-left. So this SUPERSEDES §29 and CONFIRMS §25. It applies
+ * to every
+ * dismissible overlay in the product because `sheet()` renders all of them.
+ *
+ * `top` and `left` are small on purpose: the ruling asks for a control visually
+ * ATTACHED to the active card, sheet or detail view rather than floated in a
+ * corner of the viewport. `.fs-sheet` is the positioning context, so these are
+ * insets from the sheet's own edge and follow it at every width. */
 .fs-sheet__close {
   position: absolute;
   top: 8px;
@@ -285,6 +473,18 @@
   font-size: 13px;
   font-weight: var(--fs-weight-strong);
   cursor: pointer;
+  /* UIRECON WAVE 5 — THE GOVERNED TOUCH FLOOR, STATED ON THE PRIMITIVE.
+   *
+   * Padding alone left this at 41px, three short of the 44px floor the choice
+   * cell, the gear, the account control and the sheet's close button are all
+   * held to. `.fs-send__btn` had already been given 48px individually, which is
+   * how a floor stops being a floor: one control meets it because someone
+   * remembered, and the rest sit under it because nobody measured. The two that
+   * were under it are Accept / Counter / Decline and VIEW MATCHUP PREVIEW —
+   * the controls that answer a real wager.
+   *
+   * A MINIMUM, NOT A HEIGHT. Anything that needs to be taller still is. */
+  min-height: 44px;
 }
 
 .fs-btn--gold  { background: var(--goldbg);  border: 1px solid var(--gold);   color: var(--gold); }
@@ -312,3 +512,312 @@
 }
 
 .fs-note--pending { color: var(--amber); }
+/* ── UIRECON Rev 1.4 · Account — the gold left edge, removed ────────────────
+ *
+ * WHAT WENT. `WAGERING SUMMARY` carried a 2px gold rule down its left edge —
+ * `box-shadow: inset 2px 0 0 var(--gold)` on `.fs-lsec.is-elevated` — on top
+ * of a lifted fill and a gold-tinted border. Three markers for one fact. The
+ * edge was the one that read as ornament rather than as hierarchy: it is the
+ * same rule the acting GM's own row uses in Standings to mean "this one is
+ * yours", so on the Account tab it made a section look selected.
+ *
+ * WHAT STAYS. The lifted ground and the edge border, which are the section's
+ * normal border hierarchy and are what actually mark it as the statement the
+ * other three explain into. NOTHING replaces the rule on the other three
+ * sides; a removed ornament is not a brief for a new one.
+ *
+ * WHY THE OVERRIDE LIVES HERE. The declaration is in `ledger.css`, which this
+ * pass does not own. Specificity, not source order, is what carries it —
+ * `components.css` is linked BEFORE `ledger.css`, so the ancestor is
+ * load-bearing rather than decorative. RECONCILE by deleting the `box-shadow`
+ * line from `.fs-lsec.is-elevated` in `ledger.css` and this block with it.
+ *
+ * SCOPED TO THE ACCOUNT SURFACE ON PURPOSE. `.fs-lscroll` is the Account tab's
+ * own scroll region. The Wrap Up result card is a different surface with its
+ * own rule and is not this lane's to change. */
+.fs-lscroll .fs-lsec.is-elevated { box-shadow: none; }
+
+/* ══ THE ODDS-REFRESH CONTROL — UIRECON refine-refresh pass ═════════════════
+ *
+ * ONE CONTROL, THREE HOMES. It sits beside the `MATCHUPS` heading on Play, in
+ * the upper-right of every Play Matchup card, and on the Status tab's live
+ * Dynamic cards where a full-width `↻ REFRESH ODDS` button used to be. It
+ * lives in `components.css` rather than in any one surface's sheet for exactly
+ * that reason: a control that means "re-read this market" must look and behave
+ * the same wherever a market is shown, or the gesture stops being one gesture.
+ *
+ * ── IT MUST NOT MOVE THE CARD IT SITS ON ───────────────────────────────────
+ *
+ * The Play card is one snap position in a carousel whose geometry Rev 1.4
+ * certified. A control that added height would change the card, the item and
+ * the snap; so the glyph is sized to the line it shares — `.fs-wcard__head`'s
+ * first child is a 44px challenge button, and this sits INSIDE that height with
+ * `align-self: flex-start` and no vertical padding of its own.
+ *
+ * THE TAP TARGET IS BIGGER THAN THE GLYPH, and that is the point of the
+ * negative margin: the painted control is small and quiet, while the pressable
+ * area meets the governed 44px floor by extending into the padding around it.
+ * A 20px tap target with a 44px `min-height` would have pushed the row taller;
+ * this keeps the row and gives the thumb the whole corner.
+ */
+.fs-oddsref {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  /* THE TARGET IS THE BUTTON, NOT A PSEUDO-ELEMENT.
+   *
+   * This was first drawn as a 26px box with `::after { inset: -10px }` reaching
+   * out to 44. It measured 44x44 to `elementFromPoint` and 26px to WP3E's
+   * accessibility gate, which reads a bounding rect on every visible
+   * interactive control — and the gate is right: a reach nothing can measure is
+   * a reach nobody can audit.
+   *
+   * So the BUTTON is the governed 44px target and the painted circle moved into
+   * the glyph. The control still reads as small and quiet, and is now honestly
+   * the size it claims. It costs no layout where it matters:
+   * `.fs-wcard__head` is already 44px tall because the challenge control is. */
+  width: var(--fs-c-touch);
+  height: var(--fs-c-touch);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--g1);
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fs-oddsref:hover { color: var(--bone); }
+
+.fs-oddsref:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.fs-oddsref:disabled { cursor: default; }
+
+.fs-oddsref__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* The painted control: small and quiet, inside a target that is not. */
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--edge);
+  border-radius: 50%;
+  font-size: var(--fs-size-fine);
+  line-height: 1;
+}
+
+.fs-oddsref:hover .fs-oddsref__glyph { border-color: var(--g2); }
+
+.fs-oddsref[data-refresh-state="done"] .fs-oddsref__glyph {
+  border-color: var(--g2);
+}
+
+/* WORKING IS A SPIN, NOT A SUBSTITUTION. The glyph a GM pressed keeps its
+ * identity while it turns, so the control never looks like it was replaced by
+ * a different control mid-press. */
+.fs-oddsref[data-refresh-state="working"] .fs-oddsref__glyph {
+  animation: fs-oddsref-spin 900ms linear infinite;
+}
+
+/* DONE IS BRIEF AND IT IS NOT GREEN. A refresh moved no money, and the palette
+ * this product uses for green is the palette it uses for winning credits. */
+.fs-oddsref[data-refresh-state="done"] { color: var(--bone); }
+
+@keyframes fs-oddsref-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* REDUCED MOTION GETS A STATE, NOT AN ANIMATION. The control still has to say
+ * it is working, so the spin is replaced by a dimming rather than removed. */
+@media (prefers-reduced-motion: reduce) {
+  .fs-oddsref[data-refresh-state="working"] .fs-oddsref__glyph {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* The heading control sits with the word it refreshes, not with the count.
+ *
+ * IT WRAPS, AND THE STAMP IS WHAT WRAPS. `Odds updated 11:47 AM` beside
+ * `MATCHUPS ↻` and `11 OPPONENTS · SWIPE` does not fit 320px, and putting the
+ * stamp in the flow BELOW the heading changed the title-to-content gap that
+ * UIRECON Waves 1–3 certify as uniform across every section — measured 17px
+ * against the 5px every other section has. Keeping it INSIDE the heading box
+ * leaves that gap untouched: the heading grows, the space under it does not. */
+.fs-heading__lead {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fs-space-2);
+  min-width: 0;
+}
+
+/* THE STAMP IS A NUMBER AND IS DRAWN AS ONE — tabular figures, so a stamp that
+ * ticks from 11:09 to 11:47 does not change width and shift the row. */
+.fs-oddsref__stamp {
+  display: block;
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-micro);
+  color: var(--g1);
+}
+
+.fs-oddsref__stamp:empty { display: none; }
+
+/* The stamp takes its own line INSIDE the lead group. `flex-basis: 100%` is
+ * what puts it there — the heading row is already carrying a count and a swipe
+ * affordance, and a fourth item on that line would push one of them off at
+ * 320px. */
+.fs-oddsref__stamp--board {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* ── LOCKED ODDS versus CURRENT ODDS ────────────────────────────────────────
+ *
+ * TWO ROWS THAT MUST NOT READ AS A TRANSITION. A Locked wager's price froze
+ * when it was offered and cannot move; the live line beside it is context. So
+ * there is no arrow between them, no delta, and no colour on either figure —
+ * the only difference in treatment is that the current row is quieter, which
+ * says "this one is not your wager" without saying anything else. */
+/* ONE LINE, MEASURED RATHER THAN CHOSEN. Stacked as two rows this block was
+ * 32px, and a Status lifecycle card is a fixed-height carousel item: measured
+ * at every certified viewport, the card needed 138px inside 132px and clipped
+ * its own foot. Rev 1.4 Part 11 tuned those four rails to fit one mobile
+ * viewport, so growing the card is not available — the block has to fit the
+ * card it annotates.
+ *
+ * Laid out in a row it is one line, and the card is unchanged. Both figures
+ * keep their own label, so nothing about what each number means depends on
+ * position. */
+.fs-oddscmp {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--fs-space-2) var(--fs-space-4);
+}
+
+.fs-oddscmp__row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--fs-space-2);
+}
+
+.fs-oddscmp__label {
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  color: var(--g2);
+}
+
+.fs-oddscmp__value {
+  font-family: var(--fs-c-font-number);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-size-micro);
+  color: var(--bone);
+}
+
+.fs-oddscmp__row.is-quiet .fs-oddscmp__value { color: var(--g1); }
+
+/* THE CARD VARIANT CENTRES ITSELF IN THE HEAD ROW.
+ *
+ * `.fs-wcard__head` is `align-items: flex-start` and its first child is a 44px
+ * challenge target, so a 26px control aligned to the start sits flush with the
+ * top of the card — and its 9px of upward reach then falls OUTSIDE the card, on
+ * the carousel item behind it. Measured at 390x844: the card's top edge was
+ * 6px above the button's, so the effective target was 41px tall rather than 44.
+ *
+ * Centring it inside the row it already shares costs no height — the row is
+ * 44px either way — and puts the whole 44px reach inside the card, which is the
+ * only place a tap can land on it. */
+.fs-oddsref--card { align-self: center; }
+
+/* The inline variant is unused today — the Locked comparison is read-only — and
+ * is kept because the affordance is shared and a later caller may want a glyph
+ * inside a figure row. It keeps the 44px target and gives up only the circle. */
+.fs-oddsref--inline .fs-oddsref__glyph {
+  width: 18px;
+  height: 18px;
+  border-color: transparent;
+  font-size: var(--fs-size-eyebrow);
+}
+
+/* ── FINAL POR §8 · THE WRAP UP DETAIL COMPONENT FAMILY ─────────────────────
+ *
+ * Yahoo Fantasy Football Matchup, FantasyStakes Matchup and Prop Pool detail
+ * are three views of the same idea — here is a thing that finished, here is
+ * what it did — and they have to read as three members of one family rather
+ * than as three surfaces built by three packages.
+ *
+ * ONE PLACE DECIDES ALL OF IT. Section-label typography, key/value row sizing,
+ * left/right alignment, sheet padding, divider treatment, explanatory copy size
+ * and vertical spacing live here and only here. The three sheets emit
+ * `detailSection` / `detailRow` / `detailNote` and choose nothing themselves,
+ * which is what stops the Pool detail drifting away from the other two again.
+ *
+ * WHY NOT REUSE `.fs-prev__row`. That primitive belongs to Preview, which is a
+ * pre-decision surface with its own sizing; the two were already diverging and
+ * sharing them would have coupled a postgame report to a betting slip. */
+.fs-wrapsec + .fs-wrapsec { margin-top: var(--fs-space-5); }
+
+.fs-wrapsec__head {
+  margin: 0 0 var(--fs-space-3);
+  padding-bottom: var(--fs-space-2);
+  border-bottom: var(--fs-border-hair);
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--fs-r43-tertiary);
+}
+
+/* THE KEY/VALUE ROW. Label left, figure right, both on one baseline — the same
+ * left/right contract the four-cell strips and the settings tables use, so a
+ * reader moving between them is never re-learning where a number is. */
+.fs-wraprow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fs-space-4);
+  padding: 5px 0;
+}
+
+.fs-wraprow + .fs-wraprow { border-top: var(--fs-border-hair); }
+
+.fs-wraprow__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-r43-card);
+  color: var(--fs-r43-secondary);
+}
+
+.fs-wraprow__value {
+  flex: 0 0 auto;
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  color: var(--bone);
+  text-align: right;
+}
+
+/* Explanatory copy — THE READ's sentences and each section's note — is one
+ * size everywhere. It was three. */
+.fs-wrapnote {
+  margin: 0 0 var(--fs-space-2);
+  font-size: var(--fs-r43-meta);
+  line-height: 1.45;
+  color: var(--fs-r43-secondary);
+}
+
+.fs-wrapnote:last-child { margin-bottom: 0; }
+
+.fs-wrapsrc {
+  margin-top: var(--fs-space-2);
+  font-size: var(--fs-r43-micro, 10px);
+  color: var(--fs-r43-tertiary);
+}

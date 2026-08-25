@@ -126,6 +126,24 @@ class GmLedger:
     season_advance_cents: int
     topoff_issued_cents: int
     receivable_cents: int
+
+    #: WP-15 — THE SKUNK OBLIGATION, WHICHEVER ERA STATED IT.
+    #:
+    #: These two were on `CurrentSettle` and stopped here, and the omission was
+    #: not cosmetic. Under the Final POR a GM's Skunk is derived through event
+    #: provenance and is NOT a `receivable:` balance, so a surface itemising the
+    #: obligation as `-receivable_cents` drew ZERO for a GM who had really been
+    #: assessed -- while `obligations_cents`, which the same row carries,
+    #: included the fee. The total was right and the line item was blank, so the
+    #: parts stopped summing to the whole for exactly the seasons the Final POR
+    #: governs.
+    #:
+    #: `is_final_por` travels with it because a consumer cannot pick the right
+    #: source without knowing the era, and inferring the era from which figure
+    #: happens to be non-zero is how the next mapping error hides.
+    skunk_cents: int
+    is_final_por: bool
+
     obligations_cents: int
 
     # ── The result, verbatim from CurrentSettle ──────────────────────────────
@@ -170,6 +188,10 @@ class GmLedger:
             "season_advance_cents": self.season_advance_cents,
             "topoff_issued_cents": self.topoff_issued_cents,
             "receivable_cents": self.receivable_cents,
+            # WP-15 -- BOTH, or a Final POR GM's Skunk line reads zero while
+            # the total beside it includes the fee.
+            "skunk_cents": self.skunk_cents,
+            "is_final_por": self.is_final_por,
             "obligations_cents": self.obligations_cents,
             "current_settle_cents": self.current_settle_cents,
             "held_open_challenges_cents": self.held_open_challenges_cents,
@@ -219,6 +241,8 @@ def gm_ledger(db: Session, *, team_id: int, league_id: int) -> GmLedger:
         season_advance_cents=settle.season_advance_cents,
         topoff_issued_cents=settle.topoff_issued_cents,
         receivable_cents=settle.receivable_cents,
+        skunk_cents=settle.skunk_cents,
+        is_final_por=settle.is_final_por,
         obligations_cents=settle.obligations_cents,
         current_settle_cents=settle.current_settle_cents,
         held_open_challenges_cents=team_open_challenge_escrow_cents(db, team_id),

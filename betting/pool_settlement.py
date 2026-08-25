@@ -61,6 +61,7 @@ from betting.pool_census import (
 from betting.pool_errors import PoolSettlementRefusedError
 from betting.pool_season_boundary import is_final_week
 from betting.pool_subjects import league_weekly_structure
+from economy.championship_pots import terminal_pool_destination
 from ledger.ledger import (_balance_of_in_session, balance_of,
                            lock_funding_scopes, post as ledger_post)
 
@@ -471,9 +472,13 @@ def _resolve_zero_claim(db, *, instance, spec, outcome: PoolOutcome,
     door = DOOR_ROLLOVER_EXPIRY if event_type == EVENT_ROLLOVER_EXPIRY_SWEEP \
         else DOOR_CHAMPIONSHIP_SWEEP
 
+    # WP-5 — one resolution for every terminal Pool destination. Under the
+    # Final POR this money is a FantasyStakes Championship Pot addition (§13);
+    # under the legacy era it is `championship:{league}`, exactly as before.
     posting = ledger_post(
         [(f"pool:{instance.league_id}", -pot_cents),
-         (f"championship:{instance.league_id}", pot_cents)],
+         (terminal_pool_destination(db, league_id=instance.league_id,
+                                    season=instance.season), pot_cents)],
         door=door, session=db,
     )
     _record_event(db, instance=instance, event_type=event_type,
@@ -819,7 +824,8 @@ def expire_terminal_rollovers(db, *, league_id: int, final_week: int,
 
         posting = ledger_post(
             [(f"pool:{league_id}", -amount),
-             (f"championship:{league_id}", amount)],
+             (terminal_pool_destination(db, league_id=league_id,
+                                        season=instance.season), amount)],
             door=DOOR_ROLLOVER_EXPIRY, session=db,
         )
         _record_event(db, instance=instance,

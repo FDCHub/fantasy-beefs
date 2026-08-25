@@ -223,11 +223,14 @@ check('no standings rank in the summary strip',
   !/\b1st\b|\b2nd\b|\b3rd\b/.test(play));
 check('no Fantasy Sportsbook suffix', !/Fantasy Sportsbook/i.test(play));
 check('no directional arrow in any heading', !play.includes('↕'));
-check('the word SWIPE still carries the affordance', play.includes('SWIPE'));
+check('the word SCROLL still carries the affordance', play.includes('SCROLL'));
 check('the four-cell strip is retained',
   (play.match(/fs-strip__cell/g) || []).length === 4);
+// UIRECON WAVE 1 — the labels are held to one line at the smallest certified
+// width, so two of them were reworded. The claim is unchanged: four cells,
+// four locked labels, and no rank among them.
 check('and its labels are the locked four',
-  ['Net Winnings', 'Wallet', 'Weekly Min Left', 'Available']
+  ['Net Won', 'Wallet', 'Min Left', 'Available']
     .every((l) => play.includes(l)));
 
 /* ── F · The Matchup Preview — §8 ────────────────────────────────────────── */
@@ -244,17 +247,42 @@ const previewModel = {
 const prev = previewSheet(previewModel);
 const prevTitles = [...prev.body.matchAll(/fs-prev__title">([^<]*)/g)].map((m) => m[1]);
 
+// UIRECON WAVE 4A — THE MATCHUP IS NAMED ONCE.
+//
+// A `MATCHUP` block listing both team names sat under a sheet subtitle
+// that had just given both team names — the same two facts twice inside
+// about sixty pixels, and in the bound state the second copy carried two
+// blank values. The slot now carries what the subtitle does not: the
+// market on offer (`ON OFFER`) for a live pairing, or the final score
+// (`RESULT`) for a settled one. An UNBOUND preview has neither, so it
+// renders no second block at all — which is what these fixtures are.
+/* FINAL POR UI-3E §27E — LINEUPS LEADS THE PREVIEW SHEET.
+ *
+ * The locked order is now LINEUPS → WHY THE LINE LOOKS THIS WAY → THE READ.
+ * The claim is unchanged and is still the one worth holding: the sheet's
+ * section order is LOCKED and is not something a later change may quietly
+ * reshuffle. Only the locked order moved.
+ *
+ * WHY IT MOVED. §27E puts the reader's own roster first: LINEUPS is the fact
+ * the two analysis modules rest on, and a reader deciding whether to accept a
+ * wager looks at who is playing before they read why the line sits where it
+ * does. Left behind by the run that implemented §27E and replaced here rather
+ * than relaxed. */
 check('the section order is the locked one',
   prevTitles.join(' → ')
-    === 'MATCHUP → WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+    === 'LINEUPS → WHY THE LINE LOOKS THIS WAY → THE READ',
   prevTitles.join(' → '));
 check('there is no SPORTSBOOK VIEW block',
   !prev.body.includes('SPORTSBOOK VIEW'));
 check('and no market cell of any kind',
   !/data-market|fs-market__label/.test(prev.body));
-check('analysis precedes the lineups',
-  prev.body.indexOf('WHY THE LINE') < prev.body.indexOf('LINEUPS')
-  && prev.body.indexOf('THE READ') < prev.body.indexOf('LINEUPS'));
+/* §27E — the lineups precede the analysis, which is the same claim inverted.
+ * Kept as a SEPARATE check from the order above because it is the one a future
+ * change is most likely to break by accident: the titles array can be right
+ * while the rendered body is not, if a section is emitted out of band. */
+check('the lineups precede the analysis',
+  prev.body.indexOf('LINEUPS') < prev.body.indexOf('WHY THE LINE')
+  && prev.body.indexOf('LINEUPS') < prev.body.indexOf('THE READ'));
 check('both analysis sections are open by default',
   (prev.body.match(/aria-expanded="true"/g) || []).length === 2);
 check('the lineups are collapsed',
@@ -372,7 +400,7 @@ check('the trust anchor is exact', LEDGER_TRUST_ANCHOR
   === 'Real odds. Fantasy stakes. Ledger keeps score.');
 check('it appears on Account, once', (account.match(/fs-anchor/g) || []).length === 1);
 check('the top-level strips answer the four questions',
-  ['Available', 'In Play', 'Held', 'Weekly Min Left', 'Current Settle']
+  ['Available', 'In Play', 'Escrow', 'Min Left', 'Settle']
     .every((l) => account.includes(l)));
 check('Current Settle is visible without expanding anything',
   account.indexOf('fs-current-settle') > 0
@@ -380,15 +408,32 @@ check('Current Settle is visible without expanding anything',
     account.slice(account.indexOf('fs-lscroll'),
       account.indexOf('fs-current-settle'))
       .split('</section>').pop()));
-check('the three accounting sections are disclosures',
-  (account.match(/data-disclosure/g) || []).length === 3);
+// UIRECON WAVE 2 — FOUR SECTIONS, ONE CONSTRUCTION. Current Settle stopped
+// being a bespoke card and became section 4.
+//
+// FINAL POR UI-6 §30 — ALL FOUR NOW START CLOSED. Rev 4.3 §14.2 excepted
+// section 4 so the figure the tab derives needed no tap; §30 removed the
+// exception, because one card behaving differently from three
+// identical-looking siblings reads as a bug rather than as an affordance. The
+// claim here is unchanged — four real disclosures, each with a real toggle
+// button carrying an accessible expanded state — and only the expected state
+// moved, for all four together. Left behind by the run that implemented §30.
+check('the four accounting sections are disclosures',
+  (account.match(/data-disclosure/g) || []).length === 4);
 check('each has a real button with aria-expanded',
-  (account.match(/data-lsec-toggle/g) || []).length === 3
-  && (account.match(/aria-expanded="false"/g) || []).length >= 3);
+  (account.match(/data-lsec-toggle/g) || []).length === 4
+  // `>=` ON THE FALSE COUNT, `===` ON THE TRUE ONE. The panel also contains
+  // expandable ROWS inside the sections, which carry their own collapsed
+  // `aria-expanded`, so the false count is a floor rather than an exact number
+  // — the original assertion used `>= 3` for exactly this reason. The true
+  // count is exact and is the one carrying §30's claim: nothing on this panel
+  // starts expanded.
+  && (account.match(/aria-expanded="false"/g) || []).length >= 4
+  && (account.match(/aria-expanded="true"/g) || []).length === 0);
 check('no accounting row was deleted — the detail is in the DOM',
   account.includes('Season-Opening FantasyStakes')
-  && account.includes('VERSUS ACTIVITY')
-  && account.includes('POOL ACTIVITY'));
+  && account.includes('MATCHUP ACTIVITY')
+  && account.includes('PROP POOL ACTIVITY'));
 
 /* ── J · Rules terminology — §22–§26 ─────────────────────────────────────── */
 
@@ -399,16 +444,37 @@ for (const g of RULE_GROUPS) rulesText += ruleSheet(g).body;
 for (const row of settingsRows()) rulesText += settingSheet(row).body;
 rulesText = rulesText.replace(/<[^>]*>/g, ' ');
 
-for (const stale of ['BAB', 'BAB-504', 'Economy Stop', 'fourteen', '14 weeks',
+for (const stale of ['BAB', 'BAB-504', 'Economy Stop', 'fourteen',
   '14-week', 'capped at', '$140 max', 'Buy-In', 'buy-in',
-  'five certified stops']) {
+  'five certified stops', 'Championship Pot Contribution']) {
   check(`no stale term: ${stale}`, !rulesText.includes(stale));
 }
+
+// A3.2 — "14 weeks" was banned outright while the rules ASSERTED a fixed
+// fourteen-week season. RC2 derives the Weekly Play Reserve from each league's
+// own Yahoo schedule, and the rules now show a worked example so a GM can see
+// how the three parts combine. A worked example needs numbers. So the ban
+// becomes what it always meant: a week count may appear only inside a passage
+// that says it is one league's arithmetic and that another league differs.
+const weekCountSentences = (rulesText.match(/[^.]*\b\d{1,2} weeks\b[^.]*\./g) || []);
+check('a week count is only ever shown as a labelled example',
+  weekCountSentences.every((s) => /works out as/.test(s)),
+  JSON.stringify(weekCountSentences));
+check('and the example says plainly that another league differs',
+  weekCountSentences.length === 0
+  || /different weekly minimum or a different schedule gets a different/
+    .test(rulesText));
+check('the rules never state a week count as universal',
+  !/every league plays \d{1,2} weeks|all leagues play \d{1,2} weeks|the \d{1,2}-week season/i
+    .test(rulesText));
 check('no internal file citation', !/\.py\b|web\/js\//.test(rulesText));
 
 for (const required of [
   'Season-Opening Allocation', 'Weekly Bet Minimum',
-  'Championship Pot Contribution', 'Skunk Fee',
+  // A3.2 — RC2 has TWO independently configured contributions, so the rules
+  // must name both rather than the retired single "Championship Pot".
+  'Weekly Play Reserve', 'Yahoo Championship Contribution',
+  'FantasyStakes Championship Contribution', 'Skunk Fee',
   'largest margin', 'Tied largest losers split one fee',
   'Points For', 'no enforced season maximum',
   'no Skunk in the postseason', 'no Weekly Minimum in the postseason',
@@ -434,8 +500,11 @@ section('K · Wrap Up keeps its shape and loses the arrow');
 
 check('the bets heading carries no directional arrow',
   !BETS_HEADING.includes('↕'), BETS_HEADING);
+// UIRECON WAVE 4B — the viewport treatment IS the whole heading now. `4 SHOWN`
+// named a cap that a one-card carousel makes meaningless; `SCROLL` names what a
+// GM does, and all three Wrap sections say it the same way.
 check('and still states the viewport treatment',
-  BETS_HEADING === 'FANTASYSTAKES BETS · 4 SHOWN · SWIPE', BETS_HEADING);
+  BETS_HEADING === 'FANTASYSTAKES MATCHUPS · SCROLL', BETS_HEADING);
 
 unbindAll();
 

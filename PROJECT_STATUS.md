@@ -371,7 +371,7 @@ Staleness warning
 
 ## API Endpoints
 
-Server runs on port **8007** — `uvicorn api.main:app --port 8007`
+Server runs on port **8007** — `uvicorn api.main_rc2:app --port 8007`
 
 ```
 ┌──────────┬───────────────────────────────┬─────────────────────────────────────────────┐

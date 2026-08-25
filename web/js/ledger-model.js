@@ -166,6 +166,37 @@ function splitAdvance(model, settings) {
 }
 
 /**
+ * The GM's Skunk obligation, from whichever source their season's era states.
+ *
+ * WP-15 SPLIT THE SOURCE AND THE UI WAS STILL READING ONE HALF. Under the
+ * legacy era a Skunk assessment IS a `receivable:` balance; under the Final POR
+ * it is derived through event provenance and `receivable_cents` is zero. A
+ * surface that itemises `-receivable_cents` therefore drew a blank Skunk line
+ * for a Final POR GM who had really been assessed -- while the same response's
+ * `obligations_cents` included the fee, so the parts stopped summing to the
+ * whole for exactly the seasons the Final POR governs.
+ *
+ * THE ERA IS READ, NOT INFERRED. Picking whichever of the two figures happens
+ * to be non-zero would work until a GM legitimately owed nothing, and would
+ * then silently pick the wrong branch.
+ *
+ * SIGNED NEGATIVE, because an obligation reduces the position and both backend
+ * fields report the magnitude.
+ *
+ * @param {{skunk_cents?: number, receivable_cents: number,
+ *          is_final_por?: boolean}} model a GmLedgerOut body
+ * @returns {number}
+ */
+export function skunkObligationCents(model) {
+  const magnitude = model.is_final_por
+    ? (typeof model.skunk_cents === 'number' ? model.skunk_cents : 0)
+    : model.receivable_cents;
+  // NOT `-magnitude`. Negating zero in JavaScript gives -0, which formats as
+  // "-0" and would put a minus sign on a GM who owes nothing.
+  return magnitude === 0 ? 0 : -magnitude;
+}
+
+/**
  * Bind the authoritative GM Ledger read model.
  *
  * THE MAPPING, AND THE ONE CORRECTION IT FORCES. Rev 4.2 draws three sections;
@@ -176,7 +207,8 @@ function splitAdvance(model, settings) {
  *   weeklyReserveNotReleased     → min_reserve
  *   acceptedEscrow               → in_play
  *   weeklyMinOutOfCirculation    → expired_min
- *   skunkFees (signed, negative) → −receivable
+ *   skunkFees (signed, negative) → −skunk under the Final POR,
+ *                                  −receivable under the legacy era
  *   seasonOpening                → season_advance
  *   addedStakes                  → topoff_issued
  *
@@ -207,7 +239,8 @@ export function bindLedger(model, settings) {
     adjustments: Object.freeze({
       weeklyMinOutOfCirculationCents: model.expired_min_cents,
       // A fee is negative here; the backend reports the obligation magnitude.
-      skunkFeesCents: -model.receivable_cents,
+      // ERA-CORRECT: see `skunkObligationCents`.
+      skunkFeesCents: skunkObligationCents(model),
       // No authoritative source — see above. Zero in the identity, unresolved
       // on screen.
       seasonWinningsCents: 0,

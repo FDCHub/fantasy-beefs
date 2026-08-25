@@ -82,12 +82,194 @@ def pending(engine) -> list:
     return [m for m in ACTIVE if m.identifier not in done]
 
 
+def _verify_identifiers(engine, identifiers: set[str]) -> list:
+    """Corroborate the manifest objects for the selected migration IDs."""
+    if not identifiers:
+        return []
+
+    inspector = inspect(engine)
+    present = set(inspector.get_table_names())
+    columns_by_table: dict = {}
+    problems: list = []
+
+    for migration in ACTIVE:
+        if migration.identifier not in identifiers:
+            continue
+        for table in migration.tables:
+            if table not in present:
+                problems.append(f"{migration.identifier}: table {table} missing")
+        for table, column in migration.columns:
+            if table not in present:
+                problems.append(
+                    f"{migration.identifier}: table {table} missing "
+                    f"(needed for column {column})")
+                continue
+            if table not in columns_by_table:
+                columns_by_table[table] = {
+                    c["name"] for c in inspector.get_columns(table)}
+            if column not in columns_by_table[table]:
+                problems.append(
+                    f"{migration.identifier}: {table}.{column} missing")
+
+    return problems
+
+
+def verify(engine) -> list:
+    """Which APPLIED migrations cannot be corroborated by the live schema.
+
+    ── B1 · THE RECORD IS A CLAIM; THIS IS THE CHECK ────────────────────────
+
+    `pending()` answers "what has this database not been told to do". It cannot
+    answer "is this database actually shaped the way the record says", and those
+    are different questions with the same consequence when they disagree: a
+    process serving production traffic against a schema it cannot use.
+
+    Measured before this existed: a database stamped 0001-0006 with all six
+    championship tables absent answered `/ready` 200, `ready: true`,
+    `migrations: "ok"`. Nothing in the system disagreed with a record that was
+    simply untrue.
+
+    So for every migration RECORDED AS APPLIED, the objects the manifest says it
+    creates are looked up in the live schema. Returns one string per missing
+    object, empty when the record and the schema agree.
+
+    NOT THE SAME AS PENDING, AND DELIBERATELY SO. A migration that is pending is
+    an ordinary pre-release state — run it. A migration that is recorded and
+    unverifiable is a CORRUPT record: running it again is not obviously safe and
+    the operator has to decide. Readiness refuses traffic for both; only this
+    one tells an operator the record itself is wrong.
+
+    A DATABASE WITH NO RECORD AT ALL RETURNS NOTHING HERE. It has claimed
+    nothing, so it has contradicted nothing; `pending()` is what refuses it.
+    """
+    return _verify_identifiers(engine, applied_identifiers(engine))
+
+
+class FalseStampError(RuntimeError):
+    """An applied migration record contradicts the physical schema."""
+
+
+def _run_migration(migration, engine) -> list[str]:
+    """Run one legacy module against the runner's explicitly selected engine."""
+    module = importlib.import_module(migration.module)
+    had_engine = hasattr(module, "engine")
+    original_engine = getattr(module, "engine", None)
+    if had_engine:
+        module.engine = engine
+    try:
+        return module.upgrade()
+    finally:
+        if had_engine:
+            module.engine = original_engine
+
+
+def repair_false_stamps(engine=None) -> list:
+    """Explicitly re-run only applied migrations with missing objects.
+
+    False stamps remain fail-closed during ordinary startup and upgrade. This
+    named operator path is safe because ACTIVE migrations are additive and
+    idempotent, and success is accepted only after `verify()` corroborates the
+    physical schema.
+    """
+    from db.schema import engine as default_engine
+
+    engine = engine or default_engine
+    problems = verify(engine)
+    if not problems:
+        return ["nothing to repair — every applied migration is verifiable"]
+
+    bad_ids = {problem.split(":", 1)[0] for problem in problems}
+    lines: list[str] = []
+    for migration in ACTIVE:
+        if migration.identifier not in bad_ids:
+            continue
+        did = _run_migration(migration, engine)
+        lines.append(f"repaired {migration.identifier}: " + "; ".join(did))
+
+    remaining = verify(engine)
+    if remaining:
+        raise FalseStampError("; ".join(remaining))
+    return lines
+
+
 def _record(connection, migration, release: str, version: str) -> None:
     connection.execute(
         text(f"INSERT INTO {TABLE} (identifier, applied_at, release, "
              f"application_version) VALUES (:i, :t, :r, :v)"),
         {"i": migration.identifier, "t": datetime.now(timezone.utc),
          "r": release, "v": version})
+
+
+def _register_rc2_models() -> None:
+    """Import the additive RC2 models so `create_all` builds their tables.
+
+    THE SAME FOUR IMPORTS `api/main_rc2.py` MAKES, AND FOR THE SAME REASON. The
+    package `__init__` modules are deliberately side-effect free, so importing
+    `db.schema` alone registers no RC2 model. A `create_all` run without these
+    omits all six championship tables while `stamp_all` still records 0003-0006
+    as applied -- a database that reports itself migrated and cannot run a
+    championship. That is the exact failure `railway.toml` warns about for the
+    entrypoint, and a bootstrap performed HERE is exposed to it identically.
+    """
+    from economy import fantasystakes_championship_allocation  # noqa: F401
+    from economy import fantasystakes_championship_settlement  # noqa: F401
+    from reports import championship_corrections               # noqa: F401
+    from reports import championship_read_model                # noqa: F401
+
+
+def bootstrap_fresh(engine) -> list:
+    """Build the schema of a database that has none, and stamp the manifest.
+
+    -- WEBDEPLOY-2 . WHY THIS BELONGS TO THE MIGRATION COMMAND --------------
+
+    `preDeployCommand` runs this file ONCE, before any instance starts, and a
+    non-zero exit blocks the release. Against an EMPTY database that was fatal:
+    every ACTIVE migration is pending, the first one ALTERs `leagues`, no table
+    exists yet, and the deploy failed with NoSuchTableError. The application's
+    own startup hook would have bootstrapped it -- but the pre-deploy command
+    fails before any instance is allowed to start, so nothing ever did.
+    Measured on the first real Railway deployment, not theorised.
+
+    The fix is not to remove the pre-deploy step. It is to let the ONE command
+    that owns schema state handle the one case it did not: a database with no
+    schema at all.
+
+    -- AND IT REMOVES THE MULTI-REPLICA RACE ENTIRELY ----------------------
+
+    `api/main.py`'s startup bootstrap is inert against a production database
+    that already has tables, but on an empty one two replicas would race
+    `create_all`. Bootstrapping here means the schema exists before the first
+    instance boots, so every replica finds a populated database and takes the
+    inert path. What was an operational ordering constraint -- deploy at one
+    replica, then scale -- becomes structurally impossible to get wrong.
+
+    -- FRESH MEANS EMPTY, ON THE SAME TEST THE STARTUP HOOK USES -----------
+
+    No tables at all. Not "no `leagues`", not "no `schema_migrations`" -- an
+    entirely empty database, which is the same `fresh = not existing` predicate
+    `_create_tables` applies, so there is one answer to "is this database new"
+    rather than two that can disagree. A database with ANY table takes the
+    ordinary migration path untouched.
+    """
+    from db.schema import Base
+    from ledger.ledger import LedgerEntry
+
+    _register_rc2_models()
+    Base.metadata.create_all(engine)
+    # THE LEDGER KEEPS ITS OWN DECLARATIVE BASE, so `db.schema.Base` does not
+    # create `ledger_entries`. PG-CERT-1 measured a fresh database coming up
+    # with every application table and no ledger; the service would serve and
+    # fail on the first Credit posted.
+    #
+    # AGAINST `engine`, NOT THE DEFAULT ONE. `ledger.create_ledger_table()` is
+    # the same one-line `create_all` but is hard-bound to `db.schema.engine`,
+    # so calling it here would honour this function's `engine` argument for the
+    # application tables and silently ignore it for the ledger -- building half
+    # a schema in each of two databases the moment anyone passes an engine.
+    # Same metadata, correctly scoped. Additive and safe to repeat.
+    LedgerEntry.metadata.create_all(engine)
+    ensure_table(engine)
+    return stamp_all(engine)
 
 
 def upgrade(engine=None, *, dry_run: bool = False) -> list:
@@ -101,7 +283,21 @@ def upgrade(engine=None, *, dry_run: bool = False) -> list:
     engine = engine or default_engine
     identity = release_identity(use_cache=False)
 
+    # WEBDEPLOY-2 -- A DATABASE WITH NO SCHEMA IS BOOTSTRAPPED, NOT MIGRATED.
+    # Checked BEFORE `ensure_table`, so the record table this command would
+    # otherwise create cannot itself make an empty database look non-empty.
+    if not inspect(engine).get_table_names():
+        if dry_run:
+            return ["WOULD BOOTSTRAP a fresh database: create the schema and "
+                    "stamp the manifest (no migration would be run)"]
+        stamped = bootstrap_fresh(engine)
+        return ["fresh database -- schema created and manifest stamped: "
+                + (", ".join(stamped) or "nothing to stamp")]
+
     ensure_table(engine)
+    contradictions = verify(engine)
+    if contradictions:
+        raise FalseStampError("; ".join(contradictions))
     todo = pending(engine)
     if not todo:
         return ["nothing pending — the database is at the manifest's head"]
@@ -113,11 +309,10 @@ def upgrade(engine=None, *, dry_run: bool = False) -> list:
                          f"({migration.module})")
             continue
 
-        module = importlib.import_module(migration.module)
         # THE MIGRATION'S OWN `upgrade()` DOES THE WORK. This file adds ordering
         # and a record; it does not reimplement, wrap or second-guess what each
         # migration does, all of which are separately certified.
-        did = module.upgrade()
+        did = _run_migration(migration, engine)
         with engine.begin() as connection:
             _record(connection, migration, identity.release, identity.version)
         lines.append(f"applied {migration.identifier}: " + "; ".join(did))
@@ -151,6 +346,15 @@ def stamp_all(engine=None) -> list:
     engine = engine or default_engine
     identity = release_identity(use_cache=False)
 
+    # A stamp is evidence only after the schema can corroborate every object
+    # that the manifest says the migration owns. This check happens before the
+    # first row is written, so a missing model registration can never recreate
+    # the false-head state that this runner is responsible for preventing.
+    contradictions = _verify_identifiers(
+        engine, {migration.identifier for migration in ACTIVE})
+    if contradictions:
+        raise FalseStampError("; ".join(contradictions))
+
     ensure_table(engine)
     done = applied_identifiers(engine)
     stamped: list[str] = []
@@ -171,6 +375,7 @@ def status(engine=None) -> dict:
     return {
         "applied": sorted(done),
         "pending": [m.identifier for m in ACTIVE if m.identifier not in done],
+        "unverifiable": verify(engine),
         "manifest_head": ACTIVE[-1].identifier if ACTIVE else None,
         "historical_not_run": len(HISTORICAL),
     }
@@ -180,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--repair-false-stamps", action="store_true")
     args = parser.parse_args(argv)
 
     if args.status:
@@ -187,12 +393,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"manifest head : {state['manifest_head']}")
         print(f"applied       : {', '.join(state['applied']) or 'none'}")
         print(f"pending       : {', '.join(state['pending']) or 'none'}")
+        print(f"unverifiable  : {'; '.join(state['unverifiable']) or 'none'}")
         print(f"historical    : {state['historical_not_run']} recorded, not run")
-        return 0 if not state["pending"] else 1
+        return 0 if not state["pending"] and not state["unverifiable"] else 1
+
+    if args.repair_false_stamps:
+        try:
+            for line in repair_false_stamps():
+                print(f"  · {line}")
+        except Exception as exc:
+            print(f"MIGRATION REPAIR FAILED: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
+            return 2
+        print("migration false-stamp repair complete.")
+        return 0
 
     try:
         for line in upgrade(dry_run=args.dry_run):
             print(f"  · {line}")
+    except FalseStampError as exc:
+        print("MIGRATION FAILED: FalseStampError — applied migration records "
+              f"contradict the physical schema: {exc}. Run `python -m "
+              "migrations.run --repair-false-stamps` only after reviewing "
+              "the named objects.", file=sys.stderr)
+        return 2
     except Exception as exc:
         # THE TYPE AND THE MIGRATION, NOT THE DRIVER'S MESSAGE — which can carry
         # a connection URL. A failed migration must block the release, so this

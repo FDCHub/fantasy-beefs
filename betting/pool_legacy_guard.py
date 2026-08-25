@@ -105,17 +105,42 @@ def rev13_activation_markers(db, league_id: int) -> tuple[str, ...]:
     environment state rather than governance. A guard keyed on it would open the
     legacy path again the moment Yahoo went down, which is precisely backwards.
 
-    KNOWN BOUNDARY, STATED RATHER THAN PAPERED OVER. A league that has never
-    been configured for Rev1.3 AND has never collected carries no durable Rev1.3
-    state of any kind, so nothing here can fire for it — it is indistinguishable
-    from a legacy league at the schema level, because no Rev1.3 intent was ever
-    recorded. Activating such a league is exactly what
-    `configure_pool_weekly_entry` is for, and marker (1) fires from that moment
-    on.
+    THAT BOUNDARY IS NOW CLOSED FOR ANY SEASON ACTIVATED UNDER THE FINAL POR
+    (WP-5), by marker (0) below. A league that has never been configured for
+    Rev1.3 AND has never collected still carries no Rev1.3 state — but if its
+    season is stamped `RULESET_FINAL_POR` it was activated under the current
+    architecture, at activation, before any Pool row could exist, and the
+    legacy path is refused on that alone. The residual boundary is now only a
+    LEGACY-ruleset season with no Rev1.3 state, which is indistinguishable from
+    a legacy league because it IS one. Activating such a league is exactly what
+    `configure_pool_weekly_entry` is for, and marker (1) fires from then on.
     """
-    from db.schema import PoolConfig, PoolInstance, PoolRotationCycle
+    from db.schema import League, PoolConfig, PoolInstance, PoolRotationCycle
 
     markers: list[str] = []
+
+    # 0. THE RULESET STAMP — EARLIER THAN EVERY OTHER MARKER, AND IT CLOSES THE
+    #    BOUNDARY THE DOCSTRING BELOW STATES (FINAL POR WP-5).
+    #
+    #    The known boundary was a league with Rev1.3 intent that had never
+    #    recorded it. A `RULESET_FINAL_POR` stamp records something stronger and
+    #    earlier: the season was ACTIVATED under the current architecture, at
+    #    activation, before any Pool configuration or collection could exist.
+    #    Such a season must never reach the legacy Pool path, whose terminal
+    #    sweeps write `championship:{league}` — a namespace WP-5 retires — and
+    #    whose entry collection charges the legacy default rather than the
+    #    league's governed contribution.
+    #
+    #    A legacy season is unaffected: absence of a row IS the legacy ruleset,
+    #    so nothing fires for any season activated before WP-1.
+    league = db.query(League).filter(League.id == league_id).first()
+    if league is not None:
+        from ruleset import resolve_ruleset_version, RULESET_FINAL_POR
+
+        version = resolve_ruleset_version(db, league_id=league_id,
+                                          season=league.season)
+        if version >= RULESET_FINAL_POR:
+            markers.append(f"league_season_ruleset.ruleset_version={version}")
 
     cfg = (db.query(PoolConfig)
            .filter(PoolConfig.league_id == league_id).first())

@@ -1,9 +1,16 @@
 """
-test_s5_p3_season_close_pg.py — season close, championship, full-season arc.
+test_s5_p3_season_close_pg.py — legacy season close compatibility arc.
 
 The arc is one recorded multi-week season carried end to end, with
 `trial_balance() == 0` asserted at every material checkpoint and every
 must-be-zero account proven zero at close.
+
+This suite's reserve sweep, expired-Minimum return, and legacy Championship
+account assertions predate the Final POR. They remain valuable only as an
+explicit RULESET_LEGACY compatibility partition; current Final POR behavior is
+certified by the WP2 Demo, WP3 route, and Final POR suites. The fixture stamps
+the legacy ruleset before activation so these assertions can never silently be
+mistaken for current-era economics.
 
 Requires TEST_DATABASE_URL -> a local, disposable, empty, _test-named database.
 """
@@ -69,6 +76,7 @@ def main(tdb) -> None:
         min_account, min_reserve_account, receivable_account, reserve_account,
         skunk_account, wallet_account,
     )
+    import economy.season_allocation as allocation_module
     from economy.season_allocation import activate_season_allocation
     from economy.season_close_orchestrator import (
         SeasonClosePreconditionError, close_season_economy,
@@ -87,6 +95,7 @@ def main(tdb) -> None:
         APPROVED_BAB_TOPOFF_DOOR, balance_of, post as ledger_post,
         trial_balance,
     )
+    from ruleset import RULESET_LEGACY, stamp_ruleset
 
     SEASON = config.ALLOCATION_SEASON
     FINAL_WEEK = 4
@@ -111,7 +120,13 @@ def main(tdb) -> None:
             db.commit()
             lid, tids = league.id, [t.id for t in teams]
         with SessionLocal() as db:
-            activate_season_allocation(lid, db)
+            original_stamp = allocation_module.stamp_ruleset
+            allocation_module.stamp_ruleset = lambda session, **kwargs: (
+                stamp_ruleset(session, version=RULESET_LEGACY, **kwargs))
+            try:
+                activate_season_allocation(lid, db)
+            finally:
+                allocation_module.stamp_ruleset = original_stamp
         return lid, tids
 
     def matchup(db, lid, week, home, away, hs, aws, finalized=True):

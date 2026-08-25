@@ -285,7 +285,7 @@ const WEEK4_POOL_RESULTS = Object.freeze({
     entered: 10, potCents: 1000, qualified: true,
     outcome: 'Won by Gridiron Goodfellas', winner: 'Gridiron Goodfellas', returnCents: 1000,
   }),
-  56: Object.freeze({
+  20: Object.freeze({
     entered: 9, potCents: 900, qualified: true,
     outcome: 'Won by Numbers Racket', winner: 'Numbers Racket', returnCents: 900,
   }),

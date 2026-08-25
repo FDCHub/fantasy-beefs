@@ -1,40 +1,8 @@
 """
 migrations/manifest.py — the one answer to "what runs before a release?"
 
-PG-CERT-1 FOUND THERE WAS NO ANSWER. Twenty-eight scripts across two
-directories, no ordering, no registry, and only nine exposing a callable
-`upgrade()`. That report deliberately did not invent an order for the other
-nineteen, because asserting a sequence nobody had verified would have been worse
-than recording that none existed. This closes the gap without inventing history.
-
-── THE CENTRAL FACT, AND IT IS WHAT MAKES THIS SMALL ───────────────────────
-
-A FRESH DEPLOYMENT RUNS NO MIGRATIONS AT ALL. `api/main.py`'s startup builds the
-complete schema from the models in one step — certified on PostgreSQL by
-PG-CERT-1 — so the migrations exist to carry an EXISTING database forward, not
-to construct a new one. There is therefore no need to replay nineteen historical
-scripts against a database that never lacked what they add.
-
-That is why the registry below has two kinds of entry rather than one long list.
-
-    ACTIVE       runs, in this order, against an existing database. Each is
-                 idempotent, each is certified on PostgreSQL, and each is
-                 additive.
-
-    HISTORICAL   recorded, NOT run. These built the schema as it grew and their
-                 effects are already in `db/schema.py`, which is what a fresh
-                 database is built from. Several are one-shot data conversions
-                 or predate columns that no longer exist; running them against a
-                 modern database ranges from a no-op to an error. They are named
-                 here so the inventory is complete and so nobody has to wonder
-                 whether they were forgotten.
-
-── WHAT AN OPERATOR RUNS ───────────────────────────────────────────────────
-
-    python -m migrations.run            # apply ACTIVE, in order, idempotently
-    python -m migrations.run --status   # what is applied, what is pending
-
-One command, one order, recorded in `schema_migrations`. See `migrations/run.py`.
+A fresh deployment is built from registered SQLAlchemy models. ACTIVE migrations
+carry an existing database forward and run in deterministic order.
 """
 
 from __future__ import annotations
@@ -46,44 +14,196 @@ __all__ = ["ACTIVE", "HISTORICAL", "Migration", "identifiers"]
 
 @dataclass(frozen=True)
 class Migration:
-    """One migration, with a stable identity that never changes.
+    """One ordered, recorded schema change — and what proves it really landed.
 
-    `identifier` is what lands in `schema_migrations` and is therefore
-    PERMANENT: renaming one would make an applied migration look pending and
-    run it again.
+    ── B1 · WHY `tables` AND `columns` EXIST ────────────────────────────────
+
+    A row in `schema_migrations` is a CLAIM, not evidence. Before B1 the whole
+    readiness story rested on that claim: if the record said 0003-0006 were
+    applied, `/ready` answered healthy without ever looking at the schema.
+
+    That is not hypothetical. Booting `api.main` instead of `api.main_rc2`
+    against a fresh database registers no RC2 model, so `create_all` builds none
+    of the six championship tables while `stamp_all` still records all six
+    migrations as applied. Measured on this branch: `/ready` returned 200,
+    `ready: true`, `migrations: "ok"` — against a database that cannot run a
+    championship. The entrypoint was corrected for RC2, but the READINESS
+    WEAKNESS survived it, and any other stamp/schema divergence — a restored
+    older dump, a half-applied migration on a dialect without transactional
+    DDL, a hand-edited record — lands in the same silent hole.
+
+    So each migration names the database objects that MUST be present once it is
+    applied. `migrations.run.verify` checks the claim against the live schema and
+    readiness fails closed when they disagree. This adds no second migration
+    system and changes no migration's behaviour: it is the manifest describing
+    itself well enough to be checked.
+
+    `tables` are table names. `columns` are `("table", "column")` pairs, for the
+    migrations that add columns to tables which already existed.
     """
 
     identifier: str
     module: str
     summary: str
+    tables: tuple = ()
+    columns: tuple = ()
+
+    #: WHY THIS MIGRATION NAMES NO OBJECT — required when `tables` and `columns`
+    #: are both empty, and empty otherwise.
+    #:
+    #: NOT EVERY MIGRATION ADDS A DATABASE OBJECT. A data backfill and a widened
+    #: CHECK both change the database and neither creates anything `verify` can
+    #: look up, so the pair being empty is legitimate for them. It is ALSO what
+    #: an author who simply forgot to fill them in leaves behind, and those two
+    #: cases were indistinguishable: the readiness suite could only assert
+    #: "every migration names an object", which the legitimate cases failed.
+    #:
+    #: Declaring the reason makes the distinction explicit and checkable. A
+    #: migration that adds objects and forgets to name them still fails, which
+    #: is the protection B1 exists to give; one that genuinely adds none says so
+    #: once, here, in a sentence a reviewer can disagree with.
+    adds_no_object: str = ""
 
 
-#: THE PRODUCTION UPGRADE SEQUENCE. Order matters and is deterministic.
-#:
-#: `add_yahoo_identity` is first because `add_provider_grants` builds a foreign
-#: key to `users` and adds a constraint alongside the identity columns; running
-#: them the other way round would attempt to reference a shape that is not there
-#: yet. Both are idempotent, so re-running the pair is safe, but the ORDER is
-#: not optional on a database that has neither.
 ACTIVE: tuple = (
     Migration(
         identifier="0001_yahoo_identity",
         module="migrations.add_yahoo_identity",
-        summary="users.auth_provider / provider_subject, unique on the pair, "
-                "hashed_password relaxed to nullable",
+        summary="users.auth_provider / provider_subject, unique on the pair, hashed_password relaxed to nullable",
+        columns=(("users", "auth_provider"), ("users", "provider_subject")),
     ),
     Migration(
         identifier="0002_provider_grants",
         module="migrations.add_provider_grants",
-        summary="provider_grants table; leagues.provider_credential_user_id "
-                "and provider_credential_assigned_at",
+        summary="provider_grants table; leagues.provider_credential_user_id and provider_credential_assigned_at",
+        tables=("provider_grants",),
+        columns=(("leagues", "provider_credential_user_id"),
+                 ("leagues", "provider_credential_assigned_at")),
+    ),
+    Migration(
+        identifier="0003_rc2_championship_snapshot",
+        module="migrations.add_rc2_championship_snapshot",
+        summary="immutable FantasyStakes Championship freeze and per-team regular-season Championship Score snapshot",
+        tables=("fantasystakes_championship_freeze",
+                "fantasystakes_championship_score"),
+    ),
+    Migration(
+        identifier="0004_rc2_fantasystakes_championship_economy",
+        module="migrations.add_rc2_championship_economy",
+        summary="independent FantasyStakes Championship contribution and fixed-pot allocation records",
+        tables=("fantasystakes_championship_config",
+                "fantasystakes_championship_allocation"),
+    ),
+    Migration(
+        identifier="0005_rc2_championship_distribution",
+        module="migrations.add_rc2_championship_distribution",
+        summary="durable exactly-once FantasyStakes Championship 60/30/10 distribution record",
+        tables=("fantasystakes_championship_distribution_run",),
+    ),
+    Migration(
+        identifier="0006_rc2_championship_correction",
+        module="migrations.add_rc2_championship_correction",
+        summary="append-only authoritative corrections to eligible regular-season championship results",
+        tables=("fantasystakes_championship_correction",),
+    ),
+    Migration(
+        identifier="0007_dynamic_odds_refresh",
+        module="migrations.add_dynamic_odds_refresh",
+        summary="append-only shared record of nonbinding Dynamic informational odds refreshes (Rev 9 §5)",
+        tables=("challenge_odds_refresh",),
+    ),
+    Migration(
+        identifier="0008_pool_definition_public_question",
+        module="migrations.add_pool_definition_public_question",
+        summary="Pool Catalog Rev 1.4 §3 — nullable public_question on pool_definition, seeded from the governed catalog",
+        columns=(("pool_definition", "public_question"),),
+    ),
+    # RC4 MOBILE RECONCILIATION — 0008 ADDED THE COLUMN AND BACKFILLED NOTHING.
+    #
+    # Its own docstring is explicit that the 64 questions "arrive with the
+    # ordinary Rev 1.4 re-seed". Every path that re-seeds the catalog does
+    # deliver them; a RELEASE does not — `preDeployCommand` runs this manifest
+    # and nothing in it calls `seed_definitions`. A deployed database whose
+    # `pool_definition` rows predate Rev 1.4 therefore kept eighty NULLs and
+    # Play drew `Question unavailable` on live drawable Pools.
+    #
+    # NO SCHEMA OBJECT IS ADDED, so this migration names no `tables` and no
+    # `columns`: it asserts nothing new about the shape of the database and
+    # `verify` has nothing further to corroborate. 0008 already guarantees the
+    # column it writes to, and is ordered before it.
+    Migration(
+        identifier="0009_pool_definition_public_question_backfill",
+        module="migrations.backfill_pool_definition_public_question",
+        summary="Pool Catalog Rev 1.4 §3 — carry the governed public_question onto pool_definition rows written before the revision",
+        adds_no_object=(
+            "a pure data backfill: it writes rows into a column 0008 already "
+            "created and guarantees, and is ordered after it. There is no new "
+            "object for `verify` to corroborate."),
+    ),
+    # FINAL POR · WP-1 — THE ERA GATE, AND IT RUNS BEFORE EVERY ECONOMY CHANGE.
+    #
+    # Ordered first among the Final POR migrations deliberately. Every later
+    # economy migration is safe only because this table exists to distinguish a
+    # season governed by the new rules from one that must keep its original
+    # ones; applying any of them first would leave a window in which the two
+    # eras were indistinguishable.
+    #
+    # ADDITIVE AND UNBACKFILLED. Absence of a row IS the legacy ruleset, so this
+    # migration writes no data and changes no existing table.
+    Migration(
+        identifier="0010_season_ruleset",
+        module="migrations.add_season_ruleset",
+        summary="Final POR WP-1 — season-level ruleset era gate; absence means the legacy ruleset and nothing is backfilled",
+        tables=("league_season_ruleset",),
+    ),
+    # FINAL POR §9D — Skunk Fees are optional, so 0 must be storable.
+    #
+    # NAMES NO `tables` OR `columns`, and that is not an omission: it adds no
+    # database object. It only WIDENS an existing CHECK, and `verify` corroborates
+    # the presence of objects rather than the shape of constraints. The widening
+    # is asserted directly by test_finalpor_wp2_skunk_zero.py on both dialects.
+    Migration(
+        identifier="0011_skunk_fee_allows_zero",
+        module="migrations.relax_skunk_fee_allows_zero",
+        summary="Final POR §9D — league_season_economy_config.ck_lsec_skunk_fee widened to admit a 0 Weekly Skunk Fee",
+        adds_no_object=(
+            "it only WIDENS an existing CHECK. `verify` corroborates the "
+            "presence of objects, not the shape of constraints, so there is "
+            "nothing here for it to look up. The widening is asserted directly, "
+            "on both dialects, by test_finalpor_wp2_skunk_zero.py."),
+    ),
+    # FINAL POR §14 / WP-5 — the Fantasy Football Championship Pot amount.
+    #
+    # ADDITIVE AND NULLABLE, and it names its column so `verify` can corroborate
+    # it. A NEW column rather than a reinterpretation of
+    # `championship_contribution_cents`: that integer means "each GM contributes
+    # this" for every legacy season and would mean "the league's whole pot is
+    # this" for a Final POR one, with only the ruleset row to tell a reader
+    # which. §11 forbids silently repurposing a retired name, and a column is a
+    # name. Every existing row becomes NULL, which is true of all of them.
+    Migration(
+        identifier="0012_ff_championship_pot",
+        module="migrations.add_ff_championship_pot",
+        summary="Final POR §14 — league_season_economy_config.ff_championship_pot_cents; one commissioner-entered league-level Fantasy Football Championship Pot, may be 0, NULL where unconfigured",
+        columns=(("league_season_economy_config", "ff_championship_pot_cents"),),
+    ),
+    # FINAL POR §7 / WP-13 — the voided-wager record.
+    #
+    # A NEW TABLE rather than a widened `ck_bet_status`. A void is not a `push`:
+    # a push is a RESULT, a void says no contest occurred, and §7 gives the two
+    # different consequences for the Weekly Minimum. Widening that CHECK would
+    # also have meant rebuilding `bets` on SQLite for a fact that belongs beside
+    # the refund it records rather than inside the wager it cancels.
+    Migration(
+        identifier="0013_voided_wagers",
+        module="migrations.add_voided_wagers",
+        summary="Final POR §7 — voided_wagers; one row per voided accepted wager, unique on bet_id, recording the Wallet refund that never restores the Weekly Minimum",
+        tables=("voided_wagers",),
     ),
 )
 
-#: RECORDED, NOT RUN — see the module docstring. Grouped by why.
+
 HISTORICAL: tuple = (
-    # Schema growth now expressed in `db/schema.py`, which a fresh database is
-    # built from directly.
     "migrations/add_matchup_refreshed_at.py",
     "db/migrations/migrate_league_commissioners.py",
     "db/migrations/migrate_leagues_economy_columns.py",
@@ -103,16 +223,12 @@ HISTORICAL: tuple = (
     "db/migrations/migrate_spec2_challenge_escrow.py",
     "db/migrations/migrate_p3d2_dynamic_final_lock.py",
     "db/migrations/migrate_beef_starters_constraint.py",
-    # Pool engine growth, likewise.
     "db/migrations/migrate_pool_cents.py",
     "db/migrations/migrate_pool_pots_total_pot.py",
     "db/migrations/migrate_pool_rotation_tables.py",
     "db/migrations/migrate_s4_common_pool_engine.py",
     "db/migrations/migrate_s4_pool_rollover_money.py",
     "db/migrations/migrate_wp1b_pool_subject_manifest.py",
-    # One-shot DATA conversions. These rewrote existing rows into a new
-    # representation. They are not idempotent in the "safe to re-run forever"
-    # sense and must never be run speculatively.
     "db/migrations/migrate_tx_type_pool_values.py",
 )
 

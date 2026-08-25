@@ -671,6 +671,46 @@ def main() -> None:
     _assert(f"championship:{league_id} is empty",
             balance_of(f"championship:{league_id}") == 0)
 
+    # THE ROUTE, NOT ONLY THE INNER WRITERS, MUST BE REPLAY-SAFE. Snapshot the
+    # entire ledger after the successful close: an identical retry must not
+    # repeat a Championship distribution, terminal Pool finalization, Skunk,
+    # Weekly Minimum, or any other economic effect.
+    with SessionLocal() as db:
+        from ledger.ledger import LedgerEntry
+
+        ledger_rows_after_close = db.query(LedgerEntry).count()
+        championship_rows_after_close = (db.query(LedgerEntry)
+            .filter(LedgerEntry.door == "championship_distribution").count())
+        carried_pool_rows_after_close = (db.query(PoolInstance)
+            .filter(PoolInstance.league_id == league_id,
+                    PoolInstance.rollover_cents > 0).count())
+        db.rollback()
+
+    r_sc_replay = client().post(
+        f"/league/{league_id}/season/close", headers=hdr)
+    _assert("an immediate identical season-close request is a safe replay",
+            r_sc_replay.status_code == 200
+            and r_sc_replay.json().get("replayed") is True
+            and r_sc_replay.json().get("closed_now") is False,
+            f"{r_sc_replay.status_code} {r_sc_replay.text[:300]}")
+    with SessionLocal() as db:
+        _assert("season-close replay creates no duplicate economic posting",
+                db.query(LedgerEntry).count() == ledger_rows_after_close)
+        _assert("season-close replay creates no duplicate Championship "
+                "distribution",
+                (db.query(LedgerEntry)
+                 .filter(LedgerEntry.door == "championship_distribution")
+                 .count()) == championship_rows_after_close)
+        _assert("season close disposes Pool rollover once and replay leaves it "
+                "disposed",
+                carried_pool_rows_after_close == 0
+                and (db.query(PoolInstance)
+                     .filter(PoolInstance.league_id == league_id,
+                             PoolInstance.rollover_cents > 0).count()) == 0)
+        db.rollback()
+    _assert("trial balance remains zero after season-close replay",
+            trial_balance() == 0)
+
     # ════ 9. RESET SAFETY ═══════════════════════════════════════════════════
     _section("reset — scoped to Demo, ledger-immutable, isolated")
 

@@ -458,12 +458,27 @@ row_keys = set(BY_ID[T1].as_dict())
 _assert("the row exposes no accounting field",
         not any(any(f in key for f in FORBIDDEN) for key in row_keys),
         " ".join(sorted(row_keys)))
+# FINAL POR §8 — `skunk_fees_cents` JOINS THE PROJECTION, DELIBERATELY.
+#
+# The FORBIDDEN list above still governs and still passes: Skunk's ACCOUNTING
+# face is `receivable:`, which is an obligation and stays out of this row. What
+# is added here is its COMPETITIVE face — the third term of FantasyStakes Score
+# and the SKUNK standings column — carried as a positive magnitude that
+# `net_cents` has already subtracted.
+#
+# The pairing of the two assertions is the point: a competitive penalty is
+# reported, an obligation is not, and the row still exposes nobody's balance.
 _assert("the row exposes exactly the competitive projection",
         row_keys == {"team_id", "team_name", "owner", "versus_wins",
                      "versus_losses", "versus_pushes", "versus_record",
                      "pool_wins", "versus_net_cents", "pool_net_cents",
-                     "net_cents"},
+                     "skunk_fees_cents", "net_cents"},
         " ".join(sorted(row_keys)))
+_assert("  · a legacy-ruleset season reports zero Skunk and a two-term Score",
+        BY_ID[T1].skunk_fees_cents == 0
+        and BY_ID[T1].net_cents == (BY_ID[T1].versus_net_cents
+                                    + BY_ID[T1].pool_net_cents),
+        f"skunk={BY_ID[T1].skunk_fees_cents} net={BY_ID[T1].net_cents}")
 _assert("the acting team is named so the UI need not match on a name",
         STANDINGS.acting_team_id == T3, str(STANDINGS.acting_team_id))
 

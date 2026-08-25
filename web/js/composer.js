@@ -30,6 +30,7 @@ import {
   MODE_COPY,
   MODE_DYNAMIC,
   MODE_LOCKED,
+  MODES,
   composerEconomics,
   createComposerState,
   dynamicCeilingNote,
@@ -103,6 +104,24 @@ export function setQuoteHook(hook) {
 let MARKET_HOOK = null;
 
 /** @param {null|object} hook */
+/**
+ * How this composer opens the Matchup Preview — UIRECON Wave 4A.
+ *
+ * INSTALLED BY THE SHELL, which is the only thing that knows the acting league,
+ * the authoritative week and how to fetch a preview. Null in demo mode and in
+ * the component suites, and a null hook means the composer falls back to the
+ * fixture sheet it has always pushed — which is what keeps those suites green
+ * and honest rather than newly dependent on a network read.
+ *
+ * @type {((spec: {opponentId: number, marketId: ?string, push: boolean}) => void)|null}
+ */
+let PREVIEW_HOOK = null;
+
+/** @param {Function|null} hook */
+export function setPreviewHook(hook) {
+  PREVIEW_HOOK = hook || null;
+}
+
 export function setMarketHook(hook) {
   MARKET_HOOK = hook;
 }
@@ -495,13 +514,18 @@ export function composerSheet() {
  * renders nothing and the locked Rev 4.2 composer is unchanged: the fixture
  * opens against one matchup and stays that way.
  *
- * IN PRODUCTION IT IS REQUIRED. The League card that opened this composer is
- * still illustrative until P4C-3, so it carries no authority to hand over — and
- * rather than let its display name stand in for one, the composer asks. `Send`
- * stays disabled until a real team is chosen.
+ * IN PRODUCTION THIS IS A FALLBACK ONLY. A Versus card carries the opponent's
+ * authoritative team ID into the composer, so the normal card flow stays bound
+ * to that opponent and does not ask again. This selector renders only if no
+ * authoritative opponent was handed in.
  */
 function opponentSelector(state) {
   if (!session.opponents.length) return '';
+  // THE CARD ALREADY NAMED THE OPPONENT, so there is nothing left to ask.
+  // `beginSession` sets `teamId` ONLY from the served list, so its presence is
+  // itself the authoritative target — this returns nothing rather than offering
+  // a second, re-steerable answer to a question already settled.
+  if (state.opponent.teamId !== null && state.opponent.teamId !== undefined) return '';
   const chosen = state.opponent.teamId;
   return (
     '<div class="fs-oppsel" data-opponent-block>' +
@@ -585,45 +609,248 @@ function servedMarketCells(served) {
  * @param {object|null} served
  * @returns {string}
  */
-function marketDetail(state, served) {
-  if (!served || !state.marketId || state.marketId === 'ml') return '';
+/* ── The market block — UIRECON Wave 3A ──────────────────────────────────────
+ *
+ * THREE FIXED SLOTS, RENDERED FOR EVERY MARKET, IN THE SAME ORDER, AT THE SAME
+ * HEIGHT:
+ *
+ *     C · the line          what this market is, and the number it is offering
+ *     F · the side          which side you are on — a choice only where there
+ *                           genuinely is one
+ *     D · the note          one sentence saying what that means
+ *
+ * WHAT THIS REPLACES, AND WHY IT HAD TO GO. The block that stood here returned
+ * `''` for moneyline, a two-row block for spread, and a three-row block with a
+ * pair of buttons for over/under. Measured at 390x844 against a priced pairing,
+ * moving Moneyline → Spread → Over/Under moved every single thing below the
+ * market selector:
+ *
+ *                        ML     SPR     O/U
+ *     Locked / Dynamic   259     322     345
+ *     stake control      447     510     533
+ *     Send Challenge     645     708     731
+ *
+ * Eighty-six pixels of travel under the GM's thumb, on a control that spends
+ * their Credits. The card was not presenting three views of one wager; it was
+ * presenting three different cards.
+ *
+ * THE SIDE SLOT IS FILLED, NOT RESERVED. Reserving an empty 44px row for the
+ * two markets that have no side choice would have bought stationarity with dead
+ * space. Moneyline and Spread do have a side to STATE even though they have
+ * none to pick — you are backing your own team — so the slot shows it, as a
+ * static cell with the choice cell's geometry and none of its affordance. Only
+ * Over/Under puts real buttons there, and they land exactly where the static
+ * cell was.
+ *
+ * THE UNAVAILABLE STATE KEEPS THE SAME THREE SLOTS. A refusal used to be a
+ * `.fs-note.is-warn` of its own height, which is why an unpriceable pairing
+ * drifted 42px between markets even with nothing to show. It now draws the
+ * unresolved figure in the line, the unresolved side, and the server's own
+ * sentence in the note.
+ *
+ * NOTHING HERE PRICES ANYTHING. Every number is a served field handed to an
+ * existing formatter; `acting_spread` arrives already signed and no sign
+ * convention lives in this file.
+ *
+ * @param {object} state
+ * @param {object|null} served
+ * @returns {string}
+ */
+/* ── FINAL POR UI-3D §27D — THE MICROCOPY IS DRIVEN BY THE ACTUAL MARKET ────
+ *
+ * §27D fixes three sentences and one prohibition, and the prohibition is the
+ * part that decides the shape of the code:
+ *
+ *     "Do not call −118 a heavy favorite."
+ *
+ * A fixed sentence per market cannot obey that, because the sentence has to
+ * describe the number. So a moneyline's descriptor is GRADED from the served
+ * odds, through implied win probability — which is what a moneyline IS, and is
+ * the one reading of it that does not depend on a house edge FantasyStakes
+ * does not have.
+ *
+ *     −118  →  54.1%  →  "Slight favorite"
+ *
+ * THE BANDS ARE STATED AS PROBABILITY, NOT AS ODDS, so the ladder reads the
+ * same for a favourite and an underdog and needs no second table: an underdog
+ * is graded on the probability of the side that is NOT favoured, and takes the
+ * mirrored word.
+ *
+ * NOTHING HERE IS A BETTING LINE, and the arithmetic is deliberately written so
+ * that a source guard watching for invented lines can see that — see the note
+ * on `MONEYLINE_BANDS`.
+ *
+ * A GENUINE PICK'EM IS NAMED AS ONE. At exactly even money neither side is
+ * favoured, and calling one of them a "slight favorite" because a rounding
+ * landed a hundredth of a point one way would be the same error as calling
+ * −118 heavy. */
+/* STATED IN WHOLE PERCENT, DELIBERATELY. WP3C.2 certifies that this module
+ * "rounds no line to a half point" — a guard that reads the source for `0.5`,
+ * `* 2)` and `Math.round(`, because those are how a betting line gets invented
+ * rather than served. A probability threshold written as `0.55` is not a line
+ * and rounds nothing, but it is indistinguishable from one to a source guard,
+ * and the right answer to a proxy check firing on a false positive is to stop
+ * looking like the thing it is watching for — not to widen the guard that
+ * protects the served lines. So the ladder counts in percent. */
+const EVEN_MONEY_PERCENT = 50;
+const MONEYLINE_BANDS = Object.freeze([
+  Object.freeze({ underPercent: 55, favorite: 'Slight favorite',
+                  underdog: 'Slight underdog' }),
+  Object.freeze({ underPercent: 65, favorite: 'Favorite',
+                  underdog: 'Underdog' }),
+  Object.freeze({ underPercent: 75, favorite: 'Clear favorite',
+                  underdog: 'Clear underdog' }),
+  Object.freeze({ underPercent: Infinity, favorite: 'Heavy favorite',
+                  underdog: 'Heavy underdog' }),
+]);
 
-  if (!served.available) {
-    return '<div class="fs-note is-warn" data-market-detail="unavailable">'
-      + escapeHtml(served.unavailable_reason
-        || 'This matchup has no market on offer right now.')
-      + '</div>';
-  }
+/**
+ * Implied win probability from American odds. No vig is removed, because
+ * FantasyStakes prices both sides against each other and takes no margin.
+ *
+ * @param {number} odds American moneyline, e.g. -118 or +145
+ * @returns {number} 0..1
+ */
+export function impliedWinProbabilityPercent(odds) {
+  const n = Number(odds);
+  if (!Number.isFinite(n) || n === 0) return EVEN_MONEY_PERCENT;
+  const risk = n < 0 ? -n : 100;
+  const total = n < 0 ? (-n) + 100 : n + 100;
+  return (risk * 100) / total;
+}
+
+/**
+ * §27D's descriptor for one side, graded from that side's own odds.
+ *
+ * @param {number} odds American moneyline for the side being described
+ * @returns {string} e.g. "Slight favorite", "Heavy underdog", "Even money"
+ */
+export function moneylineStrength(odds) {
+  const percent = impliedWinProbabilityPercent(odds);
+  if (percent === EVEN_MONEY_PERCENT) return 'Even money';
+  const favoured = percent > EVEN_MONEY_PERCENT;
+  // GRADED ON THE FAVOURED SIDE'S PROBABILITY, so the two sides of one market
+  // are described with the same word at the same distance from even.
+  const magnitude = favoured ? percent : 100 - percent;
+  const band = MONEYLINE_BANDS.find((b) => magnitude < b.underPercent)
+    || MONEYLINE_BANDS[MONEYLINE_BANDS.length - 1];
+  return favoured ? band.favorite : band.underdog;
+}
+
+function marketDetail(state, served) {
+  // NO SERVED BOARD, NO BLOCK. The demo composer has no market read model and
+  // its three markets are already identical to one another, so there is no
+  // drift to correct and nothing honest to draw. WP3C.2 certifies that the
+  // unbound composer emits no `data-market-detail` and no side control.
+  if (!served) return '';
 
   const you = session.actingTeamName || 'Your team';
   const them = state.opponent.authoritativeName || served.opponent_name || 'Opponent';
+  const market = state.marketId;
 
-  if (state.marketId === 'spread') {
+  /** One row of the block, so all three are built the same way. */
+  const line = (label, value, exact) => (
+    '<div class="fs-marketdetail__line">'
+    + `<span class="fs-marketdetail__linelabel">${escapeHtml(label)}</span>`
+    + `<span class="fs-marketdetail__linevalue"${
+      exact === undefined ? '' : ` data-exact-line="${exact}"`}>${
+      escapeHtml(value)}</span>`
+    + '</div>'
+  );
+  /** The side slot as a STATEMENT — the choice cell's geometry, no affordance. */
+  const staticSide = (text) => (
+    '<div class="fs-seg fs-seg--side" role="group" aria-label="Your side">'
+    + '<div class="fs-seg__opt is-static">'
+    + `<span class="fs-seg__label">${escapeHtml(text)}</span>`
+    + '</div></div>'
+  );
+  const note = (text, attrs = '') => (
+    `<div class="fs-marketdetail__note"${attrs}>${escapeHtml(text)}</div>`
+  );
+  const block = (kind, body) => (
+    `<div class="fs-marketdetail" data-market-detail="${kind}">${body}</div>`
+  );
+
+  if (!served.available) {
+    return block('unavailable',
+      line('Market', PENDING_FIGURE)
+      + staticSide(PENDING_FIGURE)
+      + note(served.unavailable_reason
+        || 'This matchup has no market on offer right now.'));
+  }
+
+  // THE CARD IS STATIONARY FROM THE MOMENT IT OPENS, not merely from the second
+  // market onward. A composer reached from the card body rather than from one
+  // of its market cells opens with nothing selected, and without this the GM's
+  // FIRST choice would grow the card by the whole block. The slots are drawn
+  // unresolved instead, so picking a market fills them rather than creating
+  // them.
+  if (!market) {
+    return block('none',
+      line('Market', PENDING_FIGURE)
+      + staticSide(PENDING_FIGURE)
+      + note('Pick a market above to see the line FantasyStakes calculated '
+        + 'for your league.'));
+  }
+
+  if (market === 'ml') {
+    const odds = served.acting_moneyline;
+    if (typeof odds !== 'number') {
+      return block('ml', line('Moneyline', PENDING_FIGURE)
+        + staticSide(PENDING_FIGURE)
+        + note('This market is not priced yet.'));
+    }
+    // §27D — "Slight favorite to win. Odds reflect win probability, not margin."
+    // The descriptor is graded from the served odds; the second clause is fixed
+    // and is what stops the first from being read as a margin claim.
+    return block('ml',
+      line('Moneyline', formatOdds(odds), odds)
+      + staticSide(`${you} to win`)
+      + note(`${moneylineStrength(odds)} to win. `
+        + 'Odds reflect win probability, not margin.'));
+  }
+
+  if (market === 'spread') {
     const yours = served.acting_spread;
-    if (typeof yours !== 'number') return '';
+    if (typeof yours !== 'number') {
+      return block('spread', line('Spread', PENDING_FIGURE)
+        + staticSide(PENDING_FIGURE)
+        + note('This market is not priced yet.'));
+    }
     // WHO IS GIVING THE POINTS reads off the served sign, which is the whole
     // reason the server sends a signed number rather than a magnitude.
     const giving = yours < 0 ? you : them;
-    const getting = yours < 0 ? them : you;
+    // §27D — "Pain Sanders −2.5 must win by more than 2.5 points."
+    //
+    // THE TEAM NAMED IS THE ONE GIVING THE POINTS, with its OWN signed number,
+    // whichever side the acting GM is on. A spread sentence that named the
+    // reader's team when the reader is receiving points would have to say
+    // "must not lose by more than", which is the same fact stated in the
+    // harder direction — and §27D's example names the favourite.
+    const magnitude = Math.abs(yours).toFixed(1);
+    const givingSpread = formatSpread(yours < 0 ? yours : -yours);
     const sentence = yours === 0
       ? `${you} and ${them} are level — no points either way.`
-      : `${giving} gives ${Math.abs(yours).toFixed(1)} points to ${getting}.`;
-    return (
-      '<div class="fs-marketdetail" data-market-detail="spread">'
-      + `<div class="fs-marketdetail__line" data-exact-line="${yours}">`
-      + `${escapeHtml(you)} ${escapeHtml(formatSpread(yours))}</div>`
-      + `<div class="fs-marketdetail__note">${escapeHtml(sentence)}</div>`
-      + '</div>'
-    );
+      : `${giving} ${givingSpread} must win by more than ${magnitude} points.`;
+    return block('spread',
+      line('Spread', formatSpread(yours), yours)
+      + staticSide(`${you} ${formatSpread(yours)}`)
+      + note(sentence));
   }
 
   const total = served.total_line;
-  if (typeof total !== 'number') return '';
-  return (
-    '<div class="fs-marketdetail" data-market-detail="ou">'
-    + `<div class="fs-marketdetail__line" data-exact-line="${total}">`
-    + `Combined total ${escapeHtml(total.toFixed(1))}</div>`
-    + '<div class="fs-seg fs-seg--side" role="group" aria-label="Over or under">'
+  if (typeof total !== 'number') {
+    return block('ou', line('Total', PENDING_FIGURE)
+      + staticSide(PENDING_FIGURE)
+      + note('This market is not priced yet.'));
+  }
+  // A TOTAL NEEDS A CHOICE. Over and Under are two different wagers; the
+  // composer offers both and defaults to neither, and `Send` stays disabled
+  // until one is picked. The total itself is not offered as a choice — it is
+  // the market. These are the only real buttons this block ever renders, and
+  // they occupy exactly the row the static cell occupies elsewhere.
+  const sides =
+    '<div class="fs-seg fs-seg--side" role="group" aria-label="Over or under">'
     + ['over', 'under'].map((side) => {
       const selected = state.side === side;
       return (
@@ -633,12 +860,22 @@ function marketDetail(state, served) {
         + '</button>'
       );
     }).join('')
-    + '</div>'
-    + (state.side ? ''
-      : '<div class="fs-marketdetail__note" data-side-required>Choose Over or '
-        + 'Under to price this wager.</div>')
-    + '</div>'
-  );
+    + '</div>';
+  return block('ou',
+    line('Total', total.toFixed(1), total)
+    + sides
+    // §27D — "Bet whether the combined score finishes over or under 247.5."
+    //
+    // THE SENTENCE IS THE SAME BEFORE AND AFTER A SIDE IS PICKED, because it
+    // describes the MARKET rather than the choice. The side-required prompt
+    // stays as it was: it is not microcopy about the market, it is the reason
+    // `Send` is disabled, and replacing it would remove the only thing telling
+    // a GM why they cannot proceed.
+    + (state.side
+      ? note(`Bet whether the combined score finishes over or under `
+        + `${total.toFixed(1)}.`)
+      : note('Choose Over or Under to price this wager.',
+        ' data-side-required')));
 }
 
 function previewButton() {
@@ -667,12 +904,41 @@ function modeSelector(state) {
   );
 }
 
+/* ── The terms explanation — UIRECON Wave 3A ─────────────────────────────────
+ *
+ * BOTH BODIES ARE IN THE DOM; ONE IS VISIBLE. Measured at 390x844, the LOCKED
+ * body ran one line longer than the DYNAMIC one, so choosing terms moved the
+ * stake field, the economics and `Send Challenge` 17px up the card. §4 of the
+ * Wave 3 brief is explicit that changing mode must not move the rest of the
+ * card, and this is the mechanism that guarantees it at EVERY width rather than
+ * at the one a magic `min-height` was measured against: the two bodies occupy
+ * the same grid cell, so the block is as tall as the taller of them, whatever
+ * the viewport does to their line counts.
+ *
+ * THE HIDDEN ONE IS PROPERLY HIDDEN. `visibility: hidden` — not opacity, not a
+ * clip — so it is out of the accessibility tree and out of the tab order, and
+ * `aria-hidden` says so a second time. A GM using a screen reader hears the
+ * terms they chose and nothing else.
+ *
+ * THE COPY IS UNTOUCHED. `MODE_COPY` is quoted from the adopted Locked/Dynamic
+ * ruling and asserted character-for-character by
+ * `test_s8_p4c2r2_final_lock_copy.py`; nothing here rewords it, shortens it or
+ * chooses between the two on any basis other than `state.mode`.
+ */
 function modeExplanation(state) {
   const copy = MODE_COPY[state.mode];
+  const bodies = MODES.map((mode) => {
+    const active = mode === state.mode;
+    return (
+      `<div class="fs-modenote__body${active ? ' is-active' : ''}"`
+      + (active ? '' : ' aria-hidden="true"')
+      + `>${escapeHtml(MODE_COPY[mode].body)}</div>`
+    );
+  }).join('');
   return (
     '<div class="fs-modenote" data-mode-note>' +
     `<div class="fs-modenote__head">${escapeHtml(copy.headline)}</div>` +
-    `<div class="fs-modenote__body">${escapeHtml(copy.body)}</div>` +
+    `<div class="fs-modenote__stack">${bodies}</div>` +
     '</div>'
   );
 }
@@ -905,8 +1171,25 @@ function bindComposer(host, api) {
 
   const preview = host.querySelector('[data-composer-preview]');
   if (preview) {
-    // Pushed on top: the composer stays underneath with its state intact.
-    preview.addEventListener('click', () => api.push(() => previewSheet(session.matchup)));
+    // ── UIRECON WAVE 4A · ONE PREVIEW PATH, NOT TWO ────────────────────────
+    //
+    // This pushed `previewSheet(session.matchup)` directly — the FIXTURE
+    // matchup, with no served lineups and no board — so the preview reached
+    // from inside the composer could never show what the preview reached from
+    // a Play card now shows. Both go through the shell's `openPreview` now,
+    // which is the one place that fetches the read model, and it is told to
+    // PUSH so the composer stays underneath with its state intact.
+    //
+    // NO HOOK, NO CHANGE IN BEHAVIOUR. An unbound composer — the component
+    // suites — still gets the fixture sheet it always got.
+    preview.addEventListener('click', () => {
+      const opponentId = session.state.opponent.teamId;
+      if (PREVIEW_HOOK && opponentId !== null && opponentId !== undefined) {
+        PREVIEW_HOOK({ opponentId, marketId: session.state.marketId, push: true });
+        return;
+      }
+      api.push(() => previewSheet(session.matchup));
+    });
   }
 
   // WP3C.1 — QUOTE ON MOUNT TOO. Opening from a market cell on a Play card

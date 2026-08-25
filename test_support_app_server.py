@@ -213,6 +213,78 @@ _SEED_ACTION = """
             _cf.decline_funded_challenge(
                 event_id=_uuid.uuid4(), challenge_id=_ch,
                 actor_team_id=comm_team.id, db=db)
+        elif _shape == "settled":
+            # UI-5 GAP 4 -- A WAGER THAT HAS ACTUALLY FINISHED.
+            #
+            # §29 requires the FantasyStakes Matchups section to carry an FF
+            # Breakdown AND a Bet Market Breakdown, and no fixture had ever
+            # produced a settled wager for the wrap-up week -- so that section
+            # correctly drew its empty-state note and the requirement went
+            # UNVERIFIED rather than passing or failing.
+            #
+            # IT IS SETTLED BY THE REAL ENGINE, not by writing a settled row.
+            # `settle_week` reads the finalized matchup and pays the winner
+            # through the ledger, so what the surface then reads is a wager
+            # that genuinely finished the way the product finishes one. A
+            # hand-written row would certify the renderer against a shape
+            # nothing produces.
+            _cf.accept_funded_challenge(
+                event_id=_uuid.uuid4(), challenge_id=_ch,
+                actor_team_id=comm_team.id, db=db)
+            db.flush()
+
+            # THE MATCHUP MUST BE FINAL FIRST. The engine settles nothing
+            # against a matchup the provider has not finalized, which is the
+            # rule and not an obstacle -- so the fixture finalizes it exactly
+            # as `_SEED_SKUNK_WEEK` does.
+            # ── THE SHAPE IS POSTGRESQL-ONLY, AND THIS IS WHY ──────────────
+            #
+            # `settle_week` re-reads the WeekSettlement row with a plain
+            # `SELECT ... FOR UPDATE` before it pays anything. That lock is the
+            # engine's concurrency guarantee and is exactly right in
+            # production -- and SQLite does not implement it, failing with
+            # `near "FOR": syntax error`.
+            #
+            # Every certification fixture in this repository is SQLite, so the
+            # wager settlement engine has never run in one. That -- not a
+            # forgotten fixture row -- is why UI-5's FantasyStakes Matchups
+            # section had no settled wager to draw and why §29's requirement
+            # for that section is UNVERIFIED rather than passing or failing.
+            #
+            # REFUSED BY NAME RATHER THAN WORKED AROUND. The two workarounds
+            # available are both worse than the gap: stripping the lock would
+            # weaken a concurrency guard to make a test pass, and writing the
+            # settled rows by hand would certify the renderer against a shape
+            # nothing in the product produces. On PostgreSQL this shape runs
+            # as written.
+            if db.get_bind().dialect.name == "sqlite":
+                raise RuntimeError(
+                    "action_shape='settled' needs PostgreSQL: "
+                    "betting.settlement_engine.settle_week takes SELECT ... "
+                    "FOR UPDATE, which SQLite does not implement. The shape "
+                    "is correct as written and runs on PostgreSQL; it is "
+                    "refused here rather than settled by a second, weaker "
+                    "path that would certify the surface against state the "
+                    "engine never writes.")
+
+            from betting.settlement_engine import settle_week as _settle_week
+            from db.schema import Matchup as _M
+
+            _mu = (db.query(_M)
+                   .filter(_M.league_id == league.id, _M.week == _week)
+                   .first())
+            if _mu is None:
+                _mu = _M(league_id=league.id, week=_week,
+                         home_team_id=gm_team.id, away_team_id=comm_team.id)
+                db.add(_mu)
+            _mu.home_score = 141.62
+            _mu.away_score = 118.04
+            _mu.winner_team_id = _mu.home_team_id
+            _mu.finalized_at = datetime.now(timezone.utc)
+            db.flush()
+            db.commit()
+            _settle_week(week=_week, db=db, league_id=league.id)
+            db.commit()
 """
 
 #: Opt-in seed steps. Kept OUT of the default fixture on purpose: every existing
@@ -253,8 +325,32 @@ _SEED_POOL_SLATE = """
                    lock_time=datetime.now(timezone.utc) + _td(days=3)))
     db.flush()
 
-    slate_keys = [d.key for d in db.query(PoolDefinition)
-                  .order_by(PoolDefinition.catalog_number).limit(4).all()]
+    # FINAL POR §16 / UI-3B — THE FIXTURE DRAWS THE GOVERNED MIX, 3 TEAM + 1
+    # MATCHUP, rather than the first four definitions by catalog number.
+    #
+    # WHY IT MATTERS THAT A FIXTURE IS RIGHT ABOUT THIS. `betting.pool_rotation
+    # .DEFAULT_SCOPE_MIX` is `(('TEAM', 3), ('MATCHUP', 1))` and is certified at
+    # the data layer, but the first four catalog definitions happen to be all
+    # TEAM — so every browser suite that reads this fixture was looking at a
+    # slate composition the product does not draw, and a surface that rendered
+    # a MATCHUP occurrence wrongly would have gone unseen at every viewport.
+    #
+    # ORDERED WITHIN EACH SCOPE BY CATALOG NUMBER, so the draw is deterministic
+    # and the first slot is still the lowest-numbered TEAM definition — which is
+    # the one the rollover below attaches to, and which several suites name.
+    # (Braces are doubled: this block is a `.format()` template.)
+    _by_scope = {{}}
+    for _d in (db.query(PoolDefinition)
+               .order_by(PoolDefinition.catalog_number).all()):
+        _by_scope.setdefault(_d.scope, []).append(_d.key)
+    slate_keys = (_by_scope.get('TEAM', [])[:3]
+                  + _by_scope.get('MATCHUP', [])[:1])
+    # FAIL LOUDLY RATHER THAN SEED A SHORT SLATE. A catalog that cannot supply
+    # the governed mix would otherwise produce a three-card week that every
+    # suite would read as normal.
+    assert len(slate_keys) == 4, (
+        'pool catalog cannot supply the governed 3 TEAM + 1 MATCHUP mix: '
+        + repr(sorted((k, len(v)) for k, v in _by_scope.items())))
 
     prior = PoolInstance(league_id=league.id, season=league.season,
                          week={prior_week},
@@ -312,6 +408,56 @@ _SEED_SKUNK_WEEK = """
 """
 
 
+#: FINAL POR — the fixture league as a FINAL POR season with a frozen economy.
+#:
+#: WHY THIS IS OPT-IN. The certification league is a LEGACY season, and every
+#: earlier suite was certified against that fixture. Stamping the whole fixture
+#: Final POR would change what Standings, the Ledger and Current Settle report
+#: for every one of them at once — the Score gains its Skunk term, the pots
+#: change namespace, the expired-minimum asset disappears. That is a fixture
+#: migration, not a UI-7 change, and it is not this package's to make.
+#:
+#: WHAT IT SEEDS, AND WHY EACH PART IS NEEDED. §23's table cannot be derived
+#: from a legacy stop: the ratio column is taken against the Weekly Minimum, and
+#: a legacy stop carries constants rather than a weekly figure. So the season
+#: needs a FROZEN economy configuration (which supplies the minimum, the Skunk
+#: fee, the week count and the Fantasy Football pot), a frozen top-off
+#: multiplier (which anchors the Season Top-Off Limit), and the ruleset stamp
+#: that makes the season Final POR at all.
+#:
+#: THE FANTASY FOOTBALL POT IS DELIBERATELY 0, not NULL. Zero is the governed
+#: "this league plays without one" state, and seeding it means the certification
+#: exercises a DECLINED row rather than only CONFIGURED ones — the distinction
+#: §23 exists to preserve is then actually on the screen being measured.
+_SEED_FINAL_POR_ECONOMY = """
+    from db.schema import (
+        LeagueSeasonEconomyConfig, LeagueSeasonTopoffConfig, PoolConfig,
+    )
+    from ruleset import RULESET_FINAL_POR, stamp_ruleset
+
+    _naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.add(LeagueSeasonEconomyConfig(
+        league_id=league.id, season=league.season,
+        weekly_bet_minimum_cents=1000,
+        championship_contribution_cents=8000,
+        skunk_fee_cents=1000,
+        ff_championship_pot_cents=0,
+        regular_season_week_count=14,
+        active_team_count=2,
+        start_week_used=1, playoff_start_week_used=15,
+        frozen_at=_naive))
+    db.add(LeagueSeasonTopoffConfig(league_id=league.id, season=league.season,
+                                    topoff_cap_multiplier_bps=5000))
+    if db.query(PoolConfig).filter(PoolConfig.league_id == league.id).first() is None:
+        db.add(PoolConfig(league_id=league.id, pool_weekly_entry_cents=200))
+    db.flush()
+    db.commit()
+    stamp_ruleset(db, league_id=league.id, season=league.season,
+                  version=RULESET_FINAL_POR)
+    db.commit()
+"""
+
+
 _SEED_FROZEN_POOL_ENTRY = """
     # The governed frozen state: `pool_weekly_entry_frozen_at` is written once,
     # by the season's first Rev1.3 collection, and `configure_pool_weekly_entry`
@@ -349,6 +495,39 @@ _SEED_PRICEABLE_VERSUS = """
 
     _qweek = {slate_week}
     _qctxv = _qctx(db, gm_team.id)
+
+    # ── UIRECON WAVE 4A · PROJECT THE ROWS THE ENGINE ACTUALLY READS ─────────
+    #
+    # `_fetch_starters_for_odds` takes the first `N_START` roster rows BY ID, so
+    # when `_SEED_ACTION` has already seeded a roster its players are the ones
+    # priced — and its projections are deliberately written under the wrong
+    # (season, source), which is what the note above this block describes. The
+    # nine players added below therefore sat behind them: the pairing priced,
+    # and every projection the Matchup Preview read was 0.0.
+    #
+    # That was invisible while nothing read the lineup. The Wave 4A preview read
+    # model reads exactly what the simulator is handed, so the fixture has to
+    # give those rows a projection in the LEAGUE'S OWN context or the suite
+    # certifies a lineup of zeroes.
+    #
+    # ADDITIVE, AND ONLY WHERE ONE IS MISSING. Existing rows are left alone, so
+    # the refusal-path team below still has no lineup and `_SEED_ACTION`'s own
+    # wrong-context rows are still there to be resolved past.
+    for _qt, _qbase in ((gm_team, 12.4), (comm_team, 11.9)):
+        for _qidx, _qrow in enumerate(
+                db.query(_QR).filter(_QR.team_id == _qt.id)
+                  .order_by(_QR.id).limit(9).all()):
+            _qhave = (db.query(_QPr)
+                      .filter(_QPr.player_id == _qrow.player_id,
+                              _QPr.week == _qweek,
+                              _QPr.season == _qctxv.season,
+                              _QPr.source == _qctxv.source).first())
+            if _qhave is None:
+                db.add(_QPr(player_id=_qrow.player_id, week=_qweek,
+                            season=_qctxv.season,
+                            projected_points=round(_qbase + _qidx * 0.7, 1),
+                            source=_qctxv.source))
+    db.flush()
 
     for _qt, _qnfl, _qbase in ((gm_team, "KC", 12.4), (comm_team, "PHI", 11.9)):
         for _qi in range(9):
@@ -395,6 +574,7 @@ class AppServer:
                  seed_priceable_versus: bool = False,
                  provider_binding: str = "yahoo",
                  server_env: dict | None = None,
+                 seed_final_por: bool = False,
                  provider_week: int | None = 5) -> None:
         self._tmp_dir: str | None = None
         self._process: subprocess.Popen | None = None
@@ -442,6 +622,11 @@ class AppServer:
         # refreshed, which is the state a real deployment without Yahoo
         # credentials actually has.
         self._provider_week = provider_week
+        # UI-7 / FINAL POR: off by default, so every existing suite runs
+        # against the byte-identical LEGACY fixture it was certified on. On,
+        # the league becomes a Final POR season with a frozen economy — which
+        # is the only state §23's VC allocation table can be derived from.
+        self._seed_final_por = seed_final_por
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -500,7 +685,14 @@ class AppServer:
         env.update(self._server_env)
 
         self._process = subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "api.main:app",
+            # B1 — THE CERTIFIED PRODUCTION ENTRYPOINT, AS `Procfile` AND
+            # `railway.toml` both name it. Booting `api.main` here registered no
+            # RC2 model, so every fresh certification database was built without
+            # the six championship tables while the bootstrap still stamped
+            # 0003-0006 as applied — the precise corrupt state B1's schema
+            # verification now refuses. A harness must not manufacture a
+            # database shape production can never have.
+            [sys.executable, "-m", "uvicorn", "api.main_rc2:app",
              "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
             cwd=ROOT, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -555,6 +747,11 @@ class AppServer:
         # LAST, so it finalizes whichever matchup the blocks above created.
         if self._seed_skunk_week:
             extra += _SEED_SKUNK_WEEK.format(slate_week=slate_week)
+        # AFTER the Pool config blocks, so it does not overwrite a frozen entry
+        # one of them seeded, and after the Skunk week for the same reason the
+        # Skunk block goes last: it reads whatever the blocks above built.
+        if self._seed_final_por:
+            extra += _SEED_FINAL_POR_ECONOMY
 
         binding = {
             "yahoo": ("yahoo", "461.l.certification"),

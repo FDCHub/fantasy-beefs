@@ -241,6 +241,28 @@ def setup_postgres_test_db() -> PostgresTestDB:
             "TEST_DATABASE_URL at a fresh, empty database."
         )
 
+    # B1 — REGISTER THE RC2 MODELS BEFORE `create_all`, FOR THE SAME REASON
+    # `api.main_rc2` does.
+    #
+    # The `economy` and `reports` package `__init__` modules are deliberately
+    # side-effect free — they have to be, or those packages form an import cycle
+    # — so importing `db.schema` alone registers NONE of the six RC2
+    # championship tables on `Base.metadata`. A harness that then calls
+    # `create_all` builds a database that silently lacks them, and any suite
+    # touching a championship surface dies on `relation ... does not exist`.
+    # Measured at the Sprint A baseline: three PG suites failed exactly that way
+    # (`test_wp1b_postseason_pool_pg`, `test_wp1c_postseason_versus_pg`,
+    # `test_p1_l7_wallet_lock_discipline_pg`).
+    #
+    # This is the same registration `api.main_rc2` performs before importing the
+    # RC1 application, and it is what makes the harness build the schema
+    # PRODUCTION actually has. Nothing here changes a model or a migration; it
+    # only ensures the models are imported before the metadata is used.
+    from economy import fantasystakes_championship_allocation as _fs_alloc  # noqa: F401
+    from economy import fantasystakes_championship_settlement as _fs_settle  # noqa: F401
+    from reports import championship_corrections as _fs_corrections  # noqa: F401
+    from reports import championship_read_model as _fs_read_model  # noqa: F401
+
     # Empty DB confirmed — create the full schema: db.schema models + ledger.
     Base.metadata.create_all(engine)
     create_ledger_table()

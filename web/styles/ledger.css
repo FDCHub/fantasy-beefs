@@ -58,9 +58,9 @@
 }
 
 /* ── The Week · three modules ──────────────────────────────────────────────
- * The column scrolls; each module sizes to its own content. Yahoo and Bets
- * carry bounded snap carousels so a long slate cannot push Pools off the
- * dashboard. */
+ * The column scrolls; each module sizes to its own content. All three carry the
+ * same bounded snap carousel, so no one module can push the other two off the
+ * dashboard and none of them is built differently from its peers. */
 
 .fs-wkscroll {
   flex: 1 1 auto;
@@ -72,28 +72,157 @@
 
 .fs-wkmod + .fs-wkmod { margin-top: var(--fs-space-2); }
 
-/* Vertical snap carousel — one card presented at a time, with a deliberate
- * peek at the next card's identity line so the rail reads as scrollable. The
- * height is set so that peek lands on the next card's HEADER rather than part
- * way through its market row: a card sliced through its middle looks like a
- * layout fault, while a visible next-card title reads as an invitation. */
-.fs-vcar {
-  max-height: 180px;
-  overflow-y: auto;
-  overflow-x: hidden;
+/* ══ THE RESULT CAROUSEL — UIRECON Wave 4B ═════════════════════════════════
+ *
+ * ONE COMPLETE CARD AT A TIME, AND IT CANNOT BE OTHERWISE.
+ *
+ * WHAT THIS REPLACES. `.fs-vcar` scrolled VERTICALLY inside a fixed
+ * `max-height`, with a deliberate peek at the next card's header — a height
+ * measured against Rev 4.2 card sizes. Rev 4.3 grew those cards and the peek
+ * became half a card, which is the "one and a half cards" the POR names. The
+ * previous repair for that kind of drift was to re-tune the pixel value, which
+ * is exactly how it went stale the first time.
+ *
+ * SO THE GEOMETRY DOES THE WORK INSTEAD. Each item is exactly 100% of the
+ * viewport's width, so one item fills it by construction — at any card height,
+ * at any viewport width, forever. There is no number here to go stale, and no
+ * arrangement in which a second card is partly visible.
+ *
+ * THE HEIGHT IS THE CARD'S. A horizontal rail takes its height from its tallest
+ * item rather than from a cap, which is what lets the three sections share the
+ * tab: each takes what its content needs, and none of them can consume the
+ * screen the way a 180px vertical viewport did when the section above it had
+ * four cards and the one below had one.
+ *
+ * CONTAINED, PER THE SHELL POR. `overflow-x: auto` on the rail and items that
+ * are exactly one viewport wide mean the scroll lives here and never reaches
+ * the tab or the document. */
+
+.fs-rescar {
+  /* UIRECON REV 1.4 — THE OUTER SHELL, DECLARED ONCE AND CONSUMED BY EVERY
+   * PRESENTATION THE RAIL CAN HOLD. See the block below `.fs-rescar__item`. */
+  --fs-res-radius: var(--fs-radius-card);
+  --fs-res-edge: 3px;
+  --fs-res-pad: var(--fs-space-4) 11px;
+
+  display: flex;
+  gap: var(--fs-c-gap-cell);
+  overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  scroll-snap-type: y mandatory;
+  scroll-snap-type: x mandatory;
   scrollbar-width: none;
+  /* UIRECON REV 1.4 — THE SWIPE ENDS WHERE THE RAIL DOES. Without this, a
+   * swipe carried past the last card CHAINS: the gesture keeps travelling into
+   * whatever scrolls next — the week column, then the document — so a GM who
+   * flicks one card too far watches the page move instead of the carousel
+   * stopping. `contain` keeps the gesture inside the rail it started in, which
+   * is what makes the three read as carousels rather than as strips that
+   * happen to scroll sideways. `x` only: a vertical drag over a card must
+   * still scroll the tab, because that is the only way down the page. */
+  overscroll-behavior-x: contain;
+  /* The rail is as wide as its section and no wider — `min-width: 0` is what
+   * stops a wide card from widening the flex column it sits in, which is how a
+   * carousel leaks horizontal overflow onto the tab. */
+  min-width: 0;
+  /* Items stretch to the tallest, so the three cards in one section are one
+   * height and the section is that height. */
+  align-items: stretch;
 }
 
-.fs-vcar.is-compact { max-height: 162px; }
+.fs-rescar::-webkit-scrollbar { display: none; }
 
-.fs-vcar::-webkit-scrollbar { display: none; }
-
-.fs-vcar__item {
-  padding-bottom: var(--fs-space-2);
+/* EXACTLY ONE VIEWPORT WIDE. `flex: 0 0 100%` is the whole mechanism: it cannot
+ * shrink to let a neighbour peek in and cannot grow past the viewport. The
+ * `gap` above sits BETWEEN items and is therefore never visible at rest — the
+ * next card starts a full viewport away. */
+.fs-rescar__item {
+  flex: 0 0 100%;
+  min-width: 0;
   scroll-snap-align: start;
   scroll-snap-stop: always;
+  display: flex;
+}
+
+/* The card fills its item, so two sections' cards line up even when one has
+ * more to say than the other. */
+.fs-rescar__item > * { flex: 1 1 auto; min-width: 0; }
+
+/* ══ ONE OUTER SHELL, WHATEVER THE ITEM DRAWS — UIRECON Rev 1.4 ════════════
+ *
+ * WHAT WAVE 4B LEFT HALF DONE. It made the three sections one CONSTRUCTION —
+ * one builder, one rail, one item wrapper — and stopped at the item's edge.
+ * Inside it, FANTASYSTAKES PROP POOLS still drew the `.fs-poolrow` button it
+ * had drawn as a flat list: a 9px corner where the two rails above turned 12px
+ * and a 1px left edge under their 3px. Three rails measuring identically, and
+ * the third one's contents visibly a different component — which is the same
+ * "three things a GM reads the same way, built three ways" defect one level
+ * further in.
+ *
+ * THE RULE, AND IT HAS NO NUMBER TO GO STALE IN THE WRONG PLACE. The outer box
+ * of a result item — its corner, its left edge and its inset — is set HERE,
+ * from the rail's own custom properties, by ONE declaration naming both
+ * presentations. Neither can be re-tuned without the other because there is no
+ * second place to tune, and a presentation added later joins this selector
+ * rather than bringing a box of its own.
+ *
+ * WHAT IS DELIBERATELY NOT UNIFIED: what goes INSIDE the box. An open Pool has
+ * one line to say and a settled wager has four; forcing the row into a card's
+ * internal rhythm would be the failure §11 warns about — a shape imposed on a
+ * type that does not have it. The shell is shared; the content is not.
+ *
+ * The `11px` restates the wager card's own horizontal inset rather than
+ * importing it, because `.fs-wcard` is declared in the card grammar and this
+ * file may not reach into it. The suite therefore asserts the two AGREE as
+ * measured rather than trusting either number. */
+.fs-rescar__item > .fs-wcard,
+.fs-rescar__item > .fs-poolrow {
+  border-radius: var(--fs-res-radius);
+  border-left-width: var(--fs-res-edge);
+  padding: var(--fs-res-pad);
+}
+
+/* ══ NO GOLD DOWN THE SIDE OF A RESULT — UIRECON Rev 1.4 ═══════════════════
+ *
+ * `.fs-wcard.is-done` paints its left border gold. On Play and on the Action
+ * rails that is a LIFECYCLE signal — this wager has stopped moving — and it
+ * earns its place there, where four rails of cards are at four different
+ * stages at once.
+ *
+ * ON WRAP UP IT SIGNALS NOTHING. Every card in FANTASYSTAKES MATCHUPS has
+ * stopped moving; the tab exists to report what happened. A mark carried by
+ * everything distinguishes nothing, so what was a state indicator on Play read
+ * here as ornament: a gold rule down the side of a card whose badge already
+ * says WON and whose Credits figure already carries the sign.
+ *
+ * NOTHING REPLACES IT. Not a right edge, not a tinted fill, not a rule under
+ * the head. The card returns to the shared hairline every other result item
+ * carries, and the outcome stays where it was already stated.
+ *
+ * DELIBERATELY THIS SECTION ONLY. The Yahoo rail keeps its accent — a
+ * provider's FINAL is a statement about the fixture and the only mark the card
+ * has for it — and Play, Action and the composer are untouched. */
+.fs-wkmod[data-module="bets"] .fs-rescar__item > .fs-wcard.is-done {
+  border-left-color: var(--line2);
+}
+
+/* THE SHARED RESULT SHELL. Outer box, and nothing that distinguishes one result
+ * kind from another: a Yahoo fixture, a settled Matchup and a settled Prop Pool
+ * are the same card with different data in it. The left-edge accent is the
+ * existing `.fs-wcard` lifecycle treatment and carries the outcome, which is
+ * the one thing that legitimately differs. */
+.fs-wcard--result {
+  height: 100%;
+  min-width: 0;
+}
+
+/* A result card's foot carries a winner or a week — text, not a control — so it
+ * wraps rather than truncating the one fact the card is about. */
+.fs-wcard--result .fs-wcard__footvalue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A Yahoo fixture is not a wager: no accent bar unless it is settled, and the
@@ -101,7 +230,9 @@
 .fs-wcard--yahoo .fs-wcard__badge { letter-spacing: .12em; }
 
 /* ── The Week · Pools rows ─────────────────────────────────────────────────
- * All four visible together, no carousel of their own. */
+ * An OPEN Pool still draws this compact row — "you have a pick to make" is a
+ * different statement from "here is what happened", and it belongs in the
+ * carousel item rather than in a result card it has no result to fill. */
 
 .fs-poolrows {
   display: flex;
@@ -234,13 +365,26 @@
 }
 
 .fs-lsec {
-  padding: var(--fs-space-4);
+  padding: 0;
   background: var(--card);
   border: var(--fs-border);
   border-radius: var(--fs-radius-card);
 }
 
-.fs-lsec + .fs-lsec, .fs-lscroll > .fs-settle { margin-top: var(--fs-space-3); }
+/* ONE SPACING RULE FOR FOUR PEERS — UIRECON Wave 2. This read
+ * `.fs-lsec + .fs-lsec, .fs-lscroll > .fs-settle`, because Current Settle was
+ * a different element that had to be named separately to sit the same
+ * distance from its neighbour. It is a `.fs-lsec` now, so the sibling
+ * selector covers it and there is nothing left to keep in step. */
+.fs-lsec + .fs-lsec { margin-top: var(--fs-space-3); }
+
+@media (max-height: 620px) {
+  #panel-ledger .fs-seasonlabel,
+  #panel-ledger #fs-strip-season { display: none; }
+  #panel-ledger .fs-lscroll { padding-top: 2px; padding-bottom: 2px; }
+  #panel-ledger .fs-lsec + .fs-lsec { margin-top: 2px; }
+  #panel-ledger .fs-accordion__button { min-height: 44px; padding-top: 4px; padding-bottom: 4px; }
+}
 
 /* Section 2 is the statement of the page: a gold edge and a lifted fill mark
  * it as the section the others explain into. */
@@ -250,7 +394,20 @@
   box-shadow: inset 2px 0 0 var(--gold);
 }
 
-.fs-lsec__head { display: flex; align-items: baseline; gap: var(--fs-space-2); }
+.fs-lsec__head { align-items: center; }
+
+/* FINAL POR §11 — THE NUMBER AND TITLE GET BREATHING ROOM FROM THE CARD EDGE.
+ *
+ * `.fs-accordion__head` pays a 10px inset on both sides, which is right for a
+ * sheet accordion but reads as cramped against the Account card's own border:
+ * the gold ordinal starts almost on the edge. This lifts the LEFT inset only,
+ * and only for Account's four rows, so all four sit on one line and nothing
+ * else that uses the accordion primitive — the Preview sheet included — moves.
+ *
+ * PADDING ONLY. Typography, row height, border, chevron placement, content and
+ * behaviour are all untouched; the head keeps its 56px minimum and its 9px
+ * vertical rhythm, so the four rows do not grow. */
+#panel-ledger .fs-lsec__head { padding-left: var(--fs-space-6); }
 
 .fs-lsec__num {
   font-family: var(--fs-font-money);
@@ -260,20 +417,20 @@
 }
 
 .fs-lsec__title {
-  font-size: var(--fs-size-fine);
-  font-weight: var(--fs-weight-heavy);
-  letter-spacing: var(--fs-track-eyebrow);
+  font-size: 16px;
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: 0;
   color: var(--bone);
 }
 
 .fs-lsec__sub {
-  margin: 2px 0 var(--fs-space-3);
-  font-size: var(--fs-size-micro);
-  line-height: 1.4;
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.25;
   color: var(--g1);
 }
 
-.fs-lsec__body { display: flex; flex-direction: column; }
+.fs-lsec__body { flex-direction: column; }
 
 /* ── Ledger · rows ─────────────────────────────────────────────────────────*/
 
@@ -402,22 +559,19 @@
 /* ── Ledger · Current Settle card ──────────────────────────────────────────
  * Inert by construction: no cursor, no hover, no tap target. */
 
-.fs-settle {
-  padding: var(--fs-space-4);
-  background: var(--goldbg);
-  border: var(--fs-border-edge);
-  border-radius: var(--fs-radius-card);
-  cursor: default;
-}
-
-.fs-settle__head {
-  margin-bottom: var(--fs-space-3);
-  font-size: var(--fs-size-fine);
-  font-weight: var(--fs-weight-heavy);
-  letter-spacing: var(--fs-track-eyebrow);
-  color: var(--gold);
-}
-
+/* ── Current Settle — section 4's rows ─────────────────────────────────────
+ *
+ * THE CARD IS GONE; THE ROWS ARE NOT (UIRECON Wave 2).
+ *
+ * `.fs-settle` was a bespoke card — its own padding, gold fill, edge border and
+ * radius — standing beside three `.fs-lsec` disclosures that shared one
+ * construction. The container is now `ledgerSection()` like its three peers, so
+ * the padding, ground, border and radius come from `.fs-lsec` and the rules
+ * that drew them here are retired along with `.fs-settle__head`, whose job the
+ * section's own numbered header does.
+ *
+ * WHAT REMAINS IS THE RECONCILIATION ITSELF: three input rows, a result row and
+ * the figures in them. That grammar is this block's and is unchanged. */
 .fs-settle__row,
 .fs-settle__result {
   display: flex;

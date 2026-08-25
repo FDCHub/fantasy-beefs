@@ -5,9 +5,13 @@ Four operations, each exactly-once, each its own callable so the close
 orchestrator sequences them rather than hiding them:
 
     sweep_championship_reserves    reserve:{team}    -> championship:{league}
+                                   LEGACY-ERA ONLY; retired by WP-5
     consolidate_legacy_championship  "championship"  -> championship:{league}
+                                   LEGACY-ERA ONLY; retired by WP-5
     distribute_championship        championship:{league} -> winner Wallets
     reconcile_expired_minimum      expired_min:{team}  -> wallet:{team}
+                                   LEGACY-ERA ONLY; retired by WP-4 for
+                                   RULESET_FINAL_POR seasons
 
 WHY THE RESERVE SWEEP CHANGES NO GM'S CURRENT SETTLE. `reserve:{team}` is
 GM-keyed for provenance but was economically committed to the Championship pot
@@ -18,10 +22,17 @@ opening Season Allocation obligation — the 22000 was advanced regardless of
 where the 8000 later sits. A close that quietly netted the sweep against the
 advance would forgive a real obligation.
 
-WHY THE EXPIRED-MINIMUM RETURN ALSO CHANGES NOTHING. `expired_min:{team}` and
-`wallet:{team}` are both settlement-relevant assets of the SAME GM, so the
-return is a reclassification. Current Settle moves by exactly zero, which is the
-same reason expiry itself did in S5-P1.
+WHY THE EXPIRED-MINIMUM RETURN ALSO CHANGES NOTHING, AND WHY IT NO LONGER RUNS.
+`expired_min:{team}` and `wallet:{team}` are both settlement-relevant assets of
+the SAME GM, so the return is a reclassification: Current Settle moves by
+exactly zero, the same reason expiry itself did in S5-P1. That is the LEGACY
+era. WP-4 replaced it — under `RULESET_FINAL_POR` an unspent Weekly Minimum is
+forfeited to the FantasyStakes Championship Pot at WEEK close, so there is no
+`expired_min:` balance at season end and no return to make. This step is
+therefore RETIRED for Final POR seasons rather than left to run as a harmless
+no-op: a retired path that still executes is a path that can be re-armed by a
+future edit, and running it would also record a season-close event asserting a
+return that the Final POR does not make.
 
 RECEIVABLES ARE NOT COLLECTED HERE, DELIBERATELY. Skunk is ledger-only by owner
 ruling S5-R1, and no controlling non-superseded authority requires an automatic
@@ -37,7 +48,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from economy.championship import championship_distribution
+from economy.championship_distribution import (
+    distribute_championship as calculate_championship_distribution,
+    podium_standings,
+)
 from economy.championship_podium import resolve_podium
 from economy.economy_events import (
     DOOR_CHAMPIONSHIP_DISTRIBUTION,
@@ -82,6 +96,10 @@ class SweepResult:
     season: int
     swept: tuple[tuple[int, int], ...]
     total_cents: int
+    #: WP-5 — True when the era retired this step. A Final POR season never
+    #: advanced a `reserve:{team}` at all, so a zero total here means two very
+    #: different things across the two eras and the flag is what separates them.
+    retired: bool = False
 
 
 @dataclass(frozen=True)
@@ -98,6 +116,12 @@ class ExpiredMinResult:
     season: int
     returned: tuple[tuple[int, int], ...]
     total_cents: int
+    #: True when the era retired this step (WP-4, `RULESET_FINAL_POR`). A caller
+    #: can then tell "no GM had an expired balance" apart from "this era does
+    #: not have expired balances", which the totals alone cannot distinguish.
+    retired: bool = False
+    #: (team_id, cents) that a retired run found and deliberately did not move.
+    stranded: tuple[tuple[int, int], ...] = ()
 
 
 def _teams(db, league_id: int):
@@ -122,10 +146,23 @@ def sweep_championship_reserves(db, *, league_id: int,
     """
     from db.schema import League
 
+    from ruleset import is_final_por
+
     now = now or datetime.now(timezone.utc)
     league = db.query(League).filter(League.id == league_id).first()
     season = league.season
     db.flush()
+
+    if is_final_por(db, league_id=league_id, season=season):
+        # RETIRED FOR THIS ERA (WP-5). Model B never advanced a per-GM
+        # Championship Reserve, so there is nothing to consolidate — and the
+        # account it would consolidate INTO, `championship:{league}`, is itself
+        # retired for Final POR writes. Returning empty rather than recording a
+        # zero RESERVE_SWEEP event keeps the season's event log free of a claim
+        # that a sweep happened, which is the same rule WP-4 applied to the
+        # expired-Minimum return.
+        return SweepResult(league_id=league_id, season=season, swept=(),
+                           total_cents=0, retired=True)
 
     legs: list[tuple[str, int]] = []
     swept: list[tuple[int, int]] = []
@@ -174,8 +211,25 @@ def consolidate_legacy_championship(db, *, league_id: int,
     """
     from db.schema import League
 
+    from ruleset import is_final_por
+
     now = now or datetime.now(timezone.utc)
     db.flush()
+
+    league_row = db.query(League).filter(League.id == league_id).first()
+    if league_row is not None and is_final_por(db, league_id=league_id,
+                                               season=league_row.season):
+        # RETIRED FOR THIS ERA (WP-5). This step's only effect is to WRITE to
+        # `championship:{league}`, which is a retired namespace for a Final POR
+        # season. Consolidating into it would create exactly the posting §11
+        # retires, and would do so in the name of tidying up.
+        #
+        # THE LEGACY BALANCE IS LEFT WHERE IT IS, DELIBERATELY. It is a legacy
+        # season's money; nothing here has the authority to re-home it into a
+        # different era's pot, and in practice it is zero — the bare account was
+        # written only by the shortfall sweep, which WP-5 also retires.
+        return 0
+
     legacy = _balance_of_in_session(db, LEGACY_CHAMPIONSHIP_ACCOUNT)
     if legacy == 0:
         return 0
@@ -231,11 +285,12 @@ def distribute_championship(db, *, league_id: int,
                             podium_source=None) -> ChampionshipResult:
     """Pay the Championship pot out by the accepted 60/30/10 rule.
 
-    THE ARITHMETIC IS NOT REIMPLEMENTED. `championship_distribution()` is the
-    accepted pure function and is called unchanged, including its remainder
+    THE ARITHMETIC IS NOT REIMPLEMENTED. WP-10's
+    `economy/championship_distribution.py` is the ONE canonical split for all
+    three championship pillars and is called unchanged, including its remainder
     rule: every ordinary place floors, and the ENTIRE indivisible remainder goes
-    to first place. That rule is deliberately different from the Pool's §6.3
-    canonical-id spread, and collapsing the two would silently change payouts.
+    to first place. It also carries the Final POR §17 dead-heat rule, which the
+    arithmetic this path used before carried no equivalent of.
 
     ── WP1D — WHO RECEIVES IT ──────────────────────────────────────────────
 
@@ -307,7 +362,31 @@ def distribute_championship(db, *, league_id: int,
                 f"placed team {team_id} has no wallet; refusing to pay a "
                 f"subset of the placements.")
 
-    placements = championship_distribution(pot, list(split), list(order))
+    # ── WP-10 · THE ONE CANONICAL SPLIT ──────────────────────────────────────
+    #
+    # Final POR §17 fixes 60/30/10 AND its dead-heat rule as product rules, and
+    # requires one implementation across all three championship pillars. This
+    # path used `economy/championship.py::championship_distribution`, which had
+    # no tie rule at all: it paid an ordered list 60/30/10 in whatever order the
+    # caller built, so a genuine dead heat was resolved by list construction
+    # rather than by the rule.
+    #
+    # `podium_standings` gives each podium finisher a DISTINCT descending rank
+    # value, so a bracket — which cannot tie, by `derive_podium_keys`' own
+    # three-distinct-ids contract — reports no tie and is paid exactly as
+    # before. The dead-heat machinery is present and simply never fires here,
+    # which is the correct relationship between a knockout result and a rule
+    # that exists for scored ones.
+    #
+    # The `(place, team_id, pct, cents)` tuple shape is preserved for
+    # `ChampionshipResult.placements` and every certified caller of it.
+    ranked = calculate_championship_distribution(
+        pot, podium_standings(order), split=tuple(split))
+    by_place = {p.place: p for p in ranked}
+    placements = tuple(
+        (p.place, p.team_id, split[p.place - 1] if p.place <= len(split) else 0,
+         p.amount_cents)
+        for p in (by_place[k] for k in sorted(by_place)))
     paid = sum(amount for _, _, _, amount in placements)
     if paid != pot:
         raise SeasonReconciliationError(
@@ -333,7 +412,11 @@ def distribute_championship(db, *, league_id: int,
 
 def reconcile_expired_minimum(db, *, league_id: int,
                               now: datetime | None = None) -> ExpiredMinResult:
-    """Credit each GM's `expired_min:` back to their own Wallet.
+    """Credit each GM's `expired_min:` back to their own Wallet. LEGACY ERA ONLY.
+
+    RETIRED UNDER `RULESET_FINAL_POR` (WP-4) — see the module docstring. A Final
+    POR season returns immediately with `retired=True`, having posted nothing
+    and recorded no event.
 
     PER-GM EVENT KEYS, not one league key. A GM added mid-close, or a partially
     completed run, must be able to converge without re-crediting the GMs already
@@ -345,11 +428,36 @@ def reconcile_expired_minimum(db, *, league_id: int,
     commissioner-selectable destination.
     """
     from db.schema import League
+    from ruleset import is_final_por
 
     now = now or datetime.now(timezone.utc)
     league = db.query(League).filter(League.id == league_id).first()
     season = league.season
     db.flush()
+
+    if is_final_por(db, league_id=league_id, season=season):
+        # RETIRED FOR THIS ERA (WP-4). Nothing was ever written to
+        # `expired_min:` this season, so there is nothing to return; the whole
+        # unspent Weekly Minimum already left the GM at week close. Returning an
+        # empty result rather than raising keeps the close orchestrator's step
+        # sequence intact and lets it report the retirement, and writing no
+        # event keeps the season's economy_event log free of a claim that a
+        # return happened.
+        #
+        # A STRANDED BALANCE IS SURFACED, NOT SILENTLY SWEPT. The one way a
+        # Final POR season can hold `expired_min:` cents is a season whose
+        # weeks closed while unstamped and which was stamped afterwards. Those
+        # cents are the GM's under the era that posted them, and this retired
+        # path is not the authority to move them, so they are reported and left
+        # in place for the close's own conservation assertion to catch.
+        stranded = tuple(
+            (team.id, bal) for team, bal in
+            ((t, _balance_of_in_session(db, expired_min_account(t.id)))
+             for t in _teams(db, league_id))
+            if bal != 0)
+        return ExpiredMinResult(league_id=league_id, season=season,
+                                returned=(), total_cents=0,
+                                retired=True, stranded=stranded)
 
     returned: list[tuple[int, int]] = []
     total = 0

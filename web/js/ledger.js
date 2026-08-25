@@ -18,7 +18,7 @@
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
-import { PanelComposer, escapeHtml } from './components.js';
+import { PanelComposer, bindAccordions, escapeHtml } from './components.js';
 import { currentWeek } from './league-model.js';
 import { weekPhaseLabel } from './phase.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
@@ -208,15 +208,17 @@ function ledgerSection(spec) {
   // A REAL BUTTON WITH REAL `aria-expanded`, matching `expandableRow` above
   // rather than inventing a second disclosure grammar for the same tab.
   return (
-    `<section class="fs-lsec${elevated ? ' is-elevated' : ''}` +
+    `<section class="fs-lsec fs-accordion${elevated ? ' is-elevated' : ''}` +
     `${open ? ' is-open' : ''}" data-section="${number}" data-disclosure>` +
-    '<button type="button" class="fs-lsec__head" data-lsec-toggle ' +
+    '<button type="button" class="fs-lsec__head fs-accordion__head" data-accordion-toggle data-lsec-toggle ' +
     `aria-expanded="${open ? 'true' : 'false'}">` +
-    `<span class="fs-lsec__num">${number}</span>` +
-    `<span class="fs-lsec__title">${escapeHtml(title)}</span>` +
-    '<span class="fs-lsec__chev" aria-hidden="true">›</span></button>' +
-    `<div class="fs-lsec__sub">${escapeHtml(sub)}</div>` +
-    `<div class="fs-lsec__body">${body}</div>` +
+    `<span class="fs-lsec__num fs-accordion__number">${number}</span>` +
+    '<span class="fs-accordion__main">' +
+    `<span class="fs-lsec__title fs-accordion__title">${escapeHtml(title)}</span>` +
+    `<span class="fs-lsec__sub fs-accordion__sub">${escapeHtml(sub)}</span>` +
+    '</span>' +
+    '<span class="fs-lsec__chev fs-accordion__chev" aria-hidden="true">›</span></button>' +
+    `<div class="fs-lsec__body fs-accordion__body">${body}</div>` +
     '</section>'
   );
 }
@@ -227,8 +229,11 @@ function advancesSection(r) {
   const a = r.advances;
   return ledgerSection({
     number: '1',
-    title: 'FANTASYSTAKES ADVANCES',
-    sub: 'Virtual stakes advanced to you for the season.',
+    // FINAL POR §30 — the approved public label. `Advances` reads as a loan
+    // against a balance; what this section reports is the season's opening
+    // allocation of virtual credits.
+    title: 'OPENING FANTASYSTAKES ALLOCATION',
+    sub: 'Virtual credits allocated to you for the season.',
     body:
       // Season-Opening is a PARENT of its two components and a SIBLING of Added
       // Stakes. Nesting Added Stakes underneath would claim it was part of the
@@ -246,7 +251,7 @@ function wageringSection(r) {
   const pos = r.position;
 
   const versus =
-    '<div class="fs-lgroup"><div class="fs-lgroup__head">VERSUS ACTIVITY</div>' +
+    '<div class="fs-lgroup"><div class="fs-lgroup__head">MATCHUP ACTIVITY</div>' +
     expandableRow({
       label: 'Settled wins', cents: act.settledWinsCents,
       items: VERSUS_WINS_SUPPORT, key: 'versus-wins',
@@ -255,20 +260,20 @@ function wageringSection(r) {
       label: 'Settled losses', cents: act.settledLossesCents,
       items: VERSUS_LOSSES_SUPPORT, key: 'versus-losses',
     }) +
-    ledgerRow({ label: 'Net Versus', cents: act.netVersusCents, signed: true, total: true }) +
+    ledgerRow({ label: 'Net Matchups', cents: act.netVersusCents, signed: true, total: true }) +
     '</div>';
 
   const pools =
-    '<div class="fs-lgroup"><div class="fs-lgroup__head">POOL ACTIVITY</div>' +
+    '<div class="fs-lgroup"><div class="fs-lgroup__head">PROP POOL ACTIVITY</div>' +
     expandableRow({
-      label: 'Pool payouts', cents: act.poolPayoutsCents,
+      label: 'Prop Pool payouts', cents: act.poolPayoutsCents,
       items: POOL_PAYOUTS_SUPPORT, key: 'pool-payouts',
     }) +
     expandableRow({
-      label: 'Pool entries', cents: act.poolEntriesCents,
+      label: 'Prop Pool entries', cents: act.poolEntriesCents,
       items: POOL_ENTRIES_SUPPORT, key: 'pool-entries',
     }) +
-    ledgerRow({ label: 'Net Pools', cents: act.netPoolsCents, signed: true, total: true }) +
+    ledgerRow({ label: 'Net Prop Pools', cents: act.netPoolsCents, signed: true, total: true }) +
     '</div>';
 
   const positionGroup =
@@ -314,7 +319,7 @@ function adjustmentsSection(r) {
   return ledgerSection({
     number: '3',
     title: 'SEASON ADJUSTMENTS + WINNINGS',
-    sub: 'Amounts outside ordinary Versus and Pool wagering.',
+    sub: 'Amounts outside ordinary Matchup and Prop Pool wagering.',
     body:
       ledgerRow({ label: 'Weekly Min · out of circulation', cents: adj.weeklyMinOutOfCirculationCents, signed: true }) +
       ledgerRow({ label: 'Skunk Fees', cents: adj.skunkFeesCents }) +
@@ -334,23 +339,49 @@ function adjustmentsSection(r) {
 }
 
 /**
- * The Current Settle card.
+ * Section 4 — Current Settle.
  *
- * A plain `div`, deliberately: no button, no tap target, no `data-card-action`.
- * It shows its three inputs and the result, and the three inputs are the three
- * section totals above it — so the card can be checked against the page without
- * going anywhere.
+ * ── IT IS A PEER SECTION NOW, NOT A BESPOKE CARD (UIRECON Wave 2) ──────────
+ *
+ * What stood here was a `<section class="fs-settle">` with its own head, its
+ * own row grammar, its own border and fill, and eighteen dedicated CSS rules —
+ * sitting directly beneath three numbered `ledgerSection()` disclosures that
+ * shared one construction between them. It was the only block on the tab that
+ * was not a peer of its siblings, and it was the most important one.
+ *
+ * It renders through `ledgerSection()` now, so the header height, the number
+ * treatment, the title typography, the chevron, the border, the spacing and the
+ * expand/collapse behaviour are not "the same as" sections 1–3 — they ARE
+ * sections 1–3's, because there is one function producing all four.
+ *
+ * ── WHY IT OPENS AND THEY DO NOT ───────────────────────────────────────────
+ *
+ * Rev 4.3 §14.2 is explicit: do not make Current Settle or key top-level
+ * figures require expansion. Sections 1–3 are detail and open on demand; this
+ * is the figure the whole tab exists to derive, and a GM who has to press
+ * something to see it has been given a worse page than before.
+ *
+ * So the AFFORDANCE is identical — same button, same `aria-expanded`, same
+ * chevron, same toggle through the same `[data-disclosure]` handler, and it
+ * collapses like any other section when a GM chooses to. Only the INITIAL state
+ * differs, and it differs for the one reason the POR names.
+ *
+ * ── WHAT DID NOT CHANGE ────────────────────────────────────────────────────
+ *
+ * Every figure, every `data-exact-cents`, the three input rows, the result row,
+ * the note and the trust anchor. `id="fs-current-settle"` is kept so the
+ * suites that locate this block still locate it. No arithmetic was touched:
+ * the three inputs are still the three section totals above, which is what
+ * lets the card be checked against the page without going anywhere.
  */
-function currentSettleCard(r) {
+function currentSettleSection(r) {
   const rows = [
     { label: 'Total Virtual Stakes', cents: -r.advances.totalVirtualStakesCents },
     { label: 'Wagering Position', cents: r.position.wageringPositionCents },
     { label: 'Net Adjustments + Winnings', cents: r.adjustments.netAdjustmentsCents },
   ];
 
-  return (
-    '<section class="fs-settle" id="fs-current-settle">' +
-    '<div class="fs-settle__head">CURRENT SETTLE</div>' +
+  const body =
     rows.map((item) => (
       '<div class="fs-settle__row">' +
       `<span class="fs-settle__label">${escapeHtml(item.label)}</span>` +
@@ -370,12 +401,25 @@ function currentSettleCard(r) {
     //
     // HERE AND NOWHERE ELSE. §14.1 asks for it "where appropriate" on Account
     // and the POR warns against over-repetition; the foot of the Current Settle
-    // card is the one place on the tab where the claim is being made — this is
-    // the number the whole page exists to derive, and the line says what
+    // section is the one place on the tab where the claim is being made — this
+    // is the number the whole page exists to derive, and the line says what
     // derived it.
-    `<div class="fs-anchor">${escapeHtml(LEDGER_TRUST_ANCHOR)}</div>` +
-    '</section>'
-  );
+    `<div class="fs-anchor">${escapeHtml(LEDGER_TRUST_ANCHOR)}</div>`;
+
+  return ledgerSection({
+    number: '4',
+    title: 'CURRENT SETTLE',
+    sub: 'What you would owe or be owed if the season closed now.',
+    body: `<div id="fs-current-settle">${body}</div>`,
+    // FINAL POR §30 — ALL FOUR ACCOUNT CARDS ARRIVE CLOSED.
+    //
+    // Current Settle opened on arrival because it is the number the page exists
+    // to derive. But a reconciliation figure is not what a GM comes to Account
+    // to read first, and opening the densest of the four cards by default put
+    // an accounting statement in front of a reader who may only have wanted
+    // their Wallet. The affordance is unchanged and one tap away.
+    open: false,
+  });
 }
 
 /* ── Panel ──────────────────────────────────────────────────────────────────*/
@@ -430,8 +474,36 @@ export function buildLedgerPanel() {
       // and never subtracted from it again.
       { label: 'In Play', cents: r.position.acceptedEscrowCents,
         pending: unresolved },
-      { label: 'Held', cents: heldCents, pending: unresolved },
-      { label: 'Weekly Min Left', cents: weeklyMinLeftCents(),
+      // UIRECON REV 1.4 CONSIDERED `Escrow` HERE AND REFUSED IT.
+      //
+      // The proposal was that this cell reports wager escrow and should say
+      // so. It does not. `held_open_challenges_cents` is escrow on challenges
+      // still in an OPEN response state — an offer nobody has accepted, which
+      // has placed no Bet — and `reports/ledger_read_model.py` states it is
+      // "a SUBSET of `in_play_cents` rather than an addition to it". The
+      // escrow on unresolved WAGERS is the cell immediately to the left of
+      // this one. Labelling the subset `Escrow` beside the whole of it would
+      // have told a GM the two are different kinds of money and that adding
+      // them means something — the exact double count both read models are
+      // written to prevent.
+      //
+      // FINAL POR §30 — `ESCROW`, WITH THE SUBSET RELATIONSHIP MADE VISIBLE.
+      //
+      // The objection recorded above is real and is NOT dismissed: this figure
+      // is `held_open_challenges_cents`, which `reports/ledger_read_model.py`
+      // states is "a SUBSET of `in_play_cents` rather than an addition to it".
+      // Labelling it `ESCROW` beside `In Play` without saying so would invite
+      // exactly the addition both read models exist to prevent.
+      //
+      // So the POR's label is used AND the relationship is drawn: `included in
+      // In Play` rides the cell as secondary context. THE ARITHMETIC IS
+      // UNCHANGED — this cell is still reported beside the position and is
+      // still never added to any total.
+      { label: 'Escrow', cents: heldCents, pending: unresolved,
+        context: 'included in In Play' },
+      // UIRECON WAVE 1 — `Weekly Min Left` measured 93.8px against a 68px
+      // cell and wrapped, stretching every cell on both of this tab's strips.
+      { label: 'Min Left', cents: weeklyMinLeftCents(),
         pending: unresolved },
     ],
   });
@@ -446,7 +518,10 @@ export function buildLedgerPanel() {
     label: 'My season',
     cells: [
       { label: 'Bet Record', text: BET_RECORD },
-      { label: 'Versus + Pools', cents: r.versusPlusPoolsCents, signed: true },
+      // `Versus + Pools` failed both the terminology lock and the one-line
+      // budget (85.5px). `Play Net` is the net of everything played — the
+      // Matchup and Prop Pool totals this figure already sums.
+      { label: 'Play Net', cents: r.versusPlusPoolsCents, signed: true },
       // AWARDS / ADJ. IS UNRESOLVED WHENEVER THE FIGURES ARE REAL.
       //
       // The cell means expired minimum + Skunk + season winnings. P3 proved
@@ -458,19 +533,25 @@ export function buildLedgerPanel() {
       // authoritative zero nobody measured. The approved unresolved treatment
       // draws it as —, and the expandable detail below still carries the two
       // components that ARE sourced.
-      { label: 'Awards / Adj.', cents: r.adjustments.netAdjustmentsCents,
+      { label: 'Season Adj', cents: r.adjustments.netAdjustmentsCents,
         signed: true, pending: unresolved || !seasonWinningsResolved() },
-      { label: 'Current Settle', cents: r.currentSettleCents, signed: true,
+      // `Current Settle` is 80.9px and fits at 375 and 390 but not at the
+      // 320px cell. The concept keeps its full name on the card below, which
+      // is where the figure is actually derived; the cell carries the noun.
+      { label: 'Settle', cents: r.currentSettleCents, signed: true,
         gold: true, pending: unresolved },
     ],
   });
 
+  // FOUR SECTIONS, ONE CONSTRUCTION. Three of them explain into the fourth,
+  // and since UIRECON Wave 2 all four are built by `ledgerSection()` — so the
+  // page reads as one statement rather than three sections and a card.
   composer.add(
     '<div class="fs-lscroll">' +
     advancesSection(r) +
     wageringSection(r) +
     adjustmentsSection(r) +
-    currentSettleCard(r) +
+    currentSettleSection(r) +
     '</div>',
   );
 
@@ -501,14 +582,7 @@ export function bindLedger(panel, api) {
   // WP3C — the section-level disclosures (§14.2). Same grammar as the row-level
   // one below: a real button, a real `aria-expanded`, and a class toggle that
   // changes nothing but what is visible.
-  panel.querySelectorAll('[data-lsec-toggle]').forEach((head) => {
-    head.addEventListener('click', () => {
-      const section = head.closest('[data-disclosure]');
-      if (!section) return;
-      const open = section.classList.toggle('is-open');
-      head.setAttribute('aria-expanded', String(open));
-    });
-  });
+  bindAccordions(panel);
 
   panel.querySelectorAll('[data-expand] .fs-lexp__head').forEach((head) => {
     head.addEventListener('click', () => {

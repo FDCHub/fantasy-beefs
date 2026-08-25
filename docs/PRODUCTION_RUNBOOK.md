@@ -12,7 +12,7 @@ Three roles. Two run today.
 
 | Role | Command | Config | Notes |
 |---|---|---|---|
-| **web** | `uvicorn api.main:app --host 0.0.0.0 --port $PORT` | `railway.toml` | Healthcheck `/health`. Scales horizontally. |
+| **web** | `uvicorn api.main_rc2:app --host 0.0.0.0 --port $PORT` | `railway.toml` | Healthcheck `/health`; readiness gate `/ready`. Scales horizontally. |
 | **final_lock worker** | `python -m workers.final_lock --loop --interval 60` | `railway.final_lock.toml` | Resident loop. Holds a durable claim with a 15-minute TTL, so multiple replicas are safe. No HTTP listener by design. |
 | **release command** | `python -m migrations.run` | one-off | Run **once per release, before the web deploy**. Not a process. |
 
@@ -30,11 +30,14 @@ python -m migrations.run --status   # what is applied / pending — changes noth
 python -m migrations.run --dry-run  # what would run
 ```
 
-**A fresh database needs none of this.** `api/main.py` builds the full schema on
-first start and stamps the manifest. Migrations exist to carry an **existing**
-database forward.
+**A fresh database needs none of this.** The startup bootstrap builds the full
+schema on first start and stamps the manifest. Migrations exist to carry an
+**existing** database forward. On a production process the bootstrap is inert
+once the database has tables, so schema never changes as a side effect of a
+process starting.
 
-Ordering lives in `migrations/manifest.py`. Two entries are ACTIVE; twenty-seven
+Ordering lives in `migrations/manifest.py`. Six entries are ACTIVE
+(`0001_yahoo_identity` … `0006_rc2_championship_correction`); twenty-six
 historical scripts are recorded there as **not to be run** — their effects are
 already in `db/schema.py`, and one is a one-shot data conversion that must never
 be replayed.
@@ -42,6 +45,32 @@ be replayed.
 Applied migrations are recorded in `schema_migrations` (identifier, applied_at,
 release, version). A failed migration records nothing and exits non-zero — the
 release must not proceed.
+
+### The record is checked against the schema
+
+Each manifest entry also names the tables and columns it creates. `/ready`
+verifies every migration recorded as applied against the **live** schema, so a
+database whose record claims work the schema cannot corroborate is refused
+rather than trusted.
+
+This matters because the record is a claim. A database stamped `0001`–`0006`
+whose championship tables are absent previously answered `/ready` 200 with
+`migrations: ok`; it now answers 503 with
+`schema: unverified:<identifier>: table <name> missing`.
+
+| `/ready` field | Meaning |
+|---|---|
+| `ready` | the gate — the platform reads this |
+| `process` | this process booted and is configured |
+| `database` | reachable **and** at the schema this code needs |
+| `checks.migrations` | `ok` \| `pending:<ids>` \| `unknown` |
+| `checks.schema` | `ok` \| `unverified:<detail>` \| `unknown` |
+
+`process: true` with `database: false` means the build is fine and the **schema**
+is the problem — run `python -m migrations.run`, or investigate a record that
+disagrees with the schema. `process: false` is a configuration problem, and a
+rollback (§9) is the likely answer. A schema state that cannot be determined
+fails **closed**.
 
 ---
 
@@ -104,7 +133,8 @@ invalidates every stored Yahoo connection at once.
 3. `python -m migrations.run --dry-run` against production — review.
 4. `python -m migrations.run` — must exit 0. **If it fails, stop; do not deploy.**
 5. Deploy the backend.
-6. Gate on readiness: `GET /ready` must return 200 with `migrations: ok`.
+6. Gate on readiness: `GET /ready` must return 200 with `migrations: ok`,
+   `schema: ok`, and both `process` and `database` true.
 7. Deploy frontend assets if released separately (§10).
 8. `python -m ops.smoke --base-url https://<host> --expect-release <sha>`
 9. Watch errors and the final-lock worker for one cycle.
@@ -220,6 +250,52 @@ this exists for includes "the database is suspect".
 
 ---
 
+## 11a. Yahoo connection and data retention
+
+**The retention question is an OPEN CONTRACTUAL GATE.** The Yahoo agreement's
+data storage and retention terms have not been clarified. Nothing in this
+repository asserts a right to retain Yahoo data, no retention period is
+implemented, and this section does not claim compliance.
+
+What the software actually persists is inventoried:
+
+```bash
+python -m ops.yahoo_retention            # the full inventory
+python -m ops.yahoo_retention --gate     # the open gate, alone
+python -m ops.yahoo_retention --json     # machine-readable
+```
+
+The inventory is kept honest by `test_c1_yahoo_retention.py`, which fails when a
+provider-origin column exists in `db/schema.py` and is not inventoried.
+
+**Six persisted fields carry an economic dependency** — settled wagers, skunk
+charges, pool settlements and Championship Scores were derived from them, and
+they cannot be recomputed if the source is deleted. Those are the fields a
+retention ruling actually governs. See the inventory's REQUIRES RULING list.
+
+**Scopes are `openid`, `email`, `fspt-r`** — read-only. FantasyStakes writes
+nothing to Yahoo.
+
+**A user may disconnect their own authorization** at any time:
+
+| | |
+|---|---|
+| `GET /provider/connection` | whether this account holds a grant |
+| `POST /provider/disconnect` | clear it — self-service only, no user id parameter |
+
+Disconnecting destroys the sealed OAuth material and marks the grant
+disconnected. It touches **no** wager, settled result, Ledger row, wallet or
+league membership. FantasyStakes cannot revoke at Yahoo — Yahoo documents no
+revocation endpoint — so the response tells the user to remove the app from
+their Yahoo account's connected apps if they want that too.
+
+**Attribution** — "Fantasy data provided by Yahoo Fantasy" is rendered on every
+surface displaying Yahoo Fantasy Information. It claims no sponsorship,
+endorsement, partnership or affiliation, and `test_c1_yahoo_retention.py`
+asserts the product makes no such claim anywhere.
+
+---
+
 ## 12. Yahoo outage
 
 Do nothing hasty. The architecture already fails closed:
@@ -273,7 +349,18 @@ the conditions worth alerting on, and the surface that reveals each:
 ```bash
 python test_prod_harden1_release.py
 python test_prod_harden1_security.py
+python test_b1_schema_readiness.py                       # readiness, on SQLite
+B1_DATABASE_URL=postgresql://…/fantasy_test python test_b1_schema_readiness.py
 TEST_DATABASE_URL=postgresql://…/fantasy_test python test_prod_harden1_recovery.py
 TEST_DATABASE_URL=postgresql://…/fantasy_test python test_prod_harden1_restore.py
 TEST_DATABASE_URL=postgresql://…/fantasy_test python run_pg_suites.py
 ```
+
+`test_b1_schema_readiness.py` drives the four database states a deploy can land
+in — healthy, stamped-but-unverifiable, behind the manifest, and unstamped — and
+only the first may answer ready. Run it on **both** dialects: the production
+target is PostgreSQL and the invariant must not be a SQLite accident.
+
+`run_pg_suites.py` gives every `*_pg.py` suite its own database and drops it
+afterwards, which is what the empty-database harness guard requires; do not run
+those suites serially against one long-lived database.

@@ -450,7 +450,7 @@ _assert("and it is attributed only when it is actually showing one",
 _section("8 · Every Yahoo surface is attributed, exactly once")
 
 for panel in ("standings.js", "league.js", "action.js", "week.js",
-              "ledger.js", "rules.js"):
+              "ledger.js"):
     body = _read("web", "js", panel)
     calls = len(re.findall(r"attributionFooter\(", _code_only(body)))
     _assert(f"{panel} renders the attribution exactly once", calls == 1,
@@ -462,8 +462,9 @@ for panel in ("standings.js", "league.js", "action.js", "week.js",
 # podium and what happened on the field, and explaining a FantasyStakes rule by
 # naming its authority is this product describing itself. None of those
 # sentences is Yahoo Fantasy Information, and none of them is attributed: the
-# Rules panel carries ONE attribution, in its legal footer, for the league name
-# in its header and the provider-backed values the commissioner region reports.
+# Provider Information and About & Legal each carry at most one attribution in
+# their own independently rendered destination. Rules itself displays no Yahoo
+# league facts and therefore carries none.
 _RULES_DATA = _read("web", "js", "data", "rules-data.js")
 _assert("the rules copy does reference Yahoo, as the product rules require",
         _RULES_DATA.count("Yahoo") >= 4, str(_RULES_DATA.count("Yahoo")))
@@ -471,9 +472,14 @@ _assert("and not one of those references is individually attributed",
         "attribution" not in _RULES_DATA.lower())
 _RULES_JS = _read("web", "js", "rules.js")
 _LEGAL_FOOTER = _RULES_JS.split("function legalFooter")[1].split("\n}\n")[0]
-_assert("the Rules panel attributes the SURFACE, in its legal footer, once",
+_assert("the legal footer attributes its own About & Legal surface once",
         "attributionFooter()" in _LEGAL_FOOTER
-        and _RULES_JS.count("attributionFooter()") == 1)
+        and _LEGAL_FOOTER.count("attributionFooter()") == 1)
+_assert("Provider Information attributes its own surface once",
+        _RULES_JS.split("function buildProviderPanel")[1]
+        .split("function buildAboutLegalPanel")[0].count("attributionFooter()") == 1)
+_assert("the two separate destinations account for both call sites",
+        _RULES_JS.count("attributionFooter()") == 2)
 
 _assert("and it is not smuggled into the static HTML shell instead",
         REQUIRED not in _read("web", "index.html"))

@@ -103,7 +103,7 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
   check('no heading carries a directional arrow',
     play.headings.every((h) => !h.includes('↕')), play.headings.join(' | '));
   check('the four-cell strip is retained with its locked labels',
-    ['Net Winnings', 'Wallet', 'Weekly Min Left', 'Available']
+    ['Net Won', 'Wallet', 'Min Left', 'Available']
       .every((l) => play.stripLabels.includes(l)),
     play.stripLabels.join(' | '));
   check('the Credits disclaimer appears once', play.disclaimers === 1);
@@ -187,9 +187,24 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
     `);
     check('the preview opens from the discovery card', preview.open === true
       && /Matchup Preview/.test(preview.title));
+    // PRE-EXISTING STALENESS, CORRECTED IN REV 1.4. UIRECON Wave 4A removed the
+    // `MATCHUP` block — it restated the two team names already in the sheet
+    // subtitle, so the sheet named the matchup twice — and left this assertion
+    // pointing at the four-section order. It has been failing since Wave 4
+    // landed; the order below is what `preview.js` has actually built since
+    // then, and its own header states the three modules as peers.
+    //
+    // REV 1.4 CHANGES THE INSIDE OF `LINEUPS`, NOT THE ORDER. The stacked pair
+    // of lineups became a side-by-side comparison matrix carrying live scores
+    // beside projections; it is still one section, still last, still the
+    // projections the two modules above rest on.
+    /* FINAL POR UI-3E §27E — LINEUPS LEADS. See the same replacement in
+     * `wp3c_component_tests.mjs` for why the locked order moved. Rev 1.4's note
+     * above still holds: it changed the INSIDE of `LINEUPS`, not the order;
+     * §27E is what changed the order. */
     check('the section order is the locked one',
       preview.titles.join(' → ')
-        === 'MATCHUP → WHY THE LINE LOOKS THIS WAY → THE READ → LINEUPS',
+        === 'LINEUPS → WHY THE LINE LOOKS THIS WAY → THE READ',
       preview.titles.join(' → '));
     check('it duplicates no betting market',
       preview.hasMarketCells === false
@@ -322,12 +337,17 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
         .map((el) => el.textContent),
       settleVisible: settle
         ? settle.getBoundingClientRect().height > 0 : false,
-      settleInsideDisclosure: settle ? Boolean(settle.closest('[data-disclosure]')) : null,
+      // UIRECON WAVE 2 — Current Settle is section 4 rather than a card beside
+      // the sections, so "visible without expanding" is now a question about
+      // its STATE rather than about where it sits in the tree.
+      settleSectionOpen: settle
+        ? Boolean(settle.closest('.fs-lsec.is-open')) : null,
       sectionCount: sections.length,
-      allCollapsed: sections.every((s) =>
-        s.querySelector('.fs-lsec__body').getBoundingClientRect().height === 0),
-      allAriaFalse: sections.every((s) =>
-        s.querySelector('[data-lsec-toggle]').getAttribute('aria-expanded') === 'false'),
+      openStates: sections.map((s) => s.classList.contains('is-open')),
+      bodyHeights: sections.map((s) =>
+        Math.round(s.querySelector('.fs-lsec__body').getBoundingClientRect().height)),
+      ariaStates: sections.map((s) =>
+        s.querySelector('[data-lsec-toggle]').getAttribute('aria-expanded')),
       toggleTargets: sections.map((s) =>
         Math.round(s.querySelector('[data-lsec-toggle]').getBoundingClientRect().height)),
       anchorText: anchor ? anchor.textContent : null,
@@ -335,17 +355,49 @@ await withPage({ port: 9455 }, async ({ evaluate, setViewport }) => {
     };
   `);
 
+  // UIRECON WAVE 1 — `Weekly Min Left` is labelled `Min Left`; same cell, same
+  // source. The four questions the strip answers are unchanged.
   check('the top-level strips answer what I have and what is in play',
-    ['Available', 'In Play', 'Held', 'Weekly Min Left']
+    ['Available', 'In Play', 'Escrow', 'Min Left']
       .every((l) => account.stripLabels.includes(l)),
     account.stripLabels.join(' | '));
-  check('Current Settle is visible without expanding anything (§20)',
-    account.settleVisible === true
-    && account.settleInsideDisclosure === false);
-  check('the three accounting sections are disclosures',
-    account.sectionCount === 3, String(account.sectionCount));
-  check('and they start collapsed', account.allCollapsed === true);
-  check('with accessible expanded state', account.allAriaFalse === true);
+  // §20 / §14.2 — the figure the tab exists to derive may not require
+  // expansion. Wave 2 keeps that by STATE: section 4 is drawn open, so it is on
+  // screen the moment the tab is, while carrying the same affordance as its
+  // three siblings.
+  /* ── FINAL POR UI-6 §30 — ALL FOUR ACCOUNT CARDS START CLOSED ───────────
+   *
+   * Rev 4.3 §20 said Current Settle must be visible without expanding
+   * anything, and §14.2 excepted section 4 so it opened by default. §30
+   * removed the exception: the four cards are one set and open the same way,
+   * because a single card behaving differently from three identical-looking
+   * siblings reads as a bug rather than as an affordance.
+   *
+   * §20'S INTENT IS NOT LOST, AND IS STILL ASSERTED. The figure the tab exists
+   * to derive is still reachable without expanding anything — it is carried by
+   * the TOP-LEVEL SUMMARY STRIP, whose `Settle` cell is checked earlier in this
+   * same suite. What §30 changed is that the DETAIL behind it now sits behind
+   * the same tap its three siblings do.
+   *
+   * Left behind by the run that implemented §30, and replaced here rather than
+   * relaxed. */
+  check('Settle is reachable without expanding anything (§20 via the strip)',
+    account.stripLabels.some((l) => /settle/i.test(l)),
+    account.stripLabels.join(' | '));
+  /* AND THE DETAIL IS BEHIND A TAP, which is the §30 change stated positively
+   * rather than only as the absence of the old expectation. */
+  check('  · while the Current Settle DETAIL sits inside a collapsed section',
+    account.settleSectionOpen === false && account.settleVisible === false,
+    `open=${account.settleSectionOpen} visible=${account.settleVisible}`);
+  check('the four accounting sections are disclosures',
+    account.sectionCount === 4, String(account.sectionCount));
+  check('all four sections start collapsed (§30)',
+    account.bodyHeights.every((h) => h === 0)
+    && account.openStates.every((o) => o === false),
+    account.bodyHeights.join(','));
+  check('with accessible expanded state',
+    account.ariaStates.every((a) => a === 'false'),
+    account.ariaStates.join(','));
   check('every disclosure toggle meets the 44px target',
     account.toggleTargets.every((h) => h >= 44), account.toggleTargets.join(','));
   check('the trust anchor is exact, and appears once (§19)',

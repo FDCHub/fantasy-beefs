@@ -28,19 +28,25 @@
 import { escapeHtml } from './components.js';
 import { economyReachable } from './economy.js';
 
-export const MENU_TITLE = 'Menu';
+// UIRECON WAVE 2 — THE GEAR MEANS SETTINGS, AND NOW SAYS SO.
+//
+// It was labelled `Menu`, which named the WIDGET rather than the
+// destination — and beside an account control that opens a sheet of its own,
+// `Menu` stopped distinguishing the two at all. Everything behind it is a
+// setting or a rule; the title and the accessible name say that now. The
+// entries, the routing and the capability gating are untouched.
+export const MENU_TITLE = 'Settings';
 
 /** The gear control that lives in the masthead. */
 export function menuButton() {
   return (
     '<button type="button" class="fs-gear" id="fs-gear" '
-    + 'aria-label="Menu" aria-haspopup="dialog">'
-    + '<svg class="fs-gear__icon" viewBox="0 0 18 18" fill="none" '
+    + 'aria-label="Settings" aria-haspopup="dialog">'
+    + '<svg class="fs-gear__icon" viewBox="0 0 24 24" fill="none" '
     + 'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" '
     + 'stroke-linejoin="round" aria-hidden="true" focusable="false">'
-    + '<circle cx="9" cy="9" r="2.6"/>'
-    + '<path d="M9 1.6v2M9 14.4v2M1.6 9h2M14.4 9h2'
-    + 'M3.8 3.8l1.4 1.4M12.8 12.8l1.4 1.4M14.2 3.8l-1.4 1.4M5.2 12.8l-1.4 1.4"/>'
+    + '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>'
+    + '<circle cx="12" cy="12" r="3"/>'
     + '</svg></button>'
   );
 }
@@ -63,21 +69,38 @@ export function menuButton() {
  */
 export function menuEntries() {
   const entries = [
+    /* FINAL POR §2 — THE FOUR SETTINGS ENTRIES OPEN DETAILS, NOT DESTINATIONS.
+     *
+     * They were `destination` entries, so choosing one navigated the app to a
+     * full tab-style panel and the reader lost the Settings context they had
+     * just opened. The ruling is that all four belong to the Settings sheet
+     * family, so they are `detail` entries: the shell pushes the matching
+     * sheet onto this one, the universal X pops back here, and a second X
+     * returns to the app. The panels they used to navigate to still exist and
+     * are unchanged — nothing else routes to them. */
     {
       id: 'rules',
       label: 'Rules',
       help: 'How FantasyStakes is played in this league.',
-      kind: 'destination',
-      destination: 'rules',
-      zone: 'rules',
+      kind: 'detail',
     },
     {
       id: 'settings',
       label: 'League Settings',
       help: 'The league’s configured values.',
-      kind: 'destination',
-      destination: 'rules',
-      zone: 'settings',
+      kind: 'detail',
+    },
+    {
+      id: 'provider',
+      label: 'Provider Information',
+      help: 'How FantasyStakes connects to your fantasy league.',
+      kind: 'detail',
+    },
+    {
+      id: 'about',
+      label: 'About & Legal',
+      help: 'Product, virtual-credit and legal information.',
+      kind: 'detail',
     },
   ];
 
@@ -91,29 +114,15 @@ export function menuEntries() {
       label: 'Commissioner controls',
       help: 'The season lifecycle and GM positions.',
       kind: 'destination',
-      destination: 'rules',
-      zone: 'commish',
+      destination: 'commissioner',
     });
     entries.push({
       id: 'economy',
       label: 'Economy configuration',
-      help: 'Weekly Bet Minimum, Championship Pot Contribution and Skunk Fee.',
+      help: 'Weekly Bet Minimum, Yahoo Championship Contribution and Skunk Fee.',
       kind: 'sheet',
     });
   }
-
-  entries.push({
-    id: 'provider',
-    label: 'Provider information',
-    help: 'Yahoo connection detail arrives with the provider package.',
-    kind: 'pending',
-  });
-  entries.push({
-    id: 'about',
-    label: 'About & Legal',
-    help: 'Product and legal information arrives with the next package.',
-    kind: 'pending',
-  });
 
   return entries;
 }
@@ -175,22 +184,34 @@ export function setMenuHook(hook) {
  * @param {{close: Function, push: Function}} api
  */
 function bindMenuSheet(host, api) {
-  host.addEventListener('click', (event) => {
-    const row = event.target.closest('[data-menu-kind]');
-    if (!row || !HOOK) return;
-
-    if (row.dataset.menuKind === 'sheet') {
-      // The economy setup replaces the menu level rather than stacking on it:
-      // the menu is a chooser, and closing the economy sheet should return the
-      // commissioner to the app, not to the list they chose from.
-      HOOK.openEconomy();
-      return;
-    }
-    if (row.dataset.menuKind === 'destination') {
-      // `goTo` closes the sheet as part of a destination change, so there is no
-      // separate close here — a second one would fight it.
-      HOOK.goTo(row.dataset.menuDestination, row.dataset.menuZone || null);
-    }
+  host.querySelectorAll('[data-menu-kind]').forEach((row) => {
+    row.addEventListener('click', () => {
+      if (!HOOK) return;
+      if (row.dataset.menuKind === 'sheet') {
+        // The economy setup replaces the menu level rather than stacking on it:
+        // the menu is a chooser, and closing the economy sheet should return the
+        // commissioner to the app, not to the list they chose from.
+        HOOK.openEconomy();
+        return;
+      }
+      if (row.dataset.menuKind === 'detail') {
+        // FINAL POR §2 — PUSHED ONTO THIS SHEET, NOT NAVIGATED TO.
+        //
+        // `api.push` rather than `HOOK.openDetail` alone: the stack is the
+        // sheet's own, so the detail sits on top of Settings and the X pops
+        // back to it. The shell supplies WHICH sheet, because the specs live
+        // with the content in `rules.js` and this module routes rather than
+        // renders.
+        const spec = HOOK.detailSheet(row.dataset.menu);
+        if (spec) api.push(spec);
+        return;
+      }
+      if (row.dataset.menuKind === 'destination') {
+        // `goTo` closes the sheet as part of a destination change, so there is no
+        // separate close here — a second one would fight it.
+        HOOK.goTo(row.dataset.menuDestination, row.dataset.menuZone || null);
+      }
+    });
   });
 }
 

@@ -52,7 +52,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -684,3 +684,105 @@ def reset_demo(
 
     return _league_out(db, league, teams, user=current_user,
                        superseded=old.id)
+
+
+# ── D1.1 · PUBLIC ENTRY — the signed-out visitor's way in ────────────────────
+
+@router.post("/enter", status_code=200)
+def enter_showcase_demo(response: Response, db: Session = Depends(get_db)):
+    """Seat a signed-out visitor in the showcase demo league. NO AUTH REQUIRED.
+
+    ── WHY THIS ROUTE EXISTS ────────────────────────────────────────────────
+
+    Every other demo route requires `get_current_gm`, and the signed-out gate
+    offers exactly one control: Sign in with Yahoo. So a prospective user,
+    commissioner or reviewer could not see the product at all without first
+    handing over a Yahoo account — which is the opposite of what a demo is for.
+    This is the smallest affordance that fixes it: one public POST that issues a
+    session for the DEMO GM and nothing else.
+
+    ── WHAT IT CANNOT DO, WHICH IS THE ONLY REASON IT IS SAFE ───────────────
+
+    It seats the caller as the demo GM — an account the seeder creates with the
+    hashed password `!demo-no-login`, which is not a bcrypt hash and can never
+    validate, so the account is unreachable through any credential path. That
+    account commissions ONLY demo leagues; `test_d1_demo_environment.py` drives
+    that against real Yahoo, unbound and impostor leagues in the same database
+    and asserts it holds authority over none of them.
+
+    It takes NO parameters. There is no league id, no user id and no team id a
+    caller could supply, so there is nothing to point at a real league.
+
+    IT CREATES NO LEAGUE. If the showcase has not been seeded, it answers 404
+    and says so, rather than seeding on demand — a public route that writes a
+    league is a public route that can be made to write leagues repeatedly.
+
+    It DOES restore an already-seeded showcase to canonical state before seating
+    (see below), which is a bounded undo of the previous visitor's own actions
+    against a league that already exists. Those are different powers and only
+    the second one is public.
+    """
+    from auth.jwt_auth import create_access_token
+    from auth.session import issue_browser_session, new_csrf_token
+
+    from demo.reset import ensure_canonical
+    from demo.seed import DEMO_USER_EMAIL, find_showcase
+
+    # ── RESTORE CANONICAL STATE BEFORE SEATING ───────────────────────────────
+    #
+    # The showcase is genuinely mutable now: the seated GM can strike a real
+    # Versus challenge and enter a real Pool. Without this, the second visitor
+    # would inherit the first visitor's league and no two demonstrations would
+    # agree.
+    #
+    # IT REBUILDS ONLY WHEN THE LEAGUE HAS DRIFTED. `ensure_canonical` compares
+    # a cheap fingerprint against what the fixture says CURRENT looks like and
+    # returns immediately when they match, so an ordinary visit stays a read.
+    # That keeps the original property this route was written for — a public
+    # POST must not be a way to make the deployment replay a season on demand.
+    #
+    # It still takes NO parameters and still cannot name a league, so there is
+    # nothing here to point at a real one, and `reset()` runs
+    # `assert_demo_league` before it touches a row.
+    # SERIALIZED. Concurrent visitors queue on one advisory lock inside
+    # `ensure_canonical`; whoever waits finds the league already canonical and
+    # takes the cheap path, so every simultaneous request is seated rather than
+    # three of four racing into a 500 (D2.5 blocker 1).
+    restored = ensure_canonical()
+
+    if restored.get("action") == "absent":
+        # NOT SEEDED, AND NOT THIS ROUTE'S JOB TO SEED. Controlled 404 rather
+        # than a public 22-second league build.
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "demo_not_seeded",
+            "message": ("The showcase demo league has not been created on this "
+                        "deployment. Run `python -m demo.seed`.")})
+
+    # `ensure_canonical` committed on its own session; drop anything this
+    # request already read so the league below is the restored one.
+    db.expire_all()
+    league = find_showcase(db)
+    if league is None:                     # pragma: no cover - raced teardown
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "demo_not_seeded",
+            "message": ("The showcase demo league has not been created on this "
+                        "deployment. Run `python -m demo.seed`.")})
+
+    user = db.query(User).filter(User.email == DEMO_USER_EMAIL).first()
+    if user is None:                       # pragma: no cover - seeded together
+        raise HTTPException(status_code=404, detail={
+            "reason_code": "demo_not_seeded",
+            "message": "The demo account does not exist on this deployment."})
+
+    csrf = new_csrf_token()
+    token = create_access_token(user, csrf=csrf)
+    issue_browser_session(response, token, csrf)
+    return {
+        "league_id": league.id,
+        "league_name": league.name,
+        "demo": True,
+        "restored": restored.get("action"),
+        "provider": league.provider,
+        "message": ("You are in the FantasyStakes Demo League. Every team, "
+                    "result and Credit here is sample data."),
+    }

@@ -164,10 +164,83 @@ export function buildGate() {
 
       yahooBlock +
 
+      demoEntry() +
+
       devSignIn() +
 
       '<p class="fs-gate__note">Virtual Credits · $ is display only · no cash value</p>' +
     '</div>'
+  );
+}
+
+/**
+ * Wire "Try Demo" to the public entry route.
+ *
+ * BOUND SEPARATELY FROM THE SIGN-IN FORM, and before it. `bindGate` returns
+ * early when the development sign-in form is absent — which it is on every
+ * production build — so binding the demo control inside that path would have
+ * left the button dead in exactly the deployment it exists for.
+ *
+ * The route needs no CSRF header: it carries no authority to abuse, takes no
+ * parameters, and the session it issues is the one the visitor is asking for.
+ *
+ * @param {ParentNode} root
+ */
+export function bindDemoEntry(root) {
+  const button = root.querySelector('#fs-gate-demo');
+  if (!button) return;
+  let inFlight = false;
+  button.addEventListener('click', async () => {
+    if (inFlight) return;
+    inFlight = true;
+    button.setAttribute('disabled', 'disabled');
+    try {
+      // THROUGH `session.js`, LIKE EVERY OTHER MODULE. A raw `fetch` here broke
+      // the certified invariant that exactly one module in the application
+      // makes network calls — `test_s7_full_ui_certification.py` caught it, and
+      // it was right to: the one-door rule is what makes "no illustrative UI
+      // path can bypass the authenticated client" a fact rather than a habit.
+      await apiFetch('/demo/enter', { method: 'POST' });
+      // A full reload, so the shell re-reads the session it now holds rather
+      // than trying to reconcile a signed-out page into a signed-in one.
+      window.location.assign('/app/index.html');
+    } catch (error) {
+      const el = root.querySelector('#fs-gate-error');
+      if (el) {
+        el.textContent = error instanceof ApiError
+          ? 'The demo league is not available on this deployment yet.'
+          : 'The demo could not be started. Please try again shortly.';
+      }
+    } finally {
+      inFlight = false;
+      button.removeAttribute('disabled');
+    }
+  });
+}
+
+/**
+ * "Try Demo" — the way into the product without a Yahoo account.
+ *
+ * ── D1.1 · WHY THE GATE NEEDED THIS ──────────────────────────────────────
+ *
+ * Before this, the signed-out gate offered exactly one control: Sign in with
+ * Yahoo. A prospective GM, a commissioner deciding whether to bring a league
+ * across, or a Yahoo reviewer could not see the product at all without first
+ * handing over an account. That is the opposite of what a demo is for.
+ *
+ * IT IS NOT A SIGN-IN AND IS NOT DRESSED AS ONE. Secondary styling, placed
+ * below the Yahoo control, and it says plainly that what follows is sample
+ * data — so nobody can arrive in the demo believing they are looking at their
+ * own league.
+ *
+ * @returns {string}
+ */
+export function demoEntry() {
+  return (
+    '<button class="fs-btn fs-gate__demo" id="fs-gate-demo" type="button">'
+      + 'Try Demo</button>'
+    + '<p class="fs-gate__explain">Explore a sample league with fictional '
+      + 'teams and results. No Yahoo account, no sign-in, nothing to connect.</p>'
   );
 }
 
@@ -218,6 +291,8 @@ function devSignIn() {
  * @param {HTMLElement} root the gate container
  */
 export function bindGate(root) {
+  bindDemoEntry(root);
+
   const form = root.querySelector('#fs-gate-form');
   if (!form) return;
   const errorEl = root.querySelector('#fs-gate-deverror');
@@ -295,31 +370,126 @@ export function buildIdentityBlock() {
     ? '<span class="fs-ident__badge">COMMISSIONER</span>'
     : '';
 
+  // UIRECON WAVE 2 — THE IDENTITY IS A CONTROL NOW, NOT A ROW OF THEM.
+  //
+  // What stood here was a `div` holding the team name, the commissioner badge
+  // and a persistent `Sign out` button. Three items, in the narrowest column of
+  // the masthead, competing with the wordmark for width — and the least-used
+  // control in the product held a permanent 44px target in the app's chrome.
+  //
+  // It is one button now: who you are. The rest — the full identity, the
+  // commissioner state and signing out — lives in the sheet it opens.
+  //
+  // UIRECON REV 1.4 — THE CARET IS GONE AND NOTHING REPLACES IT.
+  //
+  // A 9px `▾` sat between the team name and the Settings gear: two glyphs of
+  // ornament wedged into the narrowest column of the masthead, close enough to
+  // the gear to read as part of it and small enough to read as grit on the
+  // screen. It said "this opens something", which the button already says in
+  // the only register that is load-bearing — `aria-haspopup="dialog"`,
+  // `aria-expanded`, and an accessible name that begins with the word Account.
+  // Those three are untouched, so nothing that was ANNOUNCED was removed; only
+  // the decoration was. No second icon takes its place, because the answer to
+  // an ornament that does not earn its width is not a different ornament.
+  //
+  // `fs-ident__who` AND `fs-ident__badge` KEEP THEIR NAMES. They are still
+  // exactly what they were: the acting team's name and the commissioner label.
+  // The session certification reads both to prove the shell shows the right GM,
+  // and renaming them would have made a copy change look like a behaviour one.
+  // The WRAPPER changed job, so the wrapper changed name.
   return (
-    '<div class="fs-ident">' +
-      `<span class="fs-ident__who">${escapeHtml(who)}</span>` +
-      badge +
-      '<button type="button" class="fs-ident__out" id="fs-signout">Sign out</button>' +
-    '</div>'
+    '<button type="button" class="fs-acct" id="fs-account" '
+    + 'aria-haspopup="dialog" aria-expanded="false" '
+    + `aria-label="Account — ${escapeHtml(who)}">`
+    + `<span class="fs-ident__who">${escapeHtml(who)}</span>`
+    + badge
+    + '</button>'
   );
 }
 
 /**
- * Bind the sign-out control.
+ * The account sheet — who is acting, and how to stop.
  *
- * WHAT SIGNING OUT MEANS, EXACTLY. It ends the FantasyStakes session and clears
- * this browser's identity. It does NOT sign the GM out of Yahoo, and the copy
- * does not claim it does: Yahoo owns that session, FantasyStakes cannot end it,
- * and telling a GM otherwise on a shared device would be dangerous.
+ * WHAT IS DELIBERATELY NOT IN HERE: anything the gear already reaches. Rules,
+ * League Settings, the commissioner surface and the economy configuration are
+ * the gear's, and offering a second door to them from the account control would
+ * give the shell two answers to "where are the settings". The account control
+ * answers "who am I", and stops there.
  *
- * @param {HTMLElement} root element containing the identity block
+ * @returns {{title: string, sub: string, body: string, onMount: Function}}
  */
-export function bindIdentityBlock(root) {
-  const button = root.querySelector('#fs-signout');
+export function accountSheet() {
+  const identity = currentIdentity() || {};
+  const caps = identity.capabilities || {};
+  const team = identity.team_name || '';
+  const email = identity.email || '';
+
+  // A ROW APPEARS ONLY WHERE THERE IS SOMETHING TO PUT IN IT. An account with
+  // no bound team is a real state the server reports, and drawing an empty
+  // `Team` row for it would invent a fact about the session.
+  const rows = [
+    team ? { label: 'Team', value: team } : null,
+    email ? { label: 'Signed in as', value: email } : null,
+    caps.is_commissioner ? { label: 'Role', value: 'Commissioner' } : null,
+  ].filter(Boolean);
+
+  return {
+    title: 'Account',
+    sub: team || email,
+    body:
+      '<div class="fs-acctsheet">'
+      + rows.map((row) => (
+        '<div class="fs-prev__row">'
+        + `<span class="fs-prev__label">${escapeHtml(row.label)}</span>`
+        + `<span class="fs-prev__value">${escapeHtml(row.value)}</span>`
+        + '</div>'
+      )).join('')
+      // THE COPY STATES WHAT SIGNING OUT ACTUALLY DOES, and the sentence is
+      // carried over from the control this replaces because it was right: it
+      // ends the FantasyStakes session and clears this browser's identity. It
+      // does NOT sign the GM out of Yahoo — Yahoo owns that session,
+      // FantasyStakes cannot end it, and telling a GM otherwise on a shared
+      // device would be dangerous.
+      + '<div class="fs-note">Signing out ends your FantasyStakes session on '
+      + 'this device. It does not sign you out of Yahoo.</div>'
+      + '<button type="button" class="fs-btn fs-acctsheet__out" id="fs-signout">'
+      + 'Sign out</button>'
+      + '</div>',
+    onMount: bindAccountSheet,
+  };
+}
+
+/**
+ * Bind the sign-out control inside the account sheet.
+ *
+ * @param {HTMLElement} host the sheet element
+ */
+export function bindAccountSheet(host) {
+  const button = host.querySelector('#fs-signout');
   if (!button) return;
 
   button.addEventListener('click', async () => {
     button.disabled = true;
+    button.textContent = 'Signing out…';
     await logout();
+  });
+}
+
+/**
+ * Bind the masthead account control.
+ *
+ * IT OPENS THE SHARED SHEET, like the gear beside it. There is one pop-out host
+ * in this product and one close control; an account menu that invented its own
+ * popover would be a second dismissible surface to keep in step with the first.
+ *
+ * @param {HTMLElement} root element containing the account control
+ * @param {{openSheet: Function}} api
+ */
+export function bindIdentityBlock(root, api) {
+  const button = root.querySelector('#fs-account');
+  if (!button || !api || typeof api.openSheet !== 'function') return;
+
+  button.addEventListener('click', () => {
+    api.openSheet(() => accountSheet());
   });
 }

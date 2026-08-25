@@ -19,7 +19,9 @@ ONE deterministic order, wrapped around the EXISTING irreversible
     10  sweep every reserve:{team} -> championship:{league_id}
     11  distribute Skunk
     12  distribute Championship
-    13  reconcile every expired_min:{team} -> Wallet
+    13  reconcile every expired_min:{team} -> Wallet  (LEGACY ERA ONLY;
+        RETIRED for RULESET_FINAL_POR seasons, which forfeit the unspent
+        Weekly Minimum to the FantasyStakes Championship Pot at week close)
     14  derive final Current Settle per GM from posted state
     15  account-level conservation assertions
     16  global trial balance, then close_season()
@@ -103,6 +105,10 @@ class SeasonCloseReport:
     championship_pot_cents: int = 0
     championship_placements: tuple = ()
     expired_min_returned_cents: int = 0
+    #: WP-4. True when step 13 was retired by the season's era rather than
+    #: having simply found nothing to return. `expired_min_returned_cents` is 0
+    #: in both cases and cannot tell them apart.
+    expired_min_step_retired: bool = False
     current_settle: dict = field(default_factory=dict)
     zero_assertions: dict = field(default_factory=dict)
 
@@ -442,8 +448,13 @@ def close_season_economy(db, *, league_id: int, final_week: int,
         pass
 
     # Step 13 — expired Weekly Minimum back to each GM's own Wallet.
+    # RETIRED under RULESET_FINAL_POR (WP-4): the call returns retired=True
+    # having posted nothing. The step is still SEQUENCED here so the numbered
+    # order below it — final Current Settle, conservation, trial balance — is
+    # identical in both eras and steps 14-16 keep the same meaning.
     expired = reconcile_expired_minimum(db, league_id=league_id, now=now)
     report.expired_min_returned_cents = expired.total_cents
+    report.expired_min_step_retired = expired.retired
 
     # Step 14 — final Current Settle, derived.
     db.flush()

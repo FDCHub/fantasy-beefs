@@ -241,18 +241,49 @@ print("\nThe shared four-cell summary strip")
 
 strip_rule = _rule(COMPONENTS_CSS, ".fs-strip")
 value_rule = _rule(COMPONENTS_CSS, ".fs-strip__value")
+def _alias_resolves(alias: str, target: str) -> bool:
+    """Whether `tokens.css` defines `alias` as exactly `var(target)`.
+
+    Whitespace-tolerant: the canonical block aligns its values in a column, so
+    a literal substring match would pin the indentation rather than the alias.
+    """
+    return re.search(
+        rf"{re.escape(alias)}\s*:\s*var\(\s*{re.escape(target)}\s*\)\s*;",
+        TOKENS_CSS,
+    ) is not None
+
+
+# UIRECON WAVE 1 — the metric cell reads the canonical `--fs-c-*` aliases.
+# Each alias resolves to the token this suite used to name directly, so the
+# claims are unchanged; what changed is that a shared primitive names one
+# answer instead of choosing between the Rev 4.2 and Rev 4.3 scales. The
+# resolution itself is asserted below rather than taken on trust.
+label_rule = _rule(COMPONENTS_CSS, ".fs-strip__label")
 _assert(
     "the strip is a four-column grid of equal widths",
-    "grid-template-columns: repeat(4, 1fr)" in strip_rule,
+    "grid-template-columns: repeat(4, minmax(0, 1fr))" in strip_rule,
 )
 _assert("the strip is a grid", "display: grid" in strip_rule)
 _assert("strip values are tabular figures that do not reflow",
         "tabular-nums" in value_rule)
-_assert("strip values are monospace money", "var(--fs-font-money)" in value_rule)
+_assert("strip values are monospace money",
+        "var(--fs-c-font-number)" in value_rule
+        and _alias_resolves("--fs-c-font-number", "--fs-font-money"))
 _assert("Rev4.2 strip values take the stronger weight",
-        "var(--fs-weight-strong)" in value_rule)
+        "var(--fs-c-weight-number)" in value_rule
+        and _alias_resolves("--fs-c-weight-number", "--fs-weight-strong"))
 _assert("strip values are centred", "text-align: center" in value_rule)
-_assert("strip labels read as secondary", "var(--g1)" in _rule(COMPONENTS_CSS, ".fs-strip__label"))
+_assert("strip labels read as secondary",
+        "var(--fs-c-text-muted)" in label_rule
+        and _alias_resolves("--fs-c-text-muted", "--fs-r43-secondary"))
+# The three properties the metric-cell primitive exists to guarantee.
+_assert("strip labels are centred, in the top row",
+        "text-align: center" in label_rule and "flex: 0 0 auto" in label_rule)
+_assert("strip labels can never wrap", "white-space: nowrap" in label_rule)
+_assert("the strip value centres on both axes",
+        "align-items: center" in value_rule
+        and "justify-content: center" in value_rule
+        and "flex: 1 1 auto" in value_rule)
 _assert(
     "the strip declares no icon slot",
     ".fs-strip__icon" not in COMPONENTS_CSS,

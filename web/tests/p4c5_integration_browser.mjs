@@ -151,8 +151,9 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
     leagueAvailable && leagueAvailable.exact === String(served.ledger.available_cents),
     `${leagueAvailable ? leagueAvailable.exact : 'missing'} vs ${served.ledger.available_cents}`);
 
-  const leagueMin = cell(money.leagueCells, 'Weekly Min Left');
-  report.check('League Weekly Min Left equals the served figure',
+  // UIRECON WAVE 1 — the cell is labelled `Min Left`; same cell, same source.
+  const leagueMin = cell(money.leagueCells, 'Min Left');
+  report.check('League Min Left equals the served figure',
     leagueMin && leagueMin.exact === String(served.ledger.weekly_min_live_cents),
     `${leagueMin ? leagueMin.exact : 'missing'} vs ${served.ledger.weekly_min_live_cents}`);
 
@@ -171,7 +172,7 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
     && leagueAvailable.exact === ledgerAvailable.exact,
     `${leagueAvailable ? leagueAvailable.exact : '?'} vs ${ledgerAvailable ? ledgerAvailable.exact : '?'}`);
 
-  const held = cell(money.ledgerCells, 'Held');
+  const held = cell(money.ledgerCells, 'Escrow');
   const inPlay = cell(money.ledgerCells, 'In Play');
   report.check('Held is a memo SUBSET of In Play, not a term beside it',
     held && inPlay && Number(held.exact) <= Number(inPlay.exact),
@@ -187,7 +188,8 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
     `${money.settleExact} vs ${served.ledger.current_settle_cents}`);
 
   // ACTION — Bet this week, scoped to the authoritative week.
-  const betThisWeek = cell(money.actionCells, 'Bet this week');
+  // UIRECON WAVE 1 — `Bet this week` is labelled `Staked`; same cell, same source.
+  const betThisWeek = cell(money.actionCells, 'Staked');
   const committed = Object.values(served.action.sections || {}).flat()
     .filter((c) => c.week === WEEK && !c.settled
       && ['offered', 'countered', 'accepted'].includes(c.protocol_state))
@@ -241,7 +243,9 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
       await new Promise((r) => setTimeout(r, 250));
       const panel = document.getElementById('panel-' + t);
       out[t] = {
-        rows: panel.querySelectorAll('.fs-poolrow').length,
+        // RC4 - the Prop Pool item is the shared result card now.
+        rows: panel.querySelectorAll(
+          '[data-module="pools"] .fs-rescar__item > .fs-wcard').length,
         cards: panel.querySelectorAll('.fs-zone--pools .fs-wcard').length,
         text: panel.textContent,
       };
@@ -291,11 +295,25 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
         const navRect = nav ? nav.getBoundingClientRect() : null;
         const strip = panel.querySelector('.fs-strip');
         const head = panel.querySelector('.fs-heading__text, .fs-tabhdr__title');
+        // UIRECON WAVE 4B — THE SCROLL CONTAINER IS AN ANCESTOR, NOT ALWAYS
+        // THE PARENT. This looked at el.parentElement alone, which was enough
+        // while Wrap Up's carousel scrolled VERTICALLY: stacked items never
+        // reached past the right edge, so nothing off-screen had a scrolling
+        // grandparent. A horizontal rail puts cards 2..N genuinely off-screen
+        // by design, and their parent is the item wrapper rather than the rail.
+        // The claim is unchanged — nothing escapes the region that scrolls it —
+        // and the walk is what makes it true of a region two levels up.
+        const inAScroller = (el) => {
+          for (let p = el.parentElement; p; p = p.parentElement) {
+            const ox = getComputedStyle(p).overflowX;
+            if (ox === 'auto' || ox === 'scroll') return true;
+            if (p === panel) return false;
+          }
+          return false;
+        };
         const overflowing = [...panel.querySelectorAll('*')].filter((el) => {
           const r = el.getBoundingClientRect();
-          return r.width > 0 && r.right > doc.clientWidth + 1
-            && getComputedStyle(el.parentElement || el).overflowX !== 'auto'
-            && getComputedStyle(el.parentElement || el).overflowX !== 'scroll';
+          return r.width > 0 && r.right > doc.clientWidth + 1 && !inAScroller(el);
         }).length;
         return {
           viewport: doc.clientWidth,
@@ -309,7 +327,7 @@ await withPage({ port: 9401, settleMs: 1800 }, async ({ evaluate, setViewport })
             ? strip.scrollWidth > strip.clientWidth + 1 : false,
           headerClipped: head
             ? head.scrollWidth > head.clientWidth + 1 : false,
-          rails: panel.querySelectorAll('.fs-rail, .fs-vcar, .fs-zone').length,
+          rails: panel.querySelectorAll('.fs-rail, .fs-rescar, .fs-zone').length,
           overflowing,
         };
       `));

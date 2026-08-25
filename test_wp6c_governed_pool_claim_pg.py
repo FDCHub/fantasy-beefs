@@ -653,12 +653,31 @@ _assert("§9: trial balance zero after settlement", trial_balance() == 0)
 
 # ZERO-WINNER ROLLOVER IS UNCHANGED. No GM claimed the MATCHUP occurrences, so
 # the subject layer's own outcome must still be what it was before the cutover.
-_zero = by_key.get("matchups_with_zero_total_turnovers", {})
+#
+# FOUND BY OUTCOME, NOT BY KEY — POR Rev 1.4 §4.2. This read
+# `by_key["matchups_with_zero_total_turnovers"]`, which assumed WHICH definition
+# the digest would put in a MATCHUP slot. The weekly scope composition is now a
+# governed 3 TEAM + 1 MATCHUP, so that slot went to #95
+# `matchups_where_neither_team_threw_an_interception` and the lookup returned an
+# empty dict — a passing rollover reported as a missing one.
+#
+# The claim was never about a particular contest. It is that an occurrence
+# NOBODY CLAIMED rolls its whole pot forward instead of paying, so it is asserted
+# over the served classification. That is also the stronger statement: it holds
+# for every unclaimed occurrence in the week rather than for one hand-picked key,
+# and it cannot be silently defeated by a future rotation ruling.
+_zeroes = [s for s in ps.get("settled", [])
+           if s.get("classification") == "ZERO_ELIGIBLE_CLAIMS"]
+_assert("§9: the week drew at least one occurrence nobody claimed, so the "
+        "rollover path is genuinely exercised",
+        bool(_zeroes),
+        str([s.get("definition_key") for s in ps.get("settled", [])]))
 _assert("§9: a zero-eligible-claims occurrence still rolls over, not pays",
-        _zero.get("classification") == "ZERO_ELIGIBLE_CLAIMS"
-        and _zero.get("distributed_cents") == 0
-        and _zero.get("rolled_over_cents") == _zero.get("pot_cents"),
-        str(_zero)[:200])
+        bool(_zeroes) and all(
+            z.get("distributed_cents") == 0
+            and z.get("rolled_over_cents") == z.get("pot_cents")
+            for z in _zeroes),
+        str(_zeroes)[:220])
 _assert("§9: no occurrence paid out more than its pot",
         all(s["distributed_cents"] <= s["pot_cents"]
             for s in ps.get("settled", [])))

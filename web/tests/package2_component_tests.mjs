@@ -141,8 +141,14 @@ check('the locked note says acceptance selects the frozen terms',
 section('Betting vocabulary and persisted values');
 
 check('three markets', MARKETS.length === 3);
-check('the labels are ML, Spread and O/U',
-  MARKETS.map((m) => m.label).join(' ') === 'ML Spread O/U');
+// UIRECON WAVE 3A — `label` carries the locked PUBLIC wording, which the
+// composer's market selector draws. `short` keeps the abbreviations for the
+// narrow three-cell rows on the Play card and the Status rails, and is asserted
+// separately below so the two cannot be confused for one field.
+check('the public labels are Moneyline, Spread and Over/Under',
+  MARKETS.map((m) => m.label).join(' ') === 'Moneyline Spread Over/Under');
+check('the narrow-cell abbreviations are unchanged',
+  MARKETS.map((m) => m.short).join(' ') === 'ML SPR O/U');
 check('ML persists as the engine\'s `straight`',
   MARKETS.find((m) => m.id === 'ml').persisted === 'straight');
 check('Spread persists as `spread`',
@@ -412,10 +418,18 @@ check('every open wager\'s pot is both stakes',
 
 section('Rail headings match the locked wording');
 
-check('ACTION REQUIRED 2', railHeading('action') === 'ACTION REQUIRED 2');
-check('WAITING 2', railHeading('waiting') === 'WAITING 2');
-check('LIVE 4', railHeading('live') === 'LIVE 4');
-check('COMPLETED · 14–7 SEASON', railHeading('completed') === 'COMPLETED · 14–7 SEASON');
+// FINAL POR §28 — the four locked names, and the `LABEL · N · SCROLL` grammar.
+// The counts are the fixture's own, exactly as before; only the words and the
+// separator changed, so this still asserts that the heading is built from the
+// frozen map rather than composed per rail.
+check('ACTION REQUIRED · 2 · SCROLL',
+  railHeading('action') === 'ACTION REQUIRED · 2 · SCROLL');
+check('PENDING ACTION · 2 · SCROLL',
+  railHeading('waiting') === 'PENDING ACTION · 2 · SCROLL');
+check('LOCKED ACTION · 4 · SCROLL',
+  railHeading('live') === 'LOCKED ACTION · 4 · SCROLL');
+check('RESOLVED ACTION heading carries a count and the affordance',
+  /^RESOLVED ACTION · \d+ · SCROLL$/.test(railHeading('completed')));
 
 // S8-P4C-2R — THE DEMO HALF OF THE SEASON-RECORD REPAIR. Production drops the
 // record because 14–7 has no authoritative source; the locked Rev 4.2 heading
@@ -425,11 +439,34 @@ check('COMPLETED · 14–7 SEASON', railHeading('completed') === 'COMPLETED · 1
 const { railHeading: uiRailHeading } = await import('../js/action.js');
 const { actionMode } = await import('../js/action-model.js');
 check('the shipped heading is in demo mode by default', actionMode() === 'demo');
-check('and the shipped COMPLETED heading keeps the locked record in demo',
-  uiRailHeading('completed') === 'COMPLETED · 14–7 SEASON',
+// UIRECON REV 1.4 PART 11 — ONE HEADING GRAMMAR ON ALL FOUR RAILS.
+//
+// `COMPLETED · 14–7 SEASON` was a locked Rev 4.2 string, and S8-P4C-2 had
+// already dropped it in production because 14–7 has no authoritative source for
+// a signed-in GM. Keeping it in demo alone meant the one rail whose count a
+// visitor most wants was the one rail that did not state it, and it left the
+// demo's heading grammar different from the product's. Every rail is a
+// one-card-at-a-time carousel now, so the count is the only place a GM can
+// learn how many cards sit behind the one on screen — which makes `LABEL: N`
+// load-bearing rather than decorative.
+//
+// THE RECORD DID NOT GO ANYWHERE. `seasonRecordLabel()` still draws it in the
+// summary strip's Bet Record cell, which is a figure's slot rather than a
+// heading's; that is asserted separately below.
+// FINAL POR §28 — the grammar is now `LABEL · N · SCROLL`. The Rev 1.4 claim
+// this replaces was that ONE form covers all four rails and that the count is
+// load-bearing; both still hold, and the affordance is now stated too.
+check('every rail heading is the LABEL · N · SCROLL form',
+  ['action', 'waiting', 'live', 'completed']
+    .every((r) => /^[A-Z ]+ · \d+ · SCROLL$/.test(uiRailHeading(r))),
+  ['action', 'waiting', 'live', 'completed'].map(uiRailHeading).join(' | '));
+check('and the RESOLVED ACTION heading states its count, not a season record',
+  uiRailHeading('completed') === 'RESOLVED ACTION · 3 · SCROLL'
+  && !uiRailHeading('completed').includes('SEASON'),
   uiRailHeading('completed'));
 check('while ACTION REQUIRED still counts the fixture in demo',
-  uiRailHeading('action') === 'ACTION REQUIRED 2', uiRailHeading('action'));
+  uiRailHeading('action') === 'ACTION REQUIRED · 2 · SCROLL',
+  uiRailHeading('action'));
 
 /* ── Panels ─────────────────────────────────────────────────────────────── */
 
@@ -443,18 +480,39 @@ const league = buildLeaguePanel();
 // what a component suite is — there is nobody to discover, so the rail draws
 // its intentional empty state and the eleven-card count is gone with the
 // eleven invented cards. The heading also loses its `↕` (§12).
-check('the Versus rail heading carries no directional arrow',
-  !league.includes('↕'), 'SWIPE ↕ removed');
+check('the Matchups rail heading carries no directional arrow',
+  !league.includes('↕'), 'SCROLL ↕ removed');
+// SCOPED TO THE MATCHUPS RAIL — UIRECON Rev 1.4 Part 4. `fs-carousel__item` is
+// no longer unique to Matchups: Play's Prop Pools ride the SAME carousel now,
+// deliberately, so counting the class across the whole panel would count four
+// Pool cards and call them invented opponents. What this assertion has always
+// been about is the MATCHUPS rail, which is `#fs-bets-carousel`, and unbound it
+// must not exist at all.
 check('unbound discovery draws an intentional state, never invented opponents',
   league.includes('data-versus-state')
-  && (league.match(/fs-carousel__item/g) || []).length === 0);
+  && !league.includes('id="fs-bets-carousel"'));
 // WP3C — the count moved into the heading's HELPER slot. At the §5.1 section
 // step the whole string wrapped to two lines at 375px, and on Play that height
 // came straight out of the card zone beneath it. The vocabulary is unchanged;
 // what changed is which of `sectionHeading`'s two slots each half sits in.
-check('Pools heading is the locked wording',
-  league.includes('FANTASYSTAKES POOLS') && league.includes('4 THIS WEEK'));
-check('League presents four Pools', (league.match(/data-pool="/g) || []).length === 4);
+// The final owner ruling restores the explicit FantasyStakes names so Play and
+// Wrap Up use the same product vocabulary. The helper still carries the count.
+// THE VERSUS HALF IS NOT SUPERSEDED and is asserted more strictly than before:
+// no public-facing `Versus` anywhere in the panel, not merely no
+// `FANTASYSTAKES VERSUS`.
+check('Prop Pools heading uses the final explicit name, with the served count',
+  league.includes('FANTASYSTAKES PROP POOLS')
+  && league.includes('4 THIS WEEK · SCROLL'));
+// TAGS STRIPPED BEFORE THE VERSUS CHECK. `Versus` survives as an INTERNAL
+// module and state name — `data-versus-state` is the Play rail's own empty-state
+// attribute — and the rule has only ever been about what a GM READS. Testing the
+// raw HTML would fail on a machine-readable attribute nobody sees; testing the
+// text is the same thing the browser tier asserts against `innerText`.
+const leagueText = league.replace(/<[^>]*>/g, ' ');
+check('Play uses the final FantasyStakes Matchups name and no public Versus',
+  league.includes('FANTASYSTAKES MATCHUPS')
+  && !/versus/i.test(leagueText));
+check('League presents four Prop Pools', (league.match(/data-pool="/g) || []).length === 4);
 check('League carries the disclaimer once', countDisclaimers(league) === 1);
 check('League keeps the four strip figures',
   ['+$126', '$55', '$10', '$65'].every((v) => league.includes(v)));
@@ -540,24 +598,42 @@ const preview = previewSheet(matchup('destroyers'));
 // THE ORDER IS INVERTED. Analysis now comes before the dense lineup table —
 // §10's "analysis must appear before dense lineup content" — where Rev 4.2 put
 // Sportsbook View and the lineups first and the analysis last.
-for (const heading of ['MATCHUP', 'WHY THE LINE LOOKS THIS WAY', 'THE READ',
+// UIRECON WAVE 4A — THE MATCHUP IS NAMED ONCE.
+//
+// A `MATCHUP` block listing both team names sat under a sheet subtitle
+// that had just given both team names — the same two facts twice inside
+// about sixty pixels, and in the bound state the second copy carried two
+// blank values. The slot now carries what the subtitle does not: the
+// market on offer (`ON OFFER`) for a live pairing, or the final score
+// (`RESULT`) for a settled one. An UNBOUND preview has neither, so it
+// renders no second block at all — which is what these fixtures are.
+for (const heading of ['WHY THE LINE LOOKS THIS WAY', 'THE READ',
   'LINEUPS']) {
   check(`the preview carries ${heading}`, preview.body.includes(heading));
 }
+check('the unbound preview lists no second copy of the two teams',
+  !preview.body.includes('fs-prev__title">MATCHUP<'));
 check('the preview carries NO odds-market block (§10)',
   !preview.body.includes('SPORTSBOOK VIEW')
   && !/data-market/.test(preview.body));
-check('matchup identity comes first',
-  preview.body.indexOf('MATCHUP') < preview.body.indexOf('WHY THE LINE'));
+// FINAL POR §27E — LINEUPS NOW SITS ABOVE ON OFFER, so the section order
+// changed and these two assertions are REPLACED rather than loosened. What
+// Rev 4.3 §10 was protecting — the two analysis sections stay together, in
+// order, and open — is unchanged and is still asserted.
+check('LINEUPS precedes the ON OFFER block',
+  preview.body.indexOf('LINEUPS') < preview.body.indexOf('ON OFFER')
+  || preview.body.indexOf('ON OFFER') === -1,
+  `lineups@${preview.body.indexOf('LINEUPS')} onoffer@${preview.body.indexOf('ON OFFER')}`);
 check('Why The Line precedes The Read',
   preview.body.indexOf('WHY THE LINE') < preview.body.indexOf('THE READ'));
-check('and BOTH analysis sections precede the lineups',
-  preview.body.indexOf('THE READ') < preview.body.indexOf('LINEUPS'));
-check('the identity block is open and not collapsible',
-  /fs-prev__head is-static/.test(preview.body));
-check('the analysis sections are open by default; the lineups are not',
-  /is-open[^]*WHY THE LINE/.test(preview.body)
-  && preview.body.includes('aria-expanded="false"'));
+check('and the two analysis sections stay adjacent, after the lineups',
+  preview.body.indexOf('LINEUPS') < preview.body.indexOf('WHY THE LINE')
+  && preview.body.indexOf('WHY THE LINE') < preview.body.indexOf('THE READ'));
+check('an unbound preview has no static identity block to draw',
+  !/fs-prev__head is-static/.test(preview.body));
+check('all four preview sections are collapsed initially',
+  !preview.body.includes('is-open')
+  && (preview.body.match(/aria-expanded="false"/g) || []).length >= 3);
 check('the preview says nothing is lost on close',
   /nothing you have entered is lost/i.test(preview.body));
 

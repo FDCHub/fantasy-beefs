@@ -1,54 +1,60 @@
 /* ============================================================================
- * FantasyStakes — the competitive standings read-model
- * WP3B · Rev 4.3 §7
+ * FantasyStakes — competitive standings + RC2 Championship state
  *
- * The three standings orderings, in the same three modes every other Sprint 8
- * model uses: demo, authoritative, unavailable.
- *
- * THERE IS NO ILLUSTRATIVE STANDINGS TABLE, AND THAT IS DELIBERATE — the same
- * ruling `skunk-model.js` makes, for the same reason. A prototype wager card is
- * useful for reviewing a layout. A prototype LEAGUE TABLE is not: it names real
- * GMs in a false order and states false winnings against them, and it is the
- * first thing a GM sees, because Standings is the default tab. WP3B §26 forbids
- * new fabricated production content and §8 requires an intentional empty state
- * instead. So DEMO here draws the no-data state, exactly as UNAVAILABLE does.
- *
- * IT RANKS NOTHING. The order is the SERVER's — `GET /league/{id}/standings`
- * returns three already-ordered lists with the rank already assigned, including
- * the documented ascending-team-id tie-break. This module holds them and reports
- * what it holds. Re-sorting here would be a second place the ranking rule lives,
- * and the two would eventually disagree.
- *
- * IT COMPUTES NO MONEY. Every figure arrives as exact integer cents and is
- * passed through untouched; `credits.js` decides how a cent figure is DRAWN, at
- * the moment of drawing. Rev 4.3 §28 — the frontend renders backend read models
- * and creates no second economic engine.
+ * The server owns every ranking and every cent. During the regular season the
+ * Overall table is the live FantasyStakes Championship Chase. Once the server
+ * returns a FINAL championship snapshot, Overall switches to that immutable
+ * regular-season result while Versus and Pool tables may continue reflecting
+ * postseason FantasyStakes play.
  * ========================================================================== */
 
 export const STANDINGS_MODE_DEMO = 'demo';
 export const STANDINGS_MODE_AUTHORITATIVE = 'authoritative';
 export const STANDINGS_MODE_UNAVAILABLE = 'unavailable';
 
-/** The three tables, in Rev 4.3 §7's stacked order. */
 export const STANDINGS_TABLES = Object.freeze([
+  // UIRECON WAVE 2 — `OVERALL` rather than a second `FANTASYSTAKES
+  // CHAMPIONSHIP`. The tab title directly above this table already names the
+  // competition, and repeating it on the first table said the same thing twice
+  // in about forty pixels while the two tables below carried real distinctions.
+  // The table names WHICH standings it is; the tab names what they are for.
   Object.freeze({
     key: 'overall',
-    heading: 'OVERALL STANDINGS',
-    columns: Object.freeze(['RK', 'TEAM', 'VERSUS', 'POOLS', 'NET']),
-  }),
-  Object.freeze({
-    key: 'versus',
-    heading: 'VERSUS STANDINGS',
-    columns: Object.freeze(['RK', 'TEAM', 'W-L', 'NET']),
-  }),
-  Object.freeze({
-    key: 'pools',
-    heading: 'POOL STANDINGS',
-    columns: Object.freeze(['RK', 'TEAM', 'WINS', 'NET']),
+    heading: '',
+    // UIRECON REV 1.4 — `POOLS`, not `PROP POOLS`.
+    //
+    // Two words could not be drawn on one line in a figure column at any
+    // certified phone width: `PROP POOLS` measured 82px against a 60px cell,
+    // took a second line, and stood the whole header row at 45px while the two
+    // tables below it stood at 28px. The table it heads is already `PROP POOL
+    // STANDINGS` and the column below it already holds Prop Pool Credits, so
+    // the word `PROP` was carrying no information this header did not have.
+    //
+    // `MATCHUPS` IS NOT ABBREVIATED and is not `MATCHES`. It is the product's
+    // term for the contest, it is the term the two tables below use, and a
+    // column that names a different thing than the table it sits in would cost
+    // more than the pixels it saved. The width it needs is bought in
+    // `standings.css` instead — see the column-width contract there.
+    // ── FINAL POR UI-2 §26 — SIX COLUMNS, AND THE LAST TWO ARE NEW ─────────
+    //
+    // `SKUNK` and `FS SCORE` replace the single `NET`. The Score gained a third
+    // term in WP-7 (`Matchups + Prop Pools - Skunk Fees`), and a table that
+    // shows two of the three terms and then a total the reader cannot derive
+    // from them is worse than one that shows none: it invites the reader to
+    // add the two columns they CAN see and conclude the total is wrong.
+    //
+    // `NET` BECAME `FS SCORE` because the column no longer holds a net. It
+    // holds the FantasyStakes Score, which is the thing the championship is
+    // decided on, and naming it after the concept is what lets the explanatory
+    // copy below the table state the identity in the reader's own vocabulary.
+    //
+    // SKUNK IS A POSITIVE MAGNITUDE and the Score has already subtracted it.
+    // The server says so on the field and this shows what the server sent; the
+    // one thing a client must never do here is subtract it again.
+    columns: Object.freeze(['RK', 'TEAM', 'MATCH', 'POOL', 'SKUNK', 'SCORE']),
   }),
 ]);
 
-/** Why a table has no rows to draw. Presentation states, not error codes. */
 export const STANDINGS_STATE_READY = 'ready';
 export const STANDINGS_STATE_LOADING = 'loading';
 export const STANDINGS_STATE_NO_DATA = 'no-data';
@@ -59,79 +65,120 @@ let MODE = STANDINGS_MODE_DEMO;
 let SERVED = null;
 let LOADING = false;
 
-/**
- * Bind the authoritative standings read.
- *
- * @param {object} body a LeagueStandingsOut
- */
+function normalizedFrozenOverall(championship) {
+  if (!championship || championship.status !== 'FINAL'
+      || !Array.isArray(championship.rows)) return null;
+  return championship.rows.map((row) => Object.freeze({
+    team_id: Number(row.team_id),
+    team_name: String(row.team_name || ''),
+    owner: String(row.owner || ''),
+    rank: Number(row.place),
+    versus_net_cents: Number(row.matchup_net_cents),
+    pool_net_cents: Number(row.prop_pool_net_cents),
+    net_cents: Number(row.championship_score_cents),
+    // A FROZEN RC2 SNAPSHOT CARRIES NO SKUNK, and that is correct rather than
+    // a gap: the snapshot belongs to a legacy season, whose Score is the
+    // two-term identity, and WP-7's era gate reports 0 for one either way.
+    skunk_fees_cents: 0,
+    championship_tied: Boolean(row.tied),
+  }));
+}
+
 export function bindStandings(body) {
-  SERVED = body;
+  const frozenOverall = normalizedFrozenOverall(body && body.championship);
+  SERVED = body ? Object.freeze({ ...body, frozenOverall }) : body;
   MODE = STANDINGS_MODE_AUTHORITATIVE;
   LOADING = false;
 }
 
-/** The read failed or was refused. The tables draw unavailable, never invented. */
 export function markStandingsUnavailable() {
   SERVED = null;
   MODE = STANDINGS_MODE_UNAVAILABLE;
   LOADING = false;
 }
 
-/** The read is in flight. Distinct from "there is nothing to show". */
 export function markStandingsLoading() {
   LOADING = true;
 }
 
-/** Return to the unbound default. Used on sign-out and by the suites. */
 export function unbindStandings() {
   SERVED = null;
   MODE = STANDINGS_MODE_DEMO;
   LOADING = false;
 }
 
-/** @returns {'demo'|'authoritative'|'unavailable'} */
 export function standingsMode() {
   return MODE;
 }
 
-/** The served body, when bound. @returns {object|null} */
 export function servedStandings() {
   return SERVED;
 }
 
+export function championshipState() {
+  if (MODE !== STANDINGS_MODE_AUTHORITATIVE || !SERVED) return null;
+  return SERVED.championship || null;
+}
+
+export function championshipIsFinal() {
+  const state = championshipState();
+  return Boolean(state && state.status === 'FINAL');
+}
+
 /**
- * The acting GM's team id, so the view can mark their row.
+ * The server-derived championship lifecycle.
  *
- * FROM THE SERVER, NOT FROM A NAME MATCH. Two teams can share a display name,
- * and a renamed team would silently stop being highlighted. Rev 4.3 §7.4
- * requires the row be identifiable at any rank, which means identifying it by
- * the id the server ranked it under.
+ * FOUR STATES, NOT TWO. The frozen snapshot answers "is the field closed", which
+ * is not the same question as "is every eligible result in" or "has the pot been
+ * paid". Reporting FINAL the moment a snapshot exists told a GM the season was
+ * decided while an eligible regular-season contest was still unresolved.
  *
- * @returns {number|null}
+ * DERIVED BY THE SERVER, READ HERE. `/championship/results` owns the rule; this
+ * returns what it said and falls back to the older two-state read only when that
+ * surface is unavailable, so an older server degrades rather than breaks.
+ *
+ * @returns {'LIVE'|'FROZEN'|'FINAL'|'PAID'}
  */
+export function championshipLifecycle() {
+  const results = championshipResults();
+  if (results && typeof results.lifecycle === 'string') return results.lifecycle;
+  // FAIL CONSERVATIVELY. A frozen snapshot proves the scoring window closed; it
+  // proves nothing about whether every eligible result is in, and only the
+  // server can answer that. Reporting FINAL here would tell a GM the season was
+  // decided on the strength of a fact that does not decide it, so the fallback
+  // reports FROZEN and lets the server upgrade it.
+  return championshipIsFinal() ? 'FROZEN' : 'LIVE';
+}
+
+/** The `/championship/results` body, when bound. @returns {object|null} */
+export function championshipResults() {
+  if (MODE !== STANDINGS_MODE_AUTHORITATIVE || !SERVED) return null;
+  return SERVED.championshipResults || null;
+}
+
+/** Eligible contests still unresolved. Empty once the championship is FINAL. */
+export function championshipUnresolved() {
+  const results = championshipResults();
+  return results && Array.isArray(results.unresolved) ? results.unresolved : [];
+}
+
+/**
+ * Whether this row shares its Championship Score with another GM.
+ *
+ * READ FROM THE SERVER'S OWN `tied` FLAG, never recomputed by comparing cents
+ * here — that would be a second place the tie rule lives, and the payout splits
+ * on the server's answer, not this one.
+ */
+export function isTiedRow(row) {
+  return Boolean(row && (row.championship_tied || row.tied));
+}
+
 export function actingTeamId() {
   if (MODE !== STANDINGS_MODE_AUTHORITATIVE || !SERVED) return null;
   return typeof SERVED.acting_team_id === 'number'
     ? SERVED.acting_team_id : null;
 }
 
-/**
- * The presentation state of the standings surface.
- *
- * LOADING WINS OVER EVERYTHING, because it is the only one of these that is
- * about the request rather than about the answer. A bound-but-empty league and
- * a league whose read is still in flight look identical if loading is not
- * reported first, and telling a GM "no standings yet" while the request is
- * still running is a wrong answer that will correct itself a moment later —
- * which is worse than saying nothing, because they will have read it.
- *
- * A LEAGUE WITH NO TEAMS IS `not-activated`, not `no-data`. An empty roster
- * means the season has not been set up, which is a different sentence from "the
- * season is set up and nobody has won anything yet" — and only the first of
- * those tells the commissioner there is something for them to do.
- *
- * @returns {'ready'|'loading'|'no-data'|'unavailable'|'not-activated'}
- */
 export function standingsState() {
   if (LOADING) return STANDINGS_STATE_LOADING;
   if (MODE === STANDINGS_MODE_UNAVAILABLE) return STANDINGS_STATE_UNAVAILABLE;
@@ -140,36 +187,15 @@ export function standingsState() {
   return STANDINGS_STATE_READY;
 }
 
-/**
- * One table's rows, exactly as the server ordered them.
- *
- * @param {'overall'|'versus'|'pools'} key
- * @returns {Array<object>}
- */
 export function rowsFor(key) {
   if (MODE !== STANDINGS_MODE_AUTHORITATIVE || !SERVED) return [];
+  if (key === 'overall' && Array.isArray(SERVED.frozenOverall)) {
+    return SERVED.frozenOverall;
+  }
   const rows = SERVED[key];
   return Array.isArray(rows) ? rows : [];
 }
 
-/**
- * The cell values one table shows for one row, already selected per column.
- *
- * WHY THE SELECTION LIVES HERE AND NOT IN THE VIEW. The three tables show
- * different columns over the same row shape, and a view that reached for
- * `row.versus_net_cents` in one table and `row.net_cents` in another is one
- * typo away from a table that ranks by one figure and prints another. This
- * names the pairing once, and the suite asserts each table's cells against the
- * ordering it was ranked by.
- *
- * Cents are returned as CENTS. Nothing here formats — `credits.js` owns that,
- * at the moment of drawing.
- *
- * @param {'overall'|'versus'|'pools'} key
- * @param {object} row
- * @returns {{rank: number, teamName: string,
- *            cells: Array<{kind: 'text'|'cents', value: any}>}}
- */
 export function cellsFor(key, row) {
   const base = { rank: Number(row.rank), teamName: String(row.team_name || '') };
 
@@ -179,6 +205,12 @@ export function cellsFor(key, row) {
       cells: [
         { kind: 'cents', value: Number(row.versus_net_cents) },
         { kind: 'cents', value: Number(row.pool_net_cents) },
+        // SKUNK IS ITS OWN KIND. It is a positive magnitude — a fee assessed,
+        // never a gain — so it must not be drawn with the signed +/- grammar
+        // and the positive/negative colouring the three money columns use. A
+        // green `+$5.00` in the Skunk column would say the opposite of what
+        // happened. `0` is the common case and is drawn plainly.
+        { kind: 'skunk', value: Number(row.skunk_fees_cents || 0) },
         { kind: 'cents', value: Number(row.net_cents) },
       ],
     };
@@ -204,17 +236,6 @@ export function cellsFor(key, row) {
   throw new Error(`unknown standings table "${key}"`);
 }
 
-/**
- * The figure a table is RANKED BY, for the suite to check the ordering against.
- *
- * Exported so the certification can assert that each served table is actually
- * descending in its own ranking figure — a claim that cannot be made from the
- * view, and that would otherwise rest entirely on the server being right.
- *
- * @param {'overall'|'versus'|'pools'} key
- * @param {object} row
- * @returns {number} exact integer cents
- */
 export function rankingCents(key, row) {
   if (key === 'overall') return Number(row.net_cents);
   if (key === 'versus') return Number(row.versus_net_cents);

@@ -2,7 +2,7 @@
  * FantasyStakes — weekly Pool slate read-model
  * Sprint 8 Package 4B-3
  *
- * WHICH POOLS A WEEK HAS IS NOT A FRONTEND QUESTION. The Rev1.3 catalog holds
+ * WHICH POOLS A WEEK HAS IS NOT A FRONTEND QUESTION. The Rev1.4 catalog holds
  * 80 active definitions, 64 of them Gate-1 runtime-eligible, and the governed
  * selector in `betting/pool_slate.py` draws four of them per week through a
  * rotation cycle. The four cards Rev 4.2 shows are that week's DRAW — not a
@@ -42,6 +42,7 @@ export const GOVERNED_SLOT_COUNT = 4;
 
 let MODE = SLATE_MODE_DEMO;
 let SERVED = null;
+let PREVIOUS_SERVED = null;
 
 /**
  * The league's Standard Pool Bet, for the card's Entry row.
@@ -66,6 +67,13 @@ export function bindSlate(body) {
   SERVED = body;
   MODE = body && body.drawn ? SLATE_MODE_DRAWN : SLATE_MODE_UNDRAWN;
 }
+
+/** Bind the immediately preceding week's authoritative settled Pool read. */
+export function bindPreviousSlate(body) {
+  PREVIOUS_SERVED = body && body.drawn ? body : null;
+}
+
+export function unbindPreviousSlate() { PREVIOUS_SERVED = null; }
 
 /** The read failed or was refused. */
 export function markSlateUnavailable() {
@@ -110,6 +118,14 @@ export function slateRows() {
     catalogNumber: slot.catalog_number,
     definitionKey: slot.definition_key,
     name: slot.display_name || slot.definition_key,
+    // ── REV 1.4 · the pick prompt, SERVED not composed ─────────────────────
+    //
+    // POR Rev 1.4 §3. The surface used to build this sentence from `scope`
+    // alone, which produced the identical prompt on all sixty-four drawable
+    // definitions. It is catalog content now and arrives with the slot; null
+    // when the catalog carries none, which the renderer treats as "fall back
+    // to the definition's own governed prose", never as "invent one".
+    question: slot.public_question || null,
     scope: slot.scope,
     category: slot.category,
     // Presentation fields the locked Pool card and detail sheet expect. Each
@@ -117,7 +133,16 @@ export function slateRows() {
     // catalog assigned and the definition's settle condition — rather than
     // invented. `entryCents` is the league's Standard Pool Bet, supplied by
     // the caller because it is a SETTING, not a property of the draw.
-    subject: slot.scope === 'MATCHUP' ? 'Matchup' : 'Team',
+    // UIRECON WAVE 3B — A NOUN FOR A SENTENCE, NOT A LABEL FOR A FIELD.
+    //
+    // This read `'Matchup'` / `'Team'` and was used as the caption on the
+    // pick control, which is how every Prop Pool came to be fronted by a
+    // dropdown labelled `Matchup` — a scope enum where a question belonged.
+    // The value is the same served scope; what changed is that it is now a
+    // word the surface can put INSIDE a sentence rather than above a
+    // control. The scope itself is carried untouched on `scope` for anything
+    // that needs the governed value.
+    subject: slot.scope === 'MATCHUP' ? 'matchup' : 'team',
     rule: slot.metric_expression || '—',
     entryCents: ENTRY_CENTS,
     // Not settled state the slate carries; the detail sheet reads these only
@@ -146,8 +171,36 @@ export function slateRows() {
     // model published a claim count. It does now.
     entered: typeof slot.entered === 'number' ? slot.entered : undefined,
     openForClaims: Boolean(slot.open_for_claims),
+    // ── UIRECON WAVE 4B · the settled outcome, carried straight through ─────
+    //
+    // Every one of these is the server's, derived by `pool_result_view` from
+    // what settlement WROTE — the winner-distribution posting and the claims it
+    // paid. Nothing here re-evaluates a pool or divides a pot; an empty
+    // `winningSubjects` means nobody picked a winner and the pot rolled over or
+    // was swept, which is a real outcome rather than a missing value.
+    classification: slot.settlement_classification || null,
+    winningSubjectIds: Array.isArray(slot.winning_subject_ids)
+      ? slot.winning_subject_ids : [],
+    winningSubjects: Array.isArray(slot.winning_subject_labels)
+      ? slot.winning_subject_labels.filter(Boolean) : [],
+    myReturnCents: typeof slot.my_return_cents === 'number'
+      ? slot.my_return_cents : 0,
+    myResult: slot.my_result || null,
     locked: SERVED.locked === undefined ? true : Boolean(SERVED.locked),
   }));
+}
+
+/** Settled rows from the immediately preceding served week. */
+export function previousSlateRows() {
+  if (!PREVIOUS_SERVED) return [];
+  const currentServed = SERVED;
+  const currentMode = MODE;
+  SERVED = PREVIOUS_SERVED;
+  MODE = SLATE_MODE_DRAWN;
+  const rows = slateRows();
+  SERVED = currentServed;
+  MODE = currentMode;
+  return rows;
 }
 
 /**

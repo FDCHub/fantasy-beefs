@@ -699,11 +699,35 @@ _assert("P4C-2R: and a handed-in id is validated against that list too",
         and "? handed : null" in _composer_src,
         "an unlisted id is treated as absent, never trusted")
 
-# §4 — the season record. Both halves: gone in production, kept in demo.
-_assert("P4C-2R: the COMPLETED heading drops the record outside demo",
-        "actionMode() === 'demo'" in _action_ui and "'COMPLETED'" in _action_ui)
-_assert("P4C-2R: and the locked Rev 4.2 heading survives IN demo",
-        "COMPLETED \u00b7 ${seasonRecordLabel()} SEASON" in _action_ui)
+# §4 — the season record.
+#
+# ── UIRECON REV 1.4 PART 11 SUPERSEDES THE DEMO HALF, AND ONLY THAT HALF ──
+#
+# P4C-2R found the record leaking into production, where `14–7` has no
+# authoritative source for a signed-in GM, and fixed it by keeping the Rev 4.2
+# heading in DEMO and dropping it everywhere else. Rev 1.4 makes all four Status
+# rails one-card-at-a-time carousels, which turns the count into the only place
+# a GM can learn how many cards sit behind the one on screen — so every rail now
+# reads `LABEL: N`, demo included, and the demo stops carrying a heading grammar
+# the product itself does not have.
+#
+# THE FINDING P4C-2R MADE IS NOT WEAKENED; IT IS ASSERTED HARDER. The record
+# must still never be presented as a served figure, and it is now absent from
+# EVERY heading rather than present in one mode. It did not disappear:
+# `seasonRecordLabel()` still draws it in the summary strip's Bet Record cell,
+# which is a figure's slot and carries the strip's own unresolved treatment.
+_assert("P4C-2R/Rev1.4: no rail heading carries the season record, in any mode",
+        "SEASON" not in _action_ui.split("export function railHeading")[1]
+        .split("\n}")[0])
+# FINAL POR §28 — the grammar gained the affordance: `LABEL · N · SCROLL`.
+# P4C-2R's claim was that ONE expression builds every heading from the frozen
+# word map, so no rail can acquire its own wording or its own extra content.
+# That is unchanged and is what is asserted; only the separator and the trailing
+# word moved.
+_assert("FINAL POR §28: every rail heading is the LABEL · N · SCROLL form",
+        "`${word} · ${sectionCount(rail)} · ${SWIPE_WORD}`" in _action_ui)
+_assert("P4C-2R: and the record itself still has a home in the strip",
+        "seasonRecordLabel()" in _action_ui)
 
 # §5 — the strip. The leak was never only 14-7: all four cells were computed
 # from the illustrative CARDS and shown to signed-in GMs as their own money.

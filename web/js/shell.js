@@ -62,6 +62,7 @@ import {
   bindMarketBoard, markMarketBoardUnavailable, marketFor, unbindMarketBoard,
 } from './market-model.js';
 import { requestMarketBoard } from './versus-market-command.js';
+import { setPlayRefreshContext } from './play-odds-refresh.js';
 
 // WP3D — where this league's data comes from, stated once in the chrome.
 import { sourceChip } from './attribution.js';
@@ -90,10 +91,15 @@ import {
 } from './action-model.js';
 import { bindWeek, buildWeekPanel } from './week.js';
 import { bindLedger, buildLedgerPanel } from './ledger.js';
-import { bindRules, buildRulesPanel } from './rules.js';
+import { bindChampionshipState } from './commissioner.js';
+import {
+  SETTINGS_DETAIL_SHEETS,
+  bindRules, buildAboutLegalPanel, buildCommissionerPanel,
+  buildLeagueSettingsPanel, buildProviderPanel, buildRulesPanel,
+} from './rules.js';
 import {
   beginSession, composerSheet, endSession, setIssueHook, setMarketHook,
-  setQuoteHook,
+  setPreviewHook, setQuoteHook,
 } from './composer.js';
 import {
   explainQuoteRefusal, requestQuote,
@@ -116,6 +122,12 @@ import {
   explainPoolClaimRefusal, submitPoolClaim,
 } from './pool-claim-command.js';
 import { clearProductionData, loadProductionData, productionData } from './production-data.js';
+// UIRECON Wave 4A — the served Matchup Preview. Bound when the read lands,
+// marked unavailable when it does not, and unbound whenever a preview opens
+// so one matchup's lineups can never be drawn under another's name.
+import {
+  bindPreview, markPreviewUnavailable, servedPreview, unbindPreview,
+} from './preview-model.js';
 // Aliased: `bindLedger` above is the Ledger PANEL's event binder; these are the
 // MODEL's data binders. Two different jobs that wanted the same name.
 import {
@@ -127,10 +139,12 @@ import {
   bindCommissioner, markCommissionerUnavailable, unbindCommissioner,
 } from './commissioner-model.js';
 import {
-  bindSettings, markSettingsUnavailable, unbindSettings,
+  bindChampionshipAllocation, bindSettings, markSettingsUnavailable,
+  unbindSettings,
 } from './settings-model.js';
 import {
-  bindSlate, markSlateUnavailable, setSlateEntryCents, unbindSlate,
+  bindPreviousSlate, bindSlate, markSlateUnavailable, setSlateEntryCents,
+  unbindPreviousSlate, unbindSlate,
 } from './pool-slate-model.js';
 import {
   bindSkunk, markSkunkUnavailable, unbindSkunk,
@@ -205,24 +219,41 @@ function renderMasthead(root) {
     `<div class="fs-mast__tagline">${tagline}</div>` +
     '</div>' +
     '<div class="fs-mast__meta">' +
-    // THE CHIP SHARES THE GEAR'S ROW, AND THAT IS A MEASURED DECISION.
+    // UIRECON WAVE 2 — ONE ACCOUNT CLUSTER, ONE ROW.
     //
-    // Given its own row it cost 16px of masthead height — 71px to 87px — and
-    // at 375x667 that came straight off the panel: both wager cards clipped
-    // their own content (127px of content in 99px of card). The note above
-    // records the same failure from Sprint 8's attempt at a third masthead
-    // item, and the same rule applies to a third meta ROW.
+    //     DEMO badge │ team/account control │ settings gear
     //
-    // Sharing the gear's line costs nothing vertically, because the chip is
-    // shorter than the gear it sits beside.
-    '<div class="fs-mast__metarow">' +
+    // The meta column carried TWO rows before this wave: the chip and the gear
+    // on one, and a three-item identity row under it — team name, commissioner
+    // badge, and a persistent `Sign out` button. That second row is what made
+    // the column fight the wordmark for width, and the notes above record how
+    // expensive that fight was.
+    //
+    // Sign out moved into the account sheet, which collapses the identity row
+    // to a single control and lets the three cluster items share the gear's
+    // line. The height that buys is spent on the wordmark, which is the one
+    // thing in this masthead that should be unmistakable.
+    //
+    // THE ORDER IS THE POR'S AND IT IS ALSO THE RIGHT ONE: the chip says what
+    // kind of session this is, the account control says whose it is, and the
+    // gear says where to change it. Session, identity, settings.
+    // THE ACCOUNT CONTROL AND THE GEAR ARE ONE GROUP, and that is structural
+    // rather than cosmetic. The cluster wraps when the provider chip is at its
+    // longest — a flex row wraps BEFORE it shrinks — and without this pairing a
+    // commissioner's wider account control pushed the gear onto a third line
+    // and the masthead to 97px. Bound together they shrink instead: the badge
+    // ellipsizes, the gear keeps its target, and the cluster is never more than
+    // two lines whatever the session puts in it.
+    '<div class="fs-mast__cluster" role="group" aria-label="Account">' +
     sourceChip() +
+    '<div class="fs-mast__cluster-end">' +
+    buildIdentityBlock() +
     menuButton() +
     '</div>' +
-    buildIdentityBlock() +
+    '</div>' +
     '</div>';
 
-  bindIdentityBlock(root);
+  bindIdentityBlock(root, { openSheet });
   bindMenu(root, { openSheet });
 }
 
@@ -280,6 +311,10 @@ export function buildPanelContent(destinationId) {
   if (destinationId === 'week') return buildWeekPanel();
   if (destinationId === 'ledger') return buildLedgerPanel();
   if (destinationId === 'rules') return buildRulesPanel();
+  if (destinationId === 'settings') return buildLeagueSettingsPanel();
+  if (destinationId === 'provider') return buildProviderPanel();
+  if (destinationId === 'about') return buildAboutLegalPanel();
+  if (destinationId === 'commissioner') return buildCommissionerPanel();
 
   throw new Error(`no panel content defined for "${destinationId}"`);
 }
@@ -310,10 +345,22 @@ function redrawActionPanel() {
  * live after every redraw.
  */
 function redrawRulesPanel() {
-  const panel = document.getElementById('panel-rules');
-  if (!panel) return;
-  panel.innerHTML = buildPanelContent('rules');
-  bindRules(panel, { openSheet });
+  for (const id of ['rules', 'settings', 'provider', 'about', 'commissioner']) {
+    const panel = document.getElementById(destinationById(id).panelId);
+    if (!panel) continue;
+    panel.innerHTML = buildPanelContent(id);
+    bindRules(panel, {
+      openSheet,
+      closeSheet,
+      leagueId: currentLeagueId(),
+      // A successful championship mutation re-reads the authoritative state and
+      // redraws, rather than patching what the browser believes.
+      refreshChampionship: async () => {
+        await bindAuthoritativeData();
+        redrawRulesPanel();
+      },
+    });
+  }
 }
 
 /* ── Pop-out / bottom sheet ─────────────────────────────────────────────── */
@@ -419,15 +466,17 @@ export function openPreview(spec) {
     .find((o) => String(o.team_id) === String(spec.opponentId));
   if (!opponent) return;
 
-  openSheet(() => previewSheet({
+  // THE SHAPE THE SURFACE HAS ALWAYS TAKEN, and it is still the unbound answer.
+  //
+  // NO LINE, NO TOTAL, NO PROJECTION — and each is NULL rather than zero. Zero
+  // is a number, and `preview.js` reads a number as a quoted line: a spread of
+  // `0` means pick'em, not "unpriced". Null is what makes the absence legible
+  // to the surface that has to draw it.
+  const shell = {
     name: opponent.team_name,
     record: '',
     you: { name: actingTeamName() || 'Your team', record: '' },
     weekLabel: weekPhaseLabel(authoritativeWeek()) || '',
-    // NO LINE, NO TOTAL, NO PROJECTION — and each is NULL rather than zero.
-    // Zero is a number, and `preview.js` reads a number as a quoted line: a
-    // spread of `0` means pick'em, not "unpriced". Null is what makes the
-    // absence legible to the surface that has to draw it.
     ml: null,
     spread: null,
     total: null,
@@ -436,7 +485,45 @@ export function openPreview(spec) {
     yourLineup: [],
     opponentLineup: [],
     settled: false,
+  };
+
+  // ── UIRECON WAVE 4A · THE PREVIEW HAS A READ MODEL NOW ───────────────────
+  //
+  // What stood here handed the sheet nulls and empty lineups unconditionally,
+  // so every narrative branch took its "nothing is bound" path and LINEUPS drew
+  // its empty state — on a demo seeded with nine starters and a projection per
+  // player per week, priced by those very rows. The gap was never the data; it
+  // was that nothing read it.
+  //
+  // IT OPENS FIRST AND FILLS SECOND. The sheet is drawn immediately from the
+  // shell above so a tap is never waiting on a request, and the served view
+  // re-renders it in place when it lands. A read that fails leaves the unbound
+  // preview standing, which is the honest state for a surface that could not
+  // ask.
+  unbindPreview();
+  // PUSHED FROM THE COMPOSER, OPENED FROM A CARD. Reached from inside the
+  // composer the preview must stack, so closing it returns to a composer still
+  // holding the market, mode and stake the GM entered (§10); reached from a
+  // discovery card there is nothing underneath and it opens as one level.
+  const present = spec.push ? pushSheet : openSheet;
+  present(() => previewSheet(shell, {
+    served: servedPreview(),
+    marketId: spec.marketId ?? null,
   }));
+
+  const leagueId = currentLeagueId();
+  const week = authoritativeWeek();
+  if (leagueId === null || week === null) return;
+
+  apiFetch(`/league/${leagueId}/versus/preview`
+    + `?week=${week}&opponent_team_id=${opponent.team_id}`)
+    .then((view) => {
+      bindPreview(view);
+      renderTopSheet();
+    })
+    .catch(() => {
+      markPreviewUnavailable();
+    });
 }
 
 export function openComposer(spec) {
@@ -458,10 +545,16 @@ export function openComposer(spec) {
     // drifted from production would have addressed the wrong GM's money — and
     // nothing on the page would have looked wrong while it happened.
     //
-    // The composer now asks instead. That is one more tap than the locked flow,
-    // and it is the smallest honest option while the League tab is still
-    // illustrative: its cards carry no authoritative id to hand over, so there
-    // is nothing to pass through except a name, and a name is not authority.
+    // THE CARD'S OWN ID IS THE TARGET NOW. WP3C bound League discovery to this
+    // same served list, so a Versus card represents one real opponent and hands
+    // that opponent's authoritative team id over as `matchupId`. A display name
+    // is still not authority and none is passed through — `beginSession`
+    // honours the handed id ONLY if it appears in the list below, so the
+    // S8-P4C-2R rule is enforced rather than relaxed.
+    //
+    // Which is why the composer no longer asks a question the card already
+    // answered. The selector it used to ask with remains as a FALLBACK, drawn
+    // only for a composer handed no authoritative id at all.
     opponents: authoritativeOpponents(),
     actingTeamName: actingTeamName(),
   });
@@ -542,8 +635,110 @@ function bindSheet() {
  *
  * @param {string} destinationId
  */
-export function goTo(destinationId, zone = null) {
+/**
+ * The destination the reader is currently on.
+ *
+ * FINAL POR · UI-1 — THE SHELL REMEMBERS WHERE THE READER IS.
+ *
+ * `mountApplication()` used to end with `goTo(DEFAULT_DESTINATION_ID)`
+ * unconditionally, and every local mutation that rebuilt the panels therefore
+ * ALSO navigated the reader to Standings. Submitting a Prop Pool pick did
+ * exactly that: `onClaimed` → `mountApplication()` → `goTo('standings')`, so a
+ * GM who tapped Submit on Play watched the sheet close and the app jump to a
+ * different tab. The remount was correct — the panels genuinely had to redraw —
+ * and the navigation was an unintended side effect of it.
+ *
+ * Null before the first navigation, which is the only time the DEFAULT is the
+ * right answer.
+ *
+ * @type {string|null}
+ */
+let ACTIVE_DESTINATION_ID = null;
+
+/**
+ * The destination the reader is on, or null before the first navigation.
+ *
+ * Exported so a certification suite can assert that a local mutation left the
+ * reader where they were, rather than inferring it from rendered classes.
+ *
+ * @returns {string|null}
+ */
+export function activeDestinationId() {
+  return ACTIVE_DESTINATION_ID;
+}
+
+/**
+ * Every horizontal one-card rail, across all THREE carousel families.
+ *
+ * FINAL POR · UI-1. The families are separately declared and separately styled
+ * — `.fs-carousel` in gameplay.css (Play), `.fs-rail--carousel` in tabs.css
+ * (Status), `.fs-rescar` in ledger.css (Wrap Up) — and nothing before this
+ * treated them as one set. They are one set for exactly ONE purpose: a rail's
+ * scroll offset is its carousel position, and a remount that replaces the DOM
+ * loses every one of them.
+ *
+ * THIS SELECTOR ADDS NO STYLING AND NO SHARED CSS. It is a read/write list for
+ * scroll offsets only, so a change here cannot regress one family's geometry
+ * through another's — which is the specific hazard the shared-carousel
+ * certification called out.
+ */
+const CAROUSEL_RAIL_SELECTOR = '.fs-carousel, .fs-rail--carousel, .fs-rescar';
+
+/**
+ * Capture every rail's scroll offset, keyed by panel and position-in-panel.
+ *
+ * KEYED BY STRUCTURE, NOT BY IDENTITY, because rails carry no stable id and
+ * inventing one would mean touching three unrelated renderers. A remount
+ * rebuilds the same panels in the same order from the same data, so the nth
+ * rail of a panel is the same rail. When it is NOT — because the data changed
+ * shape — the offset restores onto a different rail at worst, which a scroll
+ * position can survive; a wrong id would have been no better.
+ *
+ * @returns {Map<string, number>}
+ */
+function captureRailScroll() {
+  const positions = new Map();
+  ALL_DESTINATIONS.forEach((d) => {
+    const panel = document.getElementById(d.panelId);
+    if (!panel) return;
+    panel.querySelectorAll(CAROUSEL_RAIL_SELECTOR).forEach((rail, index) => {
+      if (rail.scrollLeft) positions.set(`${d.panelId}:${index}`, rail.scrollLeft);
+    });
+  });
+  return positions;
+}
+
+/**
+ * Restore captured rail offsets after a remount.
+ *
+ * A rail on a panel that is not currently active may be `display:none`, and
+ * assigning `scrollLeft` to it does nothing. That is accepted: the panel the
+ * reader is looking at is the one whose position matters, and it is active by
+ * the time this runs.
+ *
+ * @param {Map<string, number>} positions
+ */
+function restoreRailScroll(positions) {
+  if (!positions || positions.size === 0) return;
+  ALL_DESTINATIONS.forEach((d) => {
+    const panel = document.getElementById(d.panelId);
+    if (!panel) return;
+    panel.querySelectorAll(CAROUSEL_RAIL_SELECTOR).forEach((rail, index) => {
+      const left = positions.get(`${d.panelId}:${index}`);
+      if (left) rail.scrollLeft = left;
+    });
+  });
+}
+
+/**
+ * @param {string} destinationId
+ * @param {string|null} zone
+ * @param {{keepSheet?: boolean}} [options] `keepSheet` suppresses the sheet
+ *   close for a REMOUNT that is not a destination change — see `goTo`'s body.
+ */
+export function goTo(destinationId, zone = null, options = {}) {
   const next = selectDestination(destinationId);
+  ACTIVE_DESTINATION_ID = destinationId;
 
   next.forEach((d) => {
     const tab = document.querySelector(`.fs-tabbar__item[data-destination="${d.id}"]`);
@@ -561,7 +756,15 @@ export function goTo(destinationId, zone = null) {
   });
 
   // A destination change is a context change: the sheet does not survive it.
-  closeSheet();
+  //
+  // A REMOUNT IS NOT A DESTINATION CHANGE, which is why `keepSheet` exists.
+  // `mountApplication` re-navigates to wherever the reader already was in order
+  // to re-light the tab and re-activate the panel after the DOM was replaced;
+  // closing the sheet there would tear down a control the reader is still
+  // using. The Pool pick path depends on this: its own comment states the sheet
+  // is deliberately NOT re-rendered so the GM keeps their confirmation, and
+  // before UI-1 the unconditional close here discarded it anyway.
+  if (options.keepSheet !== true) closeSheet();
 
   scrollToZone(destinationId, zone);
 }
@@ -711,6 +914,17 @@ async function bindAuthoritativeData() {
   if (data && data.positions) bindCommissioner(data.positions, data.reconciliation);
   else markCommissionerUnavailable();
 
+  // RC2 — the championship lifecycle the commissioner area draws. All three are
+  // ordinary reads from the one production load; nothing here mutates.
+  bindChampionshipState(
+    data ? data.championshipResults : null,
+    data ? data.championshipConfig : null,
+    data ? data.championshipCorrections : null);
+  // The full three-part Season-Opening Allocation the League Settings row
+  // reports. Server-derived; the browser performs none of the arithmetic.
+  bindChampionshipAllocation(
+    data && data.championshipResults ? data.championshipResults.allocation : null);
+
   if (data && data.settings) bindSettings(data.settings);
   else markSettingsUnavailable();
 
@@ -721,6 +935,8 @@ async function bindAuthoritativeData() {
 
   if (data && data.slate) bindSlate(data.slate);
   else markSlateUnavailable();
+  if (data && data.previousSlate) bindPreviousSlate(data.previousSlate);
+  else unbindPreviousSlate();
 
   // WP6A — the week's Skunk. An UNASSESSED week is a successful read carrying
   // `assessed: false`, which the model reports as "no callout" rather than as a
@@ -765,8 +981,15 @@ async function bindAuthoritativeData() {
     } catch {
       markMarketBoardUnavailable();
     }
+    // PLAY'S REFRESH CONTROLS NEED THE SAME LEAGUE AND WEEK THIS BOARD WAS
+    // PRICED FOR, and they must not guess either: re-reading a different week
+    // would answer a question about a market the GM is not looking at. The
+    // context is set even when the read failed, so a GM whose first board did
+    // not arrive can still ask for one.
+    setPlayRefreshContext({ leagueId, week: data.week });
   } else {
     markMarketBoardUnavailable();
+    setPlayRefreshContext(null);
   }
 
   // WP3B — the competitive standings. Read by EVERY member, like the Skunk and
@@ -788,6 +1011,10 @@ async function bindAuthoritativeData() {
   // The provider-backed matchups for that week, when there is a week.
   if (data && data.week !== null && data.weekMatchups) {
     bindWeekMatchups(data.week, data.weekMatchups);
+    // §6 — the completed week Wrap Up opens on, bound beside the current one.
+    if (data.previousWeekMatchups && data.week > 1) {
+      bindWeekMatchups(data.week - 1, data.previousWeekMatchups);
+    }
   }
 
   // ── The live Action commands ──────────────────────────────────────────
@@ -846,6 +1073,10 @@ async function bindAuthoritativeData() {
     // that could reach one without the other would show a price for a market it
     // could not name.
     setMarketHook({ marketFor });
+    // UIRECON Wave 4A — one preview path. Installed on the same condition as
+    // the board hook, because a preview explains a board: a composer that could
+    // reach the preview without one would be explaining a market it cannot name.
+    setPreviewHook(openPreview);
     setRespondHook({
       accept: acceptChallenge,
       decline: declineChallenge,
@@ -862,6 +1093,7 @@ async function bindAuthoritativeData() {
     setRespondHook(null);
     setQuoteHook(null);
     setMarketHook(null);
+    setPreviewHook(null);
   }
 
   // Presentation capability, from the server's own answer. It decides what is
@@ -904,7 +1136,11 @@ async function bindAuthoritativeData() {
         } catch {
           markEconomyUnavailable();
         }
-        mountApplication();
+        // FINAL POR · UI-1 — a commissioner who just activated the season is
+        // reading Rules & Settings. The panels must redraw because activation
+        // changed what every one of them may show; the reader must not be moved
+        // off the surface they are working on to learn that.
+        mountApplication({ preserveContext: true });
       },
     });
   } else {
@@ -918,6 +1154,12 @@ async function bindAuthoritativeData() {
   setMenuHook({
     goTo: (destination, zone) => { goTo(destination, zone); },
     openEconomy: () => { openSheet(() => economySheet()); },
+    // FINAL POR §2 — the Settings root's four entries resolve to detail sheet
+    // specs. The menu pushes what this returns; it never navigates for them.
+    detailSheet: (id) => {
+      const build = SETTINGS_DETAIL_SHEETS[id];
+      return build ? () => build() : null;
+    },
   });
 
   // ── The commissioner lifecycle (WP4) ──────────────────────────────────
@@ -950,7 +1192,10 @@ async function bindAuthoritativeData() {
         // authoritative refresh — no second read to fall out of step with.
         bindSettings(settings);
         api.rerender();
-        mountApplication();
+        // FINAL POR · UI-1 — the sheet was just re-rendered on purpose, so the
+        // remount behind it must not close it, and a saved setting is not a
+        // reason to navigate anywhere.
+        mountApplication({ preserveContext: true });
       },
     });
   });
@@ -995,7 +1240,18 @@ async function bindAuthoritativeData() {
           // SERVER's persisted subject into its own held row, so the open sheet
           // is showing authoritative state either way; reopening it rebuilds
           // from the slate just refreshed above.
-          mountApplication();
+          //
+          // FINAL POR · UI-1 — `preserveContext` IS WHAT MAKES THAT TRUE.
+          //
+          // The paragraph above states the intent and, before UI-1, the code
+          // did not deliver it. `mountApplication()` ended in
+          // `goTo(DEFAULT_DESTINATION_ID)`, so submitting a Prop Pool pick
+          // navigated the GM from Play to Standings AND closed the sheet whose
+          // survival this comment describes — the panels were redrawn, and so
+          // was the reader's whole context. Preserving it keeps the GM on Play,
+          // keeps the Pool carousel where they left it, and keeps the
+          // confirmation they just earned on screen.
+          mountApplication({ preserveContext: true });
         },
       });
     });
@@ -1220,9 +1476,12 @@ function clearAuthoritativeData() {
   // WP3C.2 — and so does the market. A held board is last week's prices for
   // last session's league.
   setMarketHook(null);
+  setPreviewHook(null);
+  unbindPreview();
   unbindCommissioner();
   unbindSettings();
   unbindSlate();
+  unbindPreviousSlate();
   unbindSkunk();
   // WP3B — the standings and the economy go with the session too. A signed-out
   // page holding the previous league's table would be the same defect as one
@@ -1232,6 +1491,10 @@ function clearAuthoritativeData() {
   unbindStandings();
   unbindVersus();
   unbindMarketBoard();
+  // The board and the context that refreshes it are one fact; leaving the
+  // context behind on sign-out would let a control ask about a league the
+  // next session may not be in.
+  setPlayRefreshContext(null);
   unbindEconomy();
   setEconomyHook(null);
   setStandingsContext(null);
@@ -1272,7 +1535,20 @@ function mountPoints() {
  * commissioner data — replacing those sources is the binding package's work,
  * and doing it here would spread it across two.
  */
-function mountApplication() {
+function mountApplication(options = {}) {
+  // FINAL POR · UI-1 — A REMOUNT PRESERVES CONTEXT; A FRESH MOUNT DOES NOT.
+  //
+  // `preserveContext` is passed by callers that rebuilt the panels because
+  // DATA CHANGED, not because the reader navigated: the Pool pick path is the
+  // first, and any later local mutation that needs the panels redrawn is the
+  // same case. Such a caller must leave the reader on the tab they were using,
+  // with their carousel where they left it and their open sheet intact.
+  //
+  // A FRESH MOUNT — sign-in — deliberately does none of that. There is no
+  // previous context to preserve, and Standings is the locked landing tab.
+  const preserveContext = options.preserveContext === true;
+  const railScroll = preserveContext ? captureRailScroll() : null;
+
   const { mast, panels, tabbar, gate } = mountPoints();
 
   gate.hidden = true;
@@ -1310,10 +1586,23 @@ function mountApplication() {
 
   const rulesPanel = document.getElementById('panel-rules');
   if (rulesPanel) bindRules(rulesPanel, { openSheet });
+  const settingsPanel = document.getElementById('panel-settings');
+  if (settingsPanel) bindRules(settingsPanel, { openSheet });
+  const commissionerPanel = document.getElementById('panel-commissioner');
+  if (commissionerPanel) bindRules(commissionerPanel, { openSheet });
 
   bindNavigation();
 
-  goTo(DEFAULT_DESTINATION_ID);
+  // WHERE THE READER WAS, or the locked landing tab on a first mount. The
+  // fallback is `ACTIVE_DESTINATION_ID === null`, which is true exactly once
+  // per session — before any navigation has happened.
+  const destination = (preserveContext && ACTIVE_DESTINATION_ID)
+    ? ACTIVE_DESTINATION_ID : DEFAULT_DESTINATION_ID;
+  goTo(destination, null, { keepSheet: preserveContext });
+
+  // AFTER `goTo`, not before: an inactive panel may be `display:none`, and a
+  // rail inside one cannot take a scroll offset until its panel is active.
+  restoreRailScroll(railScroll);
 }
 
 /**
@@ -1404,6 +1693,15 @@ if (typeof document !== 'undefined') {
   // Exposed for manual inspection in the browser console.
   window.FantasyStakes = {
     goTo, openSheet, pushSheet, popSheet, closeSheet, openComposer, switchLeague,
+    activeDestinationId,
+    // FINAL POR · UI-1 — THE DRIVE-POINT FOR CONTEXT PRESERVATION.
+    //
+    // Exposed so a browser suite can exercise the exact call the Pool-claim
+    // path makes, rather than reaching inside the module or re-implementing the
+    // remount. A test that called a private copy would prove the copy works and
+    // leave the real call site uncertified — which is how the original defect
+    // survived every existing suite.
+    remountPreservingContext: () => mountApplication({ preserveContext: true }),
   };
 
   if (document.readyState === 'loading') {

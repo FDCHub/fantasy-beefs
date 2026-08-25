@@ -26,7 +26,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import text
+from sqlalchemy import text, true as sa_true
 from sqlalchemy.orm import Session
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -515,6 +515,25 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
             f"{claimant_type!r} — refusing to settle (fail-closed)."
         )
 
+    # ── FINAL POR §7 / WP-13 — A VOIDED WAGER IS NOT SETTLED ────────────────
+    #
+    # A void says no contest occurred: the escrow was already returned to both
+    # GMs' Wallets. Its Bet rows stay `pending` because `ck_bet_status` has no
+    # value for "no contest" and a void is emphatically not a `push` — a push is
+    # a RESULT — so the exclusion is expressed here, from the durable
+    # `voided_wagers` record, rather than by inventing a status.
+    #
+    # EXCLUDED RATHER THAN LEFT TO FAIL. The ledger's once-only guard would
+    # refuse a settlement posting against the drained escrow anyway, so nothing
+    # unsafe could happen — but it would surface as an AlreadySettledError on a
+    # wager that was never settled, which is a misleading way to be right.
+    #
+    # ONE FILTER, NOT A PER-BET ROUND TRIP: the ids come back as a list so this
+    # stays a single query however many wagers a league has voided.
+    from economy.wager_void import voided_bet_ids
+
+    _voided = voided_bet_ids(db, league_id=league_id)
+
     pending = (
         db.query(Bet)
         .join(Matchup)
@@ -523,6 +542,7 @@ def settle_week(week: int, db: Session, league_id: int, recovery_token: str | No
             Matchup.week == week,
             Bet.status == "pending",
         )
+        .filter(~Bet.id.in_(_voided) if _voided else sa_true())
         .order_by(Bet.id)
         .all()
     )

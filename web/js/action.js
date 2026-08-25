@@ -2,20 +2,44 @@
  * FantasyStakes — UI/UX Rev 4.2 · Action
  * Sprint 7 Package 2
  *
- * Four single-row horizontal rails — ACTION REQUIRED, WAITING, LIVE,
- * COMPLETED — over the same wager-card grammar League uses. Because each rail
- * is one row, a card can afford to be taller and say more; it does not become
- * a different card.
+ * Four horizontal carousels — ACTION REQUIRED, WAITING, LIVE, COMPLETED — over
+ * the same wager-card grammar League uses. Because each rail is one row, a card
+ * can afford to say more; it does not become a different card.
  *
  * A COMPLETED card is the LIVE card that preceded it, showing later figures.
  * Same identity, same market row, same stakes — plus the final score and the
  * net. Nothing here re-skins a settled wager as a transaction row.
+ *
+ * ── REV 1.4 · THE RAILS BECAME CAROUSELS ────────────────────────────────────
+ *
+ * A rail whose items were a fixed 216px wide showed one and a half cards on a
+ * phone, and the half card was the defect: it reads as a rendering accident
+ * rather than as an invitation to swipe, and it costs the visible card a third
+ * of the width it needs to say what it is. Four of those stacked to 929px of
+ * content inside a 534px viewport at 390x844, so a GM meeting Status for the
+ * first time saw two lifecycle states and had to discover the other two.
+ *
+ * The fix is the geometry Wrap Up's result carousels already use: each item is
+ * exactly 100% of its rail's width, so ONE card fills the viewport by
+ * construction — at any card height, at any viewport width — and
+ * `scroll-snap-stop: always` parks on the next one. There is no pixel constant
+ * here to go stale and no arrangement in which a second card is partly visible.
+ *
+ * WHAT THIS FILE DOES NOT DO ABOUT IT. It sets no width, no height and no
+ * padding: the geometry and the density both live in `tabs.css`, because a
+ * carousel that expressed its own width in JavaScript would be a second opinion
+ * about a layout the stylesheet already owns. What changed here is the heading
+ * grammar (see `railHeading`) and one class name on the rail.
  * ========================================================================== */
 
 import { attributionFooter } from './attribution.js';
-import { PanelComposer, escapeHtml, sectionHeading, tabHeader } from './components.js';
+import {
+  PENDING_FIGURE, PanelComposer, accordion, bindAccordions, escapeHtml,
+  sectionHeading, tabHeader,
+} from './components.js';
 import { counterStakeSheet } from './counter-stake.js';
 import { headingWithPhase } from './phase.js';
+import { SWIPE_WORD } from './league.js';
 import { formatCredits, formatSignedCredits } from './credits.js';
 import {
   RAILS,
@@ -36,6 +60,14 @@ import {
   sectionCount,
 } from './action-model.js';
 import { currentWeek } from './league-model.js';
+import { marketFor } from './market-model.js';
+import { previousSlateRows, slateRows } from './pool-slate-model.js';
+import { explainBoardRefusal, refreshPairingContext } from './play-odds-refresh.js';
+// §3B — the approved Matchup Preview lineup treatment, reused here.
+import { lineupsBody } from './preview.js';
+import { bindPreview, servedPreview } from './preview-model.js';
+import { apiFetch, currentIdentity } from './session.js';
+import { formatOdds } from './wager-model.js';
 import { moneyFigure, wagerCard } from './wagercard.js';
 import { onActivate } from './interaction.js';
 
@@ -164,11 +196,16 @@ export function buildActionPanel() {
     id: 'fs-strip-action',
     label: 'Action summary',
     cells: [
-      { label: 'Season Bet Record', text: seasonRecordLabel(),
+      // UIRECON WAVE 1 — one line at 320px, measured. `Season Bet Record`
+      // was 108.8px against a 68px cell and `Bet this week` 77.4px; both
+      // wrapped and stretched the whole strip. The scope each label lost to
+      // the rewrite is already carried by the strip's own accessible name
+      // (`Action summary`) and by the tab it sits on.
+      { label: 'Bet Record', text: seasonRecordLabel(),
         pending: unresolved },
-      { label: 'Bet this week', cents: betThisWeek ?? 0,
+      { label: 'Staked', cents: betThisWeek ?? 0,
         pending: unresolved && betThisWeek === null },
-      { label: 'Upside left', cents: upsideLeftCents(), signed: true,
+      { label: 'Upside Left', cents: upsideLeftCents(), signed: true,
         pending: unresolved },
       { label: 'Settled', cents: settledCents(), signed: true, anchor: true,
         pending: unresolved },
@@ -180,7 +217,8 @@ export function buildActionPanel() {
   composer.add(
     `<div class="fs-rails" data-action-mode="${actionMode()}">` +
     RAILS.map((rail) => {
-      const body = railBody(rail);
+      const cards = cardsForRail(rail);
+      const body = railBody(rail, cards);
       // WP5 — `role="list"` ONLY WHEN THE RAIL HOLDS LISTITEMS. An empty or
       // unavailable rail draws an explanatory paragraph instead of cards, and a
       // `<p>` inside `role="list"` is an ARIA violation: a list may hold only
@@ -193,10 +231,18 @@ export function buildActionPanel() {
       // role is dropped in exactly the case where there is nothing to list, and
       // the note is then an ordinary paragraph, which is what it is.
       const isList = body.includes('role="listitem"');
+      // REV 1.4 — `data-rail-count` IS THE HEADING'S NUMBER, MACHINE-READABLE.
+      // The count in the heading is a rendered string, and a suite that reads
+      // it back out of the string is asserting against its own parse. The
+      // attribute carries the same `sectionCount` call, so a certification can
+      // compare the surface against `/league/{id}/action/me` without either
+      // side going through a regular expression.
       return (
-        `<section class="fs-railsec" data-rail="${rail}">` +
-        sectionHeading(railHeading(rail)) +
-        `<div class="fs-rail is-stretch"${isList ? ' role="list"' : ''}>` +
+        `<section class="fs-railsec" data-rail="${rail}"` +
+        ` data-rail-count="${cards.length}">` +
+        sectionHeading(RAIL_WORDS[rail], railHelper(rail, cards.length)) +
+        `<div class="fs-rail is-stretch fs-rail--carousel"` +
+        `${isList ? ' role="list"' : ''}>` +
         body +
         '</div></section>'
       );
@@ -213,40 +259,67 @@ export function buildActionPanel() {
   return composer.toHTML();
 }
 
+/** The locked rail words. One spelling, one place, four rails. */
+// FINAL POR §28 — THE FOUR LOCKED CATEGORY NAMES.
+//
+// `WAITING` / `LIVE` / `COMPLETED` named three different kinds of thing: a
+// state of mind, a state of play and a state of record. The locked set names
+// the same four rails by the ACTION each one holds, so the column reads as one
+// sentence four times over and a GM can tell at a glance which rail wants them.
+const RAIL_WORDS = Object.freeze({
+  action: 'ACTION REQUIRED',
+  waiting: 'PENDING ACTION',
+  live: 'LOCKED ACTION',
+  completed: 'RESOLVED ACTION',
+});
+
 /**
- * The heading for one rail, counting BOUND state.
+ * The heading for one rail — `LABEL: N`, and nothing else.
  *
- * The illustrative `2 / 2 / 4` are the fixture's counts and are correct only
- * for the fixture. In production the count comes from the server's own tally —
- * see `sectionCount`.
+ * ── WHY THE FOUR HEADINGS NOW READ THE SAME WAY (Rev 1.4) ───────────────────
+ *
+ * Each rail is a CAROUSEL showing one card at a time, so the heading is the
+ * only place a GM can learn how many cards are behind the one they are looking
+ * at. That makes the count load-bearing rather than decorative, and a count a
+ * reader has to hunt for in three different heading grammars is not one they
+ * will trust. `LABEL: N` is the same sentence four times.
+ *
+ * WHAT THE COUNT IS. `sectionCount` and nothing else: in production the
+ * server's own tally from `/league/{id}/action/me`, in demo the fixture's own
+ * length. This module has never counted cards itself and still does not — if
+ * the rendered rail and the served tally ever disagreed, the server is right
+ * and the discrepancy is worth seeing.
+ *
+ * WHAT THE COMPLETED HEADING GAVE UP, AND WHY THAT IS NOT A LOSS. It used to
+ * read `COMPLETED · 14–7 SEASON` in demo — a locked Rev 4.2 string whose season
+ * record has been UNRESOLVED for signed-in GMs since S8-P4C-2, which is why
+ * production already dropped it. Carrying it in demo alone meant the one rail
+ * whose count a visitor most wants (seven settled Matchups) was the one rail
+ * that did not state it, and it made the demo's heading grammar differ from the
+ * product's. The record itself has not gone: `seasonRecordLabel()` still draws
+ * it in the summary strip's Bet Record cell, which is a figure's slot rather
+ * than a heading's.
  *
  * @param {string} rail
  * @returns {string}
  */
 export function railHeading(rail) {
-  switch (rail) {
-    case 'action': return `ACTION REQUIRED ${sectionCount('action')}`;
-    case 'waiting': return `WAITING ${sectionCount('waiting')}`;
-    case 'live': return `LIVE ${sectionCount('live')}`;
-    // COMPLETED CARRIES THE SEASON RECORD ONLY IN DEMO.
-    //
-    // The locked Rev 4.2 heading is `COMPLETED · 14–7 SEASON`, and 14–7 is a
-    // fixture constant with no authoritative source — S8-P4C-2 classified it
-    // UNRESOLVED and then went on rendering it to signed-in GMs, which is the
-    // seam this repair closes. A GM reading their own Action tab would have
-    // seen someone else's season record presented as theirs.
-    //
-    // In production the heading keeps its place in the hierarchy and drops the
-    // claim. NOT `0–0`, which asserts a real record of no games; not a card
-    // count relabelled as a record, which would be a different figure wearing
-    // this one's name. P4C-3 may restore a real record if a provider or history
-    // source turns out to supply one.
-    case 'completed':
-      return actionMode() === 'demo'
-        ? `COMPLETED · ${seasonRecordLabel()} SEASON`
-        : 'COMPLETED';
-    default: throw new Error(`unknown rail "${rail}"`);
-  }
+  const word = RAIL_WORDS[rail];
+  if (!word) throw new Error(`unknown rail "${rail}"`);
+  // FINAL POR §28 — `LABEL · N · SWIPE`.
+  //
+  // `LABEL: N` carried the count and said nothing about the affordance. Each
+  // rail shows ONE card at a time, so a reader who does not know it swipes
+  // cannot reach cards two and three at all — the count told them something
+  // was there and not how to get to it. SWIPE is the same word Play and Wrap Up
+  // already use, so the whole application states the affordance one way.
+  return `${word} · ${sectionCount(rail)} · ${SWIPE_WORD}`;
+}
+
+/** Count/affordance slot shared with Play's canonical section heading. */
+export function railHelper(rail, count = null) {
+  if (!RAIL_WORDS[rail]) throw new Error(`unknown rail "${rail}"`);
+  return `${count === null ? cardsForRail(rail).length : count} · ${SWIPE_WORD}`;
 }
 
 /**
@@ -264,14 +337,13 @@ export function railHeading(rail) {
  * @param {string} rail
  * @returns {string}
  */
-function railBody(rail) {
+function railBody(rail, cards = cardsForRail(rail)) {
   if (actionMode() === ACTION_MODE_UNAVAILABLE) {
     return '<p class="fs-rail__note" data-rail-state="unavailable">'
       + 'Your wagers could not be loaded. Nothing here is out of date — it is '
       + 'simply not available right now.</p>';
   }
 
-  const cards = sectionCards(rail);
   if (!cards.length) {
     const empty = actionMode() === ACTION_MODE_AUTHORITATIVE && actionIsEmpty();
     return '<p class="fs-rail__note" data-rail-state="empty">'
@@ -279,8 +351,58 @@ function railBody(rail) {
       + '</p>';
   }
   return cards.map((card) => (
-    `<div class="fs-rail__item" role="listitem">${lifecycleCard(card)}</div>`
+    `<div class="fs-rail__item" role="listitem">${card.kind === 'pool' ? poolLifecycleCard(card) : lifecycleCard(card)}</div>`
   )).join('');
+}
+
+function poolCardsForRail(rail) {
+  if (actionMode() !== ACTION_MODE_AUTHORITATIVE) return [];
+  const rows = rail === 'completed' ? previousSlateRows() : slateRows();
+  return rows.filter((pool) => pool.mySubjectId != null)
+    .filter((pool) => (pool.settled ? rail === 'completed' : rail === 'live'))
+    .slice(0, 1)
+    .map((pool) => ({ ...pool, kind: 'pool', id: `pool-${pool.poolInstanceId}` }));
+}
+
+function cardsForRail(rail) {
+  return [...sectionCards(rail), ...poolCardsForRail(rail)];
+}
+
+function poolLifecycleCard(pool) {
+  const picked = (pool.subjects || []).find((s) => s.subject_id === pool.mySubjectId);
+  const result = pool.settled ? String(pool.myResult || 'settled').replace('_', ' ') : 'Entered';
+  return wagerCard({
+    identity: pool.name,
+    context: `PROP POOL · ${result.toUpperCase()}`,
+    badge: pool.settled ? 'RESOLVED' : 'LOCKED',
+    badgeTone: pool.settled ? 'neutral' : 'positive',
+    figures: [
+      moneyFigure('Entry', pool.entryCents),
+      moneyFigure('Pot', pool.potCents),
+      ...(pool.settled ? [moneyFigure('Net', pool.myReturnCents || 0, { signed: true })] : []),
+    ],
+    copy: pool.settled ? 'Final Pool result.' : 'Entry locked until the Pool resolves.',
+    footLabel: 'Your pick',
+    footValue: picked ? picked.label : '—',
+    accent: pool.settled ? 'done' : 'live',
+    className: 'fs-wcard--lifecycle fs-wcard--pool-status',
+    tapAction: 'pool-status',
+    tapId: String(pool.poolInstanceId),
+  });
+}
+
+function statusOddsAside(card) {
+  if (actionMode() !== ACTION_MODE_AUTHORITATIVE) return '';
+  if ((card.section || lifecycleOf(card)) !== 'action') return '';
+  const locked = Number.isInteger(card.yourMoneyline) ? formatOdds(card.yourMoneyline) : '—';
+  const current = marketFor(card.opponentTeamId);
+  const now = current && current.available && Number.isInteger(current.acting_moneyline)
+    ? formatOdds(current.acting_moneyline) : '—';
+  return '<div class="fs-statusodds" data-status-odds>'
+    + `<span>LOCKED <strong>${escapeHtml(locked)}</strong></span>`
+    + `<span>NOW <strong data-status-current>${escapeHtml(now)}</strong></span>`
+    + `<button type="button" data-status-refresh data-opponent-team-id="${escapeHtml(String(card.opponentTeamId))}" aria-label="Refresh current odds">↻</button>`
+    + '</div>';
 }
 
 /** What an individual empty rail says when others have cards. */
@@ -325,19 +447,114 @@ export function lifecycleCard(card) {
     identity: `vs ${card.opponent}`,
     // Mode is load-bearing on every card: the Locked/Dynamic distinction must
     // be visible before a GM acts, not in fine print (ruling §4).
-    context: `${card.marketLabel} ${card.line} · ${modeLabel(card)}` +
-      (card.week ? ` · ${card.week}` : ''),
+    context: [card.marketLabel, card.line].filter(Boolean).join(' ')
+      + ` · ${modeLabel(card)}`
+      + (card.week ? ` · ${card.week}` : ''),
     figures,
-    copy: card.copy || modeCopy(card),
+    copy: card.copy || cardCopy(card),
+    aside: statusOddsAside(card),
     badge: badgeFor(card),
     badgeTone: badgeToneFor(card),
     accent: accentFor(card),
     footLabel: footLabelFor(card),
     footValue: footValueFor(card),
     className: 'fs-wcard--lifecycle',
+    interactiveAside: actionMode() === ACTION_MODE_AUTHORITATIVE
+      && (card.section || lifecycleOf(card)) === 'action',
     tapAction: 'wager',
     tapId: card.id,
   });
+}
+
+/**
+ * The card's sentence: what the wager is doing, and — in Dynamic — what is
+ * still going to happen to it.
+ *
+ * THE MODE NOTE IS NOT OPTIONAL IN DYNAMIC, and that is a ruling rather than a
+ * preference. S8-P4C-2R2 requires the Dynamic copy to name Final Lock as the
+ * event and to stay neutral about WHOSE lineup supplies the earliest kickoff,
+ * because the covered player who triggers the lock may be the opponent's — copy
+ * that points at the GM's own players renders perfectly and is false for
+ * exactly the GM whose starters all play late. So a Dynamic card keeps that
+ * sentence and gains the state one; only a LOCKED card trades its mode note
+ * away, and only because "Terms are frozen as offered. Neither side moves." is
+ * the same true, inert sentence on all four rails.
+ *
+ * @param {object} card
+ * @returns {string}
+ */
+function cardCopy(card) {
+  const state = stateCopy(card);
+  return card.mode === 'dynamic' ? `${state} ${modeCopy(card)}` : state;
+}
+
+/**
+ * What this wager is DOING, in one sentence.
+ *
+ * ── WHY THE CARD STOPPED EXPLAINING THE MODE HERE ───────────────────────────
+ *
+ * This slot used to fall back to `modeCopy`, so in production every card on
+ * every rail carried the same sentence — "Terms are frozen as offered. Neither
+ * side moves." — whatever it was actually doing. Four rails exist to answer
+ * four different questions, and a line that reads identically on all of them
+ * answers none of them. The mode has NOT gone quiet: `modeLabel` puts FIXED or
+ * FLOATING in the context line directly above, which is the ruling's
+ * requirement that the distinction be visible before a GM acts, and the
+ * Response Card still carries the full mode note in full.
+ *
+ * BUILT FROM SERVED VALUES, NEVER FROM A TEAM NAME THIS FILE KNOWS. The
+ * opponent, the market and the week all arrive from the Action read model; this
+ * only chooses the sentence frame. `card.copy` still wins where it is supplied,
+ * which is how the illustrative fixture keeps its own per-state wording.
+ *
+ * @param {object} card
+ * @returns {string}
+ */
+function stateCopy(card) {
+  const opponent = card.opponent || 'your opponent';
+  const market = card.marketLabel || 'Matchup';
+
+  if (card.settled) {
+    // The badge already says WON or LOST and the Net figure already says by how
+    // much. This says where the Credits WENT, which neither of them does.
+    if (card.outcome === 'won') {
+      return 'Final. Credits posted to your Wallet.';
+    }
+    if (card.outcome === 'lost') {
+      return 'Final. Your stake went to the pot.';
+    }
+    if (card.outcome === 'void') {
+      return 'Voided. Your stake was returned.';
+    }
+    return 'Final. This Matchup is settled.';
+  }
+
+  if (card.protocolState === 'accepted') {
+    // A Dynamic wager gets the plain sentence and lets `modeCopy` say what
+    // Final Lock will do to it; a Locked one can say so itself, because there
+    // is nothing still to happen to its terms.
+    return card.mode === 'dynamic'
+      ? 'This Matchup is live.'
+      : 'Locked. This Matchup is live.';
+  }
+
+  if (card.protocolState === 'countered') {
+    return card.viewerDecides
+      ? `${opponent} countered. Accept it or decline — no re-counter.`
+      : `You countered. It is with ${opponent} now.`;
+  }
+
+  if (card.protocolState === 'offered') {
+    return card.viewerDecides
+      ? `${opponent} sent you a ${market} Matchup.`
+      : `Waiting for ${opponent} to respond.`;
+  }
+
+  if (card.protocolState === 'declined') return 'Declined. Nothing was staked.';
+  if (card.protocolState === 'expired') {
+    return 'Expired unanswered. Nothing was staked.';
+  }
+  return modeCopy(card);
 }
 
 /**
@@ -513,6 +730,7 @@ function pendingFigure(label) {
 }
 
 function badgeFor(card) {
+  if (card.settled && card.outcome === 'void') return 'VOIDED';
   if (card.settled) return card.won ? 'WON' : 'LOST';
   if (card.protocolState === 'accepted') return String(card.status || 'live').toUpperCase();
   if (card.protocolState === 'countered') return 'COUNTERED';
@@ -522,6 +740,7 @@ function badgeFor(card) {
 }
 
 function badgeToneFor(card) {
+  if (card.settled && card.outcome === 'void') return 'neutral';
   if (card.settled) return card.won ? 'positive' : 'negative';
   if (card.protocolState === 'accepted') {
     return ['ahead', 'covering'].includes(card.status) ? 'positive'
@@ -585,6 +804,30 @@ const CONTROL_WORDS = Object.freeze({
  * @param {{openSheet: Function}} api
  */
 export function bindAction(panel, api) {
+  panel.querySelectorAll('[data-status-refresh]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      button.disabled = true;
+      try {
+        await refreshPairingContext(Number(button.dataset.opponentTeamId));
+        const row = marketFor(Number(button.dataset.opponentTeamId));
+        const value = button.closest('[data-status-odds]')?.querySelector('[data-status-current]');
+        if (value) value.textContent = row && row.available && Number.isInteger(row.acting_moneyline)
+          ? formatOdds(row.acting_moneyline) : '—';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  panel.querySelectorAll('[data-card-action="pool-status"]').forEach((el) => {
+    onActivate(el, () => {
+      const pool = [...slateRows(), ...previousSlateRows()]
+        .find((row) => String(row.poolInstanceId) === el.dataset.cardId);
+      if (pool) api.openSheet(poolStatusSheet(pool));
+    });
+  });
   panel.querySelectorAll('[data-card-action="wager"]').forEach((el) => {
     onActivate(el, () => {
       // THE BOUND CARDS, not the fixture's. In production `sectionCards`
@@ -605,11 +848,136 @@ export function bindAction(panel, api) {
  * @param {object} card
  * @returns {{title: string, sub: string, body: string}}
  */
+/* ── FINAL POR (FREEZE) §3 · THE DECISION WORKSPACE ─────────────────────────
+ *
+ * The three FantasyStakes markets, priced two ways, above the lineups the
+ * price rests on, above the three things a GM can do about it.
+ *
+ * WHY TWO COLUMNS RATHER THAN ONE THAT CHANGES. A single set of numbers that
+ * silently became "current" after a refresh is exactly the failure this
+ * structure exists to prevent: the reader could no longer see what they had
+ * been offered. Both are always on screen, the selected one is marked, and the
+ * offer column is rendered from the served card every time. */
+const ODDS_VIEWS = Object.freeze({ original: 'ORIGINAL OFFER', refreshed: 'REFRESHED ODDS' });
+
+/** A market's three rows, for one pricing view. */
+function marketLines(card, board) {
+  const dash = PENDING_FIGURE;
+  const ml = (v) => (Number.isInteger(v) ? formatOdds(v) : dash);
+  const num = (v) => (typeof v === 'number' ? (v > 0 ? `+${v}` : String(v)) : dash);
+  const tot = (v) => (typeof v === 'number' ? String(v) : dash);
+
+  // THE OFFER COLUMN IS THE CARD, NOT THE BOARD. `card.yourMoneyline` is what
+  // the proposal locked; the spread and total it was sent with are the card's
+  // own line where the offered market is that market, and unquoted otherwise —
+  // an offer prices ONE market, and inventing the other two would be inventing
+  // terms nobody sent.
+  const offeredIs = (kind) => String(card.marketId || card.marketLabel || '')
+    .toLowerCase().includes(kind);
+
+  return {
+    original: [
+      ['Moneyline', ml(card.yourMoneyline)],
+      ['Spread', offeredIs('spread') ? String(card.line || dash) : dash],
+      ['Over/Under', offeredIs('total') || offeredIs('over') || offeredIs('under')
+        ? String(card.line || dash) : dash],
+    ],
+    refreshed: [
+      ['Moneyline', board ? ml(board.acting_moneyline) : dash],
+      ['Spread', board ? num(board.acting_spread) : dash],
+      ['Over/Under', board ? tot(board.total_line) : dash],
+    ],
+  };
+}
+
+function oddsAndMarkets(card) {
+  const board = marketFor(card.opponentTeamId);
+  const lines = marketLines(card, board);
+
+  const column = (view) => lines[view].map(([label, value]) => (
+    '<div class="fs-odds__row">'
+    + `<span class="fs-odds__market">${escapeHtml(label)}</span>`
+    + `<span class="fs-odds__value fs-money">${escapeHtml(value)}</span>`
+    + '</div>'
+  )).join('');
+
+  const tab = (view) => (
+    `<button type="button" class="fs-odds__tab" data-odds-view="${view}"`
+    + `${view === 'original' ? ' aria-pressed="true" data-selected="true"' : ' aria-pressed="false"'}>`
+    + `${escapeHtml(ODDS_VIEWS[view])}</button>`
+  );
+
+  return collapsibleSection('ODDS & MARKETS',
+    '<div class="fs-odds__tabs" role="group" aria-label="Pricing view">'
+    + tab('original') + tab('refreshed')
+    + '</div>'
+    + '<div class="fs-odds__panel" data-odds-panel="original">' + column('original') + '</div>'
+    + '<div class="fs-odds__panel" data-odds-panel="refreshed" hidden>' + column('refreshed') + '</div>'
+    + '<div class="fs-odds__foot">'
+    + '<button type="button" class="fs-odds__refresh" data-odds-refresh '
+    + `data-opponent-team-id="${escapeHtml(String(card.opponentTeamId))}">REFRESH ODDS</button>`
+    + '<span class="fs-odds__asof" data-odds-asof>'
+    + escapeHtml(board && board.available ? 'Current board' : 'Not refreshed yet')
+    + '</span>'
+    + '</div>'
+    // THE RULE, ON THE SURFACE. A GM must not have to infer that refreshing is
+    // safe, and must not believe that Take it follows the refreshed number.
+    + '<div class="fs-note">Take it always accepts the original offer above. '
+    + 'Refreshed odds are for information — to act on them, send a Counter.</div>',
+    { open: true });
+}
+
+/** One accordion, in the Preview family — the same shell §3's two sections use. */
+function collapsibleSection(title, bodyHtml, options = {}) {
+  return accordion({
+    title,
+    bodyHtml,
+    open: options.open === true,
+    className: 'fs-prev',
+  });
+}
+
+/* §3B — THE APPROVED MATCHUP PREVIEW LINEUPS, REUSED RATHER THAN REBUILT.
+ *
+ * Drawn from whatever preview is bound when the sheet opens, and repainted in
+ * place once this pairing's own read lands. The unbound state is Preview's own
+ * sentence, not a placeholder roster. */
+function lineupsAccordion(card) {
+  return collapsibleSection('LINEUPS',
+    `<div data-lineups-body>${lineupsBody(servedPreview(), {
+      you: 'You', them: card.opponent,
+    })}</div>`, { open: false });
+}
+
+/** Fetch this pairing's preview and repaint the lineups in place. */
+function loadLineups(host, card) {
+  const slot = host.querySelector('[data-lineups-body]');
+  if (!slot) return;
+  /* THE LEAGUE AND THE WEEK, WITHOUT IMPORTING THE SHELL. `shell.js` imports
+   * this module, so reaching back into it for `currentLeagueId` would close an
+   * import cycle. Both facts are available from the models this file already
+   * depends on: the week is the league's authoritative one, and the acting
+   * league is the identity's own — the same two values the shell reads. */
+  const identity = currentIdentity();
+  const caps = (identity && identity.capabilities) || {};
+  const leagueId = caps.acting_context_ambiguous
+    ? null
+    : (typeof caps.acting_league_id === 'number' ? caps.acting_league_id : null);
+  const week = currentWeek();
+  if (leagueId === null || week === null || !Number.isInteger(card.opponentTeamId)) return;
+  apiFetch(`/league/${leagueId}/versus/preview`
+    + `?week=${week}&opponent_team_id=${card.opponentTeamId}`)
+    .then((view) => {
+      bindPreview(view);
+      slot.innerHTML = lineupsBody(servedPreview(), { you: 'You', them: card.opponent });
+    })
+    .catch(() => { /* the unbound sentence already standing is the honest state */ });
+}
+
 export function wagerSheet(card) {
   // A DERIVED STAKE THAT IS NOT YET PRICED HAS NO NUMBER. In Dynamic the
   // opponent's side is set at Final Lock, so the sheet says so rather than
-  // printing a placeholder that would read as a quote. The wording matches
-  // `modeCopy` — see the note there on why "at kickoff" was wrong.
+  // printing a placeholder that would read as a quote.
   const SET_AT_LOCK = 'Set at Final Lock';
   const theirStake = (card.opponentStakeCents === null
     || card.opponentStakeCents === undefined)
@@ -619,42 +987,111 @@ export function wagerSheet(card) {
     ? SET_AT_LOCK
     : formatCredits(card.potCents);
 
-  const rows = [
-    ['Market', `${card.marketLabel} ${card.line}`],
-    ['Terms', card.mode.toUpperCase()],
+  const rowHtml = ([label, value]) => (
+    '<div class="fs-prev__row">' +
+    `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
+    `<span class="fs-prev__value fs-money">${escapeHtml(value)}</span>` +
+    '</div>'
+  );
+
+  const termRows = [
+    ['Terms', String(card.mode || 'locked').toUpperCase()],
     ['Your stake', formatCredits(card.yourStakeCents)],
     ['Their stake', theirStake],
     ['Pot', pot],
   ];
   if (card.mode === 'dynamic' && Number.isInteger(card.derivedCeilingCents)) {
-    // THE CEILING IS AUTHORITATIVE — the backend wrote it at the Handshake. It
-    // is the most a GM's opponent can end up staking, and it is a bound rather
-    // than a prediction.
-    rows.push(['Their stake ceiling', formatCredits(card.derivedCeilingCents)]);
+    termRows.push(['Their stake ceiling', formatCredits(card.derivedCeilingCents)]);
   }
-  if (card.score) rows.push([card.settled ? 'Final' : 'Live', card.score]);
-  if (card.settled) rows.push(['Net', formatSignedCredits(card.netCents)]);
-  if (card.expiresIn) rows.push(['Expires', card.expiresIn]);
+  if (card.settled) termRows.push(['Net', formatSignedCredits(card.netCents)]);
+  if (card.expiresIn) termRows.push(['Expires', card.expiresIn]);
 
-  // The protocol state is shown as itself. A rail name is where a card sits,
-  // not what it is.
-  rows.push(['Protocol state', card.protocolState]);
-  // The locked Response Card word — served as `status` in production, carried
-  // as `responseCard` by the illustrative fixture. Same five-word vocabulary.
-  rows.push(['Response card', card.responseCard || card.status || '—']);
+  const decidable = (card.section || lifecycleOf(card)) === 'action';
 
   return {
     title: `vs ${card.opponent}`,
-    sub: `${card.marketLabel} ${card.line} · ${card.mode.toUpperCase()}`,
+    sub: `${card.marketLabel} ${card.line} · ${String(card.mode || 'locked').toUpperCase()}`,
     body:
-      rows.map(([label, value]) => (
-        '<div class="fs-prev__row">' +
-        `<span class="fs-prev__label">${escapeHtml(label)}</span>` +
-        `<span class="fs-prev__value fs-money">${escapeHtml(value)}</span>` +
-        '</div>'
-      )).join('') +
-      `<div class="fs-note">${escapeHtml(card.copy || modeCopy(card))}</div>` +
-      responseControls(card),
-    onMount: (host, api) => bindResponseControls(host, api, card),
+      // §3 — ODDS & MARKETS FIRST, LINEUPS SECOND, CONTROLS LAST.
+      (decidable ? oddsAndMarkets(card) : '')
+      + (decidable ? lineupsAccordion(card) : '')
+      + collapsibleSection('THIS OFFER',
+        termRows.map(rowHtml).join('')
+        + `<div class="fs-note">${escapeHtml(card.copy || modeCopy(card))}</div>`,
+        { open: !decidable })
+      + responseControls(card),
+    onMount: (host, api) => {
+      bindResponseControls(host, api, card);
+      bindOddsView(host, card);
+      bindAccordions(host);
+      loadLineups(host, card);
+    },
+  };
+}
+
+/* The pricing-view toggle and REFRESH ODDS, bound.
+ *
+ * REFRESH REPAINTS THE REFRESHED COLUMN AND NOTHING ELSE. It does not touch
+ * `card`, it does not touch the original column, and it does not re-render the
+ * sheet — so the offer a GM is looking at cannot change underneath them. */
+function bindOddsView(host, card) {
+  const panels = {
+    original: host.querySelector('[data-odds-panel="original"]'),
+    refreshed: host.querySelector('[data-odds-panel="refreshed"]'),
+  };
+  const select = (view) => {
+    Object.entries(panels).forEach(([name, el]) => {
+      if (el) el.hidden = name !== view;
+    });
+    host.querySelectorAll('[data-odds-view]').forEach((b) => {
+      const on = b.dataset.oddsView === view;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (on) b.setAttribute('data-selected', 'true');
+      else b.removeAttribute('data-selected');
+    });
+  };
+  host.querySelectorAll('[data-odds-view]').forEach((b) => {
+    b.addEventListener('click', () => select(b.dataset.oddsView));
+  });
+
+  const refresh = host.querySelector('[data-odds-refresh]');
+  if (!refresh) return;
+  refresh.addEventListener('click', async () => {
+    const asOf = host.querySelector('[data-odds-asof]');
+    refresh.disabled = true;
+    if (asOf) asOf.textContent = 'Refreshing…';
+    try {
+      await refreshPairingContext(Number(refresh.dataset.opponentTeamId));
+      const board = marketFor(card.opponentTeamId);
+      const lines = marketLines(card, board);
+      const panel = panels.refreshed;
+      if (panel) {
+        panel.innerHTML = lines.refreshed.map(([label, value]) => (
+          '<div class="fs-odds__row">'
+          + `<span class="fs-odds__market">${escapeHtml(label)}</span>`
+          + `<span class="fs-odds__value fs-money">${escapeHtml(value)}</span>`
+          + '</div>'
+        )).join('');
+      }
+      if (asOf) asOf.textContent = board && board.available ? 'Refreshed just now' : 'No board available';
+      select('refreshed');
+    } catch (error) {
+      if (asOf) asOf.textContent = explainBoardRefusal(error);
+    } finally {
+      refresh.disabled = false;
+    }
+  });
+}
+
+function poolStatusSheet(pool) {
+  const picked = (pool.subjects || []).find((s) => s.subject_id === pool.mySubjectId);
+  return {
+    title: pool.name,
+    sub: pool.settled ? 'Resolved Prop Pool' : 'Locked Prop Pool entry',
+    body: '<div class="fs-prev__row"><span class="fs-prev__label">Your pick</span>'
+      + `<span class="fs-prev__value">${escapeHtml(picked ? picked.label : '—')}</span></div>`
+      + '<div class="fs-prev__row"><span class="fs-prev__label">Pot</span>'
+      + `<span class="fs-prev__value fs-money">${escapeHtml(formatCredits(pool.potCents))}</span></div>`
+      + '<div class="fs-note">Status is read from the governed Pool entry and settlement record. Pool picks are made on Play.</div>',
   };
 }

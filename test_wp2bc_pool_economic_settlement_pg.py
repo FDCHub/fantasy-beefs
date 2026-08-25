@@ -95,17 +95,60 @@ def _section(title: str) -> None:
 PASSWORD = "wp2bc-password"
 
 WINNER_KEY = "most_passing_yards"
-ZERO_KEY = "matchups_with_zero_total_turnovers"
+#: The occurrence NOBODY claims, so it must settle ZERO_ELIGIBLE_CLAIMS and roll
+#: its whole pot forward. It has to be a QUALIFIER: a RANK_EXTREMUM resolves a
+#: winner for any non-empty evaluated field, so it cannot demonstrate the
+#: rollover path (POR §5).
+ZERO_KEY = "matchups_where_neither_team_threw_an_interception"
 
 #: What the real selector draws for (league 19, season 2025, cycle 1) from the
 #: twelve definitions this corpus's three stat ids make gate-2 ready. Asserted,
 #: never assumed — see the module docstring.
+#:
+#: RE-PREDICTED UNDER POR REV 1.4 §4.2. The weekly slate is now a governed
+#: 3 TEAM + 1 MATCHUP, so this twelve-definition eligible set draws three TEAM
+#: contests and one MATCHUP one where it previously drew two of each. The
+#: ordering rule is UNCHANGED — same digest, same serialization, same
+#: tie-breakers — and the slate is still laid out in global rank order; what
+#: moved is which four definitions are members.
+#:
+#: THE PACKAGE STILL EXERCISES BOTH SHAPES, which is the only thing this
+#: constant exists to guarantee: #20 is a RANK_EXTREMUM that GMs claim and that
+#: pays, and #95 is a QUALIFIER that nobody claims and that rolls. #87 left the
+#: slate and #95 took its place; both are MATCHUP QUALIFIERs and either
+#: demonstrates the rollover path identically.
 EXPECTED_WEEK1_SLATE = (
-    "matchups_where_neither_team_threw_an_interception",   # #95 QUALIFIER
-    ZERO_KEY,                                             # #87 QUALIFIER
-    "highest_combined_passing_yards",                      # #56 RANK_EXTREMUM
+    ZERO_KEY,                                              # #95 QUALIFIER
     WINNER_KEY,                                            # #20 RANK_EXTREMUM
+    "fewest_total_turnovers",                              # #30 RANK_EXTREMUM
+    "fewest_interceptions_thrown",                         # #28 RANK_EXTREMUM
 )
+
+#: The only occurrence any GM claims in this package (§4 below). Everything
+#: else in the week is deliberately unclaimed, which is what lets one fixture
+#: demonstrate all three settlement outcomes at once.
+CLAIMED_KEYS = frozenset({WINNER_KEY})
+
+
+def _catalog_field(key: str, field: str):
+    """One governed field of one definition, read from the adopted catalog.
+
+    Used so the economic expectations below are COMPUTED from what the week
+    actually drew rather than pinned to the four keys one rotation ruling
+    happened to produce. A rotation change should move this suite's arithmetic
+    with it; a settlement change must still break it.
+    """
+    from betting.pool_catalog import load_catalog
+    return getattr(load_catalog().by_key(key), field)
+
+
+def _family_of(key: str) -> str:
+    return _catalog_field(key, "evaluator_family")
+
+
+def _scope_of(key: str) -> str:
+    return _catalog_field(key, "scope")
+
 
 #: POR §6.1 governed default: 100 cents per team per week.
 ENTRY_CENTS = 100
@@ -568,17 +611,48 @@ def main() -> None:
     sweeps = sum(s["swept_to_championship_cents"] for s in settled.values())
     rolls = sum(s["rolled_over_cents"] for s in settled.values())
     dists = sum(s["distributed_cents"] for s in settled.values())
-    _assert("the week's four pots are fully accounted for: 150 distributed + "
-            "300 rolled + 150 swept = 600 collected",
-            (dists, rolls, sweeps) == (150, 300, 150)
+    # ── THE SPLIT IS DERIVED FROM THE DRAWN SLATE, NOT PINNED ───────────────
+    #
+    # These read `(150, 300, 150)` — one pot paid, TWO rolled, one swept —
+    # because the pre-Rev-1.4 draw happened to contain two QUALIFIERs. POR
+    # Rev 1.4 §4.2 makes the weekly slate a governed 3 TEAM + 1 MATCHUP, and
+    # this eligible set now draws ONE QUALIFIER and three RANK_EXTREMUMs, so the
+    # same rules produce one rolled pot and two swept ones.
+    #
+    # NO ECONOMIC RULE CHANGED, and the arithmetic below says so rather than
+    # asserting it: a claimed RANK_EXTREMUM pays, an unclaimed QUALIFIER rolls
+    # (POR §5), an unclaimed RANK_EXTREMUM sweeps to the championship — every
+    # one of those three behaviours is exactly what it was. What moved is HOW
+    # MANY occurrences of each shape a week draws, which is a rotation ruling.
+    #
+    # So the expectation is now COMPUTED from the drawn definitions' evaluator
+    # families, and the conservation identity — every collected cent paid,
+    # rolled or swept exactly once — is asserted unconditionally. A future
+    # rotation ruling moves this suite's arithmetic with it instead of failing
+    # it, and a settlement defect still cannot hide.
+    _rolling = [k for k in drawn_keys if _family_of(k) == "QUALIFIER"
+                and k not in CLAIMED_KEYS]
+    _paying = [k for k in drawn_keys if k in CLAIMED_KEYS]
+    _sweeping = [k for k in drawn_keys
+                 if k not in CLAIMED_KEYS and _family_of(k) != "QUALIFIER"]
+    _assert("the drawn slate is the governed 3 TEAM + 1 MATCHUP mix",
+            sum(1 for k in drawn_keys if _scope_of(k) == "TEAM") == 3
+            and sum(1 for k in drawn_keys if _scope_of(k) == "MATCHUP") == 1,
+            str([(k, _scope_of(k)) for k in drawn_keys]))
+    _expect = (SHARE_CENTS * len(_paying), SHARE_CENTS * len(_rolling),
+               SHARE_CENTS * len(_sweeping))
+    _assert(f"the week's four pots are fully accounted for: "
+            f"{_expect[0]} distributed + {_expect[1]} rolled + "
+            f"{_expect[2]} swept = {TOTAL_CENTS} collected",
+            (dists, rolls, sweeps) == _expect
             and dists + rolls + sweeps == TOTAL_CENTS,
-            f"dist={dists} roll={rolls} sweep={sweeps}")
-    _assert(f"pool:{LEAGUE_ID} = 600 - 150 paid - 150 swept = 300, exactly the "
-            f"two live carries",
-            balance_of(f"pool:{LEAGUE_ID}") == 300,
+            f"dist={dists} roll={rolls} sweep={sweeps} vs {_expect}")
+    _assert(f"pool:{LEAGUE_ID} holds exactly the live carries after paying and "
+            f"sweeping",
+            balance_of(f"pool:{LEAGUE_ID}") == _expect[1],
             f"{balance_of(f'pool:{LEAGUE_ID}')} (was {pool_before})")
-    _assert(f"championship:{LEAGUE_ID} received exactly the swept pot",
-            balance_of(f"championship:{LEAGUE_ID}") - champ_before == 150,
+    _assert(f"championship:{LEAGUE_ID} received exactly the swept pots",
+            balance_of(f"championship:{LEAGUE_ID}") - champ_before == _expect[2],
             f"{balance_of(f'championship:{LEAGUE_ID}')} (was {champ_before})")
     _assert("trial balance is zero after settlement", trial_balance() == 0)
 
@@ -589,7 +663,7 @@ def main() -> None:
         db.rollback()
     _assert("POOL CONSERVATION holds against real ledger entries: the account "
             "balance equals unsettled pots plus live carries",
-            held == 300, str(held))
+            held == _expect[1], f"{held} vs {_expect[1]}")
 
     with SessionLocal() as db:
         persisted = (db.query(PoolInstance)
@@ -602,8 +676,10 @@ def main() -> None:
                            PoolInstance.rollover_cents > 0).count())
         _assert("settled state is PERSISTED for all four occurrences",
                 persisted == 4, str(persisted))
-        _assert("two occurrences persist a live carry", carries == 2,
-                str(carries))
+        _assert(f"{len(_rolling)} occurrence(s) persist a live carry — one per "
+                f"unclaimed QUALIFIER, which is what POR §5 makes "
+                f"rollover-eligible",
+                carries == len(_rolling), f"{carries} vs {len(_rolling)}")
         db.rollback()
 
     # ════ 6. RETRY IDEMPOTENCY — NO DOUBLE PAYOUT ═══════════════════════════
@@ -629,10 +705,19 @@ def main() -> None:
             len(replay) == 4 and all(s["replayed"] for s in replay),
             f"{len(replay)} entries, replayed="
             f"{[s.get('replayed') for s in replay]}")
+    # THE REPLAY REPRODUCES THE ORIGINAL, whatever the original was. The pinned
+    # `== 150` swept total assumed one swept occurrence; POR Rev 1.4 §4.2's
+    # governed mix draws two here. Comparing the replay against the FIRST
+    # settlement's own figures is the claim this always meant to make, and it
+    # cannot be satisfied by a rotation ruling instead of by idempotency.
     _assert("no replayed occurrence claims a fresh distribution or sweep",
-            all(s["distributed_cents"] == 150 or s["distributed_cents"] == 0
-                for s in replay)
-            and sum(s["swept_to_championship_cents"] for s in replay) == 150,
+            {s["definition_key"]: (s["distributed_cents"],
+                                   s["rolled_over_cents"],
+                                   s["swept_to_championship_cents"])
+             for s in replay}
+            == {k: (v["distributed_cents"], v["rolled_over_cents"],
+                    v["swept_to_championship_cents"])
+                for k, v in settled.items()},
             str([(s["definition_key"], s["distributed_cents"],
                   s["swept_to_championship_cents"]) for s in replay]))
     after = {
@@ -696,15 +781,26 @@ def main() -> None:
         w2_continuations = sum(1 for i in w2 if i.origin_instance_id is not None)
         db.rollback()
     print(f"     week 2 slate = {w2_keys}")
+    # ONE CONTINUATION PER LIVE CARRY — counted from week 1's carries rather
+    # than pinned at two. Week 1 rolled `len(_rolling)` pots (POR §5: only an
+    # unclaimed QUALIFIER rolls), and each of those becomes exactly one week-2
+    # continuation carrying its prior pot PLUS this week's share. The LIFECYCLE
+    # claim is untouched; only the arithmetic follows the governed mix.
+    _carried = len(_rolling)
     _assert("THE WEEK 1 CARRIES WERE CONSUMED AS WEEK 2 CONTINUATIONS — the "
             "rollover is a lifecycle, not a column",
-            w2_continuations == 2, str(w2_continuations))
-    _assert("each continuation carries its prior pot PLUS this week's share "
-            "(150 + 150), and each fresh draw carries the share alone",
-            sorted(w2_pots) == [150, 150, 300, 300], str(w2_pots))
+            w2_continuations == _carried,
+            f"{w2_continuations} vs {_carried} carr(ies) from week 1")
+    _assert("each continuation carries its prior pot PLUS this week's share, "
+            "and each fresh draw carries the share alone",
+            sorted(w2_pots) == sorted(
+                [SHARE_CENTS * 2] * _carried
+                + [SHARE_CENTS] * (4 - _carried)),
+            str(w2_pots))
     _assert(f"pool:{LEAGUE_ID} now holds last week's carries plus this week's "
             f"collection",
-            balance_of(f"pool:{LEAGUE_ID}") == 300 + TOTAL_CENTS,
+            balance_of(f"pool:{LEAGUE_ID}")
+            == SHARE_CENTS * _carried + TOTAL_CENTS,
             str(balance_of(f"pool:{LEAGUE_ID}")))
 
     with SessionLocal() as db:

@@ -1802,7 +1802,7 @@ class PoolBetPick(Base):
 
 class PoolDefinition(Base):
     """One row per catalog definition — §C1. 80 active rows seeded from
-    spec/pool_catalog_rev1_3.json by betting.pool_catalog.seed_definitions.
+    spec/pool_catalog_rev1_4.json by betting.pool_catalog.seed_definitions.
 
     metric_expression and threshold_condition are stored as opaque nullable
     strings. Storability is independent of executability: a null
@@ -1956,6 +1956,26 @@ class PoolDefinition(Base):
     # carrier is PoolLeagueActivation below.
     definition_runtime_eligible       = Column(Boolean, nullable=False)
     definition_block_reason           = Column(String,  nullable=True)
+    # ── Revision 1.4 (POR Rev 1.4 §3) ─────────────────────────────────────────
+    #
+    # The plain-English question a GM is answering when they pick. A GOVERNED
+    # PEER of display_name, seeded from the same catalog artifact by the same
+    # seeder, and the ONLY authority for that sentence — the app previously
+    # derived its prompt from `scope` alone, which said the identical thing on
+    # all sixty-four drawable definitions.
+    #
+    # NULLABLE, AND THAT IS THE PRODUCT RULE, NOT A MIGRATION CONVENIENCE. POR
+    # Rev 1.4 §7 deliberately leaves the 16 definitions no league can currently
+    # draw — three BLOCKED, thirteen source-mapping incomplete — without one.
+    # Branding a contest nobody can play would put a sentence into the register
+    # that has never appeared on a surface. A reader must therefore handle NULL,
+    # and the surface falls back to the definition's own governed prose rather
+    # than inventing a question.
+    #
+    # IT CARRIES NO SETTLEMENT AUTHORITY (§3.2). Where it and `predicate`,
+    # `metric_expression` or `threshold_condition` could be read as disagreeing,
+    # the governed field wins and the question is the defect.
+    public_question                   = Column(String,  nullable=True)
 
 
 class PoolLeagueActivation(Base):
@@ -2653,8 +2673,9 @@ class LeagueSeasonEconomyConfig(Base):
         CheckConstraint(
             "championship_contribution_cents BETWEEN 100 AND 100000",
             name="ck_lsec_championship_contribution"),
+        # FINAL POR §9D — 0 is a governed choice: Skunk Fees are optional.
         CheckConstraint(
-            "skunk_fee_cents BETWEEN 100 AND 10000",
+            "skunk_fee_cents BETWEEN 0 AND 10000",
             name="ck_lsec_skunk_fee"),
         # NULL passes a CHECK, which is exactly right: a draft has not derived
         # these yet. Once written they must be positive.
@@ -2664,6 +2685,12 @@ class LeagueSeasonEconomyConfig(Base):
         CheckConstraint(
             "active_team_count IS NULL OR active_team_count > 0",
             name="ck_lsec_active_team_count"),
+        # FINAL POR §14 — 0 is a governed choice: a league may play with no
+        # Fantasy Football pot. NULL is the separate "unconfigured" state.
+        CheckConstraint(
+            "ff_championship_pot_cents IS NULL "
+            "OR ff_championship_pot_cents BETWEEN 0 AND 1000000",
+            name="ck_lsec_ff_championship_pot"),
     )
 
     id        = Column(Integer, primary_key=True, autoincrement=True)
@@ -2676,6 +2703,20 @@ class LeagueSeasonEconomyConfig(Base):
     weekly_bet_minimum_cents        = Column(Integer, nullable=False)
     championship_contribution_cents = Column(Integer, nullable=False)
     skunk_fee_cents                 = Column(Integer, nullable=False)
+
+    #: FINAL POR §14 / WP-5 — the Fantasy Football Championship Pot, as ONE
+    #: LEAGUE-LEVEL AMOUNT. Deliberately NOT `championship_contribution_cents`,
+    #: which is the retired architecture's PER-GM contribution and remains the
+    #: governing input for every legacy season. The same integer cannot mean
+    #: both without every reader knowing the era first.
+    #:
+    #: NULL AND 0 ARE DIFFERENT GOVERNED STATES. NULL is "no commissioner has
+    #: entered an amount" — the pillar is unconfigured and mints at zero. 0 is
+    #: "this league deliberately plays with no Fantasy Football pot". Both leave
+    #: the pillar unfunded; a settings screen must render them differently, and
+    #: an audit asking whether the league declined the pot or never saw it has
+    #: an answer only because they are stored apart.
+    ff_championship_pot_cents = Column(Integer, nullable=True)
 
     #: Derived internal economic facts. NULL on a draft — they are computed at
     #: the freeze, from the connected league's own settings and its own teams,
@@ -2695,6 +2736,71 @@ class LeagueSeasonEconomyConfig(Base):
     #: further write. One row, one state, no pair of rows that can disagree.
     frozen_at  = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+
+    league = relationship("League")
+
+
+# ── Season ruleset version (WP-1) ─────────────────────────────────────────────
+
+class LeagueSeasonRuleset(Base):
+    """One league-season's governing RULESET — the single era gate (WP-1).
+
+    THE ONE QUESTION THIS ROW ANSWERS: *which edition of the FantasyStakes rules
+    governs this league-season?* Scoring, economy, pot funding, lifecycle and
+    reconciliation all changed together in the Final POR, and a season is played
+    entirely under one edition of them. Three separate version columns —
+    scoring, economy, lifecycle — could disagree with one another about the same
+    season; one column cannot.
+
+    ── ABSENCE IS A GOVERNED STATE, NOT A GAP ────────────────────────────────
+
+    A league-season with NO ROW here is `RULESET_LEGACY`. Every season activated
+    before WP-1 is in exactly that state, and none is migrated, backfilled or
+    reinterpreted — which is what lets the Final POR land without touching a
+    single historical Credit, frozen score or paid award.
+
+    ── INSERT-ONLY, STAMPED AT ACTIVATION ────────────────────────────────────
+
+    There is no update path and no delete path. The ruleset governs Credits that
+    have already been issued and results that have already been scored; changing
+    it mid-season would leave the record disagreeing with the season it is
+    supposed to explain. Correcting a mis-stamped season requires a separately
+    governed season-reset protocol, which FantasyStakes does not have and this
+    package does not invent.
+
+    ONE ROW PER LEAGUE-SEASON, so no pair of rows can disagree — the same
+    argument `LeagueSeasonEconomyConfig` makes, for the same reason.
+
+    ── DEFINED HERE RATHER THAN IN A FEATURE MODULE ──────────────────────────
+
+    Registered with `Base` in `db/schema.py` so `create_all` always builds it on
+    a fresh database, with no explicit import-order registration step. The RC2
+    championship models are registered by `api.main_rc2` instead, and the
+    migration manifest records what that cost: booting the wrong entrypoint
+    against a fresh database built none of those tables while `stamp_all` still
+    recorded their migrations as applied. The era gate is read by `economy`,
+    `reports` and `betting` alike, so it may not depend on any one of them
+    having been imported first.
+    """
+
+    __tablename__ = "league_season_ruleset"
+    __table_args__ = (
+        UniqueConstraint("league_id", "season", name="uq_lsr_league_season"),
+        CheckConstraint("ruleset_version >= 1", name="ck_lsr_version_positive"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    league_id = Column(Integer, ForeignKey("leagues.id", name="fk_lsr_league"),
+                       nullable=False)
+    season = Column(Integer, nullable=False)
+
+    #: The governing ruleset edition. See `ruleset.py` for the named constants;
+    #: the integer is stored rather than a string so ordering comparisons
+    #: ("is this season at or past the Final POR?") are exact.
+    ruleset_version = Column(Integer, nullable=False)
+
+    stamped_at = Column(DateTime(timezone=True), nullable=False,
                         default=lambda: datetime.now(timezone.utc))
 
     league = relationship("League")
@@ -3015,6 +3121,55 @@ class LedgerPostingBatch(Base):
                         default=lambda: datetime.now(timezone.utc))
 
     protocol_event = relationship("ProtocolEvent", back_populates="batches")
+
+
+class VoidedWager(Base):
+    """FINAL POR §7 / WP-13 — one ACCEPTED wager, voided. Append-only.
+
+    WHY A ROW AND NOT A `Bet.status` VALUE. `ck_bet_status` admits
+    `pending / won / lost / push`, and a void is none of them. It is not `push`:
+    a push is a RESULT — the contest happened and separated nobody — while a
+    void says the contest produced no result at all, and the two must stay
+    distinguishable because §7 gives them different consequences for the Weekly
+    Minimum. Widening that CHECK would also have meant rebuilding `bets` on
+    SQLite, which is a large blast radius for a fact that belongs beside the
+    refund it records rather than inside the wager it cancels.
+
+    ONE ROW PER BET, ENFORCED. `bet_id` is unique, so a second void of the same
+    wager cannot be recorded and cannot refund a second time.
+
+    WHAT IT DELIBERATELY DOES NOT SAY. Nothing here asserts the Weekly Minimum
+    was or was not satisfied. §7 says an accepted action goes on satisfying it,
+    and that is true because the refund credits `wallet:` and never restores
+    `min:` — a property of the POSTING, derivable from the ledger, not a flag
+    anybody sets. A stored flag could disagree with the postings; this cannot.
+    """
+
+    __tablename__ = "voided_wagers"
+    __table_args__ = (
+        UniqueConstraint("bet_id", name="uq_voided_wager_bet"),
+        CheckConstraint("refunded_cents >= 0", name="ck_voided_wager_refund"),
+    )
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    bet_id       = Column(Integer, ForeignKey("bets.id"), nullable=False)
+    challenge_id = Column(Integer, nullable=True)
+    team_id      = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    league_id    = Column(Integer, nullable=False)
+    season       = Column(Integer, nullable=False)
+    week         = Column(Integer, nullable=True)
+
+    #: Cents returned to `wallet:{team_id}`. 0 is legal: an escrow already
+    #: emptied by an earlier partial release has nothing left to return, and the
+    #: void is still a real, recorded event.
+    refunded_cents = Column(Integer, nullable=False)
+
+    #: The commissioner's stated reason. Free text, recorded verbatim, never
+    #: parsed — it is evidence for a human reader, not a control value.
+    reason       = Column(String, nullable=False)
+    posting_id   = Column(Uuid, nullable=True)
+    created_at   = Column(DateTime(timezone=True), nullable=False,
+                          default=lambda: datetime.now(timezone.utc))
 
 
 class ChallengeFundingLeg(Base):
@@ -3428,6 +3583,152 @@ class ProviderConflict(Base):
     @property
     def is_open(self) -> bool:
         return self.resolved_at is None
+
+
+# ── UIRECON Rev 1.4 · the shared informational odds refresh ───────────────
+
+class ChallengeOddsRefresh(Base):
+    """Rev 9 §5 — one NONBINDING informational re-simulation of a Dynamic wager.
+
+    WHY A ROW EXISTS AT ALL FOR SOMETHING THAT MOVES NO MONEY. Rev 9 §5 permits
+    a "display-only re-sim" between Handshake and Final Lock and requires only
+    that it write nothing to the LEDGER. It says nothing about where the shown
+    number lives, and the obvious reading — compute it per request and return it
+    — fails the one product requirement that matters here: two GMs looking at
+    the same Matchup must see the SAME line. Projections move between two
+    requests, so two independently computed refreshes are two different answers
+    to one question, and a wager whose displayed odds depend on who asked is a
+    wager neither GM can talk to the other about. This row is the shared answer.
+
+    IT IS THE AUDIT TRAIL, AND IT IS DELIBERATELY NOT A `ProtocolEvent`.
+    `ProtocolEvent` is documented as "the single authoritative idempotency
+    identity for a governed MONEY operation"; an informational refresh is
+    definitionally not one, and minting an event for it would file a nonbinding
+    read alongside Handshakes, settlements and Final Locks in the record
+    operators read to reconstruct where Credits went. Append-only rows carrying
+    the actor, the moment, the frozen model identity and every figure displayed
+    are the honest trail for a read: they prove what was shown and to whom
+    without claiming anything was transacted.
+
+    APPEND-ONLY, NEVER UPDATED. The latest row for a challenge is what both GMs
+    read; the earlier ones are the history of what the line did between
+    Handshake and Final Lock. Overwriting a single row per challenge would save
+    nothing worth having and would destroy exactly that history.
+
+    NOTHING HERE IS AUTHORITATIVE FOR SETTLEMENT OR FOR FINAL LOCK.
+    `indicative_derived_cents` is an INDICATION of what the opponent's Derived
+    Stake would be if Final Lock ran now; the opponent's actual stake is set
+    once, at Final Lock, into `ChallengeFinalLock`. The column is named
+    `indicative_` rather than `derived_` for that reason — a name that read like
+    the frozen field would eventually be used as one.
+
+    NO UNIQUE CONSTRAINT ON `challenge_id`. `ChallengeFinalLock` has one because
+    exactly one Final Lock may ever exist; refreshes are unbounded by
+    construction, and a uniqueness constraint here would silently convert the
+    history into a single mutable cell.
+    """
+
+    __tablename__ = "challenge_odds_refresh"
+    __table_args__ = (
+        # Rev 7 §2 invariant 1 restated where the data lands: a refresh that did
+        # not describe ONE market is not a refresh worth showing anybody.
+        CheckConstraint(
+            "issuer_probability > 0 AND issuer_probability < 1 "
+            "AND opponent_probability > 0 AND opponent_probability < 1",
+            name="ck_challenge_odds_refresh_probabilities",
+        ),
+        # The ceiling is the no-increase guard (MS-SIM-11). What is DISPLAYED
+        # may therefore never exceed it, whatever the raw derivation asked for.
+        CheckConstraint(
+            "indicative_derived_cents >= 0 "
+            "AND opponent_ceiling_cents >= 0 "
+            "AND indicative_derived_cents <= opponent_ceiling_cents",
+            name="ck_challenge_odds_refresh_ceiling",
+        ),
+        # The read is always "the latest refresh for this challenge".
+        Index("ix_challenge_odds_refresh_challenge",
+              "challenge_id", "refreshed_at"),
+    )
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    challenge_id = Column(Integer,
+                          ForeignKey("beef_challenges.id",
+                                     name="fk_challenge_odds_refresh_challenge"),
+                          nullable=False)
+
+    #: The moment the shared figures below were produced. This is what the card
+    #: renders as `Updated 10:42 AM`, and it is the refresh's identity — a GM
+    #: asking "how old is this line" is asking about exactly this column.
+    refreshed_at = Column(DateTime, nullable=False,
+                          default=lambda: datetime.now(timezone.utc))
+
+    #: WHO ASKED. Recorded for the audit trail only. It is deliberately NOT an
+    #: input to any figure in this row: a refresh requested by the opponent must
+    #: produce byte-identical numbers to one requested by the issuer, and the
+    #: cheapest way to guarantee that is for the computation never to see this.
+    requested_by_team_id = Column(Integer,
+                                  ForeignKey("teams.id",
+                                             name="fk_challenge_odds_refresh_team"),
+                                  nullable=True)
+
+    # ── Model provenance — the HANDSHAKE-FROZEN identity, re-verified ──
+    # MODEL-A: "the refresh and Final Lock both resolve
+    # `challenge.dynamic_model_version_id`, never ACTIVE_MODEL_VERSION_ID". These
+    # are written from the config the refresh actually resolved and verified, so
+    # a row whose version disagrees with its challenge is self-evidently wrong.
+    model_version_id  = Column(String,  nullable=False)
+    model_config_hash = Column(String,  nullable=False)
+    simulations       = Column(Integer, nullable=False, default=0)
+
+    #: The LIVE projection dataset this refresh read, kept separate from the
+    #: frozen model identity for the same reason `ChallengeFinalLock` keeps them
+    #: apart: the model is frozen and the projections are the thing that moved.
+    projection_source_id       = Column(String,   nullable=True)
+    projection_dataset_version = Column(String,   nullable=True)
+
+    # ── The figures, anchored on the ISSUER — identical for both GMs ──
+    # Anchoring on the challenge's own issuer rather than on the caller is what
+    # makes "both GMs see the same line" true by construction rather than by
+    # coincidence. A viewer-relative orientation is a presentation concern and
+    # is applied by the reader, never stored.
+    # NAMED FOR THE CONTRACT, NOT FOR THE PRICER. `odds/dynamic_pricing.py`
+    # calls these `p_issuer_final` and `p_opponent_final` and is right to; this
+    # table records what was SHOWN to two GMs, and `api.main` reads it back onto
+    # a response model of the same name. Borrowing the pricer's locals here
+    # would put them in `api/main.py`, which `test_s8_p4c2_action.py §4`
+    # forbids precisely so that no layer above the pricer can look like it is
+    # reproducing the pricing.
+    issuer_probability   = Column(Float, nullable=False)
+    opponent_probability = Column(Float, nullable=False)
+    #: American, via the certified Rev 7 §2 `p2o` conversion — the same chain
+    #: `ChallengeFinalLock.issuer_moneyline` is written through, so a refresh and
+    #: the Final Lock that follows it cannot express one price two ways.
+    issuer_moneyline   = Column(Integer, nullable=False)
+    opponent_moneyline = Column(Integer, nullable=False)
+    #: Decimal, the representation `Bet.odds` uses. Carried alongside rather than
+    #: derived by a reader, so no surface has to own a conversion.
+    issuer_decimal_odds   = Column(Float, nullable=False)
+    opponent_decimal_odds = Column(Float, nullable=False)
+
+    # ── Money, INTEGER CENTS, all of it INDICATIVE ──
+    #: Echoed from the challenge row unchanged. The Anchor never reprices on
+    #: odds (Rev 7 spine); it is here so a reader can show both sides of the
+    #: indicative pot without a second query, not because a refresh could move it.
+    anchor_cents             = Column(Integer, nullable=False)
+    #: `floor(fairPot * p_opponent)` capped at the ceiling — what the opponent
+    #: WOULD stake if Final Lock ran at these probabilities.
+    indicative_derived_cents = Column(Integer, nullable=False)
+    opponent_ceiling_cents   = Column(Integer, nullable=False)
+    #: True when the raw derivation exceeded the ceiling and the cap held it
+    #: down. Recorded because it is the evidence the cap did work — a reader
+    #: that sees only the capped figure cannot tell a working cap from a
+    #: derivation that never needed one.
+    ceiling_applied          = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+
+    challenge = relationship("BeefChallenge", foreign_keys=[challenge_id])
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

@@ -59,6 +59,10 @@ class GateDecision:
 
     definition_key: str
     catalog_number: int
+    #: The catalog's own TEAM/MATCHUP value, carried so the selector can apply
+    #: POR Rev 1.4 §4.2's scope composition without a second read of
+    #: `pool_definition`. Gate evaluation itself never looks at it.
+    scope: str | None
     gate1_definition_runtime_eligible: bool
     gate2_league_activation_ready: bool
     block_reasons: tuple[str, ...]
@@ -152,6 +156,7 @@ def gate_decisions(db, *, league_id: int, provider: str, phase: str,
         decisions.append(GateDecision(
             definition_key=row.key,
             catalog_number=row.catalog_number,
+            scope=row.scope,
             gate1_definition_runtime_eligible=gate1,
             gate2_league_activation_ready=ready,
             block_reasons=tuple(reasons),
@@ -170,7 +175,8 @@ def selectable_definitions(db, *, league_id: int, provider: str, phase: str,
     it is handed, which is what lets it stay pure and deterministic."""
     return tuple(
         EligibleDefinition(definition_key=d.definition_key,
-                           catalog_number=d.catalog_number)
+                           catalog_number=d.catalog_number,
+                           scope=d.scope)
         for d in gate_decisions(db, league_id=league_id, provider=provider,
                                 phase=phase, now=now, max_age=max_age)
         if d.selectable

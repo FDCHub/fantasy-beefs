@@ -224,8 +224,9 @@ try:
 
     _section("2 · PATH A — a fresh database through the shipped bootstrap")
 
-    _assert("the shipped bootstrap is create_all",
-            "Base.metadata.create_all(engine)" in _read("api", "main.py"))
+    _assert("the shipped startup delegates fresh schema ownership to the "
+            "migration bootstrap",
+            "bootstrap_fresh(engine)" in _read("api", "main.py"))
 
     # THE DEFECT THIS PACKAGE FOUND, PINNED SO IT CANNOT RETURN.
     #
@@ -251,10 +252,8 @@ try:
 import os, sys
 sys.path.insert(0, %(root)r)
 os.environ["DATABASE_URL"] = %(url)r
-from db.schema import Base, engine
-Base.metadata.create_all(engine)
-from ledger.ledger import create_ledger_table
-create_ledger_table()
+from api.main import _create_tables
+_create_tables()
 print("CREATED")
 """
     import subprocess
@@ -266,16 +265,85 @@ print("CREATED")
     _assert("the fresh schema builds on PostgreSQL", "CREATED" in proc.stdout,
             (proc.stderr or "")[-260:])
 
+    _READY_DRIVER = r"""
+import os, sys
+sys.path.insert(0, %(root)r)
+os.environ["DATABASE_URL"] = %(url)r
+from fastapi.testclient import TestClient
+from api.main import app
+with TestClient(app) as client:
+    response = client.get("/ready")
+    print("READY_STATUS=" + str(response.status_code))
+    print("READY_BODY=" + response.text)
+"""
+    ready_proc = subprocess.run(
+        [sys.executable, "-c",
+         _READY_DRIVER % {"root": ROOT, "url": fresh_url}],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
+        errors="replace")
+    _assert("the real application reports the fresh schema ready",
+            ready_proc.returncode == 0
+            and "READY_STATUS=200" in ready_proc.stdout
+            and '"schema":"ok"' in ready_proc.stdout,
+            ((ready_proc.stderr or "") + (ready_proc.stdout or ""))[-600:])
+
     fresh_engine = create_engine(fresh_url)
     fresh = _describe(fresh_engine)
     _assert("it produced the full table set", len(fresh["tables"]) > 40,
             f"{len(fresh['tables'])} tables")
-    for required in ("users", "leagues", "provider_grants", "ledger_entries"):
+    championship_tables = (
+        "fantasystakes_championship_freeze",
+        "fantasystakes_championship_score",
+        "fantasystakes_championship_config",
+        "fantasystakes_championship_allocation",
+        "fantasystakes_championship_distribution_run",
+        "fantasystakes_championship_correction",
+    )
+    for required in ("users", "leagues", "provider_grants", "ledger_entries",
+                     *championship_tables):
         _assert(f"  · {required} exists", required in fresh["tables"])
 
     # ── 3 · PATH B — upgrade ─────────────────────────────────────────────────
 
     _section("3 · PATH B — a pre-change baseline carried forward by migrations")
+
+    from migrations.run import (applied_identifiers, repair_false_stamps,
+                                verify)
+    from migrations.manifest import ACTIVE
+
+    applied = applied_identifiers(fresh_engine)
+    _assert("fresh bootstrap records the current migration head only after "
+            "building its physical schema",
+            applied == {m.identifier for m in ACTIVE}, str(sorted(applied)))
+    _assert("fresh bootstrap schema corroborates every applied migration",
+            verify(fresh_engine) == [], str(verify(fresh_engine)))
+
+    indexes = {i["name"] for table in championship_tables
+               for i in inspect(fresh_engine).get_indexes(table)}
+    _assert("fresh championship snapshot index exists",
+            "ix_fs_champ_score_league_season" in indexes, str(sorted(indexes)))
+    _assert("fresh championship correction index exists",
+            "ix_fs_champ_correction_league_season" in indexes,
+            str(sorted(indexes)))
+
+    with fresh_engine.begin() as connection:
+        connection.execute(text(
+            "DROP TABLE fantasystakes_championship_distribution_run"))
+    false_stamp = verify(fresh_engine)
+    _assert("a false stamp is detected from physical schema, not pending count",
+            false_stamp == [
+                "0005_rc2_championship_distribution: table "
+                "fantasystakes_championship_distribution_run missing"],
+            str(false_stamp))
+    repaired = repair_false_stamps(fresh_engine)
+    _assert("the explicit false-stamp repair reruns only the affected migration",
+            len(repaired) == 1
+            and "0005_rc2_championship_distribution" in repaired[0],
+            str(repaired))
+    _assert("false-stamp repair restores a verifiable physical schema",
+            verify(fresh_engine) == []
+            and "fantasystakes_championship_distribution_run"
+            in inspect(fresh_engine).get_table_names())
 
     upgrade_url = _new_db("upgrade")
 
@@ -674,6 +742,8 @@ sys.path.insert(0, %(root)r)
 os.environ["DATABASE_URL"] = %(url)r
 from sqlalchemy import inspect
 from db.schema import Base, engine
+from migrations.run import _register_rc2_models
+_register_rc2_models()
 insp = inspect(engine)
 actual = set(insp.get_table_names())
 declared = set(Base.metadata.tables)
@@ -704,12 +774,15 @@ print("RESULT" + json.dumps({
         # ("no accidental relationship or cascade between an accounting row and
         # an application row"), not drift, so it is named rather than flagged.
         _undeclared = [t for t in drift["in_db_not_declared"]
-                       if t != "ledger_entries"]
+                       if t not in {"ledger_entries", "schema_migrations"}]
         _assert("no undeclared table was created",
                 not _undeclared, ", ".join(_undeclared) or "none")
         _assert("  · ledger_entries is declared on the Ledger's own base",
                 "ledger_entries" in drift["in_db_not_declared"],
                 "separate declarative base, by design")
+        _assert("  · schema_migrations is owned by the migration runner",
+                "schema_migrations" in drift["in_db_not_declared"],
+                "runner-owned operational table, by design")
         _assert("no column drift between metadata and the database",
                 not drift["column_drift"],
                 str(drift["column_drift"])[:200] or "none")

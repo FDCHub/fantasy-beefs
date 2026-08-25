@@ -46,6 +46,8 @@ from economy.economy_events import (
     DOOR_SKUNK_ASSESSMENT,
     DOOR_SKUNK_DISTRIBUTION,
     EVENT_SKUNK_ASSESSMENT,
+    EVENT_SKUNK_ASSESSMENT_CORRECTION,
+    EVENT_SKUNK_ASSESSMENT_REVERSAL,
     EVENT_SKUNK_DISTRIBUTION,
     league_season_key,
     league_week_key,
@@ -96,6 +98,51 @@ REASON_NO_STANDINGS = "NO_STANDINGS"
 
 CLASSIFICATION_ASSESSED = "ASSESSED"
 CLASSIFICATION_NO_LOSER = "NO_LOSER"
+
+#: Every `economy_event` type whose posting moves a GM's Skunk obligation, and
+#: therefore their FantasyStakes Score.
+#:
+#: ENUMERATED BY NAME, NEVER BY PREFIX — the same discipline
+#: `reports/standings_read_model.py` applies to its door groupings, for the same
+#: reason: a prefix test silently absorbs any event type added later, which is
+#: how a non-Skunk movement ends up inside a Score without anybody editing this
+#: file. WP-12's correction event types join this tuple deliberately when they
+#: land, and the reversal nets against the assessment because both are here.
+#: Every event family whose postings carry a GM's Skunk for FantasyStakes Score.
+#:
+#: ENUMERATED BY NAME, and all three are required for a corrected week to score
+#: correctly (WP-12). The original assessment's negative `receivable:` leg, the
+#: reversal's matching positive leg and the restatement's new negative leg all
+#: belong to the same league-season Skunk family, so summing across the three
+#: and negating once nets a correction to exactly the right per-GM figure —
+#: with no special case, and with every posting preserved in full. Omitting the
+#: reversal would leave a wrongly-skunked GM charged forever; omitting the
+#: restatement would leave the correctly-skunked GM never charged at all.
+SKUNK_SCORING_EVENT_TYPES: tuple[str, ...] = (
+    EVENT_SKUNK_ASSESSMENT,
+    EVENT_SKUNK_ASSESSMENT_REVERSAL,
+    EVENT_SKUNK_ASSESSMENT_CORRECTION,
+)
+
+
+def skunk_pot_account(db, *, league_id: int, season: int) -> str:
+    """Where this league-season's assessed Skunk accumulates (WP-5).
+
+    ONE RESOLUTION, SHARED BY THE WRITER AND EVERY READER. Assessment,
+    distribution and the Points Championship read model all call this, so the
+    account a fee was posted into and the account a distribution debits cannot
+    drift apart — which is the failure a second spelling would cause silently,
+    leaving the fees stranded and the pot reading empty.
+
+        RULESET_LEGACY     skunk:{league}
+        RULESET_FINAL_POR  points_championship:{league}:{season}
+    """
+    from economy.economy_events import points_championship_account
+    from ruleset import is_final_por
+
+    if is_final_por(db, league_id=league_id, season=season):
+        return points_championship_account(league_id, season)
+    return skunk_account(league_id)
 
 
 @dataclass(frozen=True)
@@ -281,7 +328,19 @@ def assess_weekly_skunk(db, *, league_id: int, week: int,
     # configured contribution however many GMs tied.
     legs = [(receivable_account(team_id), -cents)
             for team_id, cents in sorted(allocation.items())]
-    legs.append((skunk_account(league_id), contribution_cents))
+    # ── WP-5 — WHERE THE FEE LANDS IS SEASON-SCOPED UNDER THE FINAL POR ──────
+    #
+    # `skunk:{league}` has no season in it, so a league playing a second season
+    # accumulates both seasons in one account and would distribute season one's
+    # Skunk at the end of season two. `points_championship:{league}:{season}`
+    # is the same pot, correctly scoped: §12 makes the Points Championship Pot
+    # the Skunk ACTUALLY ASSESSED this season, which is exactly this balance.
+    #
+    # The GM-facing half of the posting is IDENTICAL in both eras — the same
+    # `receivable:` legs, the same canonical split, the same amounts. Only the
+    # pot the fee lands in changes, so no GM's obligation moves by a cent.
+    legs.append((skunk_pot_account(db, league_id=league_id, season=season),
+                 contribution_cents))
     posting_id = ledger_post(legs, door=DOOR_SKUNK_ASSESSMENT, session=db)
 
     record_event(db, event_key=key, league_id=league_id, season=season,
@@ -294,6 +353,122 @@ def assess_weekly_skunk(db, *, league_id: int, week: int,
         classification=CLASSIFICATION_ASSESSED, largest_margin=margin,
         assessed=tuple(sorted(allocation.items())),
         total_cents=contribution_cents)
+
+
+# ── Per-team season totals (FINAL POR · WP-3) ─────────────────────────────────
+
+def skunk_fees_by_team(db, *, league_id: int, season: int) -> dict[int, int]:
+    """Skunk assessed against each GM this league-season, as POSITIVE cents.
+
+    THE THIRD TERM OF FantasyStakes Score. Final POR §8 makes the identity
+    `Matchup Net + Prop Pool Net - Skunk Fees`, and this is where the subtrahend
+    comes from.
+
+    ── WHY THIS GOES THROUGH `economy_event` AND NOT THE ACCOUNT BALANCE ──────
+
+    Reading `receivable:{team}` directly would be shorter and is WRONG on two
+    independent counts, either of which alone would be disqualifying:
+
+      1. IT IS NOT SKUNK-ONLY. `betting/shortfall_sweep.py` also posts to
+         `receivable:{team}`. That path has no production caller today, so the
+         balance happens to be pure Skunk — a fact about current wiring, not a
+         property of the account. A score identity may not rest on one.
+
+      2. IT IS NOT SEASON-SCOPED. `receivable_account()` is `receivable:{team}`
+         with no season in it, so a league playing a second season would find
+         the first season's Skunk still subtracted from the new season's Score.
+
+    `economy_event` carries `league_id`, `season` and `posting_id` and is
+    indexed on `(league_id, season)`, so joining through it answers exactly the
+    question asked: what did THIS league-season's Skunk machinery post against
+    this GM.
+
+    ── PER-TEAM ATTRIBUTION COMES FROM THE POSTING, NOT THE EVENT ────────────
+
+    A Skunk assessment event is LEAGUE-WEEK scoped: `team_id` is NULL on it and
+    `amount_cents` is the whole weekly fee. The per-GM split lives in the
+    posting's `receivable:` legs, which is also what makes a tied week report
+    2.5 and 2.5 rather than 5 against each — the split the engine actually made.
+
+    ── SIGN, AND WHY A CORRECTION NETS FOR FREE ─────────────────────────────
+
+    Legs are summed as posted and NEGATED once. An assessment posts a negative
+    `receivable:` leg, so it contributes positively here. A WP-12 correction
+    reversal posts the matching positive leg under its own door against the same
+    league-season event family, so it contributes negatively and the two net —
+    with no special case, and with both postings preserved in full.
+
+    Returns a dict with an entry for every team that has any Skunk history this
+    league-season. A GM never skunked is simply absent; callers read 0.
+    """
+    from sqlalchemy import text
+
+    db.flush()
+    # EXPLICIT PLACEHOLDERS, one per event type — the same shape
+    # `reports/standings_read_model.py::_door_net_cents` uses for its door list,
+    # and for the same reason: an `IN :tuple` bind is dialect-dependent and
+    # expands differently under SQLite and PostgreSQL.
+    placeholders = ", ".join(f":e{i}" for i in range(len(SKUNK_SCORING_EVENT_TYPES)))
+    params: dict[str, object] = {
+        f"e{i}": t for i, t in enumerate(SKUNK_SCORING_EVENT_TYPES)}
+    params.update({"league_id": league_id, "season": season})
+    # ── THE POSTING ID IS NORMALISED ON BOTH SIDES, AND IT HAS TO BE ─────────
+    #
+    # `economy_event.posting_id` and `ledger_entries.posting_id` are both
+    # declared `Uuid`, and on PostgreSQL both are native `uuid` — a plain
+    # equality join works there. ON SQLITE THEY DO NOT MATCH:
+    #
+    #   ledger_entries   'e4441c39d13144ea9d7ebb61c75ae271'   (ORM insert)
+    #   economy_event    'e4441c39-d131-44ea-9d7e-bb61c75ae271'
+    #
+    # because `economy_events.record_event` inserts through RAW SQL with
+    # `str(posting_id)`, which bypasses the `Uuid` type's own serialisation,
+    # while `ledger.post` inserts through the ORM and gets the dashless form.
+    #
+    # MEASURED, NOT ASSUMED: a plain equality join over that pair returns zero
+    # rows on SQLite and every row on PostgreSQL. Nothing had ever joined these
+    # two tables before, so the divergence had never surfaced.
+    #
+    # THE WRITE FORMAT IS DELIBERATELY LEFT ALONE. "Fixing" `record_event` to
+    # insert a normalised value would orphan every economy_event row already
+    # written on a SQLite deployment, which is a far worse trade than
+    # normalising at read time. Stripping dashes and lowercasing gives the same
+    # answer on both dialects and on rows written by either path.
+    norm = "REPLACE(LOWER(CAST({0}.posting_id AS TEXT)), '-', '')"
+    rows = db.execute(text(
+        "SELECT le.account, COALESCE(SUM(le.amount_cents), 0) "
+        "FROM ledger_entries le "
+        f"JOIN economy_event ev ON {norm.format('ev')} = {norm.format('le')} "
+        "WHERE ev.league_id = :league_id "
+        "  AND ev.season = :season "
+        f"  AND ev.event_type IN ({placeholders}) "
+        "  AND le.account LIKE 'receivable:%' "
+        "GROUP BY le.account"), params).fetchall()
+
+    totals: dict[int, int] = {}
+    for account, amount in rows:
+        try:
+            team_id = int(str(account).split(":", 1)[1])
+        except (IndexError, ValueError):
+            # An account this module did not write cannot be attributed to a GM,
+            # and guessing would put a number on a fact nobody recorded.
+            continue
+        total = -int(amount or 0)
+        if total:
+            totals[team_id] = total
+    return totals
+
+
+def cumulative_skunk_fees_cents(db, *, league_id: int, season: int,
+                                team_id: int) -> int:
+    """One GM's Skunk total for a league-season, as positive cents.
+
+    A thin read over `skunk_fees_by_team` so a single-GM caller and the
+    standings sweep cannot drift: there is one query shape and one sign
+    convention, and both live in one place.
+    """
+    return skunk_fees_by_team(
+        db, league_id=league_id, season=season).get(team_id, 0)
 
 
 # ── Season distribution ───────────────────────────────────────────────────────
@@ -323,15 +498,24 @@ def season_points_for(db, *, league_id: int, league) -> dict[int, float]:
 
 def distribute_season_skunk(db, *, league_id: int,
                             now: datetime | None = None) -> SkunkDistribution:
-    """Pay the accumulated Skunk pot to the highest regular-season Points For.
+    """Pay the accumulated Skunk pot. LEGACY ARITHMETIC; delegates under the Final POR.
+
+    LEGACY: the whole pot to the highest regular-season Points For, split evenly
+    among a tied lead. FINAL POR (WP-9, §12): delegated to
+    `economy.points_championship.distribute`, which pays it 60/30/10 with the
+    dead-heat rule after the regular season is final. The return shape is the
+    same either way, so every existing caller is unchanged.
 
     Does NOT commit, and is deliberately a STANDALONE callable rather than being
     wired into a close sequence — S5-P3 orchestrates it. Exposing it this way
     lets its idempotency be proven in isolation, before any ordering exists to
     confound the proof.
 
-    After a successful distribution `skunk:{league_id}` is exactly zero: the pot
-    is drained in one posting whose credit legs sum to the whole balance.
+    After a successful distribution the season's Skunk pot is exactly zero: it
+    is drained in one posting whose credit legs sum to the whole balance. WHICH
+    account that is depends on the era — `skunk_pot_account` decides, and both
+    the assessment above and this distribution ask it, so the account fees were
+    posted into and the account this debits cannot drift apart.
     """
     from db.schema import League, Wallet
 
@@ -341,12 +525,43 @@ def distribute_season_skunk(db, *, league_id: int,
         raise SkunkError(REASON_LEAGUE_NOT_FOUND, f"league {league_id} not found")
     season = league.season
 
+    # ── FINAL POR · WP-9 — THIS IS NOT A SKUNK AWARD ANY MORE ───────────────
+    #
+    # §12 turns the Skunk pot into the Regular-Season Points Championship: a
+    # real three-place championship paid 60/30/10 under the one canonical
+    # split, with the dead-heat rule, settling when the regular season is
+    # final. Everything about it that differs from the legacy award lives in
+    # `economy.points_championship`; delegating rather than branching inline
+    # keeps this function's legacy arithmetic byte-identical and keeps the
+    # championship's own refusals (no championship, not final, empty pot)
+    # readable as its own reason codes rather than as Skunk ones.
+    #
+    # BOTH ERAS CLAIM THE SAME LEAGUE-SEASON EVENT KEY, deliberately. A
+    # league-season pays its Points pillar exactly once, whichever era's
+    # arithmetic did it; two keys would let a season that somehow reached both
+    # paths pay twice.
+    from ruleset import is_final_por as _is_final_por
+
+    if _is_final_por(db, league_id=league_id, season=season):
+        from economy.points_championship import distribute as _distribute_points
+
+        result = _distribute_points(db, league_id=league_id, season=season,
+                                    now=now)
+        return SkunkDistribution(
+            league_id=league_id, season=season, pot_cents=result.pot_cents,
+            winners=tuple((team_id, amount)
+                          for team_id, _place, amount, _pf in result.placements
+                          if amount > 0),
+            top_points_for=max((pf for _t, _p, _a, pf in result.placements),
+                               default=None))
+
     db.flush()
-    pot = _balance_of_in_session(db, skunk_account(league_id))
+    pot_account = skunk_pot_account(db, league_id=league_id, season=season)
+    pot = _balance_of_in_session(db, pot_account)
     if pot <= 0:
         raise SkunkError(
             REASON_EMPTY_POT,
-            f"skunk:{league_id} holds {pot} cents; nothing to distribute.")
+            f"{pot_account} holds {pot} cents; nothing to distribute.")
 
     totals = season_points_for(db, league_id=league_id, league=league)
     if not totals:
@@ -363,7 +578,7 @@ def distribute_season_skunk(db, *, league_id: int,
                 f"subset of the winners.")
 
     allocation = split_by_canonical_id(pot, winners)
-    legs = [(skunk_account(league_id), -pot)]
+    legs = [(pot_account, -pot)]
     legs.extend((wallet_account(team_id), cents)
                 for team_id, cents in sorted(allocation.items()))
     posting_id = ledger_post(legs, door=DOOR_SKUNK_DISTRIBUTION, session=db)

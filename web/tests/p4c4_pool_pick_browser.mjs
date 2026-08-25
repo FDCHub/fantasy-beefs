@@ -193,7 +193,8 @@ await withPage({ port: 9391, settleMs: 1600 }, async ({ evaluate }) => {
     document.querySelector('.fs-tabbar__item[data-destination="week"]').click();
     await new Promise((r) => setTimeout(r, 250));
     const panel = document.getElementById('panel-week');
-    return [...panel.querySelectorAll('.fs-poolrow')]
+    // RC4 - the Prop Pool item is the shared result card now.
+    return [...panel.querySelectorAll('.fs-rescar__item > .fs-wcard')]
       .filter((el) => el.getAttribute('aria-pressed') === 'true'
         || el.classList.contains('is-selected')).length;
   `));

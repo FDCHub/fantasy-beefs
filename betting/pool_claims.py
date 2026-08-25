@@ -73,7 +73,14 @@ def pool_lock_time(db, *, league, week: int) -> datetime:
     if pot is not None and pot.lock_time is not None:
         lock = pot.lock_time
         return lock if lock.tzinfo else lock.replace(tzinfo=timezone.utc)
-    return _nfl_lock_time(league.season, week)
+    # D2.3 — the provider-aware resolver. For every non-demo league this is
+    # `_nfl_lock_time(league.season, week)` unchanged; only a showcase demo
+    # league gets the demo clock. The operator-pinned `PoolPot.lock_time` above
+    # still wins for everyone, demo included, because an explicitly pinned
+    # moment is a deliberate act and must not be second-guessed here.
+    from betting.lock_resolver import lock_time_for_league
+
+    return lock_time_for_league(league, week)
 
 
 def _validate_subject(db, *, league_id: int, week: int, scope: str,

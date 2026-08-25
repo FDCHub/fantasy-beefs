@@ -184,6 +184,10 @@ INDEX = _read("index.html")
 TABS_CSS = _read("styles", "tabs.css")
 WAGER_CSS = _read("styles", "wager.css")
 COMPONENTS_CSS = _read("styles", "components.css")
+# UIRECON Rev 1.4 — Play's Pool carousel is markup in `league.js` and geometry
+# in `gameplay.css`, so both are read here.
+GAMEPLAY_CSS = _read("styles", "gameplay.css")
+LEAGUE_JS = _read("js", "league.js")
 COMPOSER_JS = _read("js", "composer.js")
 SHELL_JS = _read("js", "shell.js")
 
@@ -308,12 +312,13 @@ _assert("the Dynamic explanation states the ceiling that bounds it",
 
 print("\nThe four Pools are read from the governing catalog, not paraphrased")
 
-CATALOG = json.loads(_read_root("spec", "pool_catalog_rev1_3.json"))
+CATALOG = json.loads(_read_root("spec", "pool_catalog_rev1_4.json"))
 BY_NUMBER = {d["catalog_number"]: d for d in CATALOG["definitions"]}
 POOLS = APP.get("pools", [])
 
-_assert("the catalog of record is Rev 1.3, Product of Record",
-        CATALOG.get("revision") == "1.3" and CATALOG.get("status") == "Product of Record")
+_assert("the catalog of record is Rev 1.4, Product of Record",
+        CATALOG.get("revision") == "1.4"
+        and CATALOG.get("status") == "Product of Record")
 _assert("exactly four Pools run in a fantasy week", len(POOLS) == 4, str(len(POOLS)))
 
 for pool in POOLS:
@@ -324,6 +329,11 @@ for pool in POOLS:
         continue
     _assert(f"Pool #{number} uses the catalog's display name",
             pool["name"] == definition["display_name"], pool["name"])
+    # REV 1.4 §3 — the question is catalog content, so the fixture may not
+    # paraphrase it any more than it may paraphrase the name.
+    _assert(f"Pool #{number} uses the catalog's public question",
+            pool.get("question") == definition.get("public_question"),
+            str(pool.get("question")))
     _assert(f"Pool #{number} uses the catalog's subject scope",
             pool["scope"] == definition["scope"], pool["scope"])
     # A QUALIFIER settles on its threshold condition; a RANK_EXTREMUM on its
@@ -402,28 +412,124 @@ _assert("no opposing player is named", not named, ", ".join(sorted(set(named))[:
 # at the point they are expressed, so a change that breaks the intent is caught
 # where it is made rather than only where it shows.
 
-print("\nLeague's two zones, and the layout rules that keep them honest")
+print("\nLeague's two sections, and the layout rules that keep them honest")
 
+# ── RC4 MOBILE RECONCILIATION · WHY THESE ASSERTIONS MOVED ───────────────────
+#
+# `.fs-zones > .fs-zone { flex: 1 1 0 }` was the equal-billing rule: neither
+# Play section could grow at the other's expense. It is still the PRIMITIVE's
+# rule — `components.js::equalZones` emits it and `test_s7_p1_ui_shell.py`
+# still certifies it there — and it is no longer the rule Play uses, because
+# equal billing turned out to be a fair split of a quantity that is not the
+# surface's to divide.
+#
+# MEASURED ON THE DEPLOYED RC4 BUILD at 320x568: the Matchups section took half
+# the panel (133.11px), its heading took 88.59px of that, and the rail was left
+# with 44.52px for a card whose content is 155px. `.fs-carousel__item` carried
+# `min-height: 100%`, so the item grew to the card and the rail clipped it — a
+# third of a Matchup card, cut off exactly where PROP POOLS begins.
+#
+# A CARD IS THE FIXED THING AND THE SCREEN YIELDS TO IT. Play's two sections are
+# now the four rows of one grid whose two rail tracks are a matched pair, sized
+# to the taller family's content, with the surface scrolling vertically where a
+# phone cannot hold both. That is what makes the Matchup card and the Prop Pool
+# card one outer width AND one outer height, which is the owner rule these
+# assertions now protect.
+#
+# THE RAIL TURNED HORIZONTAL FOR A STRUCTURAL REASON, not a stylistic one: a
+# vertical viewport can be shorter than its card, and a horizontal one cannot be
+# narrower than an item defined as one viewport wide.
+#
+# ONE DECLARATION, IN `gameplay.css`. The superseded rules are GONE from
+# `tabs.css` and `rev43.css` rather than overridden, because two declarations of
+# one rail is how the two rails drift apart again.
 zone_rule = _rule(COMPONENTS_CSS, ".fs-zones > .fs-zone")
-_assert("neither zone can grow at the other's expense", "flex: 1 1 0" in zone_rule)
-_assert("both zones can shrink inside the column", "min-height: 0" in zone_rule)
+_assert("the equal-billing primitive still exists for its own consumers",
+        "flex: 1 1 0" in zone_rule and "min-height: 0" in zone_rule)
 
-carousel = _rule(TABS_CSS, ".fs-carousel")
-_assert("the Bets carousel is vertical", "overflow-y: auto" in carousel)
+deck = _rule(GAMEPLAY_CSS, ".fs-playdeck")
+_assert("Play's two sections are one grid",
+        "display: grid" in deck)
+_assert("its two rail tracks are a matched pair, so the two card families "
+        "cannot measure differently",
+        "grid-template-rows: auto minmax(0, 1fr) auto minmax(0, 1fr)" in deck)
+_assert("the grid is at least as tall as the tallest card in either family",
+        "min-height: max-content" in deck)
+_assert("neither zone puts a box between a heading and its rail",
+        "display: contents"
+        in _rule(GAMEPLAY_CSS, "#panel-league .fs-playdeck > .fs-zone"))
+
+carousel = _rule(GAMEPLAY_CSS, "#panel-league .fs-carousel")
+_assert("the Play carousel is horizontal", "overflow-x: auto" in carousel)
 _assert("it snaps, so a card is never presented half-shown",
-        "scroll-snap-type: y mandatory" in carousel)
-_assert("it does not scroll sideways", "overflow-x: hidden" in carousel)
+        "scroll-snap-type: x mandatory" in carousel)
+_assert("it cannot be drawn into the section beneath it",
+        "overflow-y: hidden" in carousel)
+_assert("and it is exactly its grid track, never its own content",
+        "height: 100%" in carousel)
 
-item = _rule(TABS_CSS, ".fs-carousel__item")
-_assert("one complete card fills the carousel at a time", "height: 100%" in item)
+item = _rule(GAMEPLAY_CSS, "#panel-league .fs-carousel__item")
+_assert("one complete card fills the carousel at a time",
+        "flex: 0 0 100%" in item)
 _assert("every scroll settles on a card boundary",
         "scroll-snap-align: start" in item and "scroll-snap-stop: always" in item)
+_assert("and the item can no longer outgrow the rail that holds it",
+        "min-height: 0" in item)
 
-pools = _rule(TABS_CSS, ".fs-pools")
-_assert("all four Pools sit in a 2x2 grid",
-        "grid-template-columns: 1fr 1fr" in pools and "grid-template-rows: 1fr 1fr" in pools)
-_assert("the Pools zone never scrolls — all four are visible together",
-        "overflow" not in pools)
+_tabs_rules = re.sub(r"/\*[\s\S]*?\*/", " ", TABS_CSS)
+_assert("the superseded vertical carousel is gone from tabs.css entirely",
+        ".fs-carousel {" not in _tabs_rules
+        and ".fs-carousel__item {" not in _tabs_rules)
+
+# UIRECON REV 1.4 PART 4 — THE 2x2 GRID IS SUPERSEDED, AND BY A PRODUCT
+# RULING RATHER THAN A PREFERENCE.
+#
+# Rev 4.2 put four Pools in one zone as quarter-tiles. That shape carried its
+# own cost in `tabs.css`'s own words — "the card compresses and clips instead" —
+# and Rev 4.3 §K2 already had to invert half of it. What a quarter-tile could
+# never hold is a LINE OF PROSE, which is why Rev 4.3 §8.5 moved the settle
+# condition off the card: it could say WHICH Pool, never WHAT it asked.
+#
+# POR Rev 1.4 §3 gives every drawable definition a `public_question`, and §4 of
+# the reconciliation package rules that Play's Pools become a one-card-at-a-time
+# carousel so the question has a line to sit on.
+#
+# SO THE ASSERTION MOVES TO THE THING THAT IS NOW TRUE: Play's Pools use the
+# SAME two elements as the Matchups carousel directly above them, which is the
+# only way the two rails cannot drift apart. The carousel rules asserted just
+# above — horizontal, `x mandatory`, `overflow-y: hidden`, `flex: 0 0 100%`,
+# `scroll-snap-stop: always` — are therefore the Pool rail's rules too, and are
+# not restated here.
+#
+# RC4 ADDS THE HEIGHT, WHICH REUSE ALONE COULD NOT GIVE. The two rails shared
+# every rule and were still two sizes, because each took the height its own zone
+# had left: 135.97px of Prop Pool against 155px of Matchup at 375x667. They are
+# a matched pair of grid tracks now, asserted above and measured in the browser
+# tier of `test_uirecon_rc4_parallel.py`.
+_assert("Play's Pools ride the Matchups carousel itself, not a parallel rail",
+        'class="fs-carousel" id="fs-play-pools"' in LEAGUE_JS
+        and '"fs-carousel__item"' in LEAGUE_JS)
+_assert("the Pool card takes the CARD radius the Matchup card takes, not the "
+        "tile radius a grid cell took",
+        "border-radius: var(--fs-radius-card)"
+        in _rule(GAMEPLAY_CSS, ".fs-pool--card"))
+_assert("one card fills its carousel item, so a second can never be half-shown",
+        "height: 100%" in _rule(GAMEPLAY_CSS, ".fs-pool--card"))
+# STRENGTHENED BY THE REFINE-REFRESH PASS. This read "prefers the served
+# question", which was true of a build that still carried a scope-derived
+# fallback behind it. That generator is now GONE for every drawable Pool: a
+# client-side author of plausible product copy is indistinguishable from the
+# governed field it stands in for, so the one case it existed for — broken
+# catalog data — was the case in which it hid the breakage.
+_assert("the card carries the served question, not a scope-derived stand-in",
+        'class="fs-pool__question' in LEAGUE_JS
+        and "if (pool && pool.question) return pool.question;" in LEAGUE_JS)
+_assert("  · and no scope-derived question generator remains at all",
+        "do you think" not in LEAGUE_JS)
+_assert("  · a drawable Pool with no governed question gets a neutral state "
+        "and an integrity event, never invented copy",
+        "MISSING_QUESTION_TEXT = 'Question unavailable'" in LEAGUE_JS
+        and "missingPoolQuestions" in LEAGUE_JS)
 
 print("\nAction's four rails stay single rows")
 

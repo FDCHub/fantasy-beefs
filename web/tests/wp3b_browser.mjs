@@ -13,6 +13,7 @@
  * ========================================================================== */
 
 import { GO_RULES, createReporter, withPage } from './browser-harness.mjs';
+import { STANDINGS_TABLES } from '../js/standings-model.js';
 
 const { check, section, finish } = createReporter();
 
@@ -100,7 +101,11 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
   check('a gear control exists', gear.present === true);
   check('it lives in the masthead, not the tab bar',
     gear.insideMasthead === true && gear.inTabbar === false);
-  check('it has an accessible name', gear.label === 'Menu', String(gear.label));
+  // UIRECON WAVE 2 — the gear means Settings and says so. It was `Menu`,
+  // which named the widget rather than the destination, and beside an
+  // account control that also opens a sheet it stopped distinguishing the
+  // two at all.
+  check('it has an accessible name', gear.label === 'Settings', String(gear.label));
   check('it meets the 44px target', gear.w >= 44 && gear.h >= 44,
     `${gear.w}x${gear.h}`);
   check('it opens a menu', gear.opened === true && gear.entries.length > 0,
@@ -113,27 +118,38 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
 
   const reached = await evaluate(`
     ${GO_RULES}
-    const panel = document.getElementById('panel-rules');
+    // FINAL POR 2 - Rules opens as a Settings DETAIL SHEET, not a destination.
+    const panel = document.getElementById('fs-sheet');
     return {
-      active: panel.classList.contains('is-active'),
       visible: panel.getBoundingClientRect().height > 0,
-      title: panel.querySelector('.fs-tabhead__title')
-        ? panel.querySelector('.fs-tabhead__title').textContent : null,
-      sheetClosed: !document.getElementById('fs-overlay')
+      title: panel.querySelector('.fs-sheet__title')
+        ? panel.querySelector('.fs-sheet__title').textContent : null,
+      sheetOpen: document.getElementById('fs-overlay')
         .classList.contains('is-open'),
-      noPrimaryLit: [...document.querySelectorAll('.fs-tabbar__item')]
-        .every(el => !el.classList.contains('is-active')),
+      // 2 - no app page-header treatment inside a detail.
+      tabheads: panel.querySelectorAll('.fs-tabhead').length,
+      // FINAL POR 2 - a detail SHEET sits over whatever tab the reader was on,
+      // so a primary tab staying lit is correct and expected. What must remain
+      // true is that Rules is not a primary destination itself: the bar offers
+      // five, and none of them is this.
+      primaryCount: document.querySelectorAll('.fs-tabbar__item').length,
+      rulesIsPrimary: !!document.querySelector(
+        '.fs-tabbar__item[data-destination="rules"]'),
       hasRules: !!panel.querySelector('[data-region="rules"]'),
       hasSettings: !!panel.querySelector('[data-region="settings"]'),
     };
   `);
 
-  check('choosing Rules navigates to the Rules & Settings panel',
-    reached.active === true && reached.visible === true);
+  check('choosing Rules opens the Rules-only detail sheet',
+    reached.sheetOpen === true && reached.visible === true);
   check('and its content is intact',
-    reached.hasRules === true && reached.hasSettings === true);
-  check('the menu closes behind it', reached.sheetClosed === true);
-  check('no primary tab is left lit above it', reached.noPrimaryLit === true);
+    reached.hasRules === true && reached.hasSettings === false
+      && reached.title === 'RULES');
+  check('the detail carries no app page-header', reached.tabheads === 0,
+    String(reached.tabheads));
+  check('Rules is not a primary tab, and the bar still offers five',
+    reached.rulesIsPrimary === false && reached.primaryCount === 5,
+    `${reached.primaryCount} primary, rules=${reached.rulesIsPrimary}`);
 
   /* ── E/F/H · Standings, as rendered ───────────────────────────────────── */
 
@@ -176,9 +192,12 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
     standings.count === 3, String(standings.count));
   check('in the locked order',
     standings.keys.join(',') === 'overall,versus,pools', standings.keys.join(','));
+  /* A3.2 — the product's headings are the FantasyStakes ones, and this suite
+     was still asserting the pre-RC2 names. The list is taken from
+     `standings-model.js` so the two can no longer drift apart. */
   check('with the locked headings',
     standings.headings.join(' | ')
-      === 'OVERALL STANDINGS | VERSUS STANDINGS | POOL STANDINGS',
+      === STANDINGS_TABLES.map((t) => t.heading).join(' | '),
     standings.headings.join(' | '));
   check('they are stacked vertically, each below the last',
     standings.stacked === true);
@@ -197,9 +216,22 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
     standings.disclaimerText
       === 'VIRTUAL CREDITS · $ IS DISPLAY ONLY · NO CASH VALUE',
     String(standings.disclaimerText));
-  check('every table declares its NET column',
-    (standings.moneyCols.match(/NET/g) || []).length === 3,
+  /* FINAL POR UI-2 §26 — the claim is "every table ends in its money column",
+   * and OVERALL's is now `FS SCORE` rather than `NET`.
+   *
+   * WHY THE COUNT CHANGED FROM 3 TO 2. `NET` still heads the last column of
+   * MATCHUP STANDINGS and PROP POOL STANDINGS, which really are nets. OVERALL's
+   * last column holds the FantasyStakes Score — three terms, not a net — and
+   * naming it `NET` was what made the table's own arithmetic unreadable once
+   * WP-7 added the Skunk term. Both halves are asserted, so a table losing its
+   * money column still fails. */
+  check('the two net tables still declare their NET column',
+    (standings.moneyCols.match(/NET/g) || []).length === 2,
     standings.moneyCols);
+  check('and OVERALL declares FS SCORE',
+    /FS SCORE/.test(standings.moneyCols), standings.moneyCols);
+  check('  · alongside its SKUNK column',
+    /SKUNK/.test(standings.moneyCols), standings.moneyCols);
 
   if (standings.rows > 0) {
     check('the acting GM’s row is marked in all three tables',
@@ -225,8 +257,25 @@ await withPage({ port: 9377 }, async ({ evaluate, setViewport }) => {
       strips: panel.querySelectorAll('.fs-strip').length,
     };
   `);
-  check('the word Wallet appears nowhere on Standings',
-    !/wallet/i.test(wallet.text));
+  /* A3.2 — the ruled explainer states in words that a Wallet balance does not
+     count toward the Championship Score, so the word itself is now expected on
+     this page. What must never appear is a wallet FIGURE, which is what this
+     section is named for: the word may occur only inside that denial, and no
+     amount may be attached to it. */
+  const walletMentions = wallet.text.match(/[^.!?]*wallet[^.!?]*[.!?]?/gi) || [];
+  /* FINAL POR UI-2 §26 restated the denial as "Wallet balance does not affect
+   * championship position." The invariant is unchanged: the word may occur ONLY
+   * inside a ruled denial, and `no Wallet figure of any kind is drawn` below is
+   * untouched and is what actually keeps an amount off this page. The earlier
+   * sentence stays admissible so a legacy surface still satisfies it. */
+  check('the only mention of a Wallet is a ruled denial',
+    walletMentions.every((s) =>
+      /Wallet balance does not affect championship position/i.test(s)
+      || /Wallet balance does not count/i.test(s)),
+    JSON.stringify(walletMentions));
+  check('no Wallet figure of any kind is drawn',
+    !/wallet[^.!?]{0,40}[$\d]/i.test(wallet.text),
+    JSON.stringify(walletMentions));
   check('no Available, Current Settle or obligation figure appears',
     !/available|current settle|obligation|advance|top-?off/i.test(wallet.text));
   check('Standings carries no four-cell strip — it is a table page',

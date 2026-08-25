@@ -15,7 +15,7 @@
 
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join, resolve } from 'node:path';
@@ -373,7 +373,28 @@ export async function withPage(options, body) {
       await new Promise((r) => setTimeout(r, 60));
     };
 
-    await body({ evaluate, setViewport, reload, pressKey });
+    /**
+     * Capture what the page ACTUALLY LOOKS LIKE, as a PNG on disk.
+     *
+     * FINAL POR §8 — VISUAL ACCEPTANCE. A suite can prove that nothing clips
+     * and that every box is inside its parent and still be describing a screen
+     * that reads badly: cramped cards above a dead zone pass every geometric
+     * assertion ever written about them. Geometry is necessary and it is not
+     * sufficient, so the harness can now hand back the composition itself for
+     * a human — or a reviewer reading this run's artefacts — to look at.
+     *
+     * @param {string} file absolute path to write the PNG to
+     * @returns {Promise<string>} the same path
+     */
+    const screenshot = async (file) => {
+      const shot = await cdp.send('Page.captureScreenshot', {
+        format: 'png', captureBeyondViewport: false,
+      });
+      await writeFile(file, Buffer.from(shot.data, 'base64'));
+      return file;
+    };
+
+    await body({ evaluate, setViewport, reload, pressKey, screenshot });
   } finally {
     if (cdp) cdp.close();
     browser.kill();

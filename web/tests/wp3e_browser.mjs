@@ -162,15 +162,39 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
     const cards = [...p.querySelectorAll('.fs-wcard')];
     const nav = document.querySelector('.fs-tabbar').getBoundingClientRect();
     const attr = p.querySelector('.fs-attribution');
+    // RC4 MOBILE RECONCILIATION - PLAY'S SCROLL REGION IS THE DECK, NOT THE
+    // RAIL. The rail scrolled VERTICALLY, inside whatever height its zone had
+    // left, and that is precisely how a 155px card came to sit in a 44.52px
+    // rail at this very viewport: intentional scrolling was being asked to
+    // stand in for room the section did not have. The rail is horizontal now
+    // and Play scrolls as a page, so the reachability claim is asked of the
+    // region that actually scrolls.
+    const region = p.querySelector('.fs-zones');
+    if (region) region.scrollTop = region.scrollHeight;
+    await new Promise((r) => setTimeout(r, 120));
+    const regionBox = region ? region.getBoundingClientRect() : null;
+    const attrBox = attr ? attr.getBoundingClientRect() : null;
     return {
       cards: cards.map((c) => ({ need: c.scrollHeight, have: c.clientHeight })),
       markets: p.querySelectorAll('.fs-market').length,
       labels: [...p.querySelectorAll('.fs-heading__text')].map((e) => e.textContent),
       pools: p.querySelectorAll('.fs-pool').length,
       previewRows: p.querySelectorAll('.fs-previewrow').length,
-      railScrolls: rail ? ['auto', 'scroll'].includes(getComputedStyle(rail).overflowY) : null,
+      railScrolls: rail
+        ? ['auto', 'scroll'].includes(getComputedStyle(rail).overflowX) : null,
+      railClipsY: rail ? getComputedStyle(rail).overflowY === 'hidden' : null,
+      regionScrolls: region
+        ? ['auto', 'scroll'].includes(getComputedStyle(region).overflowY) : null,
+      // NOTHING PLAY DRAWS IS PAINTED OVER THE NAVIGATION, and that is a
+      // property of the clipped region rather than of any one block inside it.
+      regionAboveNav: regionBox ? regionBox.bottom <= nav.top + 1 : null,
       attrPresent: Boolean(attr),
-      attrAboveNav: attr ? attr.getBoundingClientRect().bottom <= nav.top + 1 : null,
+      // Scrolled to the end above: the source line is fully visible, inside the
+      // region, above the navigation.
+      attrReachable: attrBox && regionBox
+        ? attrBox.bottom <= regionBox.bottom + 1
+          && attrBox.top >= regionBox.top - 1
+        : null,
       docOver: document.documentElement.scrollWidth - window.innerWidth,
     };
   })();`);
@@ -189,13 +213,21 @@ await withPage({ port: 9495 }, async ({ evaluate, setViewport }) => {
     check('this league has no drawn Pool slate — Pool geometry not exercised',
       true, 'reported, not passed over');
   }
+  // UIRECON WAVE 1 — the locked public terms. The claim is unchanged: at the
+  // narrowest width both of Play's section labels are still drawn.
   check('the section labels survive',
-    tiny.labels.some((l) => /VERSUS/.test(l))
-    && tiny.labels.some((l) => /POOLS/.test(l)), tiny.labels.join(' | '));
-  check('vertical scrolling is intentional, on the rail',
+    tiny.labels.some((l) => /MATCHUPS/.test(l))
+    && tiny.labels.some((l) => /PROP POOLS/.test(l)), tiny.labels.join(' | '));
+  check('horizontal scrolling is intentional, on the rail',
     tiny.railScrolls === true);
-  check('the attribution is present and above the navigation',
-    tiny.attrPresent === true && tiny.attrAboveNav === true);
+  check('  · and the rail cannot be drawn into the section beneath it',
+    tiny.railClipsY === true);
+  check('vertical scrolling is intentional, on Play\'s own region',
+    tiny.regionScrolls === true);
+  check('nothing Play draws is painted over the navigation',
+    tiny.regionAboveNav === true);
+  check('the attribution is present and reachable above the navigation',
+    tiny.attrPresent === true && tiny.attrReachable === true);
   check('and there is still no horizontal overflow', tiny.docOver <= 0);
 
   /* ── §6 · the masthead, both roles ────────────────────────────────────── */

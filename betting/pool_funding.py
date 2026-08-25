@@ -11,7 +11,9 @@ implemented here and must not be.
 THE DIVISOR IS FOUR, AND THE REMAINDER GOES TO CHAMPIONSHIP EXACTLY ONCE.
 
     share_cents     = total_cents // 4
-    remainder_cents = total_cents %  4   -> championship:{league_id}
+    remainder_cents = total_cents %  4   -> the league-season championship pot
+                                            (WP-5: fantasystakes_championship
+                                             under the Final POR)
 
 The legacy `// 3` divisor and the remainder-to-Special-Teams behavior are
 implementation debt and are forbidden going forward (§6.1). §6.1's remainder and
@@ -42,6 +44,7 @@ from sqlalchemy import text
 
 from betting.pool_season_boundary import phase_for_week
 from betting.pool_slate import build_and_persist_slate
+from economy.championship_pots import terminal_pool_destination
 from economy.spend_sourcing import plan_spend_split
 from ledger.ledger import lock_funding_scopes, post as ledger_post
 
@@ -334,7 +337,8 @@ def collect_weekly_entries(db, *, league_id: int, week: int,
         # never routed to Special Teams.
         remainder_posting = ledger_post(
             [(f"pool:{league_id}", -remainder_cents),
-             (f"championship:{league_id}", remainder_cents)],
+             (terminal_pool_destination(db, league_id=league_id,
+                                        season=season), remainder_cents)],
             door=DOOR_DIVISION_REMAINDER, session=db,
         )
         _record_event(db, league_id=league_id, season=season, week=week,

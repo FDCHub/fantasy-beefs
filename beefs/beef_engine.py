@@ -137,6 +137,10 @@ def projection_context_for_team(db: Session, team_id: int | None
 from wallet.wallet_manager import MIN_BET
 from betting.pool_engine import _nfl_lock_time
 from betting.exceptions import ScheduleNotReadyError
+# D2.3 — the provider-aware lock resolver. For every non-demo league it
+# returns `_nfl_lock_time(league.season, week)` unchanged; only a showcase
+# demo league gets the demo clock. See `betting/lock_resolver.py`.
+from betting.lock_resolver import bet_lock_for_teams, lock_time_for_teams
 from betting.per_bet_lock import is_bet_locked_for_gm
 from feed.league_feed import (
     log_challenge_issued,
@@ -940,7 +944,9 @@ def issue_challenge(
     if not 1 <= week <= 17:
         raise ValueError("week must be 1–17")
     try:
-        lock_dt = _nfl_lock_time(LOCK_SEASON, week)
+        lock_dt = lock_time_for_teams(
+            db, team_ids=(challenger_team_id, challenged_team_id),
+            season=LOCK_SEASON, week=week)
     except ScheduleNotReadyError:
         raise ValueError(
             f"Week {week}'s schedule isn't ready yet — no new challenges can be issued for this week"
@@ -956,6 +962,38 @@ def issue_challenge(
         raise ValueError(f"Team {challenger_team_id} not found")
     if not challenged_team:
         raise ValueError(f"Team {challenged_team_id} not found")
+
+    # ── THE CHALLENGE BELONGS TO A LEAGUE ────────────────────────────────────
+    #
+    # `beef_challenges.league_id` has been on this row since the new model
+    # arrived, and this path never filled it — so every challenge issued here
+    # was a wager that no league owned. `reports.action_read_model` filters a
+    # GM's Action by league, correctly: reporting one GM's wagers across a
+    # league boundary is precisely what it must not do. The consequence was that
+    # a wager issued here could be accepted, could move real Credits through the
+    # ledger and could settle, and would appear on no surface in the product.
+    #
+    # DERIVED, NOT SUPPLIED. Both Team rows are already loaded immediately
+    # above and `teams.league_id` is NOT NULL, so the league is a FACT ABOUT THE
+    # PARTICIPANTS rather than a new argument every caller has to learn and
+    # every caller could get wrong. That keeps this a repair to a column the row
+    # was always meant to carry — not a change to what issuing a challenge
+    # means, and not a new parameter in a signature this product still calls.
+    #
+    # THE TWO TEAMS MUST AGREE ON IT. There is no correct league for a wager
+    # between two leagues' teams, and picking either one would produce exactly
+    # the defect this block closes from the other side: a challenge visible to
+    # one participant's Action and invisible to the other's. The governed
+    # proposal path takes its league from the acting GM's membership and its
+    # route refuses a target outside that league, so refusing here states the
+    # same rule at the one entry point that could not previously state it.
+    if challenger_team.league_id != challenged_team.league_id:
+        raise ValueError(
+            f"Teams {challenger_team_id} and {challenged_team_id} are in "
+            f"different leagues ({challenger_team.league_id} and "
+            f"{challenged_team.league_id}) — a challenge belongs to one league "
+            f"and cannot be issued across two"
+        )
 
     # FR-5.12: both teams must actually be playing this week. Without a Matchup
     # row a team scores nothing, so the beef could never settle. Fail here at
@@ -1031,6 +1069,7 @@ def issue_challenge(
     now = datetime.now(timezone.utc)
 
     challenge = BeefChallenge(
+        league_id            = challenger_team.league_id,
         challenger_team_id   = challenger_team_id,
         challenged_team_id   = challenged_team_id,
         week                 = week,
@@ -1081,7 +1120,10 @@ def respond_to_challenge(
         db.commit()
         raise ValueError("Challenge has expired")
     try:
-        lock_dt = _nfl_lock_time(LOCK_SEASON, challenge.week)
+        lock_dt = lock_time_for_teams(
+            db, team_ids=(challenge.challenger_team_id,
+                          challenge.challenged_team_id),
+            season=LOCK_SEASON, week=challenge.week)
     except ScheduleNotReadyError:
         raise ValueError(
             f"Week {challenge.week}'s schedule isn't ready yet — "
@@ -1129,8 +1171,21 @@ def respond_to_challenge(
     cd_nfl_teams = [s.nfl_team or "" for s in all_starters
                     if s.team_id == challenge.challenged_team_id]
     raw_conn = db.connection()
-    ch_result = is_bet_locked_for_gm(raw_conn, ch_nfl_teams, challenge.week)
-    cd_result = is_bet_locked_for_gm(raw_conn, cd_nfl_teams, challenge.week)
+    # D2.3 seam, second site. `bet_lock_for_teams` hands a non-demo league
+    # straight to the `is_bet_locked_for_gm` global read below — same function,
+    # same arguments, same LockCheck — and only a showcase demo league is
+    # answered from its own current week instead. Passing the global rather
+    # than letting the resolver import it keeps this the ONLY copy of the
+    # production path, and keeps it patchable where the suites patch it.
+    _lock_teams = (challenge.challenger_team_id, challenge.challenged_team_id)
+    ch_result = bet_lock_for_teams(
+        db, raw_conn, team_ids=_lock_teams, player_nfl_teams=ch_nfl_teams,
+        week=challenge.week, season=LOCK_SEASON,
+        nfl_lock_check=is_bet_locked_for_gm)
+    cd_result = bet_lock_for_teams(
+        db, raw_conn, team_ids=_lock_teams, player_nfl_teams=cd_nfl_teams,
+        week=challenge.week, season=LOCK_SEASON,
+        nfl_lock_check=is_bet_locked_for_gm)
     if ch_result.locked or cd_result.locked:
         locked_result = ch_result if ch_result.locked else cd_result
         locked_side = challenge.challenger_team.team_name if ch_result.locked else challenge.challenged_team.team_name
@@ -1297,7 +1352,10 @@ def counter_challenge(
 
     # Kickoff lock — same rule as issue_challenge
     try:
-        lock_dt = _nfl_lock_time(LOCK_SEASON, challenge.week)
+        lock_dt = lock_time_for_teams(
+            db, team_ids=(challenge.challenger_team_id,
+                          challenge.challenged_team_id),
+            season=LOCK_SEASON, week=challenge.week)
     except ScheduleNotReadyError:
         raise ValueError(
             f"Week {challenge.week}'s schedule isn't ready yet — this challenge can't be countered"
@@ -1361,7 +1419,9 @@ def get_pending_challenges(team_id: int, db: Session) -> list[ChallengeOut]:
         ttl_expired = c.expires_at.replace(tzinfo=timezone.utc) < now
         schedule_not_ready = False
         try:
-            lock_expired = now >= _nfl_lock_time(LOCK_SEASON, c.week)
+            lock_expired = now >= lock_time_for_teams(
+                db, team_ids=(c.challenger_team_id, c.challenged_team_id),
+                season=LOCK_SEASON, week=c.week)
         except ScheduleNotReadyError:
             lock_expired = False
             schedule_not_ready = True

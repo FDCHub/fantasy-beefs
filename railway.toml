@@ -10,14 +10,106 @@ builder = "NIXPACKS"
 # every web replica running DDL on boot is a race, and schema that changes as a
 # side effect of a process starting cannot be rolled back deliberately.
 #
-# A FRESH DATABASE NEEDS NOTHING FROM THIS. `migrations.run` finds nothing
-# pending — the bootstrap stamps the manifest — so this is a no-op on a new
-# deployment and the real upgrade path on an existing one.
+# A FRESH DATABASE IS BOOTSTRAPPED BY THIS COMMAND — WEBDEPLOY-2 CORRECTION.
+#
+# This comment previously claimed a fresh database "needs nothing from this"
+# because `migrations.run` would find nothing pending. That was WRONG, and the
+# first real Railway deployment is what proved it: on an EMPTY database every
+# ACTIVE migration is pending, the first one ALTERs `leagues`, no table exists
+# yet, and the pre-deploy command died with
+#
+#     MIGRATION FAILED: NoSuchTableError — the release must not proceed.
+#
+# A non-zero exit blocks the deploy, so no instance ever started, so the
+# application's own startup bootstrap — the thing that would have created the
+# schema — could never run. A first deploy onto fresh PostgreSQL was impossible.
+#
+# `migrations.run` now bootstraps a database that has NO tables at all: it
+# registers the RC2 models, creates the schema, creates `ledger_entries` (its
+# own declarative base, which `db.schema.Base` does not cover) and stamps the
+# manifest. A database with ANY table is untouched by that path and migrates
+# exactly as before. Certified by `test_webdeploy2_fresh_bootstrap_pg.py`.
+#
+# THIS ALSO REMOVES THE MULTI-REPLICA RACE. The schema now exists before the
+# first instance boots, so every replica finds a populated database and takes
+# the inert startup path — what was an operational ordering constraint is now
+# structurally impossible to get wrong.
 preDeployCommand = "python -m migrations.run"
-startCommand = "uvicorn api.main:app --host 0.0.0.0 --port $PORT"
-# LIVENESS, not readiness. `/health` answers "is this process alive"; `/ready`
-# answers "should it take traffic" and is the gate an operator checks after a
-# deploy (see docs/PRODUCTION_RUNBOOK.md §6). They are deliberately distinct.
-healthcheckPath = "/health"
-healthcheckTimeout = 30
+# RC2 — THE ENTRYPOINT IS `api.main_rc2`, AND IT IS LOAD-BEARING FOR THE SCHEMA.
+#
+# `api.main_rc2` registers the additive RC2 championship models BEFORE importing
+# the certified RC1 application, so the fresh-database bootstrap's `create_all`
+# builds them and `stamp_all` records a manifest that is true.
+#
+# Starting `api.main` instead is not merely "RC2 routes missing". The package
+# `__init__` modules are deliberately side-effect free (they have to be, or
+# reports/economy form an import cycle), so `api.main` alone registers no RC2
+# model: `create_all` would omit all six championship tables while `stamp_all`
+# still stamped 0003-0006 as applied. `migrations.run` would then report nothing
+# pending forever and `/ready` would answer healthy against a schema that cannot
+# run a championship. Measured, not theorised — see the RC2 tag-readiness review.
+#
+# This MUST stay in step with `Procfile`; on this platform `startCommand` wins.
+startCommand = "uvicorn api.main_rc2:app --host 0.0.0.0 --port $PORT"
+# WEBDEPLOY-1 — THE DEPLOY GATE IS `/ready`, NOT `/health`.
+#
+# `/health` and `/ready` are deliberately distinct and both are kept. What
+# changed is which one the PLATFORM reads, and the previous choice was wrong in
+# a way that only shows up on a bad deploy:
+#
+#   /health  always answers 200. It reports "ok" or "degraded" in a JSON field
+#            and never sets a failing status code. As a deployment gate it
+#            therefore certifies nothing — a replica with pending migrations, an
+#            unverifiable schema or missing critical configuration passes it and
+#            is put into rotation.
+#
+#   /ready   answers 503 when the database is unreachable, when a critical
+#            configuration value is absent, when migrations are pending, or when
+#            the recorded schema cannot be corroborated against the live one —
+#            and fails CLOSED when it cannot establish the answer at all
+#            (api/main.py, Sprint B). That is precisely "should traffic come
+#            here", which is the only question a deploy gate asks.
+#
+# Sprint B readiness behaviour is UNCHANGED by this line. Nothing about what
+# `/ready` checks or how it grades is touched; the platform now reads the
+# endpoint that was built to be read.
+#
+# YAHOO DOES NOT GATE IT, by design. A deployment with no provider configuration
+# serves the synthetic demo, every read and every ledger surface, and `/ready`
+# reports Yahoo rather than withholding traffic for it. That is what makes a
+# demo-only launch possible while the Yahoo retention gate is still OPEN.
+healthcheckPath = "/ready"
+# 30s was tight enough to be a false negative. This process imports SQLAlchemy,
+# numpy and the provider stack before it binds, and on a genuinely fresh
+# database the startup bootstrap also runs `create_all` plus the ledger table.
+# A healthcheck window shorter than a legitimate cold start turns a good deploy
+# into a rollback. This is a WAIT budget, not a per-request timeout: a ready
+# process still passes on its first probe.
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
+
+# ── WEBDEPLOY-1 · TWO REPLICAS ───────────────────────────────────────────────
+#
+# The application is stateless across replicas and audited to be so: the browser
+# credential is a signed cookie carrying its own CSRF claim (auth/session.py) and
+# is verified from the signature, not from server-side session storage, so no
+# sticky session is required and Railway does not offer one. The only shared
+# mutable state a public visitor can reach is the showcase demo league, and it is
+# serialized by a PostgreSQL SESSION-LEVEL ADVISORY LOCK held on its own
+# connection (demo/reset.py `showcase_lock`), which is cross-process by
+# construction. The `threading.Lock` beside it is a SQLite-only fallback and is
+# never the lock in a PostgreSQL deployment — see docs/RAILWAY_DEPLOYMENT.md §4.
+#
+# ONE ORDERING CONSTRAINT, AND IT IS OPERATIONAL RATHER THAN CONFIGURED. The
+# startup bootstrap is inert against a production database that already has
+# tables, but on a genuinely EMPTY one both replicas would race `create_all`.
+# The database is therefore bootstrapped and seeded ONCE, by an operator, before
+# the service is scaled — the sequence is docs/RAILWAY_DEPLOYMENT.md §7.
+numReplicas = 2
+
+# REGION IS NOT PINNED HERE, DELIBERATELY. US West is the target, but Railway's
+# region identifiers and the multi-region replica schema are platform-generated
+# values, and writing a guessed key into deploy configuration is how a deploy
+# fails on a typo rather than on a fact. It is set on the service at provisioning
+# and recorded in docs/RAILWAY_DEPLOYMENT.md §9 — the same rule this package
+# applies to DNS: capture generated values, never assume them.

@@ -47,7 +47,20 @@
   --fs-size-body:       12px;   /* rows, card body */
   --fs-size-title:      15px;   /* tab titles, sheet titles */
   --fs-size-value:      18px;   /* four-cell strip value — Rev4.2 stronger */
-  --fs-size-word:       23px;   /* masthead lockup */
+  /* UIRECON WAVE 2 — the wordmark is the loudest thing in the chrome.
+   *
+   * It was 23px, which is exactly the Rev 4.3 page-title step — so the brand
+   * lockup and a tab heading were the same size, and the masthead read as a
+   * label rather than as the top of a product. 28px puts it a clear step
+   * above every other type in the shell, which is what the marketing
+   * hierarchy asks of it.
+   *
+   * IT COSTS MASTHEAD HEIGHT 1:1, because the lockup is the taller of the
+   * masthead's two columns and therefore the one that sets its height. Wave 2
+   * pays for it in the same frame: collapsing the meta column from two rows
+   * to one account cluster took a row out of the other side, and the panel
+   * measurements at 320, 375 and 390 are in the certification. */
+  --fs-size-word:       26px;   /* masthead lockup */
 
   --fs-weight-regular:  400;
   --fs-weight-medium:   500;
@@ -82,6 +95,24 @@
   --fs-r43-strip-label:    13px;   /* §5.1 summary-strip labels 13–14 */
   --fs-r43-strip-value:    23px;   /* §5.1 summary-strip values 22–24 */
   --fs-r43-nav-label:      11px;   /* §5.1 bottom-nav labels    11–12 */
+
+  /* FINAL POR UI-2 §26 — the six-column OVERALL header, and ONLY that header.
+   *
+   * §26 permits the standings header typography to shrink so all six columns
+   * can be drawn at 320px. §5.1 sets the metadata floor at 12px and the WP3B
+   * browser suite enforces it, so 12px is where this stops — one step down from
+   * the 13px metadata size, and NOT the 11px the bottom-nav labels use.
+   *
+   * THE TWO RULES WERE TESTED AGAINST EACH OTHER RATHER THAN RANKED. 11px was
+   * tried first, fit comfortably, and broke the §5.1 floor. 12px was then
+   * measured at all three certified widths: every header still draws unclipped
+   * and TEAM is unchanged. A permission to shrink is not a reason to shrink
+   * past a legibility floor when the layout does not need it.
+   *
+   * THE BODY DOES NOT SHRINK AT ALL. The figures and the team names keep their
+   * §5.1 sizes; shrinking the data to fit a label is the wrong trade in the
+   * other direction. */
+  --fs-st-head-6col:       12px;
 
   /* §5.1 and §31 — the practical minimum for anything tappable. */
   --fs-r43-touch:          44px;
@@ -132,4 +163,80 @@
    * so desktop and un-notched portrait pay nothing for them. */
   --fs-safe-left:   env(safe-area-inset-left, 0px);
   --fs-safe-right:  env(safe-area-inset-right, 0px);
+
+  /* ══ CANONICAL TOKENS — UIRECON Wave 1 ═══════════════════════════════════
+   *
+   * WHY THIS LAYER EXISTS. Two complete type scales are live in this sheet:
+   * the Rev 4.2 `--fs-size-*` set and the Rev 4.3 `--fs-r43-*` set. The block
+   * above says why — WP3B applied the new foundation to the shell it owned and
+   * left the card layer for WP3C to migrate "card by card". That migration was
+   * never finished, so both scales are still answers to questions like "how big
+   * is a label", and peers built at different times were built at different
+   * sizes. The measured consequences: a summary-strip label at 13px beside a
+   * market-cell label at 8px; two choice-cell components with different radii
+   * and min-heights; a strip value hard-coded to 22px while
+   * `--fs-r43-strip-value` said 23px and nothing read it.
+   *
+   * THIS IS AN ALIAS LAYER, NOT A REWRITE. Every canonical token below resolves
+   * to a token that already exists and already has the POR's value. Nothing is
+   * restyled by defining them, and no existing token changes meaning. What they
+   * buy is a single name per decision, so a SHARED PRIMITIVE can be written
+   * against one answer instead of choosing between two.
+   *
+   * THE RULE FOR NEW WORK: a shared primitive reads `--fs-c-*`. A screen that
+   * has not been migrated keeps whatever it reads today and is left alone —
+   * Wave 1 migrates the primitives it owns and nothing else, which is what
+   * stops the drift widening without restyling surfaces nobody reviewed.
+   * ═══════════════════════════════════════════════════════════════════════ */
+
+  /* ── Canonical colour ───────────────────────────────────────────────────── */
+  --fs-c-text:          var(--bone);              /* primary off-white       */
+  --fs-c-text-muted:    var(--fs-r43-secondary);  /* muted warm-grey, ~7.1:1 */
+  --fs-c-text-faint:    var(--fs-r43-tertiary);   /* tertiary warm-grey      */
+  --fs-c-gold:          var(--gold);              /* FantasyStakes gold      */
+  --fs-c-gold-fill:     var(--goldbg);
+  --fs-c-surface:       var(--card);              /* card ground             */
+  --fs-c-surface-inset: var(--tile);              /* cell / tile ground      */
+
+  /* ── Canonical borders ──────────────────────────────────────────────────── */
+  --fs-c-border:        var(--fs-border);         /* standard card border    */
+  --fs-c-border-strong: var(--fs-border-edge);    /* emphasis / selected     */
+
+  /* ── Canonical type ─────────────────────────────────────────────────────── */
+  --fs-c-size-section:  var(--fs-r43-section);        /* 19px section heading */
+  --fs-c-size-body:     var(--fs-r43-card);           /* 16px card primary    */
+  --fs-c-size-body-sub: var(--fs-r43-card-secondary); /* 14px card secondary  */
+  --fs-c-size-fine:     var(--fs-r43-meta);           /* 13px fine print      */
+  --fs-c-size-label:    var(--fs-r43-strip-label);    /* 13px metric label    */
+  --fs-c-size-metric:   var(--fs-r43-strip-value);    /* 23px metric value    */
+
+  /* Odds and money are tabular monospace everywhere — POR §1.3. Named here so
+   * a primitive states "this is a number" rather than repeating the stack. */
+  --fs-c-font-number:   var(--fs-font-money);
+  --fs-c-weight-number: var(--fs-weight-strong);
+  --fs-c-track-number:  -.02em;
+  /* §5.2 — a label reads as a label without shouting. */
+  --fs-c-track-label:   .01em;
+
+  /* ── Canonical spacing ──────────────────────────────────────────────────── */
+  --fs-c-gap-cell:      var(--fs-space-2);   /*  5px — between peer cells     */
+  --fs-c-pad-cell:      var(--fs-space-3);   /*  7px — inside a cell          */
+  --fs-c-radius-cell:   var(--fs-radius-cell);
+  --fs-c-touch:         var(--fs-r43-touch); /* 44px — tappable floor         */
+
+  /* THE SECTION-HEADING GAP — one number, one name, every consumer.
+   *
+   * It was ZERO before this wave. `gameplay.css` set the heading's bottom
+   * margin to 0 on Play, Status AND Wrap Up, and the comment beside it records
+   * why: at the §5.1 section step the old 14px/7px margins made a 52px block,
+   * and on Play that came straight out of the card zones. Reclaiming it by
+   * deleting the gap made every section title sit flush against its own
+   * content.
+   *
+   * 5px IS AFFORDABLE BECAUSE THE STRIP PAYS FOR IT. Measured at 375x667
+   * before this wave: two of Play's four strip labels wrapped to a second
+   * line, making every cell in the grid 75.38px instead of 59.78px. Holding
+   * the labels to one line returns 15.6px to the panel, and the two headings
+   * on Play cost 6px of it. The net is more room than before, not less. */
+  --fs-c-gap-heading:   var(--fs-space-2);   /*  5px — heading → its content  */
 }

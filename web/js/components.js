@@ -42,20 +42,82 @@ export function escapeHtml(value) {
 /**
  * Shared section heading with an optional right-side helper label.
  *
+ * `action` IS TRUSTED MARKUP AND EVERY OTHER ARGUMENT IS NOT. `text` and
+ * `helper` are escaped because they carry league content — team names, counts,
+ * served copy. `action` is a control this application built for itself, so it
+ * is inserted as-is; it exists because an affordance that belongs to a section
+ * has nowhere else to live that keeps it beside the words it acts on.
+ *
+ * IT SITS WITH THE TEXT, NOT WITH THE HELPER. `.fs-heading` is a
+ * `space-between` row, so an action appended as a third child would be pushed
+ * to the far edge and read as belonging to the count rather than to the
+ * heading. Wrapping the text and the action in one lead group keeps the control
+ * against the word it refreshes and leaves the helper where it was.
+ *
  * @param {string} text
  * @param {string} [helper]
+ * @param {string} [action] caller-built control markup, inserted verbatim
  * @returns {string}
  */
-export function sectionHeading(text, helper = '') {
+export function sectionHeading(text, helper = '', action = '') {
   const helperHtml = helper
     ? `<span class="fs-heading__helper">${escapeHtml(helper)}</span>`
     : '';
+  const textHtml = `<span class="fs-heading__text">${escapeHtml(text)}</span>`;
+  const lead = action
+    ? `<span class="fs-heading__lead">${textHtml}${action}</span>`
+    : textHtml;
   return (
     '<div class="fs-heading">' +
-    `<span class="fs-heading__text">${escapeHtml(text)}</span>` +
+    lead +
     helperHtml +
     '</div>'
   );
+}
+
+/**
+ * Shared disclosure shell used by Rules, Account and Matchup Preview.
+ * Content and state remain owned by the caller; construction and affordance do
+ * not. `bodyHtml` is trusted application markup, just like `card()`.
+ */
+export function accordion(spec = {}) {
+  const {
+    title = '', bodyHtml = '', sub = '', meta = '', open = false,
+    key = '', className = '', numbered = '',
+  } = spec;
+  const classes = ['fs-accordion'];
+  if (open) classes.push('is-open');
+  if (className) classes.push(className);
+  const keyAttr = key ? ` data-accordion="${escapeHtml(key)}"` : '';
+  return (
+    `<section class="${classes.join(' ')}"${keyAttr}>`
+    + `<button type="button" class="fs-accordion__head" data-accordion-toggle aria-expanded="${open ? 'true' : 'false'}">`
+    + (numbered ? `<span class="fs-accordion__number">${escapeHtml(numbered)}</span>` : '')
+    + '<span class="fs-accordion__main">'
+    + `<span class="fs-accordion__title">${escapeHtml(title)}</span>`
+    + (sub ? `<span class="fs-accordion__sub">${escapeHtml(sub)}</span>` : '')
+    + '</span>'
+    + (meta ? `<span class="fs-accordion__meta">${escapeHtml(meta)}</span>` : '')
+    + '<span class="fs-accordion__chev" aria-hidden="true">›</span>'
+    + '</button>'
+    + `<div class="fs-accordion__body">${bodyHtml}</div>`
+    + '</section>'
+  );
+}
+
+/** Bind shared disclosures below a host. Safe to call more than once. */
+export function bindAccordions(host) {
+  if (!host) return;
+  host.querySelectorAll('[data-accordion-toggle]').forEach((head) => {
+    if (head.dataset.accordionBound === 'true') return;
+    head.dataset.accordionBound = 'true';
+    head.addEventListener('click', () => {
+      const section = head.closest('.fs-accordion');
+      if (!section) return;
+      const open = section.classList.toggle('is-open');
+      head.setAttribute('aria-expanded', String(open));
+    });
+  });
 }
 
 /**
@@ -163,8 +225,9 @@ function stripCell(cell) {
   // Rank and similar context read as context, not as a second figure: the
   // separator itself is secondary grey.
   const contextHtml = cell.context
-    ? `<span class="fs-strip__context"> ${MIDDOT} ${escapeHtml(cell.context)}</span>`
+    ? `<span class="fs-strip__context">${escapeHtml(cell.context)}</span>`
     : '';
+  if (cell.context) valueClasses.push('has-context');
 
   return (
     `<div class="${classes.join(' ')}">` +
@@ -291,9 +354,30 @@ export function note(text, options = {}) {
  * rendered through `sheet()` below, so there is one implementation to change
  * and no per-surface variant to keep in step.
  *
- * The FantasyStakes owner ruling supersedes Rev 4.3 FINAL POR §25, which had
- * required upper-right. Position lives in `.fs-sheet__close`; this function
- * decides the markup and the accessible name and nothing else.
+ * ── THE UNIVERSAL CLOSE-X IS LOCKED: UPPER-LEFT ─────────────────────────────
+ *
+ * Owner ruling, re-confirmed after the Final POR addendum. The close control is
+ * upper-left, visually attached to the active card, sheet, modal or detail view,
+ * everywhere in the application including Wrap Up. It SUPERSEDES every older
+ * upper-right reference. THE ONE STILL STANDING IS FINAL POR §29; Rev 4.3 §25
+ * already specifies upper-left and already carries its own supersession note
+ * recording that an earlier revision of it required upper-right. So this ruling
+ * SUPERSEDES §29 and CONFIRMS §25 -- which is worth stating precisely, because
+ * "§25 says upper-right" is exactly the wrong thing for the next reader to
+ * carry away from a comment about not moving this control.
+ *
+ * IT IS A POSITIONAL RULE, NOT A REDESIGN. Nothing about the markup, the
+ * accessible name, the focus order or the sheet's geometry follows from it; the
+ * control keeps its own band above the title, which is why `.fs-sheet__title`
+ * needs no side inset and why the position costs the title no width.
+ *
+ * ONE PLACE TO CHANGE IT. Position lives in `.fs-sheet__close`; this function
+ * decides the markup and the accessible name and nothing else. Because `sheet()`
+ * renders every dismissible overlay in the product, there is no per-surface
+ * variant that could drift out of step — which is what makes "everywhere"
+ * checkable rather than aspirational, and is asserted directly by
+ * `test_finalpor_closex.py` on Play, Status and Wrap Up at all three certified
+ * widths.
  *
  * @returns {string}
  */

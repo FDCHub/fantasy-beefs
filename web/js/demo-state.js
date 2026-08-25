@@ -50,8 +50,15 @@ export const LEAGUE_IDENTITY = Object.freeze({
 
 /** POR illustrative figures — exact cents. */
 export const ILLUSTRATIVE = Object.freeze({
+  // UIRECON WAVE 2 — NET WINNINGS MEANS NET WINNINGS.
+  //
+  // `netWinningsRank: '1st'` stood here and was the rank Rev 4.3 SS8.3
+  // removed from the Play strip: a standings position drawn inside a money
+  // cell. The cell stopped reading it, and the constant stayed — which left
+  // the next edit a ready-made way to put it back. It is gone, so the cell
+  // has no context to reintroduce and no fixture to reintroduce it from.
+  // Rank belongs to Standings, which answers it properly.
   netWinningsCents: 12600,   // +$126
-  netWinningsRank: '1st',
   walletCents: 5500,         // $55
   weeklyMinLeftCents: 1000,  // $10
   availableCents: 6500,      // $65

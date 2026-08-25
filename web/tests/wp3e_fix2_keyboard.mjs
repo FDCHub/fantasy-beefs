@@ -361,6 +361,14 @@ await withPage({ port: 9496 }, async ({ evaluate, setViewport, pressKey }) => {
       const focusable = document.activeElement === control;
       ${ARM}
       control.click();
+      // SYNCHRONOUS RENDERS ARE ACTIVATION RENDERS. A click that also reached
+      // the card behind the control opens the card's own surface in the same
+      // task, so it is already counted here — which is what "no bubble to the
+      // card" actually measures. UIRECON Wave 4A gave the Preview a served read
+      // model that lands LATER and re-renders in place; counting that as a
+      // second activation would report a deliberate fill as an event leak.
+      await new Promise((r) => setTimeout(r, 0));
+      const activationRenders = window.__fsRenders;
       await new Promise((r) => setTimeout(r, 380));
       window.__fsObs.disconnect();
       const host = document.getElementById('fs-sheet');
@@ -369,7 +377,8 @@ await withPage({ port: 9496 }, async ({ evaluate, setViewport, pressKey }) => {
       return {
         present: true, focusable,
         open: document.getElementById('fs-overlay').classList.contains('is-open'),
-        renders: window.__fsRenders,
+        renders: activationRenders,
+        rendersAfterSettle: window.__fsRenders,
         title: (host.querySelector('.fs-sheet__title') || {}).textContent || '',
         // THE SURFACE NAMES ITSELF. The composer is the thing with market
         // controls in it; the preview is the thing with preview sections.
@@ -399,7 +408,8 @@ await withPage({ port: 9496 }, async ({ evaluate, setViewport, pressKey }) => {
         `selected: ${r.selectedMarket}`);
     }
     check(`${action.name} activates exactly once — no bubble to the card`,
-      r.renders === 1, `${r.renders} sheet render(s)`);
+      r.renders === 1,
+      `${r.renders} activation render(s), ${r.rendersAfterSettle} after settle`);
   }
 
   /* ── §4 · the pointer convenience survives ────────────────────────────── */

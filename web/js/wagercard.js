@@ -114,6 +114,7 @@ export function matchupMarketCells(m) {
  * @param {boolean} [spec.interactiveMarkets]
  * @param {Array<{label: string, value: string, tone?: string, exactCents?: number}>} [spec.figures]
  * @param {string} [spec.copy]          one short line — teaser or status
+ * @param {string} [spec.aside]         UIRECON Rev 1.4 — see the note below
  * @param {string} [spec.footLabel]
  * @param {string} [spec.footValue]
  * @param {string} [spec.badge]
@@ -132,6 +133,26 @@ export function wagerCard(spec) {
     interactiveMarkets = false,
     figures = [],
     copy = '',
+    // UIRECON REV 1.4 — THE ONE SLOT THAT TAKES HTML RATHER THAN TEXT.
+    //
+    // Every other field on this spec is escaped here, which is what keeps the
+    // grammar safe by construction. `aside` is the exception because it exists
+    // for a card-level AFFORDANCE — currently `↻ REFRESH ODDS` on a live
+    // Dynamic Matchup — and an affordance is a button and a stamp, not a
+    // string. The alternative was a second card function that differed from
+    // this one by a `<button>`, and two card grammars is precisely what this
+    // module exists to prevent.
+    //
+    // THE CALLER OWNS THE ESCAPING, and that obligation is not hypothetical:
+    // `refresh-odds.js` escapes every value it interpolates. Nothing may be
+    // passed here that came from a server string or a GM's typing without going
+    // through `escapeHtml` first.
+    //
+    // IT SITS BETWEEN THE COPY AND THE FOOT, so the documented order —
+    // identity → context → markets → figures → copy → foot — is extended rather
+    // than broken: the affordance reads after the card has said what it is and
+    // before the card says what to do next.
+    aside = '',
     footLabel = '',
     footValue = '',
     badge = '',
@@ -140,6 +161,7 @@ export function wagerCard(spec) {
     tapAction = '',
     tapId = '',
     className = '',
+    interactiveAside = false,
   } = spec || {};
 
   if (!identity) throw new TypeError('a wager card needs an identity');
@@ -153,7 +175,7 @@ export function wagerCard(spec) {
   // a plain container and puts a real button in its foot. A card whose only
   // action is the card itself becomes the button. Either way there is exactly
   // one keyboard path per action, and no button is ever nested inside a button.
-  const nestedControls = Boolean(markets && interactiveMarkets);
+  const nestedControls = Boolean((markets && interactiveMarkets) || interactiveAside);
   const activation = tapAction && !nestedControls ? ' role="button" tabindex="0"' : '';
 
   const attrs =
@@ -206,6 +228,7 @@ export function wagerCard(spec) {
     (markets ? marketRow(markets, { interactive: interactiveMarkets }) : '') +
     figuresHtml +
     (copy ? `<div class="fs-wcard__copy">${escapeHtml(copy)}</div>` : '') +
+    (aside ? `<div class="fs-wcard__aside">${aside}</div>` : '') +
     footHtml +
     '</div>'
   );

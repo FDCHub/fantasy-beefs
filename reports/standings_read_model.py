@@ -33,7 +33,15 @@ GM as having spent nothing.
 
     versus_net = Σ(spend-account legs under the Versus doors) + open Versus escrow
     pool_net   = Σ(spend-account legs under the Pool doors)
-    net        = versus_net + pool_net
+    skunk_fees = Σ(this season's Skunk assessed against the GM)   FINAL POR §8
+    net        = versus_net + pool_net - skunk_fees
+
+THE SKUNK TERM IS ERA-GATED ON `ruleset_version`. A season activated before the
+Final POR is scored by the two-term identity it was played under, and reads zero
+here; a Final POR season subtracts what its Skunk machinery actually posted. The
+subtrahend is derived through `economy_event`, never from the `receivable:`
+balance — see `economy/skunk.py::skunk_fees_by_team` for the two independent
+reasons that matters.
 
 THE OPEN-ESCROW TERM IS WHY AN UNSETTLED WAGER IS NOT A LOSS. Placing a stake
 debits the spend account immediately; the money sits in `escrow:` until the
@@ -71,7 +79,9 @@ from sqlalchemy.orm import Session
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from economy.economy_events import wallet_account
+from economy.skunk import skunk_fees_by_team
 from reports.ledger_read_model import LedgerReadModelError, league_positions
+from ruleset import is_final_por
 
 
 # ── The door groupings ───────────────────────────────────────────────────────
@@ -98,6 +108,7 @@ from economy.dynamic_challenge import (     # noqa: E402
     DOOR_FL_MIGRATE, DOOR_FL_REFUND, DOOR_HS_DERIVED, DOOR_HS_RELEASE,
     DOOR_HS_SPLIT, DOOR_HS_TOPUP,
 )
+from economy.wager_void import DOOR_WAGER_VOID   # noqa: E402
 
 #: Every door through which Versus competition moves a GM's Credits.
 #:
@@ -121,6 +132,14 @@ VERSUS_DOORS: tuple[str, ...] = (
     DOOR_HS_DERIVED,
     DOOR_FL_REFUND,
     DOOR_FL_MIGRATE,
+    # WP-13 — the accepted-wager void. ITS MEMBERSHIP HERE IS THE MECHANISM,
+    # not bookkeeping. The original funding debited a spend account for -X while
+    # the escrow held +X, netting 0 while open. The void drains the escrow and
+    # credits `wallet:` +X; counted under a Versus door the spend legs sum to 0
+    # with no open escrow left, so the Score effect is exactly 0. Refunding
+    # under a door OUTSIDE this set would leave the GM permanently -X — charged
+    # for a contest that never happened.
+    DOOR_WAGER_VOID,
 )
 
 #: Every door through which Pool competition moves a GM's Credits.
@@ -163,10 +182,38 @@ class StandingsRow:
     versus_net_cents: int
     pool_net_cents: int
 
+    #: FINAL POR §8 — Skunk assessed against this GM this league-season, as a
+    #: POSITIVE magnitude, SUBTRACTED by `net_cents`.
+    #:
+    #: POSITIVE-AND-SUBTRACTED, not signed-and-added, because the column the
+    #: standings table draws is headed `SKUNK` and shows what a GM was charged.
+    #: `economy/current_settle.py` already states the same figure the same way
+    #: (`receivable_cents=-receivable`), so the two surfaces agree on sign.
+    #:
+    #: ZERO ON A LEGACY SEASON, ALWAYS. The Skunk term is gated on
+    #: `ruleset_version`: a season activated before the Final POR keeps the
+    #: two-term identity it was scored under, and its frozen championship rows
+    #: stay exactly what they were.
+    skunk_fees_cents: int = 0
+
     @property
     def net_cents(self) -> int:
-        """The combined competitive result Overall ranks on."""
-        return self.versus_net_cents + self.pool_net_cents
+        """The FantasyStakes Score this GM's championship standing ranks on.
+
+        FINAL POR §8:  Matchup Net + Prop Pool Net − Skunk Fees
+
+        WHY THE SKUNK TERM BELONGS IN A COMPETITIVE TOTAL AT ALL. Every other
+        term here is a wagering result, and Skunk is not one — it is a fantasy
+        performance penalty. The POR admits it deliberately: a GM's
+        FantasyStakes Score is meant to answer "how did you do", and being the
+        worst loser in the league every week is part of that answer.
+
+        IT IS NOT A SECOND CHARGE. The same single assessment appears in My
+        Settle as an obligation and here as a score penalty. They are different
+        questions over one posting — what you owe, and how you are doing — and
+        the Rules card carries the sentence that says so.
+        """
+        return self.versus_net_cents + self.pool_net_cents - self.skunk_fees_cents
 
     @property
     def versus_record(self) -> str:
@@ -185,6 +232,9 @@ class StandingsRow:
             "pool_wins": self.pool_wins,
             "versus_net_cents": self.versus_net_cents,
             "pool_net_cents": self.pool_net_cents,
+            # FINAL POR §8 / §26 — the SKUNK standings column. Positive
+            # magnitude on the wire; `net_cents` has already subtracted it.
+            "skunk_fees_cents": self.skunk_fees_cents,
             "net_cents": self.net_cents,
         }
 
@@ -246,6 +296,76 @@ def _door_net_cents(db: Session, team_id: int, doors: tuple[str, ...]) -> int:
         "AND (account = :wallet OR account LIKE :min_pattern)"),
         params).scalar()
     return int(total or 0)
+
+
+def _legacy_wager_escrow_accounts(db: Session, team_id: int) -> tuple[str, ...]:
+    """`escrow:{bet_id}` for every LEGACY plain wager this GM owns.
+
+    A plain wager is a `Bet` with `beef_challenge_id IS NULL` — the legacy
+    single-GM product reachable through `POST /bets/place`. FantasyStakes has no
+    house, so such a wager is not FantasyStakes competition and must not appear
+    in a competitive total. `beef_challenge_id` is the durable identifier that
+    says so; it is a column on the row the wager created, not a heuristic.
+    """
+    from db.schema import Bet, Wallet
+
+    db.flush()
+    rows = (db.query(Bet.id)
+            .join(Wallet, Bet.wallet_id == Wallet.id)
+            .filter(Wallet.team_id == team_id,
+                    Bet.beef_challenge_id.is_(None))
+            .all())
+    return tuple(f"escrow:{r[0]}" for r in rows)
+
+
+def _legacy_wager_net_cents(db: Session, team_id: int,
+                            doors: tuple[str, ...]) -> int:
+    """This GM's legacy plain-wager contribution to the Versus door sum.
+
+    WHY THIS IS SUBTRACTED RATHER THAN FILTERED AT THE DOOR. `wager_placed` and
+    `wager_settled` are shared: a governed FantasyStakes matchup bet and a legacy
+    plain wager both post under them, so the door alone cannot tell them apart.
+    What CAN is the escrow account, because every posting either path makes for a
+    bet carries that bet's own `escrow:{bet_id}` leg. Selecting the postings that
+    touch a legacy bet's escrow therefore identifies legacy movement exactly, and
+    the same query shape stays correct if the legacy settlement path is ever
+    given the ledger posting it currently lacks.
+
+    TWO TERMS, BECAUSE THE OPEN-ESCROW ADD-BACK HAS TO GO TOO. `in_play_cents`
+    attributes a plain wager's escrow to its owning GM, so leaving that term in
+    while removing the placement debit would report a phantom gain of exactly the
+    stake. Both halves are removed together.
+
+    Returns the amount to REMOVE from `_door_net_cents(...) + in_play_cents`.
+    """
+    accounts = _legacy_wager_escrow_accounts(db, team_id)
+    if not accounts or not doors:
+        return 0
+
+    db.flush()
+    door_ph = ", ".join(f":d{i}" for i in range(len(doors)))
+    acct_ph = ", ".join(f":a{i}" for i in range(len(accounts)))
+    params: dict[str, object] = {f"d{i}": d for i, d in enumerate(doors)}
+    params.update({f"a{i}": a for i, a in enumerate(accounts)})
+    params["wallet"] = wallet_account(team_id)
+    params["min_pattern"] = f"min:{team_id}:%"
+
+    # (a) this GM's spend-account legs inside postings that touch a legacy escrow
+    spend = db.execute(text(
+        "SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+        f"WHERE door IN ({door_ph}) "
+        "AND (account = :wallet OR account LIKE :min_pattern) "
+        "AND posting_id IN (SELECT posting_id FROM ledger_entries "
+        f"                  WHERE account IN ({acct_ph}))"),
+        params).scalar()
+
+    # (b) whatever those legacy escrows still hold — the in_play add-back term
+    held = db.execute(text(
+        "SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
+        f"WHERE account IN ({acct_ph})"),
+        {k: v for k, v in params.items() if k.startswith("a")}).scalar()
+
+    return int(spend or 0) + int(held or 0)
 
 
 def _pool_wins(db: Session, team_id: int) -> int:
@@ -323,6 +443,21 @@ def league_standings(db: Session, *, league_id: int,
         raise LedgerReadModelError("LEAGUE_NOT_FOUND",
                                    f"League {league_id} not found")
 
+    # ── FINAL POR §8 · THE SKUNK TERM, ERA-GATED ─────────────────────────────
+    #
+    # Read ONCE for the whole league rather than per GM: it is one grouped query
+    # either way, and a per-row read would make a twelve-team table twelve
+    # queries for a figure that is a property of the season.
+    #
+    # A LEGACY SEASON GETS AN EMPTY MAP AND THEREFORE ZERO, which is what keeps
+    # its Score the two-term figure it was played, frozen and paid under. The
+    # gate is `ruleset_version` and nothing else — not the presence of Skunk
+    # postings, which a legacy season also has.
+    skunk_by_team: dict[int, int] = {}
+    if is_final_por(db, league_id=league_id, season=league.season):
+        skunk_by_team = skunk_fees_by_team(
+            db, league_id=league_id, season=league.season)
+
     rows: list[StandingsRow] = []
     for position in positions:
         team_id = position.team_id
@@ -346,9 +481,22 @@ def league_standings(db: Session, *, league_id: int,
             # (`economy/challenge_escrow_view.py` filters to OPEN_RESPONSE_STATES
             # by design), so using it would leave every accepted-but-unsettled
             # stake standing as a loss until the week settled.
+            # RC2 NEW-1 — GOVERNED FANTASYSTAKES MATCHUPS ONLY.
+            #
+            # FantasyStakes has no house. A legacy plain wager
+            # (`beef_challenge_id IS NULL`) is not FantasyStakes competition, so
+            # it is removed from this total — both its spend-account legs and
+            # the open-escrow add-back that pairs with them. Without this the
+            # Versus total would disagree with the Versus RECORD below, which has
+            # always counted governed matchups only, and Championship Score
+            # (which is this figure, frozen) could be moved by a product
+            # FantasyStakes does not have.
             versus_net_cents=(_door_net_cents(db, team_id, VERSUS_DOORS)
-                              + position.in_play_cents),
+                              + position.in_play_cents
+                              - _legacy_wager_net_cents(db, team_id,
+                                                        VERSUS_DOORS)),
             pool_net_cents=_door_net_cents(db, team_id, POOL_DOORS),
+            skunk_fees_cents=skunk_by_team.get(team_id, 0),
         ))
 
     return LeagueStandings(

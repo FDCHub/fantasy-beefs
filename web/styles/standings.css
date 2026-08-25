@@ -10,9 +10,9 @@
  *   · The tables are `<table>` elements in normal flow. Nothing positions,
  *     hides, collapses or transforms one, so there is no mechanism by which a
  *     table could be off screen while its siblings are on it.
- *   · Column widths are fixed by the RANK and TEAM columns; every figure column
- *     takes an equal share of what is left. A long team name truncates rather
- *     than pushing the NET column off the right edge.
+ *   · Column widths are fixed by the RANK and the FIGURE columns; TEAM takes
+ *     whatever is left. A long team name truncates rather than pushing the NET
+ *     column off the right edge.
  * ========================================================================== */
 
 .fs-st__scroll {
@@ -27,7 +27,7 @@
 }
 
 .fs-st {
-  margin-top: var(--fs-space-5);
+  margin-top: var(--fs-space-2);
 }
 
 .fs-st__heading {
@@ -46,6 +46,42 @@
    * other. Without it each table sizes to its own content and the NET columns
    * land at three different x positions down the page. */
   table-layout: fixed;
+
+  /* ── THE COLUMN-WIDTH CONTRACT — UIRECON Rev 1.4 ──────────────────────────
+   *
+   * WHAT WAS WRONG. Every figure column was one width (`4.6em` ≈ 60px) and the
+   * OVERALL header did not fit in it: `MATCHUPS` measured 72px and `PROP
+   * POOLS` 82px against 50px of usable cell, so both headers wrapped, the
+   * header row stood at 45px against the 28px of the two tables below it, and
+   * the two wrapped labels sat one under the other with nothing between them.
+   *
+   * WIDTHS, NOT SMALLER TYPE. The headers stay at the §5.1 metadata size and
+   * the money stays at the §5.1 secondary size. What changes is how much width
+   * each column is given, and each of the three numbers below is set by
+   * something real rather than chosen:
+   *
+   *   --fs-st-rank  two rank digits and the tie marker that rides them.
+   *   --fs-st-fig   THE MONEY SETS THIS FLOOR, not the header. A four-digit
+   *                 signed figure — `+$1,250` — is ~54px in the 14px money
+   *                 face, and money may not be the thing that truncates.
+   *   --fs-st-wide  the ONE column whose header is wider than its figures:
+   *                 OVERALL's MATCHUPS. Nothing else in any of the three
+   *                 tables needs it, so nothing else is given it.
+   *
+   * EACH IS CAPPED BY A SHARE OF THE VIEWPORT. `min()` is what makes the
+   * contract hold below the narrowest certified width as well as at it: the
+   * figure columns give way before the table can be wider than the page. At
+   * 320px the caps are not the binding term and the rem values are; the caps
+   * exist so that a narrower window degrades rather than overflows — which is
+   * the same promise `overflow-x: hidden` above makes structurally.
+   *
+   * WHAT THIS COSTS AND WHY IT IS WORTH IT. The width MATCHUPS needs comes out
+   * of TEAM, which at 320px is ~64px rather than ~85px — one or two characters
+   * of a truncated name. It buys a header row that is one line at every
+   * certified width, and 17px of vertical height back on the tallest table. */
+  --fs-st-rank: min(2rem,    10vw);
+  --fs-st-fig:  min(3.75rem, 19vw);
+  --fs-st-wide: min(5rem,    25vw);
 }
 
 .fs-st__table th {
@@ -56,7 +92,41 @@
   text-align: right;
   padding: var(--fs-space-2) var(--fs-space-2);
   border-bottom: var(--fs-border);
+  /* ONE LINE, STRUCTURALLY — Rev 1.4. The widths above are sized so that no
+   * header has to be clipped; this is the guard that decides what happens if a
+   * future column label outgrows them anyway. A clipped label is a legible
+   * mistake somebody fixes. A wrapped one silently restands the whole header
+   * row and pushes the first table's rows down the page, which is how the two
+   * OVERALL headers collided in the first place. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+/* A FIGURE HEADER PAYS NO LEFT INSET. The label is right-aligned, so the left
+ * padding protects nothing and is 5px the column cannot spare at 320px — the
+ * same reclaim `.fs-strip__label` makes, for the same reason. The RIGHT inset
+ * is kept and is exactly the cell's, because that is what puts the header and
+ * the figures below it on one right edge. */
+.fs-st__table th.fs-st__num { padding-left: 0; }
+
+/* FINAL POR §1A — A HEADER SITS OVER ITS OWN COLUMN.
+ *
+ * `.fs-st__table th` above sets `text-align: right`, which is correct for the
+ * four figure columns and wrong for the two text ones. It also OUTRANKS the
+ * bare `.fs-st__rank` / `.fs-st__team` rules below it — `.fs-st__table th` is
+ * (0,1,1) against their (0,1,0) — so RK and TEAM were the only cells in their
+ * columns drawn from the right edge while every value beneath them was drawn
+ * from the left. That is what put TEAM far to the right of the names.
+ *
+ * Scoped through the table for the same reason `.fs-st__table .fs-st__team`
+ * below is: it has to win on specificity, or the correction silently does not
+ * happen. The figure headers are untouched — they were already on the same
+ * right edge as their figures, which is what keeps MATCH, POOL, SKUNK and
+ * SCORE aligned. TEAM remains the only `width: auto` column, so it stays the
+ * widest. */
+.fs-st__table th.fs-st__rank,
+.fs-st__table th.fs-st__team { text-align: left; }
 
 .fs-st__table td {
   font-size: var(--fs-r43-card);
@@ -71,7 +141,7 @@
 .fs-st__row { min-height: var(--fs-r43-touch); }
 
 .fs-st__rank {
-  width: 2.4em;
+  width: var(--fs-st-rank);
   text-align: left;
   color: var(--fs-r43-secondary);
   font-variant-numeric: tabular-nums;
@@ -88,10 +158,189 @@
   white-space: nowrap;
 }
 
+/* THE NAME PAYS NO RIGHT INSET, because the column to its right supplies one
+ * for free: those figures are right-aligned, so the gap between a truncated
+ * name and the nearest digit is that column's whole left half. Every pixel
+ * reclaimed here is a pixel of team name, and at 320px there are 5 of them.
+ *
+ * SCOPED THROUGH THE TABLE so it outranks the `.fs-st__table td` shorthand
+ * above — a bare `.fs-st__team` loses to it on specificity and the reclaim
+ * silently does not happen. */
+.fs-st__table .fs-st__team { padding-right: 0; }
+
 .fs-st__num {
-  width: 4.6em;
+  width: var(--fs-st-fig);
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* THE ONE COLUMN WHOSE HEADER IS WIDER THAN ITS CONTENT. `MATCHUPS` is the
+ * third column of OVERALL and of nothing else; MATCHUP STANDINGS and PROP POOL
+ * STANDINGS head their middle column `W-L` and `WINS`, which fit the figure
+ * width with room to spare. Widening every figure column to suit one header
+ * would have taken 40px off TEAM in all three tables to solve a problem that
+ * exists in one cell.
+ *
+ * NET IS STILL COLUMN-ALIGNED ACROSS THE THREE TABLES, which is the alignment
+ * the fixed layout above exists for: it is the last column of each, it is the
+ * same width in each, and each table is the same width — so the three NET
+ * columns share one right edge and one left edge whatever happens in front of
+ * them. */
+[data-standings-table="overall"] .fs-st__table th:nth-child(3),
+[data-standings-table="overall"] .fs-st__table td:nth-child(3) {
+  width: var(--fs-st-wide);
+}
+
+/* ══ FINAL POR UI-2 §26 — THE SIX-COLUMN OVERALL TABLE ═══════════════════════
+ *
+ * OVERALL now carries RK · TEAM · MATCHUPS · POOLS · SKUNK · FS SCORE. Two of
+ * those are new and the Rev 1.4 contract above was budgeted for five, so this
+ * block re-budgets that ONE table. MATCHUP STANDINGS and PROP POOL STANDINGS
+ * are untouched and keep the four-column widths they were certified at.
+ *
+ * ── WHAT THE SIXTH COLUMN COSTS, AND WHERE IT COMES FROM ──────────────────
+ *
+ * At 320px there are ~304px of usable row. The five-column table spent them as
+ * 32 rank + 80 MATCHUPS + 60 POOLS + 60 NET + ~64 TEAM. A sixth column at the
+ * old figure width would have left TEAM at ~4px, which is not a column.
+ *
+ * So the four tracks are re-cut, each by something real:
+ *
+ *   --fs-st6-rank  two rank digits and the tie marker. Narrower than the
+ *                  five-column rank because a digit pair does not need 32px.
+ *   --fs-st6-fig   THE MONEY STILL SETS THIS FLOOR. A four-digit signed figure
+ *                  `+$1,250` is ~54px in the 14px money face and money may not
+ *                  be the thing that truncates. This is the smallest the three
+ *                  money columns can be, not a width chosen for the headers.
+ *   --fs-st6-skunk NARROWER THAN THE MONEY COLUMNS, ON PURPOSE. A Skunk total
+ *                  is a fee times weeks — `$140` at the default stop — never a
+ *                  four-digit signed figure, and it is drawn unsigned. Giving
+ *                  it the money width would take ~12px from TEAM to hold a
+ *                  digit that cannot occur.
+ *   --fs-st6-wide  MATCHUPS, the one header wider than its own figures. Same
+ *                  role the five-column `--fs-st-wide` plays, re-cut smaller.
+ *
+ * TEAM TAKES WHAT IS LEFT and truncates, exactly as before. At 320px that is
+ * ~55px — a little under the five-column table's ~64px, and still the two or
+ * three characters plus ellipsis that make a name recognisable next to the
+ * reader's own highlighted row.
+ *
+ * ── THE HEADER MAY TAKE TWO LINES HERE, AND MUST NEVER ELLIPSE ────────────
+ *
+ * §26 permits a two-line header and FORBIDS a header ellipsis. Those two rules
+ * point the same way: `FS SCORE` is two words and cannot fit one line beside
+ * three other figure columns at 320px, so it wraps — which is legible, keeps
+ * the whole label, and costs one row of header height that every table on the
+ * page absorbs together.
+ *
+ * The five-column contract above chose the opposite trade (`white-space:
+ * nowrap` plus ellipsis) because THERE a wrapped header restood the row
+ * against two neighbouring tables that did not wrap. Here all six labels are
+ * in one table and the header row is allowed to be two lines, so the ellipsis
+ * — which would hide part of a label and is explicitly forbidden — is turned
+ * off rather than relied on.
+ *
+ * `MATCHUPS` IS ONE WORD AND CANNOT WRAP, which is why it keeps a dedicated
+ * wide track rather than being left to `white-space: normal` to solve. A
+ * single long word given too little width does not wrap; it overflows, or it
+ * breaks mid-word, and a broken `MATCH-UPS` is the ellipsis problem wearing a
+ * different hat.
+ *
+ * ── WHY THE HEADER TYPE SHRINKS SLIGHTLY, AND ONLY HERE ───────────────────
+ *
+ * §26 permits it. One step down buys `MATCHUPS` its line at 320px without
+ * spending TEAM's characters on it. The BODY type does not shrink: the figures
+ * and the team names stay at the §5.1 sizes, because shrinking the data to fit
+ * a label is the wrong trade in the other direction. */
+[data-standings-table="overall"] .fs-st__table {
+  --fs-st6-rank:  min(1.35rem,  6.8vw);
+  --fs-st6-fig:   min(2.9rem, 14.5vw);
+  --fs-st6-skunk: min(2.9rem, 14.5vw);
+  --fs-st6-wide:  min(2.9rem, 14.5vw);
+}
+
+[data-standings-table="overall"] .fs-st__table th,
+[data-standings-table="overall"] .fs-st__table td {
+  padding-left: var(--fs-space-1);
+  padding-right: var(--fs-space-1);
+}
+
+/* A FIGURE HEADER PAYS NO LEFT INSET — the same reclaim the five-column
+ * contract makes above, and it has to be repeated here because the rule
+ * directly above re-establishes a symmetric inset for the six-column table's
+ * BODY cells. The label is right-aligned, so a left inset protects nothing and
+ * is 4px the column cannot spare: `MATCHUPS` at the 12px header size needs 69px
+ * of content and the track gives 66px, and this is where the missing 3px comes
+ * from. Widening the track instead would have taken those pixels out of TEAM. */
+[data-standings-table="overall"] .fs-st__table th.fs-st__num {
+  padding-left: 0;
+}
+
+[data-standings-table="overall"] .fs-st__table th {
+  /* NO ELLIPSIS, EVER (§26). Two lines are permitted; a hidden label is not. */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  font-size: 9px;
+  line-height: 1.15;
+  /* A single long word must not be broken mid-word to fit; the tracks below
+   * are cut so it does not have to be. */
+  overflow-wrap: normal;
+  word-break: keep-all;
+  hyphens: none;
+}
+
+[data-standings-table="overall"] .fs-st__rank { width: var(--fs-st6-rank); }
+[data-standings-table="overall"] .fs-st__num  { width: var(--fs-st6-fig); }
+
+/* MATCHUPS — the third column, and the only one-word header wider than its
+ * own figures. Overrides the five-column `--fs-st-wide` rule above, which
+ * targets the same cells at the same specificity and is written earlier. */
+[data-standings-table="overall"] .fs-st__table th:nth-child(3),
+[data-standings-table="overall"] .fs-st__table td:nth-child(3) {
+  width: var(--fs-st6-wide);
+}
+
+/* SKUNK — the fifth column. Narrower than money because its figure is. */
+[data-standings-table="overall"] .fs-st__table th:nth-child(5),
+[data-standings-table="overall"] .fs-st__table td:nth-child(5) {
+  width: var(--fs-st6-skunk);
+}
+
+[data-standings-table="overall"] .fs-st__table th:nth-child(4),
+[data-standings-table="overall"] .fs-st__table td:nth-child(4),
+[data-standings-table="overall"] .fs-st__table th:nth-child(5),
+[data-standings-table="overall"] .fs-st__table td:nth-child(5) {
+  text-align: center;
+}
+
+[data-standings-table="overall"] .fs-st__table th:last-child,
+[data-standings-table="overall"] .fs-st__table td:last-child {
+  font-weight: var(--fs-weight-strong);
+  text-align: right;
+}
+
+.fs-st__creditline {
+  margin: -8px var(--fs-gutter) var(--fs-space-2);
+  color: var(--fs-r43-secondary);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+/* THE SKUNK FIGURE IS NOT MONEY-TONED. It is an amount assessed against a GM,
+ * never a gain, so it carries neither the signed grammar nor the green/red the
+ * three money columns use — see `skunkCell` in `standings.js`. It keeps the
+ * tabular money FACE so the column scans as figures beside its neighbours. */
+[data-standings-table="overall"] .fs-st__skunk {
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-card-secondary);
+  color: var(--fs-r43-secondary);
+}
+
+/* A GM who was never skunked — the common case — is a dash, held back so the
+ * exceptions are what the eye finds. */
+[data-standings-table="overall"] .fs-st__skunk.is-none {
+  color: var(--fs-r43-tertiary);
 }
 
 /* Money keeps the tabular monospace grammar the POR fixes for it. */

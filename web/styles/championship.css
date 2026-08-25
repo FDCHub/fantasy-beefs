@@ -1,0 +1,320 @@
+/* ============================================================================
+ * FantasyStakes — championship surfaces
+ *
+ * Standings explainer and tie marker, the season-results podiums, the Grand
+ * Champion block, and the commissioner championship controls.
+ *
+ * Every value here is an existing token or an existing surface colour. Nothing
+ * introduces a new scale, a new radius or a new palette entry, because these
+ * are new surfaces inside a settled design system rather than a redesign of it.
+ * Mobile-first: single column throughout, with no layout that needs width.
+ * ========================================================================== */
+
+/* ── Standings: what the number means ─────────────────────────────────────
+ *
+ * SUPPORTING BODY TEXT, NOT A CARD — UIRECON Wave 2.
+ *
+ * The sentence was already in the right PLACE: directly under
+ * `CHAMPIONSHIP CHASE · WEEK n` and above the tables. What was wrong was its
+ * treatment. It had a gold left rule, a gold-tinted fill and a radius, which
+ * made a one-line explanation read as a peer of the standings it introduces —
+ * a callout competing with the thing it was supposed to be supporting.
+ *
+ * So the box is gone and the words are not. It is the subheading's paragraph
+ * now: the same left edge as the title above it, the muted warm-grey the rest
+ * of the product uses for secondary copy, and nothing drawn around it.
+ *
+ * THE INSET MATCHES THE TAB HEADER, deliberately. `.fs-tabhead` sits at the
+ * 12px gutter, so the explainer at the same inset hangs off the same margin as
+ * `FANTASYSTAKES CHAMPIONSHIP` and `CHAMPIONSHIP CHASE · WEEK n`. A paragraph
+ * that starts anywhere else reads as a separate block however it is styled. */
+.fs-st__explainer {
+  margin: 0 var(--fs-gutter) var(--fs-space-3);
+  font-size: var(--fs-c-size-fine);
+  line-height: 1.45;
+  color: var(--fs-c-text-muted);
+  /* Comfortable measure. A full-width line of 13px text on a tablet is far
+   * past the readable column the phone layout gives it for free. */
+  max-width: 60ch;
+}
+
+/* The tie marker rides the rank, so a tie reads as a property of the PLACE
+   rather than of the team — which is what it is. */
+.fs-st__tie {
+  display: inline-block;
+  margin-left: 3px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--gold);
+  color: var(--bg);
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-heavy);
+  line-height: 1.5;
+  vertical-align: super;
+}
+
+/* ── Season results ─────────────────────────────────────────────────────── */
+
+.fs-sr { padding: 0 var(--fs-space-5) var(--fs-space-6); }
+
+.fs-sr__podium {
+  margin: 0 0 var(--fs-space-5);
+  padding: 0;
+  list-style: none;
+}
+
+.fs-sr__place {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: 'ordinal name amount' 'ordinal detail amount';
+  gap: 0 var(--fs-space-4);
+  align-items: center;
+  padding: var(--fs-space-4);
+  margin-bottom: var(--fs-space-2);
+  background: var(--card);
+  border-radius: var(--fs-radius-card);
+}
+
+/* First place carries the gold edge the rest of the product reserves for a
+   winning state; second and third sit plain, so the podium reads at a glance. */
+.fs-sr__place:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+
+.fs-sr__ordinal {
+  grid-area: ordinal;
+  min-width: 2.4em;
+  color: var(--gold);
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-heavy);
+}
+
+.fs-sr__name {
+  grid-area: name;
+  color: var(--bone);
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-medium);
+}
+
+.fs-sr__detail {
+  grid-area: detail;
+  color: var(--fs-r43-tertiary);
+  font-size: var(--fs-r43-meta);
+  font-family: var(--fs-font-money);
+}
+
+.fs-sr__amount {
+  grid-area: amount;
+  color: var(--green2);
+  font-size: var(--fs-r43-card);
+  font-weight: var(--fs-weight-strong);
+  font-family: var(--fs-font-money);
+  white-space: nowrap;
+}
+
+/* ── Grand Champion ─────────────────────────────────────────────────────── */
+
+.fs-sr__winner {
+  margin: 0 0 var(--fs-space-4);
+  padding: var(--fs-space-4);
+  background: var(--goldbg);
+  border-radius: var(--fs-radius-card);
+  color: var(--gold);
+  font-size: var(--fs-r43-section);
+  font-weight: var(--fs-weight-heavy);
+  text-align: center;
+}
+
+.fs-sr__gc {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--fs-space-4);
+  font-size: var(--fs-r43-meta);
+}
+
+.fs-sr__gc th {
+  padding: var(--fs-space-2) var(--fs-space-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--fs-r43-tertiary);
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  text-align: right;
+}
+
+.fs-sr__gc th:first-child { text-align: left; }
+
+.fs-sr__gc td {
+  padding: var(--fs-space-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--bone);
+}
+
+/* Points are exact Fractions from the server — "5/2" must not be squeezed. */
+.fs-sr__gc-total {
+  color: var(--gold);
+  font-weight: var(--fs-weight-heavy);
+  font-family: var(--fs-font-money);
+  white-space: nowrap;
+}
+
+/* ── Commissioner championship controls ─────────────────────────────────── */
+
+.fs-adm { padding: var(--fs-space-4) 0; }
+
+.fs-adm__kv {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--fs-space-2) var(--fs-space-4);
+  margin: 0 0 var(--fs-space-4);
+}
+
+.fs-adm__kv dt {
+  color: var(--fs-r43-secondary);
+  font-size: var(--fs-r43-meta);
+}
+
+.fs-adm__kv dd {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-meta);
+  text-align: right;
+}
+
+/* Actions stack on a phone and never sit side by side: an irreversible control
+   should not be a mis-tap away from a harmless one. */
+.fs-adm__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fs-space-2);
+  margin-top: var(--fs-space-3);
+}
+
+.fs-adm__btn {
+  width: 100%;
+  min-height: 44px;               /* the product's touch target */
+  padding: var(--fs-space-3) var(--fs-space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--fs-radius-cell);
+  background: var(--card);
+  color: var(--bone);
+  font-family: var(--fs-font-ui);
+  font-size: var(--fs-r43-card-secondary);
+  font-weight: var(--fs-weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+
+.fs-adm__btn--primary { border-color: var(--gold); color: var(--gold); }
+
+/* Irreversible: settle, freeze and every correction. */
+.fs-adm__btn--danger {
+  border-color: var(--red);
+  color: var(--red);
+  font-weight: var(--fs-weight-strong);
+}
+
+.fs-adm__btn.is-disabled,
+.fs-adm__btn[disabled] {
+  opacity: .42;
+  cursor: default;
+}
+
+.fs-adm__warn {
+  margin: 0 0 var(--fs-space-4);
+  padding: var(--fs-space-4);
+  border-left: 2px solid var(--red);
+  border-radius: var(--fs-radius-cell);
+  background: var(--card);
+  color: var(--bone);
+  font-size: var(--fs-r43-meta);
+  line-height: 1.45;
+}
+
+/* The server's own words, in the server's own vocabulary. */
+.fs-adm__refusal {
+  margin: var(--fs-space-3) 0 0;
+  padding: var(--fs-space-4);
+  border-left: 2px solid var(--red);
+  border-radius: var(--fs-radius-cell);
+  background: var(--card);
+  color: var(--red);
+  font-family: var(--fs-font-money);
+  font-size: var(--fs-r43-meta);
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+/* ── Correction form ────────────────────────────────────────────────────── */
+
+.fs-adm__form { display: block; }
+
+.fs-adm__label {
+  display: block;
+  margin: var(--fs-space-4) 0 var(--fs-space-2);
+  color: var(--fs-r43-tertiary);
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+}
+
+.fs-adm__input {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--fs-space-3) var(--fs-space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--fs-radius-cell);
+  background: var(--bg);
+  color: var(--bone);
+  font-family: var(--fs-font-ui);
+  font-size: var(--fs-r43-card-secondary);
+  box-sizing: border-box;
+}
+
+.fs-adm__fieldset {
+  margin: var(--fs-space-4) 0 0;
+  padding: var(--fs-space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--fs-radius-cell);
+}
+
+.fs-adm__fieldset label {
+  display: block;
+  margin-bottom: var(--fs-space-2);
+  color: var(--bone);
+  font-size: var(--fs-r43-card-secondary);
+}
+
+/* ── Correction history ─────────────────────────────────────────────────── */
+
+.fs-adm__corr {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-r43-meta);
+}
+
+.fs-adm__corr th {
+  padding: var(--fs-space-2) var(--fs-space-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--fs-r43-tertiary);
+  font-size: var(--fs-size-eyebrow);
+  font-weight: var(--fs-weight-strong);
+  letter-spacing: var(--fs-track-eyebrow);
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.fs-adm__corr td {
+  padding: var(--fs-space-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--fs-r43-secondary);
+  vertical-align: top;
+}
+
+.fs-adm__corr td:last-child { color: var(--bone); }
+
+/* The audit table is the one place here that can exceed a phone's width, so it
+   scrolls inside itself rather than pushing the page sideways. */
+.fs-adm__corr { display: block; overflow-x: auto; white-space: nowrap; }
+.fs-adm__corr td:last-child { white-space: normal; min-width: 12em; }

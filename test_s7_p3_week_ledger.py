@@ -259,7 +259,7 @@ _assert("the activity nets are non-zero, so omitting them is a real choice",
 _assert("adding them again would change the figure — so the figure does not include them",
         R.get("currentSettleCents", 0) + act.get("netVersusCents", 0)
         + act.get("netPoolsCents", 0) != R.get("currentSettleCents"))
-_assert("My Season's Versus + Pools cell is the two nets, drawn once",
+_assert("My Season's Play Net cell is the two nets, drawn once",
         R.get("versusPlusPoolsCents") == act.get("netVersusCents", 0) + act.get("netPoolsCents", 0)
         == 12600)
 _assert("the model states the no-double-counting rule as a boundary",
@@ -268,8 +268,16 @@ _assert("the model states the no-double-counting rule as a boundary",
 print("\nThe locked Rev 4.2 figures are the ones drawn")
 
 STRIP = APP.get("weekStrip", {})
+# FINAL POR §30 — `HELD` BECAME `ESCROW`, WITH ITS SUBSET STATED.
+#
+# The VALUE is unchanged: still `held_open_challenges_cents`, still reported
+# beside the position, still never added to any total. What changed is the
+# label and the addition of `included in In Play` as secondary context, because
+# `ESCROW` beside `In Play` without that line invites exactly the addition both
+# read models exist to prevent. The cents assertion below is the load-bearing
+# half and is untouched.
 for label, key, cents in [("Available", "availableCents", 6500), ("In Play", "inPlayCents", 2800),
-                          ("Held", "heldCents", 2500), ("Weekly Min Left", "weeklyMinLeftCents", 1000)]:
+                          ("Escrow", "heldCents", 2500), ("Weekly Min Left", "weeklyMinLeftCents", 1000)]:
     _assert(f"the week strip's {label} is exactly {cents} cents",
             STRIP.get(key) == cents, str(STRIP.get(key)))
 _assert("the season Bet Record is 14–7", APP.get("betRecord") == "14–7", str(APP.get("betRecord")))
@@ -335,7 +343,7 @@ _assert("the unspecified per-award split is disclosed rather than fabricated",
 
 print("\nThe Week's Pools are still the governing catalog's definitions")
 
-CATALOG = json.loads(_read_root("spec", "pool_catalog_rev1_3.json"))
+CATALOG = json.loads(_read_root("spec", "pool_catalog_rev1_4.json"))
 BY_NUMBER = {d["catalog_number"]: d for d in CATALOG["definitions"]}
 POOLS = APP.get("pools", [])
 
@@ -400,8 +408,19 @@ _assert("the Yahoo module identifies official Yahoo matchups",
         "YAHOO LEAGUE MATCHUPS" in WEEK_PANEL)
 _assert("Yahoo cards are badged as fixtures, not wagers",
         WEEK_PANEL.count(">YAHOO<") == 6, str(WEEK_PANEL.count(">YAHOO<")))
-_assert("the Pools module is rows rather than a second carousel",
-        "fs-poolrows" in WEEK_PANEL)
+# UIRECON WAVE 4B — the Pools module is the same carousel as its two peers now.
+#
+# RC4 MOBILE RECONCILIATION — AND THE SAME CARD FAMILY. Wave 4B unified the rail
+# and left the ITEM split: a settled Pool drew the shared result card, an OPEN
+# one kept its compact 45px row. That distinction was never about the BOX, and
+# on the deployed build it cost the section its standing — at a week where every
+# Pool is open, all four items drew the row and the third carousel measured 45px
+# against 132.30px and 150.06px of its two peers. Both states take the shared
+# shell now; what differs is what they say inside it.
+_assert("the Pools module shares the one Wrap carousel",
+        'id="fs-pools-carousel"' in WEEK_PANEL and "fs-rescar" in WEEK_PANEL)
+_assert("an open Pool draws the shared result card, not a list row",
+        "fs-poolrow" not in WEEK_PANEL)
 
 print("\nAn unquoted moneyline is drawn as unquoted, never derived from the spread")
 
@@ -442,8 +461,22 @@ settle_card = LEDGER_PANEL.split('id="fs-current-settle"')[1].split("</section>"
 _assert("the Current Settle card contains no button", "<button" not in settle_card)
 _assert("the card carries no tap action", "data-card-action" not in settle_card)
 _assert("the card is not marked tappable", "is-tappable" not in settle_card)
-settle_rule = _rule(LEDGER_CSS, ".fs-settle")
-_assert("the card does not present as clickable", "cursor: default" in settle_rule)
+# UIRECON WAVE 2 — Current Settle is section 4 now, so the container that used
+# to carry `cursor: default` is a `.fs-lsec` like its three peers. The claim is
+# unchanged and is asserted where it now lives: nothing inside the
+# reconciliation presents as a door. The three assertions above already prove it
+# holds no button, no tap action and no tappable class; this adds that no rule
+# gives any of its rows a pointer, which is what "presents as clickable" means.
+_assert("the reconciliation does not present as clickable",
+        "cursor: pointer" not in _rule(LEDGER_CSS, ".fs-settle__row")
+        and "cursor: pointer" not in _rule(LEDGER_CSS, ".fs-settle__result")
+        and "cursor" not in settle_card)
+# AND THE BESPOKE CARD IS GONE. Its absence is the Wave 2 deliverable: a
+# `.fs-settle` rule that still drew a card would mean the block had been
+# reparented without being reconciled.
+_assert("the bespoke Current Settle card treatment is retired",
+        _rule(LEDGER_CSS, ".fs-settle").strip() == ""
+        and _rule(LEDGER_CSS, ".fs-settle__head").strip() == "")
 _assert("there is no View Full Reconciliation anywhere on the tab",
         "View Full Reconciliation" not in LEDGER_PANEL)
 _assert("and none in the Ledger source either",
@@ -451,7 +484,7 @@ _assert("and none in the Ledger source either",
         # not exist, and that record must not trip the check that it is gone.
         "View Full Reconciliation" not in _strip_comments(LEDGER_JS))
 _assert("the Wagering Summary is the elevated section",
-        "fs-lsec is-elevated" in LEDGER_PANEL)
+        "is-elevated" in LEDGER_PANEL)
 _assert("the memo states the pending-hold rule to the GM",
         "not counted again in Current Settle until a proposal is accepted" in LEDGER_PANEL)
 
@@ -460,18 +493,26 @@ _assert("the memo states the pending-hold rule to the GM",
 
 print("\nLayout rules asserted where they are expressed")
 
-vcar = _rule(LEDGER_CSS, ".fs-vcar")
-_assert("the week carousels are vertical", "overflow-y: auto" in vcar)
+# UIRECON WAVE 4B — THE CAROUSEL TURNED SIDEWAYS, AND ALL THREE MODULES SHARE
+# IT. `.fs-vcar` scrolled vertically inside a fixed `max-height` tuned against
+# Rev 4.2 card sizes; Rev 4.3's taller cards turned its deliberate peek at the
+# next card's title into half a visible card. The replacement has no height in
+# it to go stale: items each exactly one viewport wide, so one card fills the
+# rail by construction at any card height and any screen width.
+rescar = _rule(LEDGER_CSS, ".fs-rescar")
+_assert("the week carousels are horizontal", "overflow-x: auto" in rescar)
 _assert("they snap, so a card is never presented half-shown",
-        "scroll-snap-type: y mandatory" in vcar)
-_assert("they do not scroll sideways", "overflow-x: hidden" in vcar)
+        "scroll-snap-type: x mandatory" in rescar)
+_assert("they do not scroll vertically", "overflow-y: hidden" in rescar)
+_assert("no pixel height caps a rail", "max-height" not in rescar)
 
-item = _rule(LEDGER_CSS, ".fs-vcar__item")
+item = _rule(LEDGER_CSS, ".fs-rescar__item")
 _assert("every scroll settles on a card boundary",
         "scroll-snap-align: start" in item and "scroll-snap-stop: always" in item)
+_assert("one item is exactly one viewport wide", "flex: 0 0 100%" in item)
 
 poolrows = _rule(LEDGER_CSS, ".fs-poolrows")
-_assert("the Pools module is a plain column, not a scroller",
+_assert("an open Pool's row is a plain column, not a scroller of its own",
         "flex-direction: column" in poolrows and "overflow" not in poolrows)
 
 wkscroll = _rule(LEDGER_CSS, ".fs-wkscroll")

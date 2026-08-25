@@ -25,6 +25,7 @@
 import { formatCredits } from './credits.js';
 import {
   CHAMPIONSHIP_SPLIT, ECONOMY_STOP, POOL_ENTRY, SETTINGS, SKUNK,
+  VC_ALLOCATION_DEMO,
 } from './data/rules-data.js';
 
 export const SETTINGS_MODE_DEMO = 'demo';
@@ -75,12 +76,34 @@ export function servedSettings() {
  *
  * @returns {Array<object>} rows in `rules.js` settingRow shape
  */
+/**
+ * The FULL RC2 Season-Opening Allocation, served by
+ * `/championship/results.allocation`.
+ *
+ * WHY IT IS BOUND SEPARATELY. `/settings` reports the certified BASE stage —
+ * Weekly Play Reserve + Yahoo Championship Contribution — and that field is not
+ * to be redefined to mean something new. RC2 advances a second, independently
+ * configured FantasyStakes Championship Contribution in its own stage, so the
+ * total a GM actually owes is the base plus that. The server derives the whole
+ * thing; this holds the answer and does no arithmetic.
+ */
+let ALLOCATION = null;
+
+export function bindChampionshipAllocation(allocation) {
+  ALLOCATION = allocation || null;
+}
+
+export function championshipAllocation() {
+  return ALLOCATION;
+}
+
 export function settingsRows() {
   if (MODE !== SETTINGS_MODE_AUTHORITATIVE) return SETTINGS;
 
   const s = SERVED;
   const stop = s.economy_stop;
   const pool = s.pool_entry;
+  const alloc = ALLOCATION;
 
   return Object.freeze([
     // WP3C — SEASON-OPENING ALLOCATION, not "Economy Stop" (Rev 4.3 §15, §22).
@@ -97,22 +120,41 @@ export function settingsRows() {
     // weekly_min`, and Rev 4.3 §16.2 forbids reimplementing the economic
     // formula in the browser to explain it. The components are shown; the
     // multiplication that relates them is the server's.
+    // RC2 — THREE PARTS WHEN THE CHAMPIONSHIP READ IS AVAILABLE, two when it is
+    // not. Every figure is the server's: the Weekly Play Reserve is the
+    // commissioner's weekly minimum multiplied by this league's own Yahoo
+    // regular-season week count, so a 13-week league reports a different
+    // reserve and a different total than a 14-week one. No number below is
+    // fixed by FantasyStakes and none is computed here.
     Object.freeze({
       id: 'economy-stop',
       label: 'Season-Opening Allocation',
-      value: formatCredits(stop.buyin_cents),
-      exactCents: stop.buyin_cents,
+      value: formatCredits(
+        alloc ? alloc.season_opening_allocation_cents : stop.buyin_cents),
+      exactCents: (
+        alloc ? alloc.season_opening_allocation_cents : stop.buyin_cents),
       editable: stop.editable,
-      detail:
-        `Each GM is advanced ${formatCredits(stop.buyin_cents)} at season open: `
-        + `${formatCredits(stop.min_reserve_cents)} as the Weekly Minimum `
-        + `reserve — your league's ${formatCredits(stop.weekly_min_cents)} Weekly `
-        + 'Bet Minimum across its regular-season weeks — plus '
-        + `${formatCredits(stop.reserve_cents)} as the Championship Pot `
-        + 'Contribution. The commissioner sets those two before the season and '
-        + 'they lock at activation, because changing them would re-price '
-        + 'obligations GMs have already funded. The Skunk Fee is contingent and '
-        + 'is not part of this allocation.',
+      detail: alloc
+        ? `Each GM is advanced ${formatCredits(alloc.season_opening_allocation_cents)} `
+          + 'at season open, in three parts. Weekly Play Reserve '
+          + `${formatCredits(alloc.weekly_play_reserve_cents)} — your league's `
+          + `${formatCredits(alloc.weekly_minimum_cents)} weekly minimum across `
+          + `its ${alloc.regular_season_week_count} Yahoo regular-season weeks. `
+          + `Yahoo Championship Contribution `
+          + `${formatCredits(alloc.yahoo_championship_contribution_cents)}. `
+          + 'FantasyStakes Championship Contribution '
+          + `${formatCredits(alloc.fantasystakes_championship_contribution_cents)}. `
+          + 'The commissioner sets the weekly minimum and both contributions '
+          + 'before the season and they lock at activation, because changing '
+          + 'them would re-price obligations GMs have already funded. The Skunk '
+          + 'Fee is contingent and is not part of this allocation.'
+        : `Each GM is advanced ${formatCredits(stop.buyin_cents)} at season open: `
+          + `${formatCredits(stop.min_reserve_cents)} as the Weekly Play `
+          + `Reserve — your league's ${formatCredits(stop.weekly_min_cents)} weekly `
+          + 'minimum across its regular-season weeks — plus '
+          + `${formatCredits(stop.reserve_cents)} as the Yahoo Championship `
+          + 'Contribution. The FantasyStakes Championship Contribution could not '
+          + 'be read, so it is not shown rather than shown wrongly.',
       source: 'League economy configuration',
     }),
     Object.freeze({
@@ -185,3 +227,92 @@ export function poolEntryEditable(isCommissioner) {
   if (MODE !== SETTINGS_MODE_AUTHORITATIVE) return false;
   return Boolean(isCommissioner) && SERVED.pool_entry.editable === true;
 }
+
+/* ── FINAL POR §23 · the VC ALLOCATION table ────────────────────────────────*/
+
+/**
+ * §23's table for the bound league, or the illustrative one.
+ *
+ * IT CARRIES ITS OWN AVAILABILITY, and that is not the same question as
+ * `settingsMode()`. A settings read can succeed completely and still return no
+ * VC allocation table — a LEGACY season has none, because four of the seven
+ * rows describe pots the retired architecture does not have. The server says
+ * `available: false` with a named reason and the surface states it, rather than
+ * drawing seven blank rows or failing the whole page.
+ *
+ * @returns {{available: boolean, unavailableReason: string|null,
+ *            weeklyMinimumCents: number|null, allocation: Array<object>,
+ *            inSeason: Array<object>, seasonRules: Array<object>}}
+ */
+export function vcAllocation() {
+  if (MODE !== SETTINGS_MODE_AUTHORITATIVE) {
+    return MODE === SETTINGS_MODE_UNAVAILABLE
+      // PRODUCTION, AND THE READ FAILED. The illustrative table is NOT shown
+      // here, for the same reason the Ledger does not show prototype money: a
+      // signed-in GM must never read another league's economy as their own.
+      ? { available: false, unavailableReason: 'SETTINGS_UNAVAILABLE',
+          weeklyMinimumCents: null, allocation: [], inSeason: [],
+          seasonRules: [] }
+      : { available: true,
+          unavailableReason: null,
+          weeklyMinimumCents: VC_ALLOCATION_DEMO.weeklyMinimumCents,
+          allocation: VC_ALLOCATION_DEMO.allocation,
+          inSeason: VC_ALLOCATION_DEMO.inSeason,
+          seasonRules: VC_ALLOCATION_DEMO.seasonRules };
+  }
+
+  const served = SERVED && SERVED.vc_allocation;
+  if (!served || served.available !== true) {
+    return {
+      available: false,
+      unavailableReason: (served && served.unavailable_reason)
+        || 'SETTINGS_NOT_SERVED',
+      weeklyMinimumCents: null, allocation: [], inSeason: [], seasonRules: [],
+    };
+  }
+
+  // SHAPED, NOT DERIVED. Every figure — the ratio above all — is the server's
+  // own. §16.2 forbids reimplementing the economic formula here, and a division
+  // in this function would be exactly that.
+  return {
+    available: true,
+    unavailableReason: null,
+    weeklyMinimumCents: served.weekly_minimum_cents,
+    allocation: (served.allocation || []).map((row) => ({
+      id: row.id, label: row.label, amountCents: row.amount_cents,
+      state: row.state, ratio: row.ratio, source: row.source,
+    })),
+    inSeason: (served.in_season || []).map((row) => ({
+      id: row.id, label: row.label, amountCents: row.amount_cents,
+      source: row.source,
+    })),
+    seasonRules: (served.season_rules || []).map((rule) => ({
+      label: rule.label, value: rule.value,
+    })),
+  };
+}
+
+/**
+ * How one VC ALLOCATION amount is drawn.
+ *
+ * THE THREE STATES DRAW DIFFERENTLY, WHICH IS THE WHOLE REASON THEY EXIST. The
+ * schema keeps "nobody entered an amount" apart from "this league plays without
+ * one" so an audit can tell them apart; rendering both as `$0` would discard
+ * that at the last possible step. UNCONFIGURED has no figure to show and says
+ * so in words; DECLINED shows a real zero, because the league really did choose
+ * zero.
+ *
+ * @param {{amountCents: number|null, state: string}} row
+ * @returns {string}
+ */
+export function allocationAmountText(row) {
+  if (row.state === STATE_UNCONFIGURED || row.amountCents === null
+      || row.amountCents === undefined) {
+    return 'Not set';
+  }
+  return formatCredits(row.amountCents);
+}
+
+export const STATE_CONFIGURED = 'CONFIGURED';
+export const STATE_DECLINED = 'DECLINED';
+export const STATE_UNCONFIGURED = 'UNCONFIGURED';

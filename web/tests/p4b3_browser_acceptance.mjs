@@ -44,15 +44,19 @@ await withPage({ port: 9371, settleMs: 1500 }, async ({ evaluate }) => {
     const served = await (await fetch('/league/' + ${league} + '/pool/slate/5',
       { credentials: 'same-origin' })).json();
     const section = document.querySelector('[data-module="pools"]');
-    const rows = [...section.querySelectorAll('.fs-poolrow')];
+    // RC4 - the Wrap Up Prop Pool item is the shared result card now, not a
+    // 45px list row. Same facts, read off the elements that carry them: the
+    // name is the card identity, the catalog number is the tappable card id,
+    // and a carried pot keeps the is-carried gold every Pool surface uses.
+    const rows = [...section.querySelectorAll('.fs-rescar__item > .fs-wcard')];
     return {
       served,
       state: section.dataset.state,
       heading: section.textContent.slice(0, 48),
       count: rows.length,
-      names: rows.map(r => r.querySelector('.fs-poolrow__name').textContent),
-      catalogNumbers: rows.map(r => r.dataset.pool),
-      rollovers: rows.map(r => Boolean(r.querySelector('.is-rollover'))),
+      names: rows.map(r => r.querySelector('.fs-wcard__identity').textContent),
+      catalogNumbers: rows.map(r => r.dataset.cardId),
+      rollovers: rows.map(r => Boolean(r.querySelector('.is-carried'))),
     };
   `));
 
@@ -91,7 +95,8 @@ await withPage({ port: 9371, settleMs: 1500 }, async ({ evaluate }) => {
     JSON.stringify(slate.rollovers));
 
   const poolDetail = await evaluate(`
-    document.querySelector('[data-module="pools"] .fs-poolrow').click();
+    document.querySelector(
+      '[data-module="pools"] .fs-rescar__item > .fs-wcard').click();
     const text = document.getElementById('fs-sheet').textContent;
     document.querySelector('#fs-sheet [data-fs-close]').click();
     return text;
@@ -287,7 +292,7 @@ await withPage({ port: 9371, settleMs: 1500 }, async ({ evaluate }) => {
       return {
         drawn: served.drawn,
         state: section.dataset.state,
-        rows: section.querySelectorAll('.fs-poolrow').length,
+        rows: section.querySelectorAll('.fs-rescar__item > .fs-wcard').length,
         text: section.textContent,
       };
     `));
