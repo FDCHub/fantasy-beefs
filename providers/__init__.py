@@ -34,6 +34,9 @@ additionally walks every module here for a forbidden import.
 
     yahoo/                transport, parse, normalize, the Yahoo stat map, and
                           the Yahoo defaults over the neutral modules above
+    balldontlie/          transport, parse, normalize for the FACTUAL provider:
+                          a paced, cached client that never works around a rate
+                          limit, and the Phase 0F rules its payload requires
     demo/                 a deterministic runtime provider: scenario, source,
                           stat map, bracket source
     fixtures/             the recorded corpus, its scrubber and its replay
@@ -59,4 +62,13 @@ ONE PROVIDER PACKAGE NEVER IMPORTS ANOTHER. `demo/` imports `providers.identity`
 and `providers.persist`, never `providers.yahoo.*`. That fence is what keeps the
 branch on provider identity confined to the composition layer, where the API
 connects a league to its feed.
+
+WP2 ADDED A PROVIDER THAT HOSTS NO LEAGUE, AND THE FENCE HOLDS DIFFERENTLY FOR
+IT. Yahoo answers "who played whom, and who won"; BALLDONTLIE answers "what
+happened on the field". It has no league, no fantasy team and no roster, so
+`balldontlie/normalize.build_week` fills in the facts and leaves `teams`,
+`matchups` and `roster_entries` EMPTY rather than inventing a league to put them
+in. Which feed answers for which league stays where it already lives — the
+composition layer — and joining a BALLDONTLIE fact to a Yahoo roster is what
+`cross_identity.py` exists to make safe.
 """

@@ -1,0 +1,48 @@
+{
+  "data": [
+    {
+      "id": 28,
+      "abbreviation": "SF",
+      "full_name": "San Francisco 49ers"
+    },
+    {
+      "id": 25,
+      "abbreviation": "DET",
+      "full_name": "Detroit Lions"
+    },
+    {
+      "id": 13,
+      "abbreviation": "LV",
+      "full_name": "Las Vegas Raiders"
+    },
+    {
+      "id": 30,
+      "abbreviation": "JAX",
+      "full_name": "Jacksonville Jaguars"
+    },
+    {
+      "id": 19,
+      "abbreviation": "LAR",
+      "full_name": "Los Angeles Rams"
+    },
+    {
+      "id": 15,
+      "abbreviation": "DEN",
+      "full_name": "Denver Broncos"
+    },
+    {
+      "id": 34,
+      "abbreviation": "HOU",
+      "full_name": "Houston Texans"
+    },
+    {
+      "id": 6,
+      "abbreviation": "CHI",
+      "full_name": "Chicago Bears"
+    }
+  ],
+  "meta": {
+    "next_cursor": null,
+    "per_page": 100
+  }
+}

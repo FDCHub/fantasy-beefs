@@ -1,0 +1,375 @@
+{
+  "data": [
+    {
+      "id": 5107,
+      "game_id": 424186,
+      "type": "punt",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "B.Wishnowsky punts 44 yards",
+      "wallclock": "2025-09-07T17:22:00Z",
+      "stat_yardage": null,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": []
+    },
+    {
+      "id": 5101,
+      "game_id": 424186,
+      "type": "kickoff",
+      "team": {
+        "id": 15,
+        "abbreviation": "DEN",
+        "full_name": "Denver Broncos"
+      },
+      "text": "J.Karty kicks 65 yards",
+      "wallclock": "2025-09-07T17:00:30Z",
+      "stat_yardage": null,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": []
+    },
+    {
+      "id": 5104,
+      "game_id": 424186,
+      "type": "rush",
+      "team": {
+        "id": 15,
+        "abbreviation": "DEN",
+        "full_name": "Denver Broncos"
+      },
+      "text": "J.Williams rush for no gain",
+      "wallclock": "2025-09-07T17:19:00Z",
+      "stat_yardage": 0,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": 3,
+      "participants": []
+    },
+    {
+      "id": 5102,
+      "game_id": 424186,
+      "type": "rush",
+      "team": {
+        "id": 15,
+        "abbreviation": "DEN",
+        "full_name": "Denver Broncos"
+      },
+      "text": "J.Williams rush for 3 yards",
+      "wallclock": "2025-09-07T17:03:00Z",
+      "stat_yardage": 3,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": 1,
+      "participants": []
+    },
+    {
+      "id": 5103,
+      "game_id": 424186,
+      "type": "pass",
+      "team": {
+        "id": 15,
+        "abbreviation": "DEN",
+        "full_name": "Denver Broncos"
+      },
+      "text": "B.Nix pass incomplete",
+      "wallclock": "2025-09-07T17:11:00Z",
+      "stat_yardage": 0,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": 2,
+      "participants": []
+    },
+    {
+      "id": 5201,
+      "game_id": 424186,
+      "type": "pass",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "M.Stafford pass INTERCEPTED by J.Bates 45 Yd Return TOUCHDOWN",
+      "wallclock": "2025-09-07T17:31:00Z",
+      "stat_yardage": 45,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": [
+        {
+          "type": "passer",
+          "player": {
+            "id": 63
+          }
+        },
+        {
+          "type": "interceptor",
+          "player": {
+            "id": 40001
+          }
+        }
+      ]
+    },
+    {
+      "id": 5202,
+      "game_id": 424186,
+      "type": "kickoff",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "W.Lutz kicks 65 yards",
+      "wallclock": "2025-09-07T17:33:00Z",
+      "stat_yardage": null,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": []
+    },
+    {
+      "id": 5203,
+      "game_id": 424186,
+      "type": "rush",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "K.Williams rush for 12 yards, FIRST DOWN",
+      "wallclock": "2025-09-07T17:36:00Z",
+      "stat_yardage": 12,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": 1,
+      "participants": []
+    },
+    {
+      "id": 5204,
+      "game_id": 424186,
+      "type": "pass",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "M.Stafford pass to P.Nacua for 23 yards, TOUCHDOWN",
+      "wallclock": "2025-09-07T17:39:00Z",
+      "stat_yardage": 15,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": [
+        {
+          "type": "passer",
+          "player": {
+            "id": 63
+          }
+        }
+      ]
+    },
+    {
+      "id": 5205,
+      "game_id": 424186,
+      "type": "field-goal-good",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "J.Karty 38 Yd Field Goal",
+      "wallclock": "2025-09-07T17:44:00Z",
+      "stat_yardage": 38,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": [
+        {
+          "type": "field_goal_kicker",
+          "player": {
+            "id": 20001
+          }
+        }
+      ]
+    },
+    {
+      "id": 5206,
+      "game_id": 424186,
+      "type": "kickoff",
+      "team": {
+        "id": 15,
+        "abbreviation": "DEN",
+        "full_name": "Denver Broncos"
+      },
+      "text": "J.Karty kicks 65 yards",
+      "wallclock": "2025-09-07T17:45:00Z",
+      "stat_yardage": null,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": []
+    },
+    {
+      "id": 5207,
+      "game_id": 424186,
+      "type": "rush",
+      "team": {
+        "id": 15,
+        "abbreviation": "DEN",
+        "full_name": "Denver Broncos"
+      },
+      "text": "J.Williams rush for 8 yards, FIRST DOWN",
+      "wallclock": "2025-09-07T17:48:00Z",
+      "stat_yardage": 8,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": 1,
+      "participants": []
+    },
+    {
+      "id": 5208,
+      "game_id": 424186,
+      "type": "field-goal-missed",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "W.Lutz 52 Yd Field Goal MISSED",
+      "wallclock": "2025-09-07T17:51:00Z",
+      "stat_yardage": 52,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": [
+        {
+          "type": "field_goal_kicker",
+          "player": {
+            "id": 20002
+          }
+        }
+      ]
+    },
+    {
+      "id": 5209,
+      "game_id": 424186,
+      "type": "rush",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "K.Williams rush for 2 yards",
+      "wallclock": "2025-09-07T17:53:00Z",
+      "stat_yardage": 2,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": 1,
+      "participants": []
+    },
+    {
+      "id": 5210,
+      "game_id": 424186,
+      "type": "blocked-field-goal",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "J.Karty 37 Yd Field Goal BLOCKED",
+      "wallclock": "2025-09-07T17:55:00Z",
+      "stat_yardage": null,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": [
+        {
+          "type": "field_goal_kicker",
+          "player": {
+            "id": 20001
+          }
+        }
+      ]
+    },
+    {
+      "id": 5211,
+      "game_id": 424186,
+      "type": "blocked-field-goal-touchdown",
+      "team": {
+        "id": 15,
+        "abbreviation": "DEN",
+        "full_name": "Denver Broncos"
+      },
+      "text": "J.Verse 76 Yd Return of Blocked Field Goal TOUCHDOWN",
+      "wallclock": "2025-09-07T17:58:00Z",
+      "stat_yardage": 76,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": [
+        {
+          "type": "returner",
+          "player": {
+            "id": 40002
+          }
+        }
+      ]
+    },
+    {
+      "id": 5301,
+      "game_id": 424186,
+      "type": "timeout",
+      "team": null,
+      "text": "Timeout #1 by DEN",
+      "wallclock": "2025-09-07T18:01:00Z",
+      "stat_yardage": null,
+      "period": 1,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": []
+    },
+    {
+      "id": 5302,
+      "game_id": 424186,
+      "type": "end-of-game",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "END GAME",
+      "wallclock": "2025-09-07T20:14:00Z",
+      "stat_yardage": null,
+      "period": 4,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": []
+    },
+    {
+      "id": 5303,
+      "game_id": 424186,
+      "type": "two-minute-warning",
+      "team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "text": "Administrative record",
+      "wallclock": "2025-09-07T20:15:00Z",
+      "stat_yardage": null,
+      "period": 4,
+      "clock": "10:00",
+      "start_down": null,
+      "participants": []
+    }
+  ],
+  "meta": {
+    "next_cursor": null,
+    "per_page": 100
+  }
+}

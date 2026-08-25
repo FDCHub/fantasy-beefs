@@ -1,0 +1,201 @@
+{
+  "pages": [
+    {
+      "data": [
+        {
+          "season": 2025,
+          "week": 17,
+          "team": {
+            "id": 28,
+            "abbreviation": "SF",
+            "full_name": "San Francisco 49ers"
+          },
+          "player": {
+            "id": 27,
+            "first_name": "Brock",
+            "last_name": "Purdy",
+            "position": "QB",
+            "position_abbreviation": "QB"
+          },
+          "position": "QB",
+          "stats": {
+            "passing_yards": 320,
+            "passing_touchdowns": 3,
+            "rushing_yards": 12
+          }
+        },
+        {
+          "season": 2025,
+          "week": 17,
+          "team": {
+            "id": 25,
+            "abbreviation": "DET",
+            "full_name": "Detroit Lions"
+          },
+          "player": {
+            "id": 113,
+            "first_name": "Amon-Ra",
+            "last_name": "St. Brown",
+            "position": "WR",
+            "position_abbreviation": "WR"
+          },
+          "position": "WR",
+          "stats": {
+            "receptions": 9,
+            "receiving_yards": 112,
+            "receiving_touchdowns": 1
+          }
+        },
+        {
+          "season": 2025,
+          "week": 17,
+          "team": {
+            "id": 13,
+            "abbreviation": "LV",
+            "full_name": "Las Vegas Raiders"
+          },
+          "player": {
+            "id": 277679,
+            "first_name": "Brock",
+            "last_name": "Bowers",
+            "position": "TE",
+            "position_abbreviation": "TE"
+          },
+          "position": "TE",
+          "stats": {}
+        },
+        {
+          "season": 2025,
+          "week": 17,
+          "team": {
+            "id": 25,
+            "abbreviation": "DET",
+            "full_name": "Detroit Lions"
+          },
+          "player": null,
+          "position": "DST",
+          "stats": {
+            "defensive_sacks": 3,
+            "defensive_interceptions": 1,
+            "opponent_fumble_recoveries": 1,
+            "dst_points_allowed": 18,
+            "dst_yards_allowed": 289
+          }
+        }
+      ],
+      "meta": {
+        "next_cursor": 1,
+        "per_page": 100
+      }
+    },
+    {
+      "data": [
+        {
+          "season": 2025,
+          "week": 17,
+          "team": {
+            "id": 30,
+            "abbreviation": "JAX",
+            "full_name": "Jacksonville Jaguars"
+          },
+          "player": {
+            "id": 278371,
+            "first_name": "Cam",
+            "last_name": "Little",
+            "position": "Kicker",
+            "position_abbreviation": "PK"
+          },
+          "position": "K",
+          "stats": {
+            "field_goals_made": 3,
+            "field_goal_attempts": 4,
+            "field_goals_made_yards": 111,
+            "field_goals_made_0_to_39": 2,
+            "field_goals_made_40_to_49": 1,
+            "field_goals_missed": 1,
+            "field_goals_missed_yards": 52,
+            "field_goals_missed_50_plus": 1,
+            "extra_points_made": 2,
+            "extra_point_attempts": 2
+          }
+        },
+        {
+          "season": 2025,
+          "week": 17,
+          "team": {
+            "id": 34,
+            "abbreviation": "HOU",
+            "full_name": "Houston Texans"
+          },
+          "player": {
+            "id": 1828,
+            "first_name": "Ka'imi",
+            "last_name": "Fairbairn",
+            "position": "Kicker",
+            "position_abbreviation": "PK"
+          },
+          "position": "K",
+          "stats": {
+            "field_goals_made": 1,
+            "field_goal_attempts": 3,
+            "field_goals_made_yards": 44,
+            "field_goals_made_40_to_49": 1,
+            "field_goals_missed": 2,
+            "field_goals_missed_yards": 71,
+            "field_goals_missed_0_to_39": 1,
+            "field_goals_missed_40_to_49": 1,
+            "extra_points_made": 1,
+            "extra_point_attempts": 2,
+            "extra_points_missed": 1
+          }
+        },
+        {
+          "season": 2025,
+          "week": 17,
+          "team": {
+            "id": 19,
+            "abbreviation": "LAR",
+            "full_name": "Los Angeles Rams"
+          },
+          "player": {
+            "id": 63,
+            "first_name": "Matthew",
+            "last_name": "Stafford",
+            "position": "QB",
+            "position_abbreviation": "QB"
+          },
+          "position": "QB",
+          "stats": {
+            "passing_yards": 269,
+            "passing_touchdowns": 2,
+            "passing_interceptions": 3
+          }
+        },
+        {
+          "season": 2025,
+          "week": 17,
+          "team": {
+            "id": 6,
+            "abbreviation": "CHI",
+            "full_name": "Chicago Bears"
+          },
+          "player": {
+            "id": 909090,
+            "first_name": "Gervon",
+            "last_name": "Dexter",
+            "position": "DT",
+            "position_abbreviation": "DT"
+          },
+          "position": "DT",
+          "stats": {
+            "defensive_sacks": 1
+          }
+        }
+      ],
+      "meta": {
+        "next_cursor": null,
+        "per_page": 100
+      }
+    }
+  ]
+}

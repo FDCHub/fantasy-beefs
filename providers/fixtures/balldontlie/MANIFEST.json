@@ -1,0 +1,16 @@
+{
+  "provenance": "SYNTHETIC",
+  "provenance_note": "NOT CAPTURED, AND IT MATTERS WHICH. `providers/fixtures/record.py` reserves CAPTURED for verbatim provider bytes written by capture_live(); no BALLDONTLIE payload has ever been captured into this repository, because no API key is reachable from it. These files are hand-built to the SHAPES AND BEHAVIOURS the Phase 0 acceptance test measured across 117 live requests, so the rules they exercise are real even though the bytes are not. They certify WP2's rules; they cannot certify that BALLDONTLIE's live payload still looks like this, and nothing in this repository claims they do (S6-R2).",
+  "provider": "balldontlie",
+  "api": "https://api.balldontlie.io/nfl/v1",
+  "season": 2025,
+  "week": 17,
+  "subject_ids_are_real": "Player and team identifiers are the REAL BALLDONTLIE ids recorded in providers/fixtures/wp1_identity/bdl_subjects_2025_w17.json, so a subject key produced from a stat row here can be matched against WP1's identity directory rather than against a second set of invented ids. Two exceptions are marked synthetic in the builder: the two kicker participant ids in the play stream, which WP1's corpus does not need.",
+  "statistics_are_invented": "Every FIGURE is invented. These files assert nothing about what any player actually did in 2025 week 17, and no reconciliation reads them.",
+  "fixtures": {
+    "fantasy_weekly_stats__per_page-100__season-2025__week-17.json": "fantasy/weekly_stats, two pages. Exercises 0F-1 zero omission, 0F-2 the empty stats block, 0F-16 the PK spelling and the stray DT, 0F-17 the null-player DST row, and cursor pagination.",
+    "games__per_page-100__seasons-2025__weeks-1.json": "games for week 1 WITHOUT a postseason filter \u2014 the naive query. Exercises 0F-14 the postseason week collision, 0F-4 null quarter scores, and an unfinished game that has no score to read.",
+    "plays__game_ids-424186__per_page-100.json": "plays for one game. Exercises 0F-5 scrambled order and non-monotonic ids, 0F-6 the null team, 0F-7 possession inversion, 0F-8 participant attribution, 0F-9 both blocked-kick slugs, 0F-12 the pick six, 0F-13 stat_yardage disagreeing with the text, and a record after end-of-game.",
+    "teams__per_page-100.json": "teams, for parser coverage."
+  }
+}

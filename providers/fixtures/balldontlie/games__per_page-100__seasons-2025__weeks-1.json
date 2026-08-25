@@ -1,0 +1,113 @@
+{
+  "data": [
+    {
+      "id": 424186,
+      "season": 2025,
+      "week": 1,
+      "postseason": false,
+      "home_team": {
+        "id": 19,
+        "abbreviation": "LAR",
+        "full_name": "Los Angeles Rams"
+      },
+      "visitor_team": {
+        "id": 15,
+        "abbreviation": "DEN",
+        "full_name": "Denver Broncos"
+      },
+      "home_team_score": 24,
+      "visitor_team_score": 17,
+      "status": "Final",
+      "date": "2025-09-07T17:00:00Z",
+      "period_scores": [
+        {
+          "period": 1,
+          "home": null,
+          "visitor": 7
+        },
+        {
+          "period": 2,
+          "home": 10,
+          "visitor": 3
+        },
+        {
+          "period": 3,
+          "home": 7,
+          "visitor": null
+        },
+        {
+          "period": 4,
+          "home": 7,
+          "visitor": 7
+        }
+      ]
+    },
+    {
+      "id": 424194,
+      "season": 2025,
+      "week": 1,
+      "postseason": false,
+      "home_team": {
+        "id": 25,
+        "abbreviation": "DET",
+        "full_name": "Detroit Lions"
+      },
+      "visitor_team": {
+        "id": 6,
+        "abbreviation": "CHI",
+        "full_name": "Chicago Bears"
+      },
+      "home_team_score": 21,
+      "visitor_team_score": 20,
+      "status": "Final",
+      "date": "2025-09-07T20:25:00Z",
+      "period_scores": []
+    },
+    {
+      "id": 999001,
+      "season": 2025,
+      "week": 1,
+      "postseason": true,
+      "home_team": {
+        "id": 28,
+        "abbreviation": "SF",
+        "full_name": "San Francisco 49ers"
+      },
+      "visitor_team": {
+        "id": 30,
+        "abbreviation": "JAX",
+        "full_name": "Jacksonville Jaguars"
+      },
+      "home_team_score": 31,
+      "visitor_team_score": 28,
+      "status": "Final",
+      "date": "2026-01-11T21:00:00Z",
+      "period_scores": []
+    },
+    {
+      "id": 999002,
+      "season": 2025,
+      "week": 1,
+      "postseason": false,
+      "home_team": {
+        "id": 34,
+        "abbreviation": "HOU",
+        "full_name": "Houston Texans"
+      },
+      "visitor_team": {
+        "id": 13,
+        "abbreviation": "LV",
+        "full_name": "Las Vegas Raiders"
+      },
+      "home_team_score": null,
+      "visitor_team_score": null,
+      "status": "Scheduled",
+      "date": "2025-09-08T00:20:00Z",
+      "period_scores": []
+    }
+  ],
+  "meta": {
+    "next_cursor": null,
+    "per_page": 100
+  }
+}
