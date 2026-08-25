@@ -160,6 +160,33 @@ def _simulate_team(pts: np.ndarray, rng: np.random.Generator, *,
     return draws.sum(axis=1)
 
 
+def simulate_team_with_sigma(pts: np.ndarray, sigmas: np.ndarray,
+                            rng: np.random.Generator, *,
+                            model_config: SimModelConfig) -> np.ndarray:
+    """The sim-v2 draw: one sigma PER PLAYER, supplied by IPRM.
+
+    ADDED BESIDE `_simulate_team`, NOT INSTEAD OF IT. v1 derives every sigma
+    from one global `std_pct` inside the draw; v2 receives a sigma per player,
+    because IPRM may model a quarterback and a defence differently even when
+    their means match. Leaving v1's function untouched is what makes the
+    sim-v1 freeze provable by inspection as well as by fixture.
+
+    The truncation decision is read from the config rather than assumed: v1
+    clamps at zero, v2 does not, and both are recorded fields of their frozen
+    versions.
+    """
+    if len(pts) != len(sigmas):
+        raise ValueError(
+            f"each starter needs exactly one sigma: {len(pts)} means against "
+            f"{len(sigmas)} sigmas")
+    safe = np.maximum(np.asarray(sigmas, dtype=float), model_config.min_std)
+    draws = rng.normal(loc=pts, scale=safe,
+                       size=(model_config.n_sims, len(pts)))
+    if model_config.truncate_draws_at_zero:
+        draws = np.maximum(draws, 0.0)
+    return draws.sum(axis=1)
+
+
 # ── Private helper ────────────────────────────────────────────────────────────
 
 def _build_starter_lines(

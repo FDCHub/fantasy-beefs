@@ -76,6 +76,21 @@ CSPS_VERSION = "csps-v1"
 FACTUAL = "FACTUAL"
 PROJECTION = "PROJECTION"
 
+#: Components the provider's PROJECTION BLOCK omits for EVERY subject — a gap in
+#: the vocabulary rather than a statement about one player.
+#:
+#: THE DISTINCTION THIS SET DRAWS IS THE WHOLE OF PROJECTION ABSENCE SEMANTICS.
+#: A wide receiver's row carries no `passing_yards` because he is not projected
+#: to throw: absent means zero, and scoring it as zero is correct. A wide
+#: receiver's row carries no `receptions` because BALLDONTLIE projects nobody's
+#: receptions — Phase 0 measured that the block publishes `targets` instead —
+#: and scoring THAT as zero would zero out the largest input a PPR league has,
+#: for every pass-catcher alive.
+#:
+#: Membership is therefore a measured fact about the provider, not a convenience.
+#: One field qualifies today.
+SYSTEMATIC_PROJECTION_GAPS = frozenset({"receptions"})
+
 
 class Quality:
     """What kind of thing one category's contribution is."""
@@ -214,16 +229,22 @@ class _Sheet:
         every zero-valued field, and 25 of 34 week-1 kickers carried no
         `field_goals_missed` key precisely because they missed none (Phase 0F-1).
 
-        On a PROJECTION an omitted component was NOT FORECAST, which is not the
-        same as forecast at zero — `receptions` is absent from the projection
-        block for everyone alive, and treating that as zero would silently
-        zero-out every PPR league's largest input (Sprint 2B rule 0F-20).
+        On a PROJECTION it depends on WHY it is absent, and
+        `SYSTEMATIC_PROJECTION_GAPS` is the list of fields the provider omits
+        for everybody. `receptions` is on it — treating that as zero would
+        silently zero-out every PPR league's largest input (Sprint 2B rule
+        0F-20). Everything else absent means the subject is not projected to do
+        it, which really is zero: a receiver throws for nothing.
         """
         raw = self.components.get(key)
         if raw is None:
             if self.mode == FACTUAL:
                 return 0.0, True
-            return None, False
+            if key in SYSTEMATIC_PROJECTION_GAPS:
+                return None, False
+            # Not projected to occur. A receiver with no passing line is
+            # projected to throw for nothing, and that IS zero.
+            return 0.0, True
         return float(raw), True
 
     def add(self, category: str, component, rule: str, contribution: float,
@@ -556,8 +577,12 @@ def _receptions(sheet: _Sheet, p: ScoringProfile) -> None:
                   f"reception projection is targets x catch rate — a model "
                   f"IPRM owns")
         return
-    sheet.add("receptions", None, rule, 0.0, Quality.UNAVAILABLE,
-              "neither receptions nor targets are available")
+    # NEITHER RECEPTIONS NOR TARGETS. This subject is not projected to catch
+    # passes at all — a quarterback, a kicker, a defence — which is a real zero
+    # rather than a gap. The gap case is the one above: targets ARE projected
+    # and the reception count that should accompany them is not.
+    sheet.add("receptions", 0.0, rule, 0.0, Quality.DIRECT,
+              "not projected to receive; no targets are forecast either")
 
 
 def _two_point(sheet: _Sheet, p: ScoringProfile) -> None:

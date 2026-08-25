@@ -124,7 +124,8 @@ print("\n3-A · a scoring profile is versioned data, and refuses what it cannot 
 _assert("both validated leagues load", CULV.profile_id and WHISKERS.profile_id,
         f"{CULV.name} / {WHISKERS.name}")
 _assert("each carries a version a result can cite",
-        CULV.version == "2025.1" and WHISKERS.version == "2025.1")
+        CULV.version == "2025.1" and WHISKERS.version == "2025.2",
+        f"CULV {CULV.version} / Whiskers {WHISKERS.version}")
 _assert("CULV scores 5.00 per passing touchdown, Mr Whiskers 4.00 — the "
         "difference the reconciliation pinned",
         (CULV.passing_touchdown, WHISKERS.passing_touchdown) == (5.0, 4.0))
@@ -137,13 +138,27 @@ _assert("CULV has no yardage bonuses at all — proven absent, not assumed",
 _assert("Mr Whiskers' rushing tiers are cumulative at 100 and 150",
         [(t.threshold, t.points) for t in WHISKERS.rushing_tiers][:2]
         == [(100.0, 1.0), (150.0, 1.0)])
-_assert("its passing tiers are DECLARED but UNRESOLVED — the league scores "
-        "them and no evidence fixes their value",
-        all(t.unresolved for t in WHISKERS.passing_tiers)
-        and len(WHISKERS.passing_tiers) == 3,
+# SPRINT 4 RESOLVED THESE FROM OWNER-SUPPLIED SETTINGS. Sprint 3 declared the
+# tiers and refused to guess their values; the owner then supplied them, and
+# every rate in that same document matched what the reconciliation had already
+# derived independently. The profile version moved 2025.1 -> 2025.2 to record it.
+_assert("its passing tiers are now RESOLVED from owner-supplied settings",
+        [(t.threshold, t.points) for t in WHISKERS.passing_tiers]
+        == [(300.0, 1.0), (400.0, 1.0), (500.0, 2.0)]
+        and not any(t.unresolved for t in WHISKERS.passing_tiers))
+_assert("  · as are the upper rushing and receiving tiers",
+        [(t.threshold, t.points) for t in WHISKERS.rushing_tiers]
+        == [(100.0, 1.0), (150.0, 1.0), (200.0, 2.0)]
+        and [(t.threshold, t.points) for t in WHISKERS.receiving_tiers]
+        == [(100.0, 1.0), (150.0, 1.0), (200.0, 2.0)])
+_assert("  · so NEITHER production profile carries an unresolved rule any more",
+        not WHISKERS.unresolved_rules and not CULV.unresolved_rules,
         str(WHISKERS.unresolved_rules))
-_assert("  · and CULV carries no unresolved rule at all",
-        WHISKERS.unresolved_rules and not CULV.unresolved_rules)
+_assert("  · and the resolution names its provenance rather than an inference "
+        "from historical totals",
+        "owner-supplied" in json.load(open(os.path.join(
+            ROOT, "scoring", "profiles", "mr_whiskers_memorial.json"),
+            encoding="utf-8"))["evidence"]["tier_resolution_provenance"].lower())
 
 _refuses("a profile with no version is refused — a result could not cite it",
          lambda: from_document({"profile_id": "x", "name": "X"}))
@@ -334,16 +349,28 @@ _assert("fumbles lost are negative", _score({"fumbles_lost": 1}).points == -2.0)
 _assert("offensive fumble recovery touchdowns",
         _score({"offensive_fumble_recovery_touchdowns": 1}).points == 6.0)
 
-_assert("threshold bonuses are cumulative on a FACTUAL line",
-        _score({"rushing_yards": 210}, WHISKERS, position="RB")
-        .contribution("rushing_yard_bonus").quality == C.Quality.UNRESOLVED_RULE,
-        "210 crosses the unresolved 200 tier")
-_assert("  · a line crossing an UNRESOLVED tier REFUSES rather than guessing",
-        _score({"rushing_yards": 210}, WHISKERS, position="RB").status
-        == C.ResultStatus.REFUSED)
-_assert("  · and a line below it scores normally",
-        _score({"rushing_yards": 160}, WHISKERS, position="RB")
-        .contribution("rushing_yard_bonus").contribution == 2.0)
+_assert("threshold bonuses are cumulative on a FACTUAL line: 210 rushing "
+        "yards earns the 100, 150 AND 200 tiers",
+        _near(_score({"rushing_yards": 210}, WHISKERS, position="RB")
+              .contribution("rushing_yard_bonus").contribution, 4.0))
+_assert("  · and 160 earns only the first two",
+        _near(_score({"rushing_yards": 160}, WHISKERS, position="RB")
+              .contribution("rushing_yard_bonus").contribution, 2.0))
+
+# THE UNRESOLVED-RULE REFUSAL IS STILL CERTIFIED. Mr Whiskers no longer has an
+# unresolved tier, so it is exercised against a profile that does — the
+# machinery must survive the resolution of the league that first needed it.
+_UNRESOLVED_PROFILE = from_document({
+    "profile_id": "unresolved_probe", "name": "Unresolved Probe",
+    "version": "test",
+    "offense": {"rushing_yards_per_point": 0.1,
+                "rushing_tiers": [{"threshold": 100, "points": 1.0},
+                                  {"threshold": 200, "points": 0.0,
+                                   "unresolved": True}]}})
+_assert("a line crossing an UNRESOLVED tier still REFUSES rather than guessing",
+        _score({"rushing_yards": 210}, _UNRESOLVED_PROFILE, position="RB")
+        .contribution("rushing_yard_bonus").quality
+        == C.Quality.UNRESOLVED_RULE)
 
 _assert("kicker: distance bands", _score(
     {"field_goals_made_0_to_39": 2, "field_goals_made_40_to_49": 1,
@@ -453,12 +480,18 @@ _assert("a line carrying a play-derived component is "
 _assert("a projection missing a scored category is PARTIAL",
         _proj_wr.status == C.ResultStatus.PARTIAL)
 _assert("a line whose rule value is unresolved is REFUSED, and scores nothing",
-        _score({"passing_yards": 320}, WHISKERS, position="QB").status
-        == C.ResultStatus.REFUSED
-        and _score({"passing_yards": 320}, WHISKERS, position="QB").points == 0.0)
+        _score({"rushing_yards": 210}, _UNRESOLVED_PROFILE,
+               position="RB").status == C.ResultStatus.REFUSED
+        and _score({"rushing_yards": 210}, _UNRESOLVED_PROFILE,
+                   position="RB").points == 0.0)
 _assert("  · and the refusal says why",
-        "no evidence" in _score({"passing_yards": 320}, WHISKERS,
-                                position="QB").refusal)
+        "no evidence" in _score({"rushing_yards": 210}, _UNRESOLVED_PROFILE,
+                                position="RB").refusal)
+_assert("  · while Mr Whiskers now SCORES a 320-yard passing line, tier and all",
+        _near(_score({"passing_yards": 320}, WHISKERS, position="QB").points,
+              320 * 0.04 + 1.0)
+        and _score({"passing_yards": 320}, WHISKERS,
+                   position="QB").status != C.ResultStatus.REFUSED)
 _assert("a PARTIAL result warns that it is a FLOOR, not a total",
         any("FLOOR" in w for w in _proj_wr.warnings), str(_proj_wr.warnings[:1]))
 _assert("every category appears in the breakdown, including the ones this "

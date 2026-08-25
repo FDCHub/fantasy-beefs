@@ -232,10 +232,97 @@ MODEL_V1 = SimModelConfig(
 )
 
 
+# ── v2 — the CSPS/IPRM projection path ────────────────────────────────────────
+#
+# WHAT MAKES IT A DIFFERENT MODEL, AND WHY IT IS A NEW VERSION RATHER THAN AN
+# EDIT. v1 takes a FantasyPros PPR scalar and re-scores it here, in
+# `_adjust_for_scoring`, using position-average stat tables — `avg_stats` and
+# `fp_reference` exist for exactly that. v2 takes a mean that CSPS has ALREADY
+# scored under the league's own certified rule set and IPRM has attached a
+# distribution to. Running v1's re-scoring over a v2 mean would convert it a
+# second time, which is the double-conversion hazard the Phase 0 audit named.
+#
+# So v2 declares those tables EMPTY. They are not unused-by-accident; they are
+# absent because the step they serve does not exist on this path, and a v2 run
+# that called `_adjust_for_scoring` would raise rather than quietly re-score.
+#
+# THREE FIELDS DIFFER IN VALUE, AND EACH IS A DELIBERATE VERSIONED CHOICE:
+#
+#   scoring                 v1 carries the league rates because it does the
+#                           conversion. v2 does not convert, so it names the
+#                           owner instead: the CSPS scoring profile, whose id
+#                           and version travel on every IPRM result and into the
+#                           simulation fingerprint. Rates here would be a second
+#                           source of scoring truth.
+#
+#   truncate_draws_at_zero  v1 clamps every draw at zero. That was right for a
+#                           FantasyPros PPR scalar, which cannot be negative,
+#                           and wrong for a league-scored total, which can be:
+#                           the reconciled Titans defence scored -1.00 in its
+#                           points-allowed band and Tyrone Tracy's -5 receiving
+#                           yards scored -0.50. Clamping would silently truncate
+#                           the left tail of every defence and turnover-prone
+#                           quarterback. v2 does not clamp — and because that is
+#                           a probability-affecting change, it mints a version
+#                           rather than editing v1.
+#
+#   std_pct / min_std       IDENTICAL to v1, on purpose. IPRM derives each
+#                           player's sigma with v1's own rule,
+#                           max(|mean| x 0.20, 0.5), so sim-v2 changes what the
+#                           mean is built from and not how far it is trusted to
+#                           move. They are repeated here so a v2 run is
+#                           self-describing.
+#
+# starter_correlation stays "none_independent_normals": sim-v1 assumes
+# independence, no approved correlation structure exists, and adding one would
+# be a research change rather than an integration.
+
+MODEL_V2 = SimModelConfig(
+    model_version_id = "sim-v2",
+
+    algorithm      = "montecarlo_normal_sum_independent_starters_csps_iprm_v2",
+    rng_algorithm  = "numpy_default_rng_pcg64",
+    seed_method    = "matchup_or_team_pair_week_v1",
+
+    n_sims                 = 10_000,
+    std_pct                = 0.20,
+    min_std                = 0.5,
+    truncate_draws_at_zero = False,
+    starter_correlation    = "none_independent_normals",
+
+    points_round_dp = 4,
+    # Scoring is owned by the CSPS profile named on each IPRM result, not by
+    # this config. The zeros are unreachable on the v2 path and the marker says
+    # so out loud.
+    scoring = SimScoring(
+        scoring_type     = "csps_profile_owned",
+        rec_points       = 0.0,
+        pass_td_points   = 0.0,
+        rush_td_points   = 0.0,
+        rec_td_points    = 0.0,
+        bonus_100yd_rush = 0.0,
+        bonus_100yd_rec  = 0.0,
+    ),
+    injury_multipliers = (
+        ("doubtful",     0.25),
+        ("ir",           0.00),
+        ("out",          0.00),
+        ("questionable", 0.60),
+    ),
+    # Empty because v2 performs no PPR re-scoring. See the note above.
+    avg_stats    = (),
+    fp_reference = (),
+
+    tie_rule               = "strict_greater_than_ties_favour_neither",
+    probability_complement = "one_minus_p",
+)
+
+
 # ── The registry ──────────────────────────────────────────────────────────────
 
 _REGISTRY: Mapping[str, SimModelConfig] = MappingProxyType({
     MODEL_V1.model_version_id: MODEL_V1,
+    MODEL_V2.model_version_id: MODEL_V2,
 })
 
 # The version minted onto NEW pricing and NEW Handshakes only.
