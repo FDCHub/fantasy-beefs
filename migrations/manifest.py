@@ -243,6 +243,27 @@ ACTIVE: tuple = (
         summary="Sprint 2B — provider_component_projection; append-only component projection snapshots keyed to the canonical player, unique on (provider, player_id, season, week, observation_digest) so an unchanged re-fetch is a no-op and a changed forecast is a new snapshot. `projections.projected_points` is untouched",
         tables=("provider_component_projection",),
     ),
+    # SPRINT 5 · HISTORICAL MODEL PARAMETERS — the measured samples behind the
+    # three projection models Sprint 4 deliberately left unresolved.
+    #
+    # DERIVED AGGREGATES, NOT RAW HISTORY. BALLDONTLIE's terms permit raw
+    # retention outright, so this is an engineering choice: pricing reads a rate
+    # and a sample size, and a table of raw plays would be rows nobody queries
+    # in a database that has to carry them forever. Raw payloads stay in the
+    # fixture corpus where certification needs them.
+    #
+    # APPEND-ONLY AND AS-OF AWARE. The unique key ends in a fingerprint over the
+    # derivation, so an unchanged refresh writes nothing and a provider
+    # correction lands beside its predecessor rather than overwriting it — which
+    # is what lets a wager priced last week still replay against the parameters
+    # that priced it. `as_of` is the historical cutoff the derivation respected,
+    # so a projection can never be built from results nobody could have known.
+    Migration(
+        identifier="0016_provider_historical_rate",
+        module="migrations.add_provider_historical_rate",
+        summary="Sprint 5 — provider_historical_rate; derived historical model parameters (reception catch rate, pick-six conditional rate, three-and-out rate) with an as-of cutoff and an append-only fingerprint key so corrections never mutate the parameters a frozen wager was priced against",
+        tables=("provider_historical_rate",),
+    ),
 )
 
 

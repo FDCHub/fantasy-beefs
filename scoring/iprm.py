@@ -92,7 +92,13 @@ __all__ = [
     "threshold_expectation",
 ]
 
-IPRM_VERSION = "iprm-v1"
+#: SPRINT 5 MINTED v2. `iprm-v1` refused receptions, pick-six and
+#: three-and-outs unconditionally; v2 resolves each one when a MEASURED
+#: historical parameter is in force at the projection's as-of, and refuses
+#: exactly as v1 did when none is. Same inputs can now produce a different
+#: answer, so the version moves rather than the behaviour changing underneath a
+#: frozen name.
+IPRM_VERSION = "iprm-v2"
 
 
 class Quality:
@@ -129,6 +135,12 @@ _FALLBACK_QUALITIES = frozenset({Quality.MODELLED_PLAYER_HISTORY,
                                  Quality.MODELLED_POSITIONAL_FALLBACK,
                                  Quality.MODELLED_LEAGUE_FALLBACK})
 
+#: Levels the resolver can return that are NOT usable rates. They arrive as a
+#: `level` string rather than a Quality, and they must be treated exactly as
+#: MODEL_UNRESOLVED is — a sample too small to trust is not a rate.
+_UNUSABLE_LEVELS = frozenset({"MODEL_UNRESOLVED", "INSUFFICIENT_PLAYER_SAMPLE",
+                              "INSUFFICIENT_TEAM_SAMPLE"})
+
 
 @dataclass(frozen=True)
 class IprmConfig:
@@ -162,7 +174,30 @@ class IprmConfig:
     #: integrating; its threshold probability is zero rather than a division.
     minimum_modelled_mean: float = 1e-9
 
-    # ── the models that have no evidence in this repository ──────────────────
+    # ── historical model parameters (Sprint 5) ───────────────────────────────
+    #
+    # THE RATES THEMSELVES ARE NOT HERE. They are MEASURED, stored per entity
+    # with an as-of cutoff in `provider_historical_rate`, and resolved per
+    # subject by `scoring/history.py`. What lives in the frozen config is which
+    # model VERSION is in force and how large a sample each level demands
+    # before it will speak — parameters of the method, not of any player.
+    reception_model_version: str = "reception-model-v1"
+    pick_six_model_version: str = "pick-six-model-v1"
+    three_and_out_model_version: str = "three-and-out-model-v1"
+    #: Minimum samples before a PLAYER's own history outranks the population's.
+    #: Stated rather than fitted: there is no sample in this repository to fit
+    #: them against, and a stated threshold is auditable in a way a tuned one is
+    #: not. Raising them is a versioned change.
+    minimum_player_targets: int = 50
+    minimum_player_interceptions: int = 20
+    minimum_team_drives: int = 100
+    #: Expected opponent drives per game, used to turn a per-drive
+    #: three-and-out rate into a per-game expectation. NONE by default and
+    #: therefore unresolved: a drive count is a projection in its own right, and
+    #: this repository has measured none.
+    expected_opponent_drives: float | None = None
+
+    # ── the legacy in-config tables, retained for iprm-v1 compatibility ──────
     #: Catch rate sources, strongest first. Empty tuples mean "no source wired",
     #: which is what makes receptions MODEL_UNRESOLVED rather than a guess.
     catch_rate_player_history: tuple = ()
@@ -460,7 +495,8 @@ def project(csps_result: C.CspsResult, *, profile: ScoringProfile,
             components: Mapping[str, float],
             config: IprmConfig = IPRM_V1,
             position: str | None = None,
-            nfl_team: str | None = None) -> IprmResult:
+            nfl_team: str | None = None,
+            rates: Any = None) -> IprmResult:
     """A CSPS projection -> a simulation-ready distribution, or a refusal.
 
     CSPS has already scored everything deterministic and listed what it could
@@ -468,6 +504,11 @@ def project(csps_result: C.CspsResult, *, profile: ScoringProfile,
     cannot — it never re-reads a scoring rate, because the profile is the single
     source of rule truth and duplicating a rate here is how two answers to one
     question appear.
+
+    `rates` is a `history.RateBundle` the CALLER resolved. IPRM stays a pure
+    function — no session, no query — so a league-week resolves its parameters
+    in the batch it is already fetching rather than one query per player, and a
+    unit test can hand in a bundle without a database at all.
     """
     result = IprmResult(
         player_id=csps_result.player_id, provider=csps_result.provider,
@@ -510,7 +551,8 @@ def project(csps_result: C.CspsResult, *, profile: ScoringProfile,
         modelled.append(_value(category, profile=profile,
                                components=components, config=config,
                                position=position, nfl_team=nfl_team,
-                               provider_player_key=result.provider_player_key))
+                               provider_player_key=result.provider_player_key,
+                               rates=rates))
 
     for category in csps_result.unavailable:
         modelled.append(ModelledContribution(
@@ -530,7 +572,9 @@ def project(csps_result: C.CspsResult, *, profile: ScoringProfile,
         abs(result.mean_fantasy_points) * config.std_pct, config.min_std)
 
     unresolved = [m.category for m in modelled
-                  if m.quality in (Quality.MODEL_UNRESOLVED, Quality.UNAVAILABLE)]
+                  if m.quality in (Quality.MODEL_UNRESOLVED,
+                                   Quality.UNAVAILABLE)
+                  or m.quality in _UNUSABLE_LEVELS]
     fallbacks = [m.category for m in modelled if m.quality in _FALLBACK_QUALITIES]
     result.unresolved = unresolved
 
@@ -562,7 +606,8 @@ def project(csps_result: C.CspsResult, *, profile: ScoringProfile,
 def _value(category: str, *, profile: ScoringProfile,
            components: Mapping[str, float], config: IprmConfig,
            position: str | None, nfl_team: str | None,
-           provider_player_key: str | None) -> ModelledContribution:
+           provider_player_key: str | None,
+           rates: Any = None) -> ModelledContribution:
     """Value one category CSPS deferred, or record why it cannot be valued."""
     cv = config.component_cv
 
@@ -585,12 +630,12 @@ def _value(category: str, *, profile: ScoringProfile,
 
     if category == "receptions":
         return _receptions(components, profile, config, position,
-                           provider_player_key)
+                           provider_player_key, rates)
     if category == "pick_six_thrown":
         return _pick_six(components, profile, config, position,
-                         provider_player_key)
+                         provider_player_key, rates)
     if category == "dst_three_and_outs":
-        return _three_and_outs(profile, config, nfl_team)
+        return _three_and_outs(profile, config, nfl_team, rates)
 
     return ModelledContribution(
         category=category, expected_points=0.0,
@@ -678,23 +723,51 @@ def _band(category: str, mean, bands, config: IprmConfig, component: str
 
 def _receptions(components: Mapping[str, float], profile: ScoringProfile,
                 config: IprmConfig, position: str | None,
-                player_key: str | None) -> ModelledContribution:
+                player_key: str | None,
+                rates: Any = None) -> ModelledContribution:
     targets = components.get("targets")
     if targets is None:
         return ModelledContribution(
             "receptions", 0.0, Quality.UNAVAILABLE, "none",
             note="neither receptions nor targets are projected")
+    # A MEASURED PARAMETER FIRST. The in-config tables below are iprm-v1's
+    # mechanism and are kept only so a v1 result stays reproducible.
+    resolution = getattr(rates, "reception", None) if rates is not None else None
+    if resolution is not None and resolution.resolved:
+        expected_receptions = max(0.0, min(float(targets),
+                                           float(targets) * resolution.rate))
+        return ModelledContribution(
+            category="receptions",
+            expected_points=expected_receptions * profile.reception,
+            quality=resolution.level, model="targets_x_catch_rate",
+            parameters={"targets": float(targets),
+                        "catch_rate": resolution.rate,
+                        "expected_receptions": expected_receptions,
+                        "historical_receptions": resolution.numerator,
+                        "historical_targets": resolution.denominator,
+                        "sample_size": resolution.sample_size,
+                        "seasons": resolution.season_window,
+                        "as_of": (resolution.as_of.isoformat()
+                                  if resolution.as_of else None),
+                        "model_version": resolution.model_version,
+                        "source_level": resolution.level},
+            note=f"expected receptions = projected targets x catch rate; "
+                 f"{resolution.detail}. Bounded by the target count.")
+
     rate, quality, source = config.catch_rate(player_key, position)
     if rate is None:
+        detail = (resolution.detail if resolution is not None
+                  else "no historical parameter is in force at this as-of")
         return ModelledContribution(
             "receptions", 0.0, Quality.MODEL_UNRESOLVED,
             "targets_x_catch_rate",
-            parameters={"targets": float(targets)},
-            note="a reception projection is targets x catch rate, and this "
-                 "repository holds no reception/target history from which to "
-                 "measure one — not per player, not per position. A rate "
-                 "chosen here would be a number picked to make a projection "
-                 "appear complete.")
+            parameters={"targets": float(targets),
+                        "resolution": (resolution.as_dict()
+                                       if resolution is not None else None)},
+            note=f"a reception projection is targets x catch rate, and no "
+                 f"measured catch rate is available: {detail}. A rate chosen "
+                 f"here would be a number picked to make a projection appear "
+                 f"complete.")
     expected_receptions = max(0.0, min(float(targets), float(targets) * rate))
     return ModelledContribution(
         category="receptions",
@@ -708,7 +781,8 @@ def _receptions(components: Mapping[str, float], profile: ScoringProfile,
 
 def _pick_six(components: Mapping[str, float], profile: ScoringProfile,
               config: IprmConfig, position: str | None,
-              player_key: str | None) -> ModelledContribution:
+              player_key: str | None,
+              rates: Any = None) -> ModelledContribution:
     interceptions = components.get("passing_interceptions")
     if interceptions is None:
         # He is not projected to throw. A player who throws no interceptions
@@ -717,16 +791,43 @@ def _pick_six(components: Mapping[str, float], profile: ScoringProfile,
             "pick_six_thrown", 0.0, Quality.DIRECT, "none",
             note="no interceptions are projected for this subject, so the "
                  "expected pick-six count is exactly zero")
+    resolution = getattr(rates, "pick_six", None) if rates is not None else None
+    if resolution is not None and resolution.resolved:
+        expected = max(0.0, min(float(interceptions),
+                                float(interceptions) * resolution.rate))
+        return ModelledContribution(
+            category="pick_six_thrown",
+            expected_points=expected * profile.pick_six_thrown,
+            quality=resolution.level,
+            model="interceptions_x_conditional_pick_six_rate",
+            parameters={"passing_interceptions": float(interceptions),
+                        "conditional_rate": resolution.rate,
+                        "expected_count": expected,
+                        "historical_pick_sixes": resolution.numerator,
+                        "historical_interceptions": resolution.denominator,
+                        "sample_size": resolution.sample_size,
+                        "seasons": resolution.season_window,
+                        "as_of": (resolution.as_of.isoformat()
+                                  if resolution.as_of else None),
+                        "model_version": resolution.model_version,
+                        "source_level": resolution.level},
+            note=f"P(pick six | interception) measured over "
+                 f"{resolution.sample_size} interceptions; {resolution.detail}. "
+                 f"The expected count can never exceed projected interceptions.")
+
     rate, quality, source = config.pick_six_rate(player_key, position)
     if rate is None:
+        detail = (resolution.detail if resolution is not None
+                  else "no historical parameter is in force at this as-of")
         return ModelledContribution(
             "pick_six_thrown", 0.0, Quality.MODEL_UNRESOLVED,
             "interceptions_x_pick_six_rate",
-            parameters={"passing_interceptions": float(interceptions)},
-            note="this needs a pick-six-per-interception rate measured over a "
-                 "real sample, per quarterback or at least per position. There "
-                 "is none here, and a constant multiplied by interceptions is "
-                 "exactly the arbitrary rate Sprint 4 was told not to invent.")
+            parameters={"passing_interceptions": float(interceptions),
+                        "resolution": (resolution.as_dict()
+                                       if resolution is not None else None)},
+            note=f"this needs P(pick six | interception) measured over a real "
+                 f"sample: {detail}. A constant multiplied by interceptions is "
+                 f"exactly the arbitrary rate Sprint 4 was told not to invent.")
     expected = max(0.0, min(float(interceptions), float(interceptions) * rate))
     return ModelledContribution(
         category="pick_six_thrown",
@@ -739,7 +840,53 @@ def _pick_six(components: Mapping[str, float], profile: ScoringProfile,
 
 
 def _three_and_outs(profile: ScoringProfile, config: IprmConfig,
-                    nfl_team: str | None) -> ModelledContribution:
+                    nfl_team: str | None,
+                    rates: Any = None) -> ModelledContribution:
+    # THE MEASURED RATE IS PER DRIVE, AND A PROJECTION NEEDS PER GAME. Turning
+    # one into the other requires an expected opponent drive count, which is a
+    # projection this repository has not measured. So a resolved defensive rate
+    # is NOT enough on its own: without a drive expectation the model still
+    # refuses, and says which of the two halves is missing.
+    resolution = (getattr(rates, "three_and_out", None)
+                  if rates is not None else None)
+    if resolution is not None and resolution.resolved:
+        drives = config.expected_opponent_drives
+        if drives is None:
+            return ModelledContribution(
+                "dst_three_and_outs", 0.0, Quality.MODEL_UNRESOLVED,
+                "drive_rate_x_expected_drives",
+                parameters={"three_and_out_rate_per_drive": resolution.rate,
+                            "historical_three_and_outs": resolution.numerator,
+                            "historical_opponent_drives": resolution.denominator,
+                            "sample_size": resolution.sample_size,
+                            "seasons": resolution.season_window,
+                            "source_level": resolution.level,
+                            "expected_opponent_drives": None},
+                note=f"the defensive rate IS measured "
+                     f"({resolution.rate:.4f} per opponent drive over "
+                     f"{resolution.sample_size} drives), but converting it to a "
+                     f"per-game expectation needs an expected opponent drive "
+                     f"count, and none has been measured. Assuming a drive "
+                     f"count would price game pace as defensive skill.")
+        expected = max(0.0, resolution.rate * float(drives))
+        return ModelledContribution(
+            category="dst_three_and_outs",
+            expected_points=expected * profile.dst_three_and_out,
+            quality=resolution.level, model="drive_rate_x_expected_drives",
+            parameters={"three_and_out_rate_per_drive": resolution.rate,
+                        "expected_opponent_drives": float(drives),
+                        "expected_three_and_outs": expected,
+                        "historical_three_and_outs": resolution.numerator,
+                        "historical_opponent_drives": resolution.denominator,
+                        "sample_size": resolution.sample_size,
+                        "seasons": resolution.season_window,
+                        "as_of": (resolution.as_of.isoformat()
+                                  if resolution.as_of else None),
+                        "model_version": resolution.model_version,
+                        "source_level": resolution.level},
+            note=f"three-and-outs forced per opponent drive x expected drives; "
+                 f"{resolution.detail}")
+
     rate, quality, source = config.three_and_out_rate(nfl_team)
     if rate is None:
         return ModelledContribution(

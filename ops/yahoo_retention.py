@@ -460,6 +460,24 @@ FOREIGN_PROVIDER_FIELDS: tuple = (
         if_deleted="a projection can still be found by season and week; the "
                    "fixture-level tie is lost",
     ),
+    # ── Sprint 5 · derived historical model parameters ───────────────────
+    #
+    # NOT A STORED PROVIDER PAYLOAD, AND THE DISTINCTION IS THE POINT. These
+    # rows are FantasyStakes measurements computed FROM BALLDONTLIE facts — a
+    # catch rate, a conditional pick-six rate, a three-and-out rate — and the
+    # facts themselves are not retained here. They are inventoried anyway,
+    # because the sample they summarise is provider-derived and a reader of this
+    # document should see the whole provider surface, including the parts that
+    # exist only as a number.
+    ForeignProviderField(
+        table="provider_historical_rate", column="provider",
+        provider="balldontlie",
+        what="which non-Yahoo provider's facts this rate was measured from",
+        purpose="scopes the parameter, so a rate derived from one provider is "
+                "never applied to another's projection",
+        if_deleted="a model parameter attributable to nobody, which no pricing "
+                   "path may read",
+    ),
     ForeignProviderField(
         table="provider_component_projection", column="provider_record_id",
         provider="balldontlie",
@@ -486,6 +504,10 @@ FOREIGN_PROVIDER_PAYLOAD_COLUMNS: tuple = (
     ("provider_component_projection", "components_present",
      "balldontlie", "which component keys the provider actually sent, kept "
      "separate because this provider omits every zero"),
+    ("provider_historical_rate", "parameters",
+     "balldontlie", "the derivation behind one historical model parameter \u2014 "
+     "sample counts, seasons and exclusions. FantasyStakes-DERIVED from "
+     "BALLDONTLIE facts rather than a stored BALLDONTLIE payload"),
 )
 
 

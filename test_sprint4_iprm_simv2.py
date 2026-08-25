@@ -166,7 +166,12 @@ _assert("a projection becomes a distribution", _wr.status == I.Status.SIMULATION
         f"mean {_wr.mean_fantasy_points:.3f} sd {_wr.standard_deviation:.3f}")
 _assert("  · variance is the square of the deviation",
         _near(_wr.variance, _wr.standard_deviation ** 2))
-_assert("the version travels with the result", _wr.iprm_version == "iprm-v1")
+# SPRINT 5 MINTED iprm-v2. v1 refused receptions, pick-six and three-and-outs
+# unconditionally; v2 resolves each when a MEASURED parameter is in force. Same
+# inputs, potentially different answer — so the version moved rather than the
+# behaviour changing underneath a frozen name.
+_assert("the version travels with the result", _wr.iprm_version == "iprm-v2",
+        _wr.iprm_version)
 _assert("  · and so does the whole upstream lineage",
         (_wr.scoring_profile_id, _wr.scoring_profile_version, _wr.csps_version)
         == (CULV.profile_id, CULV.version, C.CSPS_VERSION))
@@ -319,7 +324,7 @@ _assert("a pass-catcher with targets but no reception projection is REFUSED",
         and "receptions" in _targets_only.unresolved)
 _assert("  · the model is named, and says a rate would be invented",
         _targets_only.modelled("receptions").model == "targets_x_catch_rate"
-        and "no reception/target history"
+        and "no measured catch rate is available"
         in _targets_only.modelled("receptions").note)
 _assert("  · and no catch rate is wired at any level of the hierarchy",
         I.IPRM_V1.catch_rate_player_history == ()
@@ -539,8 +544,22 @@ _queries.clear()
 _home = _build(_HOME, 1, "Home")
 _assert("a six-position lineup builds from persisted snapshots",
         _home.admissible and len(_home.starters) == 6, str(_home.refusals[:1]))
-_assert("  · in ONE query, not one per starter",
-        len(_queries) == 1, f"{len(_queries)} quer(ies) for 6 starters")
+# THE PROPERTY THAT MATTERS IS INDEPENDENCE FROM LINEUP SIZE, not a literal
+# count. Sprint 5 added historical model-parameter resolution, which costs a
+# FIXED number of queries per lineup however many starters it holds — so the
+# assertion measures the shape of the cost rather than one number that any
+# later feature would move.
+_six_starter_queries = len(_queries)
+_queries.clear()
+_build([_HOME[0]], 1, "One starter")
+_one_starter_queries = len(_queries)
+_assert("lineup build cost is INDEPENDENT of lineup size — no N+1",
+        _six_starter_queries == _one_starter_queries,
+        f"{_six_starter_queries} quer(ies) for 6 starters, "
+        f"{_one_starter_queries} for 1")
+_assert("  · and is a small fixed number: one snapshot read plus the "
+        "historical model parameters",
+        _six_starter_queries <= 10, f"{_six_starter_queries} queries")
 _away = _build(_AWAY, 2, "Away")
 
 _result, _snapshot = S.run_matchup(matchup_id=99, week=17, home=_home,

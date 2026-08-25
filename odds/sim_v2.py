@@ -173,6 +173,23 @@ def build_lineup(db, *, team_id: int, team_name: str,
     snapshots = select_week(db, provider=projection_source, season=season,
                             week=week, player_ids=list(player_ids), as_of=as_of)
 
+    # HISTORICAL MODEL PARAMETERS FOR THE WHOLE LINEUP, IN ONE PASS. The as-of
+    # is the projection's own — parameters derived after the moment being priced
+    # for are never in force, which is what stops a wager being priced on
+    # results nobody could have known.
+    from scoring.history import resolve_bundles
+
+    parameter_as_of = as_of or max(
+        [s.observed_at for s in snapshots.values() if s.observed_at]
+        or [datetime.now(timezone.utc)])
+    if parameter_as_of.tzinfo is None:
+        parameter_as_of = parameter_as_of.replace(tzinfo=timezone.utc)
+    bundles = resolve_bundles(
+        db, provider=projection_source, as_of=parameter_as_of,
+        subjects=[(s.provider_player_key, s.position, s.nfl_team)
+                  for s in snapshots.values()],
+        config=iprm_config)
+
     for player_id in player_ids:
         snapshot = snapshots.get(player_id)
         if snapshot is None:
@@ -198,7 +215,8 @@ def build_lineup(db, *, team_id: int, team_name: str,
         result = I.project(csps_result, profile=profile,
                            components=snapshot.components or {},
                            config=iprm_config, position=snapshot.position,
-                           nfl_team=snapshot.nfl_team)
+                           nfl_team=snapshot.nfl_team,
+                           rates=bundles.get(snapshot.provider_player_key))
 
         if not I.admissible(result):
             build.refusals.append(

@@ -2704,6 +2704,99 @@ class ProviderComponentProjection(Base):
     player = relationship("Player")
 
 
+class ProviderHistoricalRate(Base):
+    """One DERIVED historical rate — a model parameter, not a raw payload.
+
+    SPRINT 5 — WHY AGGREGATES AND NOT RAW PLAY-BY-PLAY. BALLDONTLIE's terms are
+    unusually permissive: §6 grants copy, cache, store, archive and derivative
+    databases outright, and §17 preserves that grant after termination. So
+    retaining raw history would be LAWFUL. It would also be pointless here: the
+    only thing pricing needs from three seasons of play-by-play is a handful of
+    rates, and a table of forty thousand plays is forty thousand rows nobody
+    queries, in a database that has to be backed up, migrated and reasoned about
+    forever.
+
+    So this table holds what a projection actually reads — a numerator, a
+    denominator, the rate they produce and the sample behind it — and the raw
+    payloads stay in the fixture corpus where certification needs them. That is
+    the smallest thing that can answer "why did we project 5.83 receptions?".
+
+    ── THE THREE MODELS THIS SERVES, WHICH ARE NOT THE SAME SHAPE ────────────
+
+        reception-model     PLAYER  receptions / targets, shrunk toward the
+                            positional mean by sample size
+        pick-six-model      PLAYER  pick-sixes / interceptions, per quarterback,
+                            falling back to the league conditional rate
+        three-and-out-model TEAM    three-and-outs forced / opponent drives
+
+    `entity_type` and `entity_key` carry that difference rather than flattening
+    it: a player rate and a team rate are different populations and must never
+    be resolved into one another by accident.
+
+    ── AS-OF IS WHAT KEEPS A REPLAY HONEST ──────────────────────────────────
+
+    `as_of` is the historical CUTOFF the derivation respected — the instant
+    after which no game was allowed to contribute. A week-1 2026 projection
+    priced from parameters carrying a 2026 cutoff would be using results nobody
+    could have known, and the wager it priced would be indefensible. Selection
+    always filters `as_of <= the moment being priced for`.
+
+    ── CORRECTIONS ARE NEW ROWS, NEVER EDITS ────────────────────────────────
+
+    Providers correct historical stats after the fact. Re-deriving with
+    identical inputs produces an identical `fingerprint` and collides with the
+    row already stored, so a refresh that changes nothing writes nothing. A
+    correction changes the fingerprint and lands BESIDE its predecessor, so a
+    wager priced last week can still be replayed against the parameters that
+    priced it. Nothing is ever overwritten — the same discipline
+    `provider_component_projection` uses, for the same reason.
+    """
+
+    __tablename__ = "provider_historical_rate"
+    __table_args__ = (
+        UniqueConstraint("provider", "model_type", "model_version",
+                         "entity_type", "entity_key", "season_window", "as_of",
+                         "fingerprint",
+                         name="uq_historical_rate_observation"),
+        Index("ix_historical_rate_lookup", "provider", "model_type",
+              "entity_type", "entity_key", "as_of"),
+        Index("ix_historical_rate_model", "provider", "model_type",
+              "model_version"),
+    )
+
+    #: `entity_type` values. A league-wide row uses entity_key "LEAGUE".
+    ENTITY_PLAYER = "PLAYER"
+    ENTITY_TEAM = "TEAM"
+    ENTITY_POSITION = "POSITION"
+    ENTITY_LEAGUE = "LEAGUE"
+
+    #: `model_type` values — one per IPRM gap Sprint 4 left open.
+    MODEL_RECEPTION = "reception-model"
+    MODEL_PICK_SIX = "pick-six-model"
+    MODEL_THREE_AND_OUT = "three-and-out-model"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    provider       = Column(String,  nullable=False)
+    model_type     = Column(String,  nullable=False)
+    model_version  = Column(String,  nullable=False)
+    entity_type    = Column(String,  nullable=False)
+    entity_key     = Column(String,  nullable=False)
+    position       = Column(String,     nullable=True)   # canonical, when known
+    season_window  = Column(String,  nullable=False)     # e.g. "2024-2025"
+    as_of          = Column(DateTime, nullable=False)
+    numerator      = Column(Float,   nullable=False)
+    denominator    = Column(Float,   nullable=False)
+    rate           = Column(Float,   nullable=False)
+    sample_size    = Column(Integer, nullable=False)
+    source_kind    = Column(String,  nullable=False)     # which endpoint/derivation
+    parameters     = Column(JSON().with_variant(JSONB(), "postgresql"),
+                            nullable=False)
+    fingerprint    = Column(String(64), nullable=False)
+    generated_at   = Column(DateTime, nullable=False)
+    created_at     = Column(DateTime, nullable=False,
+                            default=lambda: datetime.now(timezone.utc))
+
+
 # ── Settlement recovery audit ─────────────────────────────────────────────────
 
 class SettlementRecoveryAudit(Base):
