@@ -1,0 +1,324 @@
+{
+  "profile_id": "mr_whiskers_memorial",
+  "league": "Mr Whiskers Memorial League",
+  "yahoo_league_id": "25187",
+  "season": 2025,
+  "week": 17,
+  "provenance": "TRANSCRIBED",
+  "provenance_note": "Yahoo point values and stat lines transcribed from the Phase 0 BALLDONTLIE acceptance test's reconciliation tables, built from owner-supplied Yahoo screenshots. NOT a captured Yahoo payload: the Yahoo Fantasy API returns 403 to this application, which is why the owner supplied the record directly. No value here was computed from a BALLDONTLIE figure.",
+  "matchup": "Herrrrrooooooooooo 124.32 v Bijan MUSTARRRRD! 102.52",
+  "lineups": [
+    {
+      "team": "Herrrrrooooooooooo",
+      "yahoo_total": 124.32,
+      "records": [
+        {
+          "name": "Trevor Lawrence",
+          "team": "JAX",
+          "position": "QB",
+          "yahoo_points": 23.12,
+          "components": {
+            "passing_yards": 263,
+            "passing_touchdowns": 0,
+            "passing_interceptions": 1,
+            "rushing_yards": 26,
+            "rushing_touchdowns": 2
+          },
+          "derived_components": [],
+          "note": "identical in both leagues BECAUSE he threw no touchdown — the one term on which the two profiles differ.",
+          "hidden": ""
+        },
+        {
+          "name": "George Pickens",
+          "team": "DAL",
+          "position": "WR",
+          "yahoo_points": 9.8,
+          "components": {
+            "receptions": 4,
+            "receiving_yards": 78
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Chris Olave",
+          "team": "NO",
+          "position": "WR",
+          "yahoo_points": 22.9,
+          "components": {
+            "receptions": 8,
+            "receiving_yards": 119,
+            "receiving_touchdowns": 1
+          },
+          "derived_components": [],
+          "note": "119 receiving yards earns the 100 tier: +1.00.",
+          "hidden": ""
+        },
+        {
+          "name": "Kyren Williams",
+          "team": "LAR",
+          "position": "RB",
+          "yahoo_points": 14.5,
+          "components": {
+            "rushing_yards": 92,
+            "receptions": 3,
+            "receiving_yards": 38
+          },
+          "derived_components": [],
+          "note": "92 rushing yards earns NO bonus — the threshold is real.",
+          "hidden": ""
+        },
+        {
+          "name": "Travis Etienne Jr.",
+          "team": "JAX",
+          "position": "RB",
+          "yahoo_points": 10.2,
+          "components": {
+            "rushing_yards": 76,
+            "receptions": 2,
+            "receiving_yards": 16
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Harold Fannin Jr.",
+          "team": "CLE",
+          "position": "TE",
+          "yahoo_points": 10.0,
+          "components": {
+            "receptions": 2,
+            "receiving_yards": 30,
+            "receiving_touchdowns": 1
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Amon-Ra St. Brown",
+          "team": "DET",
+          "position": "W/R/T",
+          "yahoo_points": 10.8,
+          "components": {
+            "receptions": 8,
+            "receiving_yards": 68
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Ka'imi Fairbairn",
+          "team": "HOU",
+          "position": "K",
+          "yahoo_points": 10.0,
+          "components": {
+            "field_goals_made_40_to_49": 2,
+            "extra_points_made": 2
+          },
+          "derived_components": [],
+          "note": "2 FG in the 40-49 band at 4.00 each, plus 2 PAT.",
+          "hidden": ""
+        },
+        {
+          "name": "Saints",
+          "team": "NO",
+          "position": "DEF",
+          "yahoo_points": 13.0,
+          "components": {
+            "defensive_sacks": 4,
+            "opponent_fumble_recoveries": 1,
+            "interception_return_touchdowns": 1,
+            "dst_points_allowed": 26,
+            "dst_three_and_outs": 1
+          },
+          "derived_components": [
+            "dst_three_and_outs"
+          ],
+          "note": "Yahoo's own label totalled only 12.00; the derivation found one three-and-out Yahoo never displayed, and the total lands on 13.00.",
+          "hidden": ""
+        }
+      ]
+    },
+    {
+      "team": "Bijan MUSTARRRRD!",
+      "yahoo_total": 102.52,
+      "records": [
+        {
+          "name": "Matthew Stafford",
+          "team": "LAR",
+          "position": "QB",
+          "yahoo_points": 10.76,
+          "components": {
+            "passing_yards": 269,
+            "passing_touchdowns": 2,
+            "passing_interceptions": 3,
+            "pick_six_thrown": 1
+          },
+          "derived_components": [
+            "pick_six_thrown"
+          ],
+          "note": "plain scoring gives 12.76. One interception was returned for a touchdown and the passer participant identifies Stafford, so a SECOND -2.00 applies.",
+          "hidden": ""
+        },
+        {
+          "name": "Jameson Williams",
+          "team": "DET",
+          "position": "WR",
+          "yahoo_points": 4.7,
+          "components": {
+            "receptions": 2,
+            "receiving_yards": 37
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Quentin Johnston",
+          "team": "LAC",
+          "position": "WR",
+          "yahoo_points": 12.3,
+          "components": {
+            "receptions": 5,
+            "receiving_yards": 98
+          },
+          "derived_components": [],
+          "note": "98 receiving yards earns NO bonus.",
+          "hidden": ""
+        },
+        {
+          "name": "Bijan Robinson",
+          "team": "ATL",
+          "position": "RB",
+          "yahoo_points": 39.4,
+          "components": {
+            "rushing_yards": 195,
+            "rushing_touchdowns": 1,
+            "receptions": 5,
+            "receiving_yards": 34,
+            "receiving_touchdowns": 1
+          },
+          "derived_components": [],
+          "note": "THE TIER BOUNDARY CASE. 195 rushing yards earns the 100 AND the 150 tier (+2.00) but not the 200. Yahoo's label hid the 5 receptions and 34 receiving yards.",
+          "hidden": ""
+        },
+        {
+          "name": "James Cook III",
+          "team": "BUF",
+          "position": "RB",
+          "yahoo_points": 8.2,
+          "components": {
+            "rushing_yards": 74,
+            "receptions": 1,
+            "receiving_yards": 3
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Kyle Pitts Sr.",
+          "team": "ATL",
+          "position": "TE",
+          "yahoo_points": 2.6,
+          "components": {
+            "receptions": 2,
+            "receiving_yards": 16
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "De'Von Achane",
+          "team": "MIA",
+          "position": "W/R/T",
+          "yahoo_points": 12.7,
+          "components": {
+            "rushing_yards": 83,
+            "receptions": 3,
+            "receiving_yards": 29
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Evan McPherson",
+          "team": "CIN",
+          "position": "K",
+          "yahoo_points": 5.86,
+          "components": {
+            "field_goals_made_50_plus": 1,
+            "extra_points_made": 4,
+            "extra_points_missed": 1
+          },
+          "derived_components": [],
+          "note": "1 FG 50+ at 5.00, 4 PAT, and a missed PAT at -3.14.",
+          "hidden": ""
+        },
+        {
+          "name": "Titans",
+          "team": "TEN",
+          "position": "DEF",
+          "yahoo_points": 6.0,
+          "components": {
+            "defensive_sacks": 2,
+            "opponent_fumble_recoveries": 1,
+            "dst_points_allowed": 28,
+            "dst_three_and_outs": 3
+          },
+          "derived_components": [
+            "dst_three_and_outs"
+          ],
+          "note": "2 sacks + 1 fumble recovery (2.00) + PA 28 (-1.00) + 3 three-and-outs.",
+          "hidden": ""
+        }
+      ]
+    }
+  ],
+  "bench": [
+    {
+      "name": "Lions",
+      "team": "DET",
+      "position": "DEF",
+      "yahoo_points": 12.0,
+      "components": {
+        "defensive_sacks": 7,
+        "dst_points_allowed": 23,
+        "dst_three_and_outs": 5
+      },
+      "derived_components": [
+        "dst_three_and_outs"
+      ],
+      "note": "7 sacks + PA 23 (0.00) + 5 three-and-outs. THE ONLY certified figure that depends on the fitted three-and-out threshold, and the report is explicit that this one observation is what pins it — a fit, not a validation.",
+      "hidden": ""
+    },
+    {
+      "name": "Brock Bowers",
+      "team": "LV",
+      "position": "TE",
+      "yahoo_points": 0.0,
+      "components": {},
+      "derived_components": [],
+      "note": "an EMPTY stats block, not an absent row. A real zero — dressed and did not play — which must score 0.00 rather than being treated as unevaluable.",
+      "hidden": ""
+    }
+  ],
+  "unverifiable": [
+    {
+      "name": "Jacoby Brissett",
+      "yahoo_points": 16.48,
+      "why": "the profile separator (CULV would have paid 18.48), but the report publishes no passing yardage, so the line cannot be reconstructed without back-solving. The 4-vs-5 point passing touchdown it establishes is encoded in the profile's evidence block and certified by the two lineup totals instead."
+    },
+    {
+      "name": "Chris Godwin",
+      "yahoo_points": 21.3,
+      "why": "'hundred-yard bonus' published — no reception or yardage split."
+    }
+  ]
+}

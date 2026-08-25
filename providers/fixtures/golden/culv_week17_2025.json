@@ -1,0 +1,354 @@
+{
+  "profile_id": "culv_appreciation_society",
+  "league": "CULV Appreciation Society",
+  "yahoo_league_id": "488800",
+  "season": 2025,
+  "week": 17,
+  "provenance": "TRANSCRIBED",
+  "provenance_note": "Yahoo point values and stat lines transcribed from the Phase 0 BALLDONTLIE acceptance test's reconciliation tables, built from owner-supplied Yahoo screenshots. NOT a captured Yahoo payload: the Yahoo Fantasy API returns 403 to this application, which is why the owner supplied the record directly. No value here was computed from a BALLDONTLIE figure.",
+  "lineups": [
+    {
+      "team": "More Havoc thanCovid",
+      "yahoo_total": 95.72,
+      "records": [
+        {
+          "name": "Brock Purdy",
+          "team": "SF",
+          "position": "QB",
+          "yahoo_points": 39.92,
+          "components": {
+            "passing_yards": 303,
+            "passing_touchdowns": 3,
+            "passing_interceptions": 1,
+            "rushing_yards": 28,
+            "rushing_touchdowns": 2
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": "Yahoo displayed only '3 Pass TD, 303 Pass Yds, 2 Rush TD'; the 28 rushing yards (+2.80) and the interception (-2.00) are real inputs Yahoo's label never showed."
+        },
+        {
+          "name": "Zay Flowers",
+          "team": "BAL",
+          "position": "WR",
+          "yahoo_points": 11.0,
+          "components": {
+            "receptions": 4,
+            "receiving_yards": 30,
+            "receiving_touchdowns": 1
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Puka Nacua",
+          "team": "LAR",
+          "position": "WR",
+          "yahoo_points": 13.2,
+          "components": {
+            "receptions": 5,
+            "receiving_yards": 47,
+            "receiving_touchdowns": 1
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Josh Jacobs",
+          "team": "GB",
+          "position": "RB",
+          "yahoo_points": 0.8,
+          "components": {
+            "rushing_yards": 3,
+            "receptions": 1,
+            "receiving_yards": 0
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Omarion Hampton",
+          "team": "LAC",
+          "position": "RB",
+          "yahoo_points": 16.0,
+          "components": {
+            "rushing_yards": 29,
+            "rushing_touchdowns": 1,
+            "receptions": 8,
+            "receiving_yards": 31
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": "Yahoo's label hid the 29 rushing yards."
+        },
+        {
+          "name": "Dalton Schultz",
+          "team": "HOU",
+          "position": "TE",
+          "yahoo_points": 3.4,
+          "components": {
+            "receptions": 3,
+            "receiving_yards": 19
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Jaylen Waddle",
+          "team": "MIA",
+          "position": "W/R/T",
+          "yahoo_points": 0.7,
+          "components": {
+            "rushing_yards": 7,
+            "receptions": 0,
+            "receiving_yards": 0
+          },
+          "derived_components": [],
+          "note": "one target, no reception",
+          "hidden": ""
+        },
+        {
+          "name": "Wil Lutz",
+          "team": "DEN",
+          "position": "K",
+          "yahoo_points": 7.7,
+          "components": {
+            "field_goals_made_yards": 57,
+            "extra_points_made": 2
+          },
+          "derived_components": [],
+          "note": "FG 2/2 at 27 and 30 yards = 57 total yards. The CULV rule Yahoo's own API cannot serve.",
+          "hidden": ""
+        },
+        {
+          "name": "Buccaneers",
+          "team": "TB",
+          "position": "DEF",
+          "yahoo_points": 3.0,
+          "components": {
+            "defensive_sacks": 2,
+            "dst_points_allowed": 20
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        }
+      ]
+    },
+    {
+      "team": "RX",
+      "yahoo_total": 94.72,
+      "records": [
+        {
+          "name": "Trevor Lawrence",
+          "team": "JAX",
+          "position": "QB",
+          "yahoo_points": 23.12,
+          "components": {
+            "passing_yards": 263,
+            "passing_touchdowns": 0,
+            "passing_interceptions": 1,
+            "rushing_yards": 26,
+            "rushing_touchdowns": 2
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": "Yahoo's label hid the interception."
+        },
+        {
+          "name": "Justin Jefferson",
+          "team": "MIN",
+          "position": "WR",
+          "yahoo_points": 5.0,
+          "components": {
+            "receptions": 4,
+            "receiving_yards": 30
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Nico Collins",
+          "team": "HOU",
+          "position": "WR",
+          "yahoo_points": 7.2,
+          "components": {
+            "receptions": 3,
+            "receiving_yards": 57
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Saquon Barkley",
+          "team": "PHI",
+          "position": "RB",
+          "yahoo_points": 6.8,
+          "components": {
+            "rushing_yards": 68
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Tyrone Tracy Jr.",
+          "team": "NYG",
+          "position": "RB",
+          "yahoo_points": 6.2,
+          "components": {
+            "rushing_yards": 62,
+            "receptions": 1,
+            "receiving_yards": -5
+          },
+          "derived_components": [],
+          "note": "NEGATIVE receiving yards score -0.50; they are not floored at zero.",
+          "hidden": ""
+        },
+        {
+          "name": "Jake Ferguson",
+          "team": "DAL",
+          "position": "TE",
+          "yahoo_points": 7.1,
+          "components": {
+            "receptions": 1,
+            "receiving_yards": 6,
+            "receiving_touchdowns": 1
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        },
+        {
+          "name": "Michael Wilson",
+          "team": "ARI",
+          "position": "W/R/T",
+          "yahoo_points": 17.4,
+          "components": {
+            "receptions": 5,
+            "receiving_yards": 89,
+            "receiving_touchdowns": 1
+          },
+          "derived_components": [],
+          "note": "89 yards earns nothing: CULV scores no yardage bonus at all.",
+          "hidden": ""
+        },
+        {
+          "name": "Cam Little",
+          "team": "JAX",
+          "position": "K",
+          "yahoo_points": 14.9,
+          "components": {
+            "field_goals_made_yards": 129,
+            "extra_points_made": 2
+          },
+          "derived_components": [],
+          "note": "FG 3/3 at 34, 42 and 53 yards = 129 total yards.",
+          "hidden": ""
+        },
+        {
+          "name": "Jaguars",
+          "team": "JAX",
+          "position": "DEF",
+          "yahoo_points": 7.0,
+          "components": {
+            "defensive_sacks": 2,
+            "defensive_interceptions": 2,
+            "dst_points_allowed": 17
+          },
+          "derived_components": [],
+          "note": "",
+          "hidden": ""
+        }
+      ]
+    }
+  ],
+  "bench": [
+    {
+      "name": "Evan McPherson",
+      "team": "CIN",
+      "position": "K",
+      "yahoo_points": 9.7,
+      "components": {
+        "field_goals_made_yards": 57,
+        "extra_points_made": 4,
+        "extra_points_missed": 1
+      },
+      "derived_components": [],
+      "note": "XP 4/5, and the report publishes his 57 made-FG yards among the four kicker cross-checks. Under CULV a missed extra point costs NOTHING — the same miss costs -3.14 in Mr Whiskers.",
+      "hidden": ""
+    },
+    {
+      "name": "Titans",
+      "team": "TEN",
+      "position": "DEF",
+      "yahoo_points": 3.0,
+      "components": {
+        "defensive_sacks": 2,
+        "opponent_fumble_recoveries": 1,
+        "dst_points_allowed": 28
+      },
+      "derived_components": [],
+      "note": "the -1.00 points-allowed band. The sack and fumble-recovery counts are the SAME GAME's line published in the Mr Whiskers table, so this is a cross-league corroboration rather than a back-solve.",
+      "hidden": ""
+    }
+  ],
+  "unverifiable": [
+    {
+      "name": "Baker Mayfield",
+      "yahoo_points": 19.44,
+      "why": "'346 pass, 2 TD, 2 INT' scores 19.84; the remaining -0.40 is an input Yahoo's label never showed. The total is real; the line is incomplete, so it cannot certify the engine."
+    },
+    {
+      "name": "Drake Maye",
+      "yahoo_points": 37.44,
+      "why": "only '5 passing TDs' published — no yardage."
+    },
+    {
+      "name": "Justin Herbert",
+      "yahoo_points": 16.14,
+      "why": "'1 TD, 1 INT, 37 rush yds' published — no passing yardage."
+    },
+    {
+      "name": "Rico Dowdle",
+      "yahoo_points": 7.8,
+      "why": "described only as a 'rush + receiving split'."
+    },
+    {
+      "name": "Michael Carter",
+      "yahoo_points": 5.3,
+      "why": "described only as a 'rush + receiving split'."
+    },
+    {
+      "name": "Emeka Egbuka",
+      "yahoo_points": 3.5,
+      "why": "described only as 'low-volume receiving'."
+    },
+    {
+      "name": "Michael Mayer",
+      "yahoo_points": 13.4,
+      "why": "'9 receptions' published — no yardage."
+    },
+    {
+      "name": "Dallas Goedert",
+      "yahoo_points": 8.3,
+      "why": "'TE touchdown' published — no receptions or yardage."
+    },
+    {
+      "name": "Charlie Smyth",
+      "yahoo_points": 15.3,
+      "why": "113 made-FG yards published, but the extra-point count is not."
+    },
+    {
+      "name": "Chargers",
+      "yahoo_points": 5.0,
+      "why": "'0 sacks' published — the interception and points-allowed inputs are not. Its FINDING (absent key means zero) is certified by the Sprint 2B and WP2 suites instead."
+    }
+  ]
+}

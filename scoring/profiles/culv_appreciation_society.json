@@ -1,0 +1,53 @@
+{
+  "profile_id": "culv_appreciation_society",
+  "name": "CULV Appreciation Society",
+  "version": "2025.1",
+  "provenance": "Yahoo league 488800, 2025. Every rate below is corroborated twice: it reproduces all 30 reconciled 2025 week-17 records (18 starters + 12 bench) to 0.00 against Yahoo's own scoreboard, and the half-PPR rates independently match this repository's pre-existing odds/monte_carlo.HALF_PPR constant (rec 0.5, passing TD 5.0, rushing TD 6.0, receiving TD 6.0), which engine/projection_engine.CULV_SCORING has used since Sprint 1. Yahoo point values are transcribed from owner-supplied screenshots via the Phase 0 acceptance test; no value here was inferred from a BALLDONTLIE figure.",
+  "evidence": {
+    "passing": "Brock Purdy 303 pass / 3 TD / 1 INT / 28 rush / 2 rush TD = 39.92 pins passing TD at 5.00 given 0.04/yd and -2.00 per interception. Trevor Lawrence 263 pass / 0 TD / 1 INT / 26 rush / 2 rush TD = 23.12 confirms the same rates with the touchdown term removed.",
+    "no_yardage_bonuses": "PROVEN ABSENT, not assumed. Purdy's 303 passing yards and Baker Mayfield's 346 both reconcile exactly with no threshold bonus of any kind, and Kyren Williams' 92 rushing yards drew none either. CULV scores raw yardage only.",
+    "receiving": "George Pickens 4 rec / 78 yds = 9.80 gives 0.5 per reception and 0.1 per yard. Tyrone Tracy's -5 receiving yards scored -0.50, so negative yardage is scored, not floored.",
+    "kicker": "The rule Yahoo's own API cannot serve: total made-field-goal YARDAGE at 0.1/yd. Lutz 57 yds + 2 PAT = 7.70; Little 129 + 2 = 14.90; McPherson 57 + 4 PAT = 9.70 with a MISSED extra point costing nothing; Smyth 113 + 4 PAT = 15.30 with a missed field goal costing nothing. Four independent agreements across Yahoo, the BDL summary field, and the sum of event-level play distances.",
+    "dst": "Buccaneers 2 sacks + PA 20 = 3.00 and Jaguars 2 sacks + 2 INT + PA 17 = 7.00 pin sack 1.00, interception 2.00 and the 14-20 band at 1.00. Titans 2 sacks + 1 fumble recovery + PA 28 = 3.00 pins fumble recovery 2.00 and the 28-34 band at -1.00. Chargers 5.00 with NO defensive_sacks key at all is the absent-key-means-zero case reconciling end to end.",
+    "points_allowed_bands": "Yahoo's standard ladder. Three bands are directly evidenced (14-20, 21-27 via Whiskers' PA 23/26, 28-34); the remainder are Yahoo's published defaults for this ladder and are marked as such rather than as reconciled."
+  },
+  "offense": {
+    "passing_yards_per_point": 0.04,
+    "passing_touchdown": 5.0,
+    "passing_interception": -2.0,
+    "rushing_yards_per_point": 0.1,
+    "rushing_touchdown": 6.0,
+    "reception": 0.5,
+    "receiving_yards_per_point": 0.1,
+    "receiving_touchdown": 6.0,
+    "two_point_conversion": 2.0,
+    "fumble_lost": -2.0,
+    "offensive_fumble_recovery_touchdown": 6.0,
+    "return_touchdown": 6.0
+  },
+  "kicker": {
+    "field_goal_yards_per_point": 0.1,
+    "extra_point_made": 1.0,
+    "extra_point_missed": 0.0
+  },
+  "dst": {
+    "sack": 1.0,
+    "interception": 2.0,
+    "fumble_recovery": 2.0,
+    "touchdown": 6.0,
+    "safety": 2.0,
+    "blocked_kick": 2.0,
+    "return_touchdown": 6.0,
+    "two_point_return": 2.0,
+    "points_allowed_bands": [
+      {"low": 0,  "high": 0,   "points": 10.0},
+      {"low": 1,  "high": 6,   "points": 7.0},
+      {"low": 7,  "high": 13,  "points": 4.0},
+      {"low": 14, "high": 20,  "points": 1.0},
+      {"low": 21, "high": 27,  "points": 0.0},
+      {"low": 28, "high": 34,  "points": -1.0},
+      {"low": 35, "high": 45,  "points": -4.0},
+      {"low": 46, "high": 999, "points": -7.0}
+    ]
+  }
+}

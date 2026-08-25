@@ -1,0 +1,81 @@
+{
+  "profile_id": "mr_whiskers_memorial",
+  "name": "Mr Whiskers Memorial League",
+  "version": "2025.1",
+  "provenance": "Yahoo league 25187, 2025. Reproduces all 18 reconciled 2025 week-17 starters and both team totals (124.32 and 102.52) to 0.00 against Yahoo's own scoreboard, plus the named bench cases. Yahoo point values are transcribed from owner-supplied screenshots via the Phase 0 acceptance test. This is the profile that exercises every awkward rule the seven-column LeagueScoring model cannot express.",
+  "evidence": {
+    "passing_touchdown_4": "Jacoby Brissett reconciled at 16.48 here against 18.48 under CULV — a 2.00 gap across his two passing touchdowns, which pins this league at 4.00 per passing touchdown against CULV's 5.00.",
+    "interception_and_pick_six": "Matthew Stafford 269 pass / 2 TD / 3 INT = 10.76. Plain scoring gives 12.76; one interception was returned for a touchdown, and the passer participant identifies Stafford, so a SECOND penalty of -2.00 applies on top of the -2.00 already charged for the interception itself.",
+    "yardage_tiers_cumulative": "Bijan Robinson's 195 rushing yards earned +2.00 — the 100 AND 150 tiers, not the highest one alone. Chris Olave's 119 receiving yards earned +1.00 at the 100 tier. Quentin Johnston at 98 and Kyren Williams at 92 earned nothing, fixing the thresholds.",
+    "kicker_bands": "Ka'imi Fairbairn 2 FG in the 40-49 band + 2 PAT = 10.00 pins that band at 4.00 with PAT at 1.00. Evan McPherson 1 FG 50+ + 4 PAT - 1 missed PAT = 5.86 pins the 50+ band at 5.00 and the missed extra point at -3.14.",
+    "dst": "Titans 2 sacks + 1 fumble recovery + PA 28 + 3 three-and-outs = 6.00. Lions (bench) 7 sacks + PA 23 + 5 three-and-outs = 12.00. Saints 4 sacks + 1 fumble recovery + 1 defensive TD + PA 26 + 1 three-and-out = 13.00. Together these pin sack 1.00, fumble recovery 2.00, defensive touchdown 6.00, three-and-out 1.00, the 21-27 band at 0.00 and the 28-34 band at -1.00.",
+    "three_and_out_threshold_is_PARTIAL": "The three-and-out COUNT is derived from play-by-play and its threshold rule is fitted, not validated: Titans (3) and Saints (1) are reproduced by every parameter combination tested, but the Lions' 5 is satisfied by exactly one. The per-event VALUE of 1.00 point is firm; the count that value multiplies is what carries the caveat, and WP2 returns it UNVERIFIED for that reason.",
+    "unresolved_passing_tiers": "This league scores passing-yardage bonuses at 300, 400 and 500 yards. No reconciled record crossed 300 — the sampled quarterbacks threw for 263, 269 and 346 (the 346 being CULV) — so their point VALUES are not established by any evidence in this repository. They are declared and marked unresolved: a line crossing 300 refuses rather than guessing, because recording them as absent would under-score a 300-yard game and guessing +1 would invent a rule.",
+    "unresolved_upper_tiers": "The rushing 200 tier is named by the evidence (Bijan's note says 195 earned the 100 and 150 tiers 'not the 200'), which establishes that the tier EXISTS but not what it pays. The receiving 150 and 200 tiers are documented as mirroring rushing. All three are declared unresolved for the same reason as the passing tiers."
+  },
+  "offense": {
+    "passing_yards_per_point": 0.04,
+    "passing_touchdown": 4.0,
+    "passing_interception": -2.0,
+    "pick_six_thrown": -2.0,
+    "passing_tiers": [
+      {"threshold": 300, "points": 0.0, "unresolved": true},
+      {"threshold": 400, "points": 0.0, "unresolved": true},
+      {"threshold": 500, "points": 0.0, "unresolved": true}
+    ],
+    "rushing_yards_per_point": 0.1,
+    "rushing_touchdown": 6.0,
+    "rushing_tiers": [
+      {"threshold": 100, "points": 1.0},
+      {"threshold": 150, "points": 1.0},
+      {"threshold": 200, "points": 0.0, "unresolved": true}
+    ],
+    "reception": 0.5,
+    "receiving_yards_per_point": 0.1,
+    "receiving_touchdown": 6.0,
+    "receiving_tiers": [
+      {"threshold": 100, "points": 1.0},
+      {"threshold": 150, "points": 0.0, "unresolved": true},
+      {"threshold": 200, "points": 0.0, "unresolved": true}
+    ],
+    "two_point_conversion": 2.0,
+    "fumble_lost": -2.0,
+    "offensive_fumble_recovery_touchdown": 6.0,
+    "return_touchdown": 6.0
+  },
+  "kicker": {
+    "field_goals_made": {
+      "field_goals_made_0_to_39": 3.0,
+      "field_goals_made_40_to_49": 4.0,
+      "field_goals_made_50_plus": 5.0
+    },
+    "field_goals_missed": {
+      "field_goals_missed_0_to_39": -1.0,
+      "field_goals_missed_40_to_49": 0.0,
+      "field_goals_missed_50_plus": 0.0
+    },
+    "extra_point_made": 1.0,
+    "extra_point_missed": -3.14
+  },
+  "dst": {
+    "sack": 1.0,
+    "interception": 2.0,
+    "fumble_recovery": 2.0,
+    "touchdown": 6.0,
+    "safety": 2.0,
+    "blocked_kick": 2.0,
+    "return_touchdown": 6.0,
+    "two_point_return": 2.0,
+    "three_and_out": 1.0,
+    "points_allowed_bands": [
+      {"low": 0,  "high": 0,   "points": 10.0},
+      {"low": 1,  "high": 6,   "points": 7.0},
+      {"low": 7,  "high": 13,  "points": 4.0},
+      {"low": 14, "high": 20,  "points": 1.0},
+      {"low": 21, "high": 27,  "points": 0.0},
+      {"low": 28, "high": 34,  "points": -1.0},
+      {"low": 35, "high": 45,  "points": -4.0},
+      {"low": 46, "high": 999, "points": -7.0}
+    ]
+  }
+}
