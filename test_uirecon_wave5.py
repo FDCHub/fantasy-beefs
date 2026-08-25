@@ -254,6 +254,7 @@ _assert("the expected challenge count is accepted contests plus negotiations",
         == (len(_showcase_mod.VERSUS_PER_WEEK_MARKETS)
             * (_showcase_mod.COMPLETED_THROUGH_WEEK + 1)
             + len(_showcase_mod.VISITOR_LIVE_EXTRA_MATCHUPS)
+            + len(_showcase_mod.VISITOR_WRAPUP_MATCHUPS)
             + len(_showcase_mod.VISITOR_OPEN_NEGOTIATIONS)),
         str(_expected["challenges"]))
 _assert("the expected offered count is the fixture's own length",

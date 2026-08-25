@@ -310,13 +310,22 @@ def expected_fingerprint() -> dict:
         "season_closed": False,
         "teams": showcase.TEAM_COUNT,
         # UIRECON WAVE 5 — the accepted contests PLUS the live week's open
-        # negotiations. Both terms are read off the fixture tuples that produce
-        # them, so adding or removing a negotiation moves this expectation with
-        # it. Wave 3's scar is directly above: a hand-written count here made
-        # every untouched visit look dirty and replayed a whole season per
-        # request.
+        # negotiations. Every term is read off the fixture tuple that produces
+        # it, so adding or removing a contest moves this expectation with it.
+        # Wave 3's scar is directly above: a hand-written count here made every
+        # untouched visit look dirty and replayed a whole season per request.
+        #
+        # FINAL POR §6 ADDED A FOURTH TERM, AND OMITTING IT REOPENED THAT SCAR.
+        # `VISITOR_WRAPUP_MATCHUPS` seeds the visitor one settled contest in the
+        # week Wrap Up opens on, so `versus_card()` issues it and the league
+        # holds 39 challenges while this sum still expected 38. One short is
+        # enough: `is_canonical` was false on a pristine showcase, so
+        # `ensure_canonical` rebuilt on EVERY `/demo/enter` — a new league id, a
+        # new Pool rotation and a full season replayed per request. The term is
+        # read off the tuple for the same reason the other three are.
         "challenges": (len(showcase.VERSUS_PER_WEEK_MARKETS) * played
                        + len(showcase.VISITOR_LIVE_EXTRA_MATCHUPS)
+                       + len(showcase.VISITOR_WRAPUP_MATCHUPS)
                        + len(showcase.VISITOR_OPEN_NEGOTIATIONS)),
         "offered_challenges": len(showcase.VISITOR_OPEN_NEGOTIATIONS),
         "pool_claims": (showcase.POOL_SLOTS_PER_WEEK * showcase.TEAM_COUNT
