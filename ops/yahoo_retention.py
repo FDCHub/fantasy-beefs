@@ -41,6 +41,12 @@ RELATIONSHIP   pairing is the case. The integers are our own primary keys; which
                provider fact nor an ordinary derived figure, and recording it as
                either would be false in one direction or the other.
 
+FOREIGN        A provider-origin value from a provider that is NOT Yahoo —
+PROVIDER FACT  BALLDONTLIE's player identifiers are the case. Listed because
+               this inventory's completeness check flags every provider-named
+               column, and the only honest answer for these is neither "not
+               provider data" nor "Yahoo's". A Yahoo ruling does not reach them.
+
 TRANSACTIONAL  FantasyStakes' own economic record: ledger entries, allocations,
                distributions, corrections. It contains no Yahoo field at all.
                A retention ruling does not reach it — but its CORRECTNESS was
@@ -53,9 +59,10 @@ import json
 from dataclasses import asdict, dataclass, field
 
 __all__ = [
-    "DERIVED", "PROVIDER_FACTS", "REQUIRES_RULING", "SAFE_WITHOUT_RULING",
-    "YAHOO_DERIVED_RELATIONSHIPS", "Derived", "ProviderField",
-    "YahooDerivedRelationship", "inventoried_columns", "related_columns",
+    "DERIVED", "FOREIGN_PROVIDER_FIELDS", "PROVIDER_FACTS", "REQUIRES_RULING",
+    "SAFE_WITHOUT_RULING", "YAHOO_DERIVED_RELATIONSHIPS", "Derived",
+    "ForeignProviderField", "ProviderField", "YahooDerivedRelationship",
+    "foreign_provider_columns", "inventoried_columns", "related_columns",
     "report",
 ]
 
@@ -121,6 +128,41 @@ class YahooDerivedRelationship:
     relationship_is: str
     if_deleted: str
     economic_dependency: bool = False
+
+
+@dataclass(frozen=True)
+class ForeignProviderField:
+    """A provider-named column whose value did NOT come from Yahoo.
+
+    WP1 — WHY THIS CATEGORY HAD TO EXIST BEFORE THE FIRST ROW OF IT DID. This
+    module's name scan flags every `provider_*` column in the schema and demands
+    it be accounted for, on the reasoning that an unaccounted provider column is
+    Yahoo data nobody inventoried. That reasoning held while Yahoo was the only
+    provider. `provider_player_alias` ends that: its columns are provider-origin
+    and are not Yahoo's, and the two available answers were both false — leave
+    them unlisted (asserting they are not provider data) or list them as Yahoo
+    facts (asserting Yahoo supplied them).
+
+    So they are recorded as the third true thing: provider data, from a named
+    provider that is not Yahoo, outside the Yahoo retention question and inside
+    whatever question that provider's own terms raise.
+
+    THIS IS NOT A YAHOO EXEMPTION HATCH. Everything listed here names the
+    provider it came from, and the C1 suite asserts that no column is claimed by
+    both this list and the Yahoo inventory — a Yahoo column moved here to quiet
+    the scan would have to be claimed under a provider name that is not Yahoo's,
+    which is a lie a reader can see rather than an omission a reader cannot.
+    """
+
+    table: str
+    column: str
+    #: The provider this value came from — never "yahoo".
+    provider: str
+    what: str
+    #: Why the application holds it at all.
+    purpose: str
+    #: What stops working if it were deleted.
+    if_deleted: str
 
 
 # ── PROVIDER FACTS ───────────────────────────────────────────────────────────
@@ -326,6 +368,61 @@ PROVIDER_FACTS: tuple = (
 )
 
 
+# ── PROVIDER DATA THAT IS NOT YAHOO'S ────────────────────────────────────────
+#
+# Provider-origin columns from a provider other than Yahoo. They are listed here
+# so the name scan in the C1 suite can be satisfied by a TRUE statement about
+# them rather than by silence, and so a reader of this inventory can see the
+# whole provider surface even though only part of it is Yahoo's.
+#
+# A YAHOO RETENTION RULING DOES NOT REACH THESE ROWS. What does reach them is
+# BALLDONTLIE's own terms, which is a separate open question and is recorded as
+# one in REQUIRES_RULING below rather than answered here.
+
+FOREIGN_PROVIDER_FIELDS: tuple = (
+    ForeignProviderField(
+        table="provider_player_alias", column="provider",
+        provider="balldontlie",
+        what="which non-Yahoo provider a mapping row belongs to",
+        purpose="scopes the mapping, so one canonical player can carry one "
+                "subject per provider without the rows colliding",
+        if_deleted="the remaining columns describe a subject at no stated "
+                   "provider, which is not an identity at all",
+    ),
+    ForeignProviderField(
+        table="provider_player_alias", column="provider_player_key",
+        provider="balldontlie",
+        what="BALLDONTLIE's own identifier for a player FantasyStakes already "
+             "holds a `players` row for",
+        purpose="the durable link — once written, a BALLDONTLIE figure reaches "
+                "the right canonical player without any name being compared "
+                "again",
+        if_deleted="every mapping is rediscovered from names on the next "
+                   "resolution; nothing economic is lost, because no settled "
+                   "record was ever written against this column",
+    ),
+    ForeignProviderField(
+        table="provider_player_alias", column="provider_position",
+        provider="balldontlie",
+        what="the position BALLDONTLIE reported for that subject when the "
+             "mapping was made",
+        purpose="an observation an operator can audit a stale mapping against. "
+                "Nothing resolves on it",
+        if_deleted="a stale mapping is harder to explain; no resolution "
+                   "changes, because the resolver never reads it",
+    ),
+    ForeignProviderField(
+        table="provider_player_alias", column="provider_nfl_team",
+        provider="balldontlie",
+        what="the NFL team BALLDONTLIE reported for that subject when the "
+             "mapping was made",
+        purpose="the same audit observation as `provider_position`; a trade "
+                "moves this value and never the identity",
+        if_deleted="as above — an audit aid is lost, not an identity",
+    ),
+)
+
+
 # ── YAHOO-DERIVED RELATIONSHIPS ──────────────────────────────────────────────
 #
 # FantasyStakes values whose ARRANGEMENT is Yahoo's. Neither a provider fact nor
@@ -434,6 +531,10 @@ REQUIRES_RULING: tuple = (
     "Whether the ledger's economic history — which contains no Yahoo field but "
     "was established using provider facts — is in scope at all.",
     "What a Yahoo-initiated deletion request obliges this application to do.",
+    "Whether the BALLDONTLIE identity mappings in `provider_player_alias` may "
+    "be retained — a question for BALLDONTLIE's terms, not Yahoo's. They are "
+    "inventoried in FOREIGN_PROVIDER_FIELDS so the question has a list to be "
+    "answered against, exactly as the Yahoo one does.",
 )
 
 
@@ -451,6 +552,12 @@ def related_columns() -> set:
     return {(r.table, c) for r in YAHOO_DERIVED_RELATIONSHIPS for c in r.columns}
 
 
+def foreign_provider_columns() -> set:
+    """`(table, column)` pairs that are provider data from a provider that is
+    NOT Yahoo. Accounted for by this inventory; not governed by it."""
+    return {(f.table, f.column) for f in FOREIGN_PROVIDER_FIELDS}
+
+
 def report() -> dict:
     return {
         "gate": GATE,
@@ -458,6 +565,7 @@ def report() -> dict:
         "provider_facts": [asdict(f) for f in PROVIDER_FACTS],
         "yahoo_derived_relationships": [
             asdict(r) for r in YAHOO_DERIVED_RELATIONSHIPS],
+        "foreign_provider_fields": [asdict(f) for f in FOREIGN_PROVIDER_FIELDS],
         "derived": [asdict(d) for d in DERIVED],
         "safe_without_ruling": list(SAFE_WITHOUT_RULING),
         "requires_ruling": list(REQUIRES_RULING),
@@ -498,6 +606,14 @@ def _print_human(only_gate: bool = False) -> None:
         print(f"      values are      : {r.values_are}")
         print(f"      relationship is : {r.relationship_is}")
         print(f"      if deleted      : {r.if_deleted}")
+    print()
+    print(f"PROVIDER DATA THAT IS NOT YAHOO'S ({len(FOREIGN_PROVIDER_FIELDS)})")
+    print("-" * 78)
+    for f in FOREIGN_PROVIDER_FIELDS:
+        print(f"  {f.table}.{f.column}  [{f.provider}]")
+        print(f"      what      : {f.what}")
+        print(f"      purpose   : {f.purpose}")
+        print(f"      if deleted: {f.if_deleted}")
     print()
     print(f"DERIVED FANTASYSTAKES STATE ({len(DERIVED)})")
     print("-" * 78)

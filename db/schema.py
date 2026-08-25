@@ -2470,6 +2470,115 @@ class PlayerIdMap(Base):
                             default=lambda: datetime.now(timezone.utc))
 
 
+# ── Cross-provider player identity (WP1) ──────────────────────────────────────
+
+class ProviderPlayerAlias(Base):
+    """One provider's name for a player FantasyStakes already has a row for.
+
+    WP1 — WHY AN ALIAS TABLE AND NOT A SECOND `players` ROW. Every downstream
+    table in this schema — `rosters`, `projections`, `beef_starters`,
+    `beef_proposal_starters`, `pool_bet_picks`, `bets` — carries a foreign key
+    to `players.id`. That column already IS the canonical FantasyStakes player
+    identity, in the only sense that matters: it is what the economic record is
+    written against. A BALLDONTLIE player inserted as its own `players` row
+    would be a SECOND identity for the same human being, and any projection
+    attached to it would hang off a subject no wager has ever referenced.
+
+    So `players.id` stays canonical, untouched, and this table says: the
+    provider named `provider` calls that same subject `provider_player_key`.
+    Nothing existing is rewritten, no id moves, and a deployment that never
+    reaches WP2 carries an empty table — which is the true statement about it.
+
+    ── TWO CONSTRAINTS, BECAUSE THE MAPPING IS A BIJECTION ───────────────────
+
+    `uq_provider_player_alias_key` stops one provider subject being claimed by
+    two canonical players. `uq_provider_player_alias_active_player` stops one
+    canonical player claiming two subjects at the same provider. Either alone
+    leaves the other direction open, and the open direction is the one that
+    settles a wager against the wrong man's stat line.
+
+    THEY ARE DELIBERATELY NOT THE SAME KIND OF CONSTRAINT, and the asymmetry is
+    the whole design:
+
+        the KEY side is a PLAIN UNIQUE, spanning retired rows too. That is what
+        makes PROVIDER ID REUSE unrepresentable rather than merely discouraged:
+        a retired mapping goes on occupying its provider key forever, so a
+        reissued identifier cannot be picked up by discovery and cannot silently
+        repoint an existing mapping. The code path that would have done so
+        raises CONFLICT instead of UPDATE-ing.
+
+        the PLAYER side is a PARTIAL UNIQUE on `status = 'active'`. A full
+        unique there would make the retirement above impossible to record: a
+        superseded mapping and the mapping that replaced it are two rows for one
+        player, and the only alternative would be DELETING the old one — which
+        frees its key and destroys the reuse guard the other constraint exists
+        to give. Partial unique indexes are supported by both dialects this
+        product runs on, so the invariant is enforced by the database on each.
+
+    ── WHY `status` EXISTS AND WHY RETIRED ROWS ARE NOT DELETED ──────────────
+
+    A retired mapping that is deleted frees its provider key for rebinding, and
+    rebinding is exactly what must not happen quietly. A retired row keeps the
+    key occupied, so a later automatic attempt to bind it fails closed and only
+    an explicit manual override can move it. Resolution reads ACTIVE rows only.
+
+    ── `provider_position` AND `provider_nfl_team` ARE OBSERVATIONS ──────────
+
+    They record what the provider said about this subject when the mapping was
+    made, so an operator auditing a stale mapping can see what changed. They are
+    NOT identity and nothing resolves on them: a traded player keeps this row
+    and this `player_id`, and only the observation is refreshed. That is the
+    whole point of persisting the mapping — a trade must never mint a new
+    identity when the provider ids already prove it is the same player.
+
+    ── `method` IS PROVENANCE, AND IT IS LOAD-BEARING ────────────────────────
+
+    A mapping discovered from a normalized name is a weaker claim than one bound
+    from a provider identifier, and a settlement-grade caller is entitled to
+    know which it is holding. Recording it also lets a later sweep re-examine
+    exactly the discovered mappings without touching the asserted ones.
+    """
+
+    __tablename__ = "provider_player_alias"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_player_key",
+                         name="uq_provider_player_alias_key"),
+        Index("uq_provider_player_alias_active_player",
+              "provider", "player_id", unique=True,
+              sqlite_where=text("status = 'active'"),
+              postgresql_where=text("status = 'active'")),
+        Index("ix_provider_player_alias_player", "player_id"),
+    )
+
+    #: `status` values. RETIRED rows are kept, never deleted — see the docstring.
+    STATUS_ACTIVE = "active"
+    STATUS_RETIRED = "retired"
+
+    #: `method` values — how this mapping came to exist, weakest last.
+    METHOD_PROVIDER_ID = "provider_id"            # the provider's own id was supplied
+    METHOD_DISCOVERY = "normalized_discovery"     # deterministic name/team/position match
+    METHOD_DISCOVERY_RELAXED = "normalized_discovery_team_relaxed"
+    METHOD_TEAM_DEFENSE = "team_defense"          # DEF/DST: team identity alone
+    METHOD_MANUAL = "manual"                      # an operator asserted it
+
+    id                  = Column(Integer, primary_key=True, autoincrement=True)
+    provider            = Column(String,  nullable=False)
+    provider_player_key = Column(String,  nullable=False)
+    player_id           = Column(Integer, ForeignKey("players.id"), nullable=False)
+    provider_position   = Column(String,     nullable=True)   # observation, not identity
+    provider_nfl_team   = Column(String(4),  nullable=True)   # observation, not identity
+    status              = Column(String,  nullable=False, default=STATUS_ACTIVE)
+    method              = Column(String,  nullable=False)
+    manual_override     = Column(Boolean, nullable=False, default=False)
+    created_at          = Column(DateTime, nullable=False,
+                                 default=lambda: datetime.now(timezone.utc))
+    updated_at          = Column(DateTime, nullable=False,
+                                 default=lambda: datetime.now(timezone.utc),
+                                 onupdate=lambda: datetime.now(timezone.utc))
+
+    player = relationship("Player")
+
+
 # ── Settlement recovery audit ─────────────────────────────────────────────────
 
 class SettlementRecoveryAudit(Base):

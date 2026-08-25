@@ -49,9 +49,9 @@ print("C1 — YAHOO RETENTION INVENTORY, SCOPES AND ATTRIBUTION")
 print("=" * 74)
 
 from ops.yahoo_retention import (  # noqa: E402
-    DERIVED, GATE, PROVIDER_FACTS, REQUIRES_RULING, SAFE_WITHOUT_RULING,
-    YAHOO_DERIVED_RELATIONSHIPS, inventoried_columns, related_columns,
-    report,
+    DERIVED, FOREIGN_PROVIDER_FIELDS, GATE, PROVIDER_FACTS, REQUIRES_RULING,
+    SAFE_WITHOUT_RULING, YAHOO_DERIVED_RELATIONSHIPS, foreign_provider_columns,
+    inventoried_columns, related_columns, report,
 )
 
 SCHEMA = (ROOT / "db" / "schema.py").read_text(encoding="utf-8")
@@ -134,6 +134,7 @@ SOURCE_DERIVED = (
 
 inventoried = inventoried_columns()
 related = related_columns()
+foreign = foreign_provider_columns()
 
 # EVERY REVIEWED SOURCE FIELD MUST BE INVENTORIED. This is the assertion the
 # original suite lacked, and the one that would have caught the omission.
@@ -173,10 +174,27 @@ for table, cols in TABLES.items():
         if re.search(r"provider_|yahoo", col, re.I):
             named.add((table, col))
 
-missing = named - inventoried - related
+missing = named - inventoried - related - foreign
 check("the schema provider-named columns are all inventoried or classified",
       not missing,
       f"NOT INVENTORIED: {sorted(missing)}" if missing else f"{len(named)} columns")
+
+# THE NON-YAHOO CATEGORY MUST NOT BECOME AN EXEMPTION HATCH. It admits a column
+# only by naming the provider the value came from, so these three assertions are
+# what keep "not Yahoo's" an accountable claim rather than a way to quiet the
+# scan above: nothing may be claimed by both lists, no entry may name Yahoo, and
+# every entry must describe a column that really exists.
+overlap = sorted(foreign & (inventoried | related))
+check("  · nothing is claimed as both Yahoo data and not-Yahoo data",
+      not overlap, str(overlap))
+mislabelled = sorted(f"{f.table}.{f.column}" for f in FOREIGN_PROVIDER_FIELDS
+                     if f.provider.strip().lower() in ("", "yahoo"))
+check("  · every non-Yahoo provider column names a provider that is not Yahoo",
+      not mislabelled, str(mislabelled))
+check("  · and each one describes a column that exists in the schema",
+      all(f.table in TABLES and f.column in TABLES[f.table]
+          for f in FOREIGN_PROVIDER_FIELDS),
+      f"{len(FOREIGN_PROVIDER_FIELDS)} classified")
 check("  · and the scan actually found some, so it is not vacuous",
       len(named) >= 10, f"{len(named)} provider-named columns")
 # THE SCAN MUST SEE DIGIT-BEARING NAMES. `[a-z_]+` did not, which is how a probe
@@ -186,7 +204,7 @@ check("  · the column scan accepts digit-bearing identifiers",
 
 # The other direction: the inventory must not cite fields that do not exist.
 ghosts = []
-for table, column in sorted(inventoried | related):
+for table, column in sorted(inventoried | related | foreign):
     if table not in TABLES:
         ghosts.append(f"{table} (no such table)")
     elif column not in TABLES[table]:

@@ -200,6 +200,26 @@ ACTIVE: tuple = (
         summary="Final POR §7 — voided_wagers; one row per voided accepted wager, unique on bet_id, recording the Wallet refund that never restores the Weekly Minimum",
         tables=("voided_wagers",),
     ),
+    # WP1 · BALLDONTLIE INTEGRATION — the cross-provider player identity map.
+    #
+    # ORDERED LAST, AND IT COULD BE ORDERED ANYWHERE. Every migration before it
+    # changes something an economic path reads; this one adds a table nothing
+    # outside providers/cross_identity.py reads at all. It has no ordering
+    # relationship with the Final POR sequence above because it shares no object
+    # with any of it — the only table it references is `players`, which predates
+    # every migration in this manifest.
+    #
+    # ADDITIVE AND UNBACKFILLED. `players.id` remains the canonical FantasyStakes
+    # player identity; this table records only what a SECOND provider calls the
+    # same subject. No `players` row is rewritten and no economic row is read, so
+    # existing Yahoo, Demo and fixture-replay behaviour is unchanged by
+    # construction rather than by test.
+    Migration(
+        identifier="0014_provider_player_alias",
+        module="migrations.add_provider_player_alias",
+        summary="WP1 — provider_player_alias; durable Yahoo/FantasyStakes <-> BALLDONTLIE player identity. A bijection per provider: a plain unique on the provider key (spanning retired rows, so an identifier can never be reused) and a partial unique on (provider, player_id) WHERE status='active' (so a superseded mapping is retired rather than deleted)",
+        tables=("provider_player_alias",),
+    ),
 )
 
 

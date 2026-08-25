@@ -22,6 +22,16 @@ additionally walks every module here for a forbidden import.
     incident.py           the named refusal taxonomy and its emitter
     diagnosis.py          "why is this week stuck?", as a pure read
 
+    nfl_teams.py          canonical NFL team and fantasy position identity, and
+                          the per-provider dialects that spell them differently
+    cross_identity.py     one canonical `players` row <-> one subject at a
+                          SECOND provider: normalization, fail-closed discovery,
+                          and the durable `provider_player_alias` mapping
+    balldontlie_identity.py
+                          BALLDONTLIE subject rows -> the neutral records
+                          cross_identity compares. No HTTP, no key: WP2 owns the
+                          transport and hands its decoded payloads to this
+
     yahoo/                transport, parse, normalize, the Yahoo stat map, and
                           the Yahoo defaults over the neutral modules above
     demo/                 a deterministic runtime provider: scenario, source,
@@ -36,6 +46,14 @@ Yahoo package meant a second provider could only reuse them by importing Yahoo.
 `yahoo/identity.py`, `yahoo/finality.py` and `yahoo/persist.py` remain as the
 Yahoo-defaulting face of the same objects, so every existing importer is
 unaffected and there is exactly one implementation of each.
+
+WP1 ADDED CROSS-PROVIDER IDENTITY, AND IT IS NOT `identity.py`. `identity.py`
+answers "which of OUR rows is this provider key", which every provider needs and
+which is settled by a key we already stored. `cross_identity.py` answers a
+question no single provider can: "which subject at ANOTHER provider is the same
+human being as this one" — a question that starts from names because the two
+providers share no identifier at all. It fails closed on every ambiguity and,
+once it has answered, records the answer so the names are never read again.
 
 ONE PROVIDER PACKAGE NEVER IMPORTS ANOTHER. `demo/` imports `providers.identity`
 and `providers.persist`, never `providers.yahoo.*`. That fence is what keeps the
