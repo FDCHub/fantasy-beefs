@@ -268,6 +268,8 @@ def advance_to_final() -> dict:
     from economy.fantasystakes_championship_settlement import (
         settle_fantasystakes_championship,
     )
+    from economy import fantasystakes_championship_final as fs_championship_final
+    from economy.championship_pots import pot_balances
     from economy.rc2_season_activation import (
         activate_fantasystakes_championship_stage,
     )
@@ -276,6 +278,7 @@ def advance_to_final() -> dict:
     )
     from ledger.ledger import trial_balance
     from reports.championship_read_model import freeze_fantasystakes_championship
+    from ruleset import is_final_por
 
     from demo.seed import find_showcase
 
@@ -305,29 +308,91 @@ def advance_to_final() -> dict:
         db.commit()
 
     # ── 2 · the FantasyStakes championship, each step its own transaction ────
+    #
+    # THE POT IS NOT STAGED HERE UNDER THE FINAL POR — IT WAS MINTED AT
+    # ACTIVATION. WP-5 made the FantasyStakes Championship Pot a league-level
+    # minted allocation (Weekly Minimum x Regular-Season Weeks) and retired the
+    # per-GM contribution `activate_fantasystakes_championship_stage` advances;
+    # `stage_allocation` now raises FS_CHAMPIONSHIP_ALLOCATION_RETIRED_ERA for a
+    # Final POR season. This module was not updated with it, so the showcase's
+    # CURRENT -> FINAL transition raised that refusal and the demo could not be
+    # closed at all — the D2.4 lifecycle, determinism and hostile-gameplay
+    # suites all stopped here.
+    #
+    # NOTHING IS MINTED IN ITS PLACE, deliberately. `economy.season_allocation`
+    # already calls `mint_season_pots` inside the activation transaction that
+    # `demo.seed` runs, so by the time the showcase exists the pot is funded and
+    # every pillar is already carrying its allocation. Minting again here would
+    # either duplicate the pot or be swallowed as a replay; the honest action is
+    # to READ the balance that activation established and report it.
+    #
+    # THE LEGACY BRANCH IS KEPT, not deleted: a LEGACY season really does hold a
+    # per-GM championship reserve and really is staged this way, and that path is
+    # unchanged and still exercised by the RC2 suites.
     with SessionLocal() as db:
-        assert_demo_league(db.query(League).filter(League.id == league_id).first())
-        activation = activate_fantasystakes_championship_stage(league_id, db)
-        db.commit()
-        summary["championship_pot_cents"] = getattr(
-            activation, "pot_cents", getattr(activation, "total_cents", None))
+        league_row = db.query(League).filter(League.id == league_id).first()
+        assert_demo_league(league_row)
+        season = league_row.season
+        # ONE ERA DETERMINATION FOR THE WHOLE TRANSITION. The staging, the
+        # freeze and the settlement are three steps of a single lifecycle;
+        # asking the gate once means they cannot disagree about which era they
+        # are in halfway through a close.
+        _final_por = is_final_por(db, league_id=league_id, season=season)
+        if _final_por:
+            summary["championship_pot_cents"] = pot_balances(
+                db, league_id=league_id, season=season).fantasystakes_cents
+        else:
+            activation = activate_fantasystakes_championship_stage(league_id, db)
+            db.commit()
+            summary["championship_pot_cents"] = getattr(
+                activation, "pot_cents", getattr(activation, "total_cents", None))
 
-    with SessionLocal() as db:
-        assert_demo_league(db.query(League).filter(League.id == league_id).first())
-        snapshot = freeze_fantasystakes_championship(db, league_id=league_id,
-                                                     now=_now())
-        db.commit()
-        summary["frozen_rows"] = len(snapshot.rows)
+    # THE FREEZE AND THE SETTLEMENT ARE BOTH ERA-SPECIFIC, for the same reason
+    # the staging above is. WP-8 retired the playoff-boundary freeze — a Final
+    # POR championship scores THROUGH the postseason and runs LIVE -> FINAL ->
+    # PAID with no FROZEN state — so `freeze_fantasystakes_championship` raises
+    # FS_CHAMPIONSHIP_FREEZE_RETIRED here, and RC2's settlement pays a frozen
+    # snapshot that now never exists. WP-14 supplied the replacement:
+    # `economy.fantasystakes_championship_final.settle` pays the LIVE
+    # season-wide Score off the authoritative pot and writes the SAME
+    # `FantasyStakesChampionshipDistributionRun` row, so PAID means one thing in
+    # both eras and a season cannot be paid twice through the other path.
+    #
+    # `frozen_rows` IS REPORTED AS 0 RATHER THAN OMITTED for a Final POR season.
+    # The digest the determinism suite compares is field-by-field, and a key
+    # that appears in one era and not the other would read as drift rather than
+    # as the absence of a step that no longer exists.
+    if _final_por:
+        summary["frozen_rows"] = 0
+        with SessionLocal() as db:
+            assert_demo_league(
+                db.query(League).filter(League.id == league_id).first())
+            final = fs_championship_final.settle(db, league_id=league_id,
+                                                 now=_now())
+            db.commit()
+            summary["awards"] = [
+                {"team_id": team_id, "place": place,
+                 "amount_cents": amount_cents, "tied": final.dead_heat}
+                for team_id, place, amount_cents, _score in final.placements]
+    else:
+        with SessionLocal() as db:
+            assert_demo_league(
+                db.query(League).filter(League.id == league_id).first())
+            snapshot = freeze_fantasystakes_championship(db, league_id=league_id,
+                                                         now=_now())
+            db.commit()
+            summary["frozen_rows"] = len(snapshot.rows)
 
-    with SessionLocal() as db:
-        assert_demo_league(db.query(League).filter(League.id == league_id).first())
-        settlement = settle_fantasystakes_championship(db, league_id=league_id,
-                                                      now=_now())
-        db.commit()
-        summary["awards"] = [
-            {"team_id": a.team_id, "place": a.place,
-             "amount_cents": a.amount_cents, "tied": a.tied}
-            for a in settlement.awards]
+        with SessionLocal() as db:
+            assert_demo_league(
+                db.query(League).filter(League.id == league_id).first())
+            settlement = settle_fantasystakes_championship(db, league_id=league_id,
+                                                          now=_now())
+            db.commit()
+            summary["awards"] = [
+                {"team_id": a.team_id, "place": a.place,
+                 "amount_cents": a.amount_cents, "tied": a.tied}
+                for a in settlement.awards]
 
     # ── 3 · the real season close ────────────────────────────────────────────
     #

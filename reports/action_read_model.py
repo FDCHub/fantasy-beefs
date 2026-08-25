@@ -535,10 +535,23 @@ def _challenge_wager_escrow_cents(db: Session,
     accepted Status card must read those accounts rather than report a false
     zero from the now-empty challenge account.  A void drains both and the same
     read naturally returns zero without inferring terminal state from balance.
+
+    AND IT DOES NOT FLUSH TO GET THERE. An explicit session flush stood before
+    this SELECT and was removed: it was a no-op on every read path measured —
+    nothing is ever pending when this module runs — and it was redundant, because
+    ``Session.execute`` autoflushes and ``sessionmaker(bind=engine)`` leaves
+    autoflush at its default. ``ledger._balance_of_in_session`` issues this exact
+    query against this exact table without one and states the rule: "no caller
+    precondition beyond ordinary autoflush, which is the codebase-wide default".
+
+    IT WAS NOT MERELY REDUNDANT, which is why its absence is worth stating. A
+    read model that flushes writes whatever a CALLER left pending — so the one
+    module contractually forbidden to mutate would have been the module that
+    forced somebody else's mutation to disk. That is the hazard
+    `test_uirecon_wave4_demo_visibility` guards, and the guard was right.
     """
     bets = _bets_for(db, challenge.id)
     if bets:
-        db.flush()
         return sum(max(0, int(db.execute(
             text("SELECT COALESCE(SUM(amount_cents), 0) FROM ledger_entries "
                  "WHERE account = :account"),
