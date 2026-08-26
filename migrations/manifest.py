@@ -264,6 +264,28 @@ ACTIVE: tuple = (
         summary="Sprint 5 — provider_historical_rate; derived historical model parameters (reception catch rate, pick-six conditional rate, three-and-out rate) with an as-of cutoff and an append-only fingerprint key so corrections never mutate the parameters a frozen wager was priced against",
         tables=("provider_historical_rate",),
     ),
+    # SPRINT 7 — WHICH PROVIDER ANSWERS FOR WHICH LEAGUE.
+    #
+    # ADDITIVE, AND INERT UNTIL A ROW EXISTS. Creating this table changes no
+    # behaviour whatsoever: behaviour follows from a ROW, and the migration
+    # writes none. A league-season with no row keeps Yahoo projections, the
+    # legacy factual path and sim-v1, byte for byte, which is what makes a
+    # one-league-at-a-time cutover possible without a flag day.
+    #
+    # THREE CLOSED VOCABULARIES, ENFORCED BY THE ENGINE. A source is `legacy` or
+    # `balldontlie`; a model is `sim-v1` or `sim-v2`; there is no `auto`. A
+    # league that cannot be configured ambiguously cannot fall back silently at
+    # read time — the refusal lands at write, where an operator can see it.
+    #
+    # `leagues.provider` IS NOT TOUCHED. A Yahoo league stays a Yahoo league:
+    # Yahoo owns identity, rosters, starters and its own result. This row says
+    # who supplies the football.
+    Migration(
+        identifier="0017_league_provider_config",
+        module="migrations.add_league_provider_config",
+        summary="Sprint 7 — league_provider_config; per-league-season selection of projection source, factual source and simulation model, with absence preserving existing behaviour and closed vocabularies preventing silent provider fallback",
+        tables=("league_provider_config",),
+    ),
 )
 
 

@@ -284,6 +284,25 @@ def run(
     )
 
 
+def matchup_seed(home_team_id: int, away_team_id: int, week: int,
+                 *, matchup_id: int | None = None) -> int:
+    """The integer `seed_method` "matchup_or_team_pair_week_v1" names.
+
+    EXTRACTED BY SPRINT 7B, NOT CHANGED. Both expressions below were already in
+    `simulate_scores`, verbatim, and sim-v2's `run_matchup` carried the first
+    of them a second time. Two copies of a seed rule is two places a replay can
+    stop reproducing, and both frozen model configs claim the SAME rule by name
+    — so it is now one function that both of them call, and the claim is
+    checkable rather than asserted.
+
+    The rule is config; the integer is live identity, which is why the seed
+    itself is deliberately not a field of any model version.
+    """
+    if matchup_id is not None:
+        return matchup_id * 1_000 + week
+    return home_team_id * 10_000 + away_team_id * 100 + week
+
+
 def simulate_scores(
     home_team_id:  int,
     away_team_id:  int,
@@ -313,10 +332,8 @@ def simulate_scores(
     home_pts = np.array([s.adjusted_points for s in home_lines])
     away_pts = np.array([s.adjusted_points for s in away_lines])
 
-    if matchup_id is not None:
-        rng = np.random.default_rng(seed=matchup_id * 1_000 + week)
-    else:
-        rng = np.random.default_rng(seed=home_team_id * 10_000 + away_team_id * 100 + week)
+    rng = np.random.default_rng(seed=matchup_seed(
+        home_team_id, away_team_id, week, matchup_id=matchup_id))
     return (_simulate_team(home_pts, rng, model_config=model_config),
             _simulate_team(away_pts, rng, model_config=model_config))
 

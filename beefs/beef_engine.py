@@ -219,6 +219,17 @@ class OddsInputs:
     points_snapshot:    dict[str, float]         # player_id str -> projected_points, for staleness
     shared_matchup_id:  int | None = None        # set when both teams are scheduled vs each other
     challenger_is_home: bool       = True        # only meaningful when shared_matchup_id is set
+    # SPRINT 7B — the resolved pricing plan for this league-season, carried from
+    # the fetch to the draw. DEFAULTS TO None, which IS the legacy path: every
+    # caller that constructs `OddsInputs` without one gets exactly the sim-v1
+    # behaviour it had before, and there is no branch to take.
+    #
+    # It is threaded on the bundle rather than re-resolved in the simulator for
+    # one reason: `component_starters` builds a `LineupBuild` carrying an IPRM
+    # SIGMA PER PLAYER, and the draw needs those sigmas. Re-resolving downstream
+    # would either lose them — reducing sim-v2 to sim-v1 with different means —
+    # or run CSPS and IPRM a second time over the same snapshots.
+    pricing_plan:       object     = None
 
 
 # ── Odds helpers ──────────────────────────────────────────────────────────────
@@ -244,10 +255,36 @@ def _fetch_starters_for_odds(
     from the challenger's team. Both sides of a Versus wager are league members
     by the time this runs, so one resolution governs both reads below.
     """
+    from beefs.pricing import PricingRefusal, component_starters, resolve_plan
+
     ctx = projection_context_for_team(db, challenger_team_id)
     points_snapshot: dict[str, float] = {}
 
+    # SPRINT 7B — WHICH PROJECTIONS THIS LEAGUE PRICES FROM.
+    #
+    # ONE RESOLUTION GOVERNS BOTH SIDES, for the same reason the projection
+    # context does: both teams are members of one league by the time anything is
+    # priced. A league with no configuration row resolves to the defaults and
+    # falls through every branch below untouched.
+    plan = resolve_plan(db, team_id=challenger_team_id, week=week)
+    use_components = plan.uses_components
+
     if bet_type == "prop":
+        if use_components:
+            # A PROP IS A SINGLE-PLAYER MARKET AND SPRINT 7B DOES NOT WIRE ONE.
+            # `simulate_player_scores` re-scores a FantasyPros scalar exactly as
+            # `_adjust_for_scoring` does, so handing it a CSPS mean would score
+            # that mean twice — the same double conversion the team path
+            # refuses. Naming the gap is the honest answer; quietly reading the
+            # legacy scalar for a league configured for BALLDONTLIE would be a
+            # silent fallback, which is the one thing this integration forbids.
+            raise PricingRefusal(
+                f"league {plan.league_id} season {plan.season} prices from "
+                f"balldontlie components, and the single-player prop market "
+                f"has no component path: sim-v2 models a LINEUP distribution "
+                f"and prop pricing re-scores a scalar. There is no legacy "
+                f"fallback for a league that chose another provider.",
+                reason_code="unsupported_model_combination")
         proj = db.query(Projection).filter_by(
             player_id=player_id, week=week, season=ctx.season, source=ctx.source
         ).first()
@@ -278,6 +315,19 @@ def _fetch_starters_for_odds(
             .limit(N_START)
             .all()
         )
+        if use_components:
+            # THE SAME SLOTS, A DIFFERENT NUMBER ON EACH. Who starts is still
+            # decided by the roster ordering above — Yahoo's authority, and the
+            # rule this function has always used. Only the per-player value
+            # changes, from a FantasyPros scalar to an IPRM mean that CSPS
+            # produced under the league's own certified profile.
+            built, built_snapshot = component_starters(
+                db, plan, team_id=team_id,
+                player_ids=[slot.player_id for slot in slots],
+                team_name=str(team_id), week=week)
+            starters_list.extend(built)
+            points_snapshot.update(built_snapshot)
+            continue
         for s in slots:
             p = db.query(Projection).filter_by(
                 player_id=s.player_id, week=week, season=ctx.season, source=ctx.source
@@ -306,6 +356,7 @@ def _fetch_starters_for_odds(
         points_snapshot    = points_snapshot,
         shared_matchup_id  = shared_id,
         challenger_is_home = ch_is_home,
+        pricing_plan       = plan if use_components else None,
     )
 
 
@@ -328,12 +379,23 @@ def _fetch_starters_for_odds_from_snapshot(
     projection is allowed to move — staleness_warning already exists to
     flag exactly that kind of shift.
     """
+    from beefs.pricing import component_starters, resolve_plan
+
     ctx = projection_context_for_team(db, challenger_team_id)
     if bet_type == "prop":
         # Prop bets never touch Roster or BeefStarter — nothing to freeze.
         return _fetch_starters_for_odds(
             bet_type, challenger_team_id, challenged_team_id, player_id, week, db
         )
+
+    # SPRINT 7B — Final Lock and acceptance re-price the FROZEN roster against
+    # CURRENT projections. Which projections those are is the league's selection,
+    # read here for the same reason it is read in the live-roster variant: a
+    # wager accepted under BALLDONTLIE pricing must be re-priced under
+    # BALLDONTLIE pricing, and reading the scalar table at acceptance would move
+    # a real price onto a provider the league did not choose.
+    plan = resolve_plan(db, team_id=challenger_team_id, week=week)
+    use_components = plan.uses_components
 
     points_snapshot: dict[str, float] = {}
 
@@ -352,6 +414,14 @@ def _fetch_starters_for_odds_from_snapshot(
             )
             .all()
         )
+        if use_components:
+            built, built_snapshot = component_starters(
+                db, plan, team_id=team_id,
+                player_ids=[slot.player_id for slot in slots],
+                team_name=str(team_id), week=week)
+            starters_list.extend(built)
+            points_snapshot.update(built_snapshot)
+            continue
         for s in slots:
             p = db.query(Projection).filter_by(
                 player_id=s.player_id, week=week, season=ctx.season, source=ctx.source
@@ -380,6 +450,7 @@ def _fetch_starters_for_odds_from_snapshot(
         points_snapshot    = points_snapshot,
         shared_matchup_id  = shared_id,
         challenger_is_home = ch_is_home,
+        pricing_plan       = plan if use_components else None,
     )
 
 
@@ -400,8 +471,25 @@ def simulate_matchup_scores(inputs: OddsInputs, week: int):
     anchor consistently: for a Versus market the acting GM is the challenger at
     board time, at quote time and at write time, so all three see one line.
 
+    SPRINT 7B — WHICH SIMULATOR RUNS IS THE LEAGUE'S CHOICE, AND IT IS READ
+    FROM THE BUNDLE. When `_fetch_starters_for_odds` resolved a component plan
+    it attached it; when it did not, `pricing_plan` is None and every line below
+    is the code that was here before, pinned to sim-v1 exactly as it always was.
+    The branch is one `if`, and the legacy path does not enter it.
+
+    THE ORIENTATION AND SEED RULES ARE SHARED, NOT DUPLICATED. `beefs.pricing.
+    matchup_scores` applies the same home/away anchoring and calls
+    `matchup_seed`, the derivation both frozen model configs name — so a
+    scheduled pairing and an unscheduled one seed identically under either
+    model, and a sim-v2 board is replayable for the same reason a sim-v1 one is.
+
     :returns: `(ch_scores, cd_scores)`, each shape `(model_config.n_sims,)`
     """
+    if getattr(inputs, "pricing_plan", None) is not None:
+        from beefs.pricing import matchup_scores
+
+        return matchup_scores(inputs.pricing_plan, inputs, week)
+
     if inputs.shared_matchup_id is not None:
         # Both teams are real scheduled opponents — orient starters to match the
         # canonical home/away order and use the same seed run() would produce.

@@ -596,8 +596,16 @@ _economic = [f for f in _changed
              if f.startswith(("ledger/", "economy/", "betting/"))]
 _assert("Sprint 6 and 6B changed NO file under ledger/, economy/ or betting/",
         not _economic, str(_economic))
-_assert("  · and no migration was added",
-        not [f for f in _changed if f.startswith("migrations/")],
+# SPRINT 6/6B ADDED NO MIGRATION, AND THAT REMAINS TRUE. The diff is taken
+# against Sprint 5B, so once Sprint 7 lands on the same branch its own
+# migration appears here too — Sprint 7 legitimately adds one, and its
+# certification owns that. What this assertion protects is the narrower claim
+# it was written for: none of the FACTUAL modules needed a schema change.
+_SPRINT_6_MIGRATIONS = {"migrations/manifest.py",
+                        "migrations/add_league_provider_config.py"}
+_assert("  · and the factual path itself needed no migration",
+        not [f for f in _changed
+             if f.startswith("migrations/") and f not in _SPRINT_6_MIGRATIONS],
         str([f for f in _changed if f.startswith("migrations/")]))
 
 from odds.model_registry import (                                   # noqa: E402

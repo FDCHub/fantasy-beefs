@@ -5457,9 +5457,28 @@ def _market_board_or_refuse(db: Session, acting_team: Team, opponent: Team,
     Reversing them would rename the refusal a GM sees when both are true.
     """
     from beefs.beef_engine import compute_market_board
+    from beefs.pricing import PricingRefusal
 
     try:
         board = compute_market_board(acting_team, opponent, week, db)
+    except PricingRefusal as e:
+        # SPRINT 7B — THE PROVIDER REFUSALS KEEP THEIR OWN NAMES.
+        #
+        # `PricingRefusal` is a `ValueError`, so without this clause it would
+        # have been caught below and reported as the generic `cannot_price`.
+        # That would be true but useless: "this league is configured for
+        # BALLDONTLIE projections and names no scoring profile" and "these two
+        # rosters cannot be simulated" are different problems with different
+        # operators and different fixes, and a GM meeting the first one deserves
+        # a surface that can tell an operator which it was.
+        #
+        # 409, not 400: every cause in this vocabulary is a state that will
+        # resolve — a snapshot that has not landed, a profile not yet set — and
+        # not a malformed request.
+        raise _MarketUnavailable(
+            409, e.reason_code,
+            "This matchup cannot be priced yet — the projections this league "
+            "is configured to use are not ready.")
     except ValueError as e:
         empty_roster = "starters must not be empty" in str(e)
         raise _MarketUnavailable(
@@ -6172,8 +6191,31 @@ def _quote_inputs_are_empty(db: Session, team_a: int, team_b: int,
     quote is arithmetic over an absence.
     """
     from beefs.beef_engine import projection_context_for_team
+    from beefs.pricing import resolve_plan
 
     ctx = projection_context_for_team(db, team_a)
+
+    # SPRINT 7B — A LEAGUE THAT DOES NOT USE THIS TABLE IS NOT EMPTY BECAUSE
+    # THIS TABLE IS EMPTY.
+    #
+    # THE DEFECT THIS CLOSES. The query below sums `projections.projected_points`
+    # — the FantasyPros scalar feed. A league priced from BALLDONTLIE components
+    # has no rows there and never will, so every board and every quote it
+    # produced would have been refused `projections_unavailable` immediately
+    # after being priced correctly. The board would have been right and the
+    # route would have thrown it away.
+    #
+    # THE ANSWER IS NOT TO SUM THE OTHER TABLE HERE. A component lineup that
+    # cannot be priced has ALREADY refused, by name, inside
+    # `component_starters` — a missing snapshot and an inadmissible IPRM result
+    # are both named refusals with the player attached, and they are strictly
+    # stronger than "the sum was zero". This test exists because the LEGACY path
+    # cannot refuse: it records a missing scalar as 0.0 and prices a board of
+    # zeroes at even money without complaint. So the test belongs to the path
+    # that needs it, and reaching the board at all is the component path's proof.
+    if resolve_plan(db, team_id=team_a, week=week).uses_components:
+        return False
+
     total = (db.query(func.coalesce(func.sum(Projection.projected_points), 0.0))
              .join(Roster, Roster.player_id == Projection.player_id)
              .filter(Roster.team_id.in_((team_a, team_b)),
@@ -7626,13 +7668,29 @@ def _provider_week_snapshot(db, league, week: int, *,
 def _provider_stat_source(db, league, snapshot):
     """The certified `PoolStatSource` for this league's provider.
 
-    Both branches construct `providers.week_stat_source.ProviderWeekStatSource`
-    with a different stat map — Yahoo's governed id mapping, or the Demo feed's
-    canonical identity map — and both bind the same league-scoped identity
-    resolver. There is one subject-construction implementation and one coverage
-    rule, so a Demo Pool and a Yahoo Pool are evaluated by the same code.
+    Every branch constructs `providers.week_stat_source.ProviderWeekStatSource`
+    with a different stat map — Yahoo's governed id mapping, the Demo feed's
+    canonical identity map, or BALLDONTLIE's translation into the governed
+    vocabulary — and every one binds the same league-scoped identity resolver.
+    There is one subject-construction implementation and one coverage rule, so
+    a Demo Pool, a Yahoo Pool and a BALLDONTLIE Pool are evaluated by the same
+    code.
+
+    ── THE FACTUAL SOURCE IS A SEPARATE DECISION FROM THE LEAGUE PROVIDER ───
+
+    `League.provider` says who hosts the league — who owns its identity, its
+    teams, its rosters, who started and its schedule. Sprint 7's
+    `league_provider_config` row says who supplies the FOOTBALL. A Yahoo league
+    reading BALLDONTLIE facts is still a Yahoo league, and this function is the
+    one place that has to hold both ideas at once: it asks Yahoo for the
+    snapshot (rosters, starters, schedule) and BALLDONTLIE for the numbers
+    inside it.
+
+    A league with no configuration row is untouched by any of this and takes
+    the branch it has always taken.
     """
     from providers.demo import DEMO_PROVIDER
+    from providers.selection import resolve as resolve_selection
 
     provider = _league_provider(league)
     if provider == DEMO_PROVIDER:
@@ -7640,9 +7698,54 @@ def _provider_stat_source(db, league, snapshot):
 
         return demo_stat_source(db, snapshot, league_id=league.id)
 
+    selection = resolve_selection(db, league_id=league.id,
+                                  season=getattr(league, "season", 0) or 0)
+    if selection.uses_balldontlie_facts:
+        return _balldontlie_stat_source(db, league, snapshot,
+                                        selection=selection)
+
     from providers.yahoo.week_snapshot import bind_pool_stat_source
 
     return bind_pool_stat_source(db, snapshot, league_id=league.id)
+
+
+def _balldontlie_stat_source(db, league, snapshot, *, selection):
+    """A Pool stat source over BALLDONTLIE facts and Yahoo's roster.
+
+    THE SNAPSHOT IS COMPOSED, NOT REPLACED. `snapshot` arrives from Yahoo and
+    carries the league, its teams and — crucially — who started. BALLDONTLIE
+    hosts none of that and `normalize.build_week` returns those fields empty on
+    purpose. So the roster entries are carried across unchanged and only the
+    per-player numbers are replaced, which is exactly the division of authority
+    the product declares.
+
+    NO NETWORK HERE. The facts come from `provider_component_projection` rows
+    that a refresh already persisted; this function reads the database and
+    composes. A Pool settling at midnight does not depend on BALLDONTLIE being
+    reachable at midnight.
+
+    NO SILENT FALLBACK. If the week has no persisted BALLDONTLIE facts, this
+    raises rather than quietly handing back Yahoo's numbers — a Pool graded on
+    a provider the operator did not choose is wrong even when every subject
+    resolves.
+    """
+    from providers.balldontlie.pool_source import (
+        BalldontlieProviderStatSource, factual_week_from_components,
+    )
+    from providers.identity import build_team_identity_resolver
+    from providers.selection import require_factual_source
+
+    require_factual_source(selection, "balldontlie", context="pool")
+
+    composed = factual_week_from_components(
+        db, league=snapshot.league, week=snapshot.week,
+        season=getattr(league, "season", 0) or 0,
+        roster_entries=snapshot.roster_entries,
+        observed_at=snapshot.observed_at)
+
+    resolver = build_team_identity_resolver(db, league_id=league.id,
+                                            provider=_league_provider(league))
+    return BalldontlieProviderStatSource(composed).bind(db, resolver)
 
 
 def _provider_measure_activation(db, league, snapshot):
@@ -8113,6 +8216,69 @@ def settle_governed_pool_week(
     )
 
 
+def _selection_fields(db, league) -> dict:
+    """The effective provider/model selection, shaped for `ProviderStatusOut`.
+
+    A DIAGNOSTIC, SO IT NEVER RAISES. If the configuration table has not been
+    migrated yet — a deploy where the code is ahead of the schema for a few
+    seconds — an operator asking what is wrong should still get every other
+    field rather than a 500. The defaults it falls back to are the same ones an
+    unconfigured league gets, which is what such a database is serving anyway.
+
+    NO CREDENTIAL, NO KEY, NO HEADER. Three vocabulary strings and a boolean.
+    """
+    from providers.selection import resolve as _resolve_selection
+
+    try:
+        selection = _resolve_selection(db, league_id=league.id,
+                                       season=getattr(league, "season", 0) or 0)
+    except Exception:                                             # noqa: BLE001
+        from db.schema import LeagueProviderConfig as _C
+
+        return {"projection_source": _C.DEFAULT_PROJECTION_SOURCE,
+                "factual_source": _C.DEFAULT_FACTUAL_SOURCE,
+                "simulation_model": _C.DEFAULT_SIMULATION_MODEL,
+                "selection_configured": False,
+                "scoring_profile_id": None,
+                "pricing_ready": True, "pricing_blocked_reason": None}
+
+    # SPRINT 7B — CAN THIS CONFIGURATION PRICE AT ALL?
+    #
+    # An operator activates a league in steps, and the intermediate states are
+    # legitimate: projections switched to BALLDONTLIE before a scoring profile
+    # is named, or a model set without its matching source. Both produce boards
+    # that refuse, and neither is visible in the four fields above — every one
+    # of them reads as a correctly configured league.
+    #
+    # THESE ARE THE CONFIGURATION-LEVEL REFUSALS ONLY, and they are exactly the
+    # ones `beefs.pricing.resolve_plan` raises before it touches a roster. A
+    # DATA-level problem — a component snapshot that has not landed — is
+    # deliberately not reported here: it is not a property of the configuration,
+    # it is a property of one week, and the week diagnosis below already owns
+    # it. Reporting it twice would give an operator two answers to maintain.
+    #
+    # NOTHING HERE CAN RAISE. This is the diagnostic an operator opens when the
+    # product is already misbehaving.
+    pricing_ready, blocked = True, None
+    try:
+        if selection.uses_balldontlie_projections != selection.uses_sim_v2:
+            pricing_ready, blocked = False, "unsupported_model_combination"
+        elif selection.uses_balldontlie_projections:
+            from providers.selection import require_scoring_profile
+
+            require_scoring_profile(selection)
+    except Exception:                                             # noqa: BLE001
+        pricing_ready, blocked = False, "scoring_profile_unconfigured"
+
+    return {"projection_source": selection.projection_source,
+            "factual_source": selection.factual_source,
+            "simulation_model": selection.simulation_model,
+            "selection_configured": selection.configured,
+            "scoring_profile_id": selection.scoring_profile_id,
+            "pricing_ready": pricing_ready,
+            "pricing_blocked_reason": blocked}
+
+
 def _pool_instance_id_for(db, *, league_id: int, season: int, week: int,
                           definition_key: str) -> Optional[int]:
     """The occurrence a refusal belongs to, or None.
@@ -8190,6 +8356,29 @@ class ProviderStatusOut(BaseModel):
     #: week, or a provider that could not be read. Reported rather than left as
     #: an empty list, which would read as "nothing is stuck".
     blocked_reason:          Optional[str]
+    #: SPRINT 7 — THE EFFECTIVE SELECTION, WHICH IS NOT `provider`.
+    #: `provider` above says who HOSTS this league. These three say who
+    #: supplies its projections, who supplies its facts, and which frozen
+    #: simulator prices its markets. An operator debugging "why does this
+    #: league's number look like that?" needs both halves, and until Sprint 7
+    #: only the first was reportable.
+    #:
+    #: `selection_configured` is false when no row exists, which is the
+    #: overwhelmingly common case and means the league is on the behaviour it
+    #: has always had. It is reported explicitly so an absent row reads as a
+    #: governed default rather than as a missing answer.
+    projection_source:       Optional[str] = None
+    factual_source:          Optional[str] = None
+    simulation_model:        Optional[str] = None
+    selection_configured:    bool = False
+    #: SPRINT 7B — the CSPS profile this league is scored by, and whether the
+    #: configuration as a whole can actually price. A league can be half
+    #: activated — BALLDONTLIE projections selected, no profile named yet — and
+    #: an operator needs to see that as a NAMED state rather than as boards that
+    #: mysteriously refuse. `pricing_ready` false always carries a cause.
+    scoring_profile_id:      Optional[str] = None
+    pricing_ready:           bool = True
+    pricing_blocked_reason:  Optional[str] = None
     stuck_pools:             list[PoolDiagnosisOut]
 
 
@@ -8489,7 +8678,8 @@ def league_provider_status(
             open_provider_conflicts=0, week=None, week_final=False,
             matchups_total=0, matchups_finalized=0, unfinalized_matchup_ids=[],
             pools_total=0, pools_settled=0,
-            blocked_reason="no_provider_week", stuck_pools=[])
+            blocked_reason="no_provider_week", stuck_pools=[],
+            **_selection_fields(db, league))
 
     stat_source = None
     try:
@@ -8522,6 +8712,7 @@ def league_provider_status(
         pools_total=diagnosis.pools_total,
         pools_settled=diagnosis.pools_settled,
         blocked_reason=diagnosis.blocked_reason,
+        **_selection_fields(db, league),
         stuck_pools=[
             PoolDiagnosisOut(
                 pool_instance_id=p.pool_instance_id,

@@ -3075,6 +3075,161 @@ class LeagueSeasonEconomyConfig(Base):
 
 # ── Season ruleset version (WP-1) ─────────────────────────────────────────────
 
+class LeagueProviderConfig(Base):
+    """Sprint 7 — which providers and which simulation model answer for one league-season.
+
+    THE QUESTION THIS ROW ANSWERS: *for this league, this season, who supplies
+    the projections, who supplies the facts, and which simulator prices the
+    markets?* Until Sprint 7 there was one answer for everybody, compiled in.
+    BALLDONTLIE is now certified for both halves and sim-v2 is built and frozen,
+    and the product needs to move one league at a time.
+
+    ── ABSENCE IS A GOVERNED STATE, AND IT IS THE DEFAULT ───────────────────
+
+    A league-season with NO ROW HERE keeps the behaviour it has today, byte for
+    byte: Yahoo-derived projections, the legacy factual path, and sim-v1. No
+    season is migrated, backfilled or reinterpreted by this table existing, and
+    nothing auto-detects. That is the same contract `LeagueSeasonEconomyConfig`
+    makes for the economy stops, and it holds here for the same reason — a
+    configuration table that changes behaviour by appearing is a configuration
+    table that changes behaviour by accident.
+
+    ── THREE INDEPENDENT AXES, DELIBERATELY NOT ONE SWITCH ──────────────────
+
+    `projection_source`, `factual_source` and `simulation_model` are separate
+    columns because they are separate decisions with different risk. A league
+    can take BALLDONTLIE projections while its results still come from the
+    legacy factual path; it can take BALLDONTLIE facts while still pricing with
+    sim-v1. Collapsing them into one "use BALLDONTLIE" flag would make the
+    safest staging step — projections only — unexpressible, and would tie a
+    pricing-model change to a data-source change for no reason.
+
+    `League.provider` IS NOT TOUCHED AND MUST NOT BE. A Yahoo league remains a
+    Yahoo league: Yahoo owns the league identity, the teams, the rosters, who
+    started, the schedule and its own official result. This row says who
+    supplies the FOOTBALL, which is a different question, and conflating them
+    would hand league identity to a provider that hosts no leagues.
+
+    ── `legacy` IS A REAL VALUE, NOT A PLACEHOLDER ─────────────────────────
+
+    `leagues.projection_source` already exists and already chooses between
+    `yahoo`, `espn` and `fantasypros` — the three feeds that write SCALAR rows
+    into `projections`. BALLDONTLIE writes no scalar: it writes COMPONENTS into
+    `provider_component_projection`, which CSPS converts under a league's own
+    rules. Writing `balldontlie` into that older column would name a source
+    that has no rows in the table the column selects from.
+
+    So this column's vocabulary is `legacy` or `balldontlie`, and `legacy`
+    means exactly "keep reading `leagues.projection_source` and the scalar
+    path". The two selectors compose instead of competing, and neither has to
+    learn about the other.
+
+    ── WHY A TABLE AND NOT THREE MORE COLUMNS ON `leagues` ─────────────────
+
+    That was tried for the economy configuration and withdrawn: three extra
+    columns pushed the row-lock SELECT past `track_activity_query_size`, which
+    is budget the certified concurrency suites spend proving which lock a
+    blocked backend is waiting on. `LeagueSeasonEconomyConfig` records the
+    reasoning; this follows it.
+
+    ── NO SILENT FALLBACK, ENFORCED BY THE VOCABULARY ───────────────────────
+
+    Each column is CHECK-constrained to its own closed vocabulary. There is no
+    "auto", no "prefer", no "either". A league configured for BALLDONTLIE
+    projections that cannot get them is a NAMED FAILURE, never a quiet Yahoo
+    substitution — the resolver refuses and says which provider was asked for.
+    A price built from a provider the operator did not choose is wrong even when
+    the arithmetic is right.
+
+    ── ROLLBACK IS A SELECTION CHANGE, NOT A DELETION ───────────────────────
+
+    Moving a league back to legacy behaviour rewrites this row. It does not
+    delete a snapshot, a component, a derived parameter or a graded result:
+    everything BALLDONTLIE produced stays exactly where it is and stays
+    replayable. Rollback changes what is CHOSEN, never what was OBSERVED.
+    """
+
+    __tablename__ = "league_provider_config"
+    __table_args__ = (
+        UniqueConstraint("league_id", "season", name="uq_lpc_league_season"),
+        CheckConstraint(
+            "projection_source IN ('legacy','balldontlie')",
+            name="ck_lpc_projection_source"),
+        CheckConstraint(
+            "factual_source IN ('legacy','balldontlie')",
+            name="ck_lpc_factual_source"),
+        CheckConstraint(
+            "simulation_model IN ('sim-v1','sim-v2')",
+            name="ck_lpc_simulation_model"),
+        Index("ix_lpc_league_season", "league_id", "season"),
+    )
+
+    #: The closed vocabularies. A value outside them cannot be stored.
+    #: `legacy` means "whatever this league already does" — for projections that
+    #: is `leagues.projection_source` and the scalar `projections` table.
+    SOURCE_LEGACY = "legacy"
+    SOURCE_BALLDONTLIE = "balldontlie"
+    MODEL_SIM_V1 = "sim-v1"
+    MODEL_SIM_V2 = "sim-v2"
+
+    #: What a league-season with no row gets. These are the values the product
+    #: has always used; they are named here so the default is readable rather
+    #: than implied by the absence of an `if`.
+    DEFAULT_PROJECTION_SOURCE = SOURCE_LEGACY
+    DEFAULT_FACTUAL_SOURCE = SOURCE_LEGACY
+    DEFAULT_SIMULATION_MODEL = MODEL_SIM_V1
+
+    id        = Column(Integer, primary_key=True, autoincrement=True)
+    league_id = Column(Integer,
+                       ForeignKey("leagues.id", name="fk_lpc_league"),
+                       nullable=False, index=True)
+    season    = Column(Integer, nullable=False)
+
+    projection_source = Column(String, nullable=False,
+                               default=DEFAULT_PROJECTION_SOURCE)
+    factual_source    = Column(String, nullable=False,
+                               default=DEFAULT_FACTUAL_SOURCE)
+    simulation_model  = Column(String, nullable=False,
+                               default=DEFAULT_SIMULATION_MODEL)
+
+    #: SPRINT 7B — WHICH CERTIFIED SCORING PROFILE CSPS SCORES THIS LEAGUE BY.
+    #:
+    #: NULLABLE, AND NULL IS A REFUSAL RATHER THAN A DEFAULT. CSPS turns
+    #: components into points under a league's own rule set, and there is no
+    #: universal one: `mr_whiskers_memorial` pays -3.14 where
+    #: `culv_appreciation_society` pays nothing, and a wager priced under the
+    #: wrong profile is wrong by an amount nobody can see. So a league moved to
+    #: BALLDONTLIE projections without a profile named here does not get a
+    #: house default — it refuses, by name, at the moment a price is asked for.
+    #:
+    #: IT LIVES HERE AND NOT ON `leagues` FOR THE REASON THE WHOLE TABLE EXISTS:
+    #: it is part of one league-SEASON's provider selection, it is written by
+    #: the same operator act that activates the league, and it is rolled back by
+    #: the same one. A column on `leagues` would be a second activation surface
+    #: with its own lifetime.
+    #:
+    #: NOT CONSULTED ON THE LEGACY PATH. sim-v1 re-scores a FantasyPros scalar
+    #: with its own frozen tables; it has never read a CSPS profile and does not
+    #: start now.
+    scoring_profile_id = Column(String, nullable=True)
+
+    #: Free-text operator note — why this league was moved, and by whom. Not a
+    #: credential, not provider data; an audit breadcrumb for a human.
+    note       = Column(Text, nullable=True)
+    updated_by = Column(String, nullable=True)
+
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self) -> str:                      # pragma: no cover - debug
+        return (f"<LeagueProviderConfig league={self.league_id} "
+                f"season={self.season} projections={self.projection_source} "
+                f"facts={self.factual_source} model={self.simulation_model}>")
+
+
 class LeagueSeasonRuleset(Base):
     """One league-season's governing RULESET — the single era gate (WP-1).
 

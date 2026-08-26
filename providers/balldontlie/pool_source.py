@@ -43,7 +43,8 @@ from providers.cross_identity import BALLDONTLIE
 from providers.week_stat_source import ProviderWeekStatSource
 
 __all__ = ["BalldontlieStatMap", "load_balldontlie_stat_map",
-           "BalldontlieProviderStatSource", "factual_provider_week"]
+           "BalldontlieProviderStatSource", "factual_provider_week",
+           "factual_week_from_components"]
 
 #: FACTUAL COMPONENT NAME -> GOVERNED POOL OPERAND. Not identity, and finding
 #: that out was the point of the load-time check: the pool catalog calls a
@@ -159,3 +160,61 @@ def factual_provider_week(*, league: ProviderLeague, week: int,
         player_stats=tuple(stats),
         observed_at=observed_at,
     )
+
+
+def factual_week_from_components(db, *, league, week: int, season: int,
+                                 roster_entries, observed_at=None):
+    """A composed `ProviderWeek` built from PERSISTED factual components.
+
+    THE SETTLEMENT PATH READS THE DATABASE, NEVER THE PROVIDER. `factual_
+    provider_week` composes from a freshly-built `FactualWeek`, which is right
+    for an ingest run; a Pool settling on Tuesday must not depend on
+    BALLDONTLIE answering on Tuesday. This reads the rows an earlier refresh
+    persisted under `source_kind="fantasy/weekly_stats"` and composes from
+    those.
+
+    IT REFUSES AN EMPTY WEEK RATHER THAN RETURNING ONE. A composed week with no
+    player stats would let the Pool census conclude that nobody was measured,
+    which is indistinguishable from a real week in which nobody played. The
+    difference matters: one is a data gap and the other is a result.
+    """
+    from db.schema import ProviderComponentProjection as PCP
+    from providers.base import ProviderPlayerStats, ProviderWeek
+    from providers.cross_identity import BALLDONTLIE as _BDL
+
+    rows = (db.query(PCP)
+            .filter(PCP.provider == _BDL,
+                    PCP.season == int(season),
+                    PCP.week == int(week),
+                    PCP.source_kind == PCP.SOURCE_WEEKLY_STATS)
+            .order_by(PCP.id.asc())
+            .all())
+    if not rows:
+        raise LookupError(
+            f"league season {season} week {week} is configured for BALLDONTLIE "
+            f"facts and no factual component snapshot has been persisted for "
+            f"it. There is no fallback to another provider's numbers: a Pool "
+            f"graded on evidence the operator did not choose is wrong even "
+            f"when every subject resolves.")
+
+    # The newest observation per subject wins, exactly as `select_week` does.
+    latest: dict = {}
+    for row in rows:
+        latest[row.provider_player_key] = row
+
+    stats = []
+    for key, row in sorted(latest.items()):
+        components = dict(row.components or {})
+        values = {FACTUAL_TO_POOL[name]: float(value)
+                  for name, value in components.items()
+                  if name in FACTUAL_TO_POOL}
+        if not values:
+            continue
+        stats.append(ProviderPlayerStats(
+            provider=_BDL, player_key=key, week=int(week), values=values,
+            stat_ids_present=frozenset(values), fantasy_points=None))
+
+    return ProviderWeek(
+        league=league, week=int(week), teams=(), matchups=(),
+        roster_entries=tuple(roster_entries), player_stats=tuple(stats),
+        observed_at=observed_at)

@@ -41,6 +41,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import smtplib
 import sys
@@ -355,6 +356,46 @@ def _build_yahoo_query(yahoo_league_id: str, *, db, league_id: int):
     )
 
 
+def _apply_balldontlie_scores(db, snapshot, *, league_id: int, week: int):
+    """The snapshot, scored by FantasyStakes from BALLDONTLIE facts if configured.
+
+    RETURNS THE SNAPSHOT UNCHANGED FOR EVERY OTHER LEAGUE, and takes one
+    indexed read to decide. A league with no `league_provider_config` row — the
+    overwhelming majority — is answered by the resolver's default path and
+    leaves this function on the first branch, so the Tuesday pipeline costs it
+    nothing it did not already cost.
+
+    THE PROFILE IS REQUIRED, NOT DEFAULTED. A league on BALLDONTLIE facts with
+    no scoring profile named cannot be scored, and this raises rather than
+    choosing a rule set on the commissioner's behalf. The caller turns that
+    into a not-fresh week, which blocks settlement — the safe direction.
+    """
+    from db.schema import League
+    from providers.selection import resolve as resolve_selection
+
+    league = db.query(League).filter(League.id == league_id).one_or_none()
+    if league is None:
+        return snapshot
+    selection = resolve_selection(db, league_id=league_id,
+                                  season=getattr(league, "season", 0) or 0)
+    if not selection.uses_balldontlie_facts:
+        return snapshot
+
+    from providers.balldontlie.factual_scores import rescore_snapshot
+    from providers.selection import require_scoring_profile
+
+    profile = require_scoring_profile(selection)
+    rescored, scored = rescore_snapshot(
+        db, snapshot=snapshot, season=getattr(league, "season", 0) or 0,
+        week=week, profile=profile)
+    if scored.refusals:
+        logging.warning(
+            "[tuesday_sync] league=%s week=%s: %s lineup(s) not scoreable from "
+            "BALLDONTLIE evidence — %s", league_id, week,
+            len(scored.refusals), "; ".join(scored.refusals[:4]))
+    return rescored
+
+
 def _step_refresh_scores(
     league_id: int,
     week: int,
@@ -487,6 +528,40 @@ def _step_refresh_scores(
     snapshot = normalize.build_week(
         league=league_dto, week=week, teams=teams_dto, matchups=matchups_dto,
         observed_at=transport.observed_at())
+
+    # ── SPRINT 7B · whose numbers is this league scored by? ──────────────────
+    #
+    # A league configured for BALLDONTLIE facts does not settle on Yahoo's
+    # points. Its weekly score is CSPS over BALLDONTLIE evidence under the
+    # league's own certified profile, and this is the one place in the weekly
+    # pipeline where that substitution can happen: after the provider DTOs are
+    # built and before the certified writer persists them.
+    #
+    # NO NEW SCHEDULER, NO NEW POLLING, NO NEW WRITER. It is the same Tuesday
+    # step, the same `refresh_league_week`, the same finality mapping and the
+    # same conflict handling. What changes is the two numbers on each matchup
+    # DTO, and only for a league that was explicitly moved.
+    #
+    # IT DOES NOT FETCH. The evidence is read from the component rows a factual
+    # refresh already persisted — NFL facts are global and are acquired once for
+    # the whole league, never once per fantasy league, which is what keeps a
+    # 5-request-per-minute provider viable at any league count.
+    #
+    # AN UNREADY WEEK IS LEFT ALONE, NOT ZEROED. `rescore_snapshot` rewrites
+    # only matchups where BOTH lineups are READY; anything else keeps the DTO it
+    # had, the week does not become final by this route, and the refusal is
+    # reported so an operator can see which subject is missing.
+    try:
+        snapshot = _apply_balldontlie_scores(db, snapshot, league_id=league_id,
+                                             week=week)
+    except Exception as exc:  # noqa: BLE001
+        # FAIL CLOSED AND LOUD. A league that chose BALLDONTLIE must not fall
+        # through to Yahoo's points because its own scoring raised — that is
+        # the silent provider substitution this whole integration forbids.
+        return _not_fresh(
+            f"week {week}: this league is configured for BALLDONTLIE facts and "
+            f"its scoring refused — {type(exc).__name__}: {exc}. Yahoo's "
+            f"points are NOT substituted.", str(exc))
 
     # ── Persist through the gateway ──────────────────────────────────────────
     try:

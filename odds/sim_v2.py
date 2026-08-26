@@ -51,6 +51,7 @@ from odds.odds_engine_headless import (
     OddsResult,
     StarterLine,
     _prob_to_american,
+    matchup_seed,
     simulate_team_with_sigma,
 )
 from scoring import csps as C
@@ -63,6 +64,7 @@ __all__ = [
     "LineupBuild",
     "SimV2Refusal",
     "build_lineup",
+    "matchup_score_arrays",
     "resolve_projection_source",
     "run_matchup",
     "simulation_fingerprint",
@@ -269,6 +271,51 @@ def simulation_fingerprint(*, home: LineupBuild, away: LineupBuild,
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def matchup_score_arrays(*, home: LineupBuild, away: LineupBuild,
+                         model_config: SimModelConfig, week: int,
+                         matchup_id: int | None = None,
+                         home_team_id: int | None = None,
+                         away_team_id: int | None = None) -> tuple:
+    """The two sim-v2 score distributions for one pairing.
+
+    SPRINT 7B — THE DRAW `run_matchup` ALREADY PERFORMED, LIFTED OUT SO THE
+    PRODUCT CAN USE IT. The live market board needs the two ARRAYS: it measures
+    a median margin and a median total off them through
+    `odds/market_lines`, and it counts a win probability off them through the
+    same expression the legacy board uses. `run_matchup` returns an
+    `OddsResult` and a frozen quote snapshot instead, which a board does not
+    want and must not incur.
+
+    NOTHING ABOUT THE MATHEMATICS MOVED. Same `simulate_team_with_sigma`, same
+    single shared generator drawn home-then-away in that order, same seed rule —
+    which is now `matchup_seed`, the one both frozen configs name. `run_matchup`
+    calls this function, so the quote path and the board path cannot diverge.
+
+    THE UNPAIRED CASE IS WHY THE TEAM IDS ARE HERE. A Versus board is priced
+    between any two teams in a league, most of whom are not scheduled against
+    each other and therefore have no matchup id. sim-v1 has always seeded that
+    case from the team pair; sim-v2 seeds it identically rather than inventing
+    a second convention.
+    """
+    if not home.admissible:
+        raise SimV2Refusal(
+            f"the home lineup is not priceable: {len(home.refusals)} "
+            f"starter(s) refused", reasons=home.refusals)
+    if not away.admissible:
+        raise SimV2Refusal(
+            f"the away lineup is not priceable: {len(away.refusals)} "
+            f"starter(s) refused", reasons=away.refusals)
+
+    rng = np.random.default_rng(seed=matchup_seed(
+        home_team_id if home_team_id is not None else home.team_id,
+        away_team_id if away_team_id is not None else away.team_id,
+        week, matchup_id=matchup_id))
+    return (simulate_team_with_sigma(home.means, home.sigmas, rng,
+                                     model_config=model_config),
+            simulate_team_with_sigma(away.means, away.sigmas, rng,
+                                     model_config=model_config))
+
+
 def run_matchup(*, matchup_id: int, week: int,
                 home: LineupBuild, away: LineupBuild,
                 model_config: SimModelConfig,
@@ -294,11 +341,9 @@ def run_matchup(*, matchup_id: int, week: int,
             f"the away lineup is not priceable: {len(away.refusals)} "
             f"starter(s) refused", reasons=away.refusals)
 
-    rng = np.random.default_rng(seed=matchup_id * 1_000 + week)
-    home_scores = simulate_team_with_sigma(home.means, home.sigmas, rng,
-                                           model_config=model_config)
-    away_scores = simulate_team_with_sigma(away.means, away.sigmas, rng,
-                                           model_config=model_config)
+    home_scores, away_scores = matchup_score_arrays(
+        home=home, away=away, model_config=model_config, week=week,
+        matchup_id=matchup_id)
 
     n_sims = model_config.n_sims
     home_win_prob = int((home_scores > away_scores).sum()) / n_sims
