@@ -366,13 +366,116 @@ def _resolve(module, dotted: str):
 # a twentieth sibling; nothing else about WP2's rules changed.
 _ids = [rule for rule, _, _ in N.RULES] + [r for r, _, _ in T.TRANSPORT_RULES]
 _assert("the Phase 0F register covers the payload rules AND the transport ones",
-        len(N.RULES) == 20 and len(T.TRANSPORT_RULES) == 4
+        len(N.RULES) == 21 and len(T.TRANSPORT_RULES) == 4
         and len(set(_ids)) == len(_ids),
         f"{len(N.RULES)} payload + {len(T.TRANSPORT_RULES)} transport")
 _assert("  · including 0F-20, which keeps a forecast's silence from being read "
         "as a zero",
         any(rule == "0F-20" and name == "normalize_projections"
             for rule, _, name in N.RULES))
+_assert("  · and 0F-21, the two endpoints' disagreement about the defensive "
+        "band stats",
+        any(rule == "0F-21" and name == "normalize_projections"
+            for rule, _, name in N.RULES))
+_assert("  · whose alias table is a closed, readable mapping",
+        N.CANONICAL_DST_ALIASES == {"points_allowed": "dst_points_allowed",
+                                    "yards_allowed": "dst_yards_allowed"},
+        str(N.CANONICAL_DST_ALIASES))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 0F-21 · THE DEFENSIVE BAND STATS ARE SPELLED DIFFERENTLY ON EACH ENDPOINT
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# MEASURED, NOT ASSUMED. Launch Validation 1 read a live 2026 week 1 projection
+# slate — all 32 real team defences — and a live /fantasy/weekly_stats page:
+#
+#     /fantasy/projections    points_allowed, yards_allowed
+#                             and NO `dst_`-prefixed name at all
+#
+#     /fantasy/weekly_stats   dst_points_allowed AND points_allowed, carrying
+#                             the same value, plus yards_allowed with no twin
+#
+# `scoring/csps.py` and `scoring/iprm.py` both read `dst_points_allowed`, so the
+# results path worked and the FORECAST path refused every defence in the league
+# — twelve of twelve, one per team, which took every team out of pricing. The
+# committed SYNTHETIC projection fixture declares `dst_points_allowed`, which is
+# exactly why six sprints of certification never saw it: a synthetic fixture
+# answers whatever its author wrote.
+
+print("\n-- 0F-21 · the defensive band alias, measured against the live API --")
+
+#: The SHAPE the live projections endpoint actually sends for a defence,
+#: transcribed from the captured 2026 week 1 slate. Figures abbreviated; the
+#: KEY NAMES are the measured ones and are the whole point.
+_REAL_DST_PROJECTION = {
+    "defensive_sacks": 3.107137746,
+    "defensive_interceptions": 0.792724692,
+    "opponent_fumble_recoveries": 0.395026728,
+    "points_allowed": 16.05321422,
+    "points_allowed_7_to_13": 0.263368716,
+    "yards_allowed": 308.5513065,
+    "games_played": 1,
+}
+
+_dst_row = P.parse_projections({"data": [{
+    "player": None, "position": "DST",
+    "team": {"id": 30, "abbreviation": "JAX"},
+    "season": 2026, "week": 1, "stats": _REAL_DST_PROJECTION,
+}], "meta": {}})[0]
+_dst_values = N.normalize_projections([_dst_row], week=1)[0].values
+
+_assert("a REAL projection defence yields the canonical dst_points_allowed",
+        _dst_values.get("dst_points_allowed") == 16.05321422,
+        str(_dst_values.get("dst_points_allowed")))
+_assert("  · and the canonical dst_yards_allowed",
+        _dst_values.get("dst_yards_allowed") == 308.5513065)
+_assert("  · while the provider's own spelling is still carried, unchanged",
+        _dst_values.get("points_allowed") == 16.05321422
+        and _dst_values.get("yards_allowed") == 308.5513065)
+_assert("  · so CSPS and IPRM read the same name on both endpoints",
+        "dst_points_allowed" in _dst_values)
+
+# THE ALIAS INVENTS NOTHING. A subject the provider said nothing about must
+# still be silent — that is 0F-20, and 0F-21 must not undo it.
+_qb_row = P.parse_projections({"data": [{
+    "player": {"id": 27, "position_abbreviation": "QB"}, "position": "QB",
+    "team": {"id": 1, "abbreviation": "SF"},
+    "season": 2026, "week": 1,
+    "stats": {"passing_yards": 268.4, "passing_touchdowns": 1.8},
+}], "meta": {}})[0]
+_qb_values = N.normalize_projections([_qb_row], week=1)[0].values
+_assert("a subject that carries no points_allowed gets NO dst_points_allowed",
+        "dst_points_allowed" not in _qb_values
+        and "points_allowed" not in _qb_values, str(sorted(_qb_values)))
+_assert("  · so 0F-20 still holds: an absent forecast stays absent",
+        set(_qb_values) == {"passing_yards", "passing_touchdowns"})
+
+# AND IT NEVER OVERWRITES A CANONICAL VALUE THE PROVIDER SENT ITSELF, which
+# matters because the results endpoint sends both names.
+_both_row = P.parse_projections({"data": [{
+    "player": None, "position": "DST",
+    "team": {"id": 30, "abbreviation": "JAX"},
+    "season": 2026, "week": 1,
+    "stats": {"points_allowed": 10, "dst_points_allowed": 99},
+}], "meta": {}})[0]
+_both = N.normalize_projections([_both_row], week=1)[0].values
+_assert("a provider-sent canonical value is never overwritten by the alias",
+        _both["dst_points_allowed"] == 99.0, str(_both))
+
+# The RESULTS path is untouched: both names still arrive, as the live endpoint
+# sends them.
+_weekly_row = P.parse_weekly_stats({"data": [{
+    "player": None, "position": "DST",
+    "team": {"id": 30, "abbreviation": "JAX"},
+    "season": 2025, "week": 17,
+    "stats": {"dst_points_allowed": 10, "points_allowed": 10,
+              "yards_allowed": 231, "defensive_sacks": 2},
+}], "meta": {}})[0]
+_weekly = N.normalize_weekly_stats([_weekly_row], week=17)[0].values
+_assert("the RESULTS normalizer is unchanged and still carries both names",
+        _weekly.get("dst_points_allowed") == 10.0
+        and _weekly.get("points_allowed") == 10.0)
 _unresolved = ([n for _, _, n in N.RULES if _resolve(N, n) is None]
                + [n for _, _, n in T.TRANSPORT_RULES if _resolve(T, n) is None])
 _assert("  · and every registered rule names something that really exists",

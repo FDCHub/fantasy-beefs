@@ -115,6 +115,33 @@ KICKER_FIELDS: frozenset[str] = frozenset({
     "extra_points_made", "extra_point_attempts", "extra_points_missed",
 })
 
+#: THE PROVIDER SPELLS THE DEFENCE'S TWO BAND STATS DIFFERENTLY ON ITS TWO
+#: ENDPOINTS, AND LAUNCH VALIDATION 1 MEASURED IT.
+#:
+#:   /fantasy/weekly_stats   emits BOTH `dst_points_allowed` and
+#:                           `points_allowed`, carrying the same value, and
+#:                           emits `yards_allowed` with NO `dst_` twin.
+#:
+#:   /fantasy/projections    emits ONLY `points_allowed` and `yards_allowed`.
+#:                           There is no `dst_`-prefixed name anywhere in the
+#:                           projection block — measured across all 32 real
+#:                           team defences of a live 2026 week 1 slate.
+#:
+#: The committed SYNTHETIC projection fixture declares `dst_points_allowed`,
+#: so every DST projection rule was certified against a shape the live API does
+#: not send. That is the same failure Sprint 5B found in the play corpus, on a
+#: different endpoint: a synthetic fixture answers whatever its author wrote,
+#: and only a captured payload can contradict them.
+#:
+#: `dst_points_allowed` is the CANONICAL name — it is what `scoring/csps.py` and
+#: `scoring/iprm.py` read, and it is what the results endpoint already sends —
+#: so the projection path is aliased ONTO it rather than the scorers being
+#: taught a second vocabulary.
+CANONICAL_DST_ALIASES: Mapping[str, str] = {
+    "points_allowed": "dst_points_allowed",
+    "yards_allowed": "dst_yards_allowed",
+}
+
 DST_FIELDS: frozenset[str] = frozenset({
     "defensive_sacks", "defensive_half_sacks", "defensive_interceptions",
     "opponent_fumble_recoveries", "fumbles_forced", "defensive_safeties",
@@ -358,6 +385,22 @@ def normalize_projections(rows: Iterable[WeeklyStatRow], *,
                 # forecast. Carried in `components_present` by the caller and
                 # not turned into a number here.
                 continue
+
+        # ── THE ONE RENAME, AND IT INVENTS NOTHING ──────────────────────────
+        #
+        # `CANONICAL_DST_ALIASES` maps the projection endpoint's spelling of the
+        # two defensive band stats onto the canonical name the scorers read and
+        # the results endpoint already uses. A field the provider did NOT send
+        # is not created here — the alias only fires on a value that is present,
+        # so the zero-omission discipline this function exists to protect is
+        # untouched: an absent forecast stays absent and a scorer still refuses.
+        #
+        # It never overwrites a canonical value the provider sent itself, which
+        # matters because `/fantasy/weekly_stats` sends both names.
+        for provider_name, canonical in CANONICAL_DST_ALIASES.items():
+            if provider_name in values and canonical not in values:
+                values[canonical] = values[provider_name]
+
         out.append(ProviderPlayerStats(
             provider=PROVIDER,
             player_key=subject_key(row),
@@ -801,5 +844,14 @@ RULES: tuple[tuple[str, str, str], ...] = (
               "extra-point treatment is unconfirmed", "points_allowed"),
     ("0F-20", "zero-omission is a RESULT rule: an absent projection component "
               "was not forecast, and is never zero-filled",
+     "normalize_projections"),
+    # MEASURED IN LAUNCH VALIDATION 1 against a live 2026 week 1 slate — all 32
+    # real team defences — and against a live /fantasy/weekly_stats page. The
+    # committed SYNTHETIC projection fixture asserts the opposite and is the
+    # reason this went unnoticed through six sprints.
+    ("0F-21", "the two endpoints spell the defensive band stats differently: "
+              "weekly_stats sends BOTH dst_points_allowed and points_allowed, "
+              "projections sends only points_allowed / yards_allowed, so the "
+              "projection path must be aliased onto the canonical name",
      "normalize_projections"),
 )
