@@ -149,6 +149,11 @@ POSSESSION_TAKEAWAY_SLUGS = frozenset({
     "pass-interception-return", "interception-return-touchdown",
     "fumble-recovery-opponent", "fumble-return-touchdown",
     "blocked-punt", "blocked-punt-touchdown", "punt-return-touchdown",
+    # SPRINT 6: a sack that forces a fumble the DEFENCE recovers. 75 plays
+    # across 2024-2025. Missing it read the sack as the sacked team's own and
+    # left the drive it ended unterminated.
+    "sack-opp-fumble-recovery",
+    "muffed-punt-recovery-opponent",
 })
 
 #: EVERY field-goal slug, listed rather than matched by prefix. `startswith

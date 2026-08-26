@@ -124,6 +124,10 @@ _TERMINATING = {
     "interception-return-touchdown": DriveOutcome.TURNOVER,
     "fumble-recovery-opponent": DriveOutcome.TURNOVER,
     "fumble-return-touchdown": DriveOutcome.TURNOVER,
+    # SPRINT 6: sacked, fumbled, recovered by the defence. A turnover by any
+    # reading, and one the Sprint 5B table did not contain.
+    "sack-opp-fumble-recovery": DriveOutcome.TURNOVER,
+    "muffed-punt-recovery-opponent": DriveOutcome.TURNOVER,
     "safety": DriveOutcome.TURNOVER,
     # legacy fixture spellings
     "interception": DriveOutcome.TURNOVER,
@@ -166,9 +170,16 @@ _TURNOVER_MARKERS = ("INTERCEPT", "FUMBLE")
 
 _KNOWN_SLUGS = (frozenset(_TERMINATING) | _PERIOD_END | _NON_SNAP
                 | INTERCEPTION_SLUGS | PICK_SIX_SLUGS
-                | {"rush", "pass-reception", "pass-incompletion", "sack",
-                   "fumble-recovery-own", "extra-point-good",
-                   "extra-point-missed", "two-point-conversion"})
+                # `pass` is deliberately ABSENT. It occurs twice in 98,232
+                # real plays, and listing it would suppress the legacy text
+                # fallback that older synthetic corpora depend on to find an
+                # interception — two real plays are not worth breaking that.
+                | {"rush", "pass-reception", "pass-incompletion",
+                   "sack", "fumble-recovery-own", "extra-point-good",
+                   "extra-point-missed", "two-point-conversion",
+                   "two-point-pass", "missed-field-goal-return",
+                   # the provider's own name for a play it could not classify
+                   "not-available"})
 
 
 def _earned_first_down(play, text: str) -> bool:
@@ -324,8 +335,17 @@ def classify_drives(plays: Sequence, *, home: str, visitor: str) -> list:
             current.outcome = outcome
             current.closed = True
             continue
-        if any(marker in text for marker in _TURNOVER_MARKERS) and (
-                "RECOVERED BY" in text or "INTERCEPTED" in text):
+        # THE TEXT IS ONLY CONSULTED WHEN THE SLUG IS UNKNOWN. `fumble-recovery
+        # -own` is an offence falling on its own fumble and keeping the ball,
+        # and its text says "FUMBLES ... RECOVERED BY" like any other — so this
+        # fallback used to end the drive on the spot. In week 17 that split one
+        # New Orleans three-and-out into a three-play "turnover" and a lone
+        # punt marked inherited, and the punt was then excluded from the
+        # defence's rate. A slug this module recognises is the authority; the
+        # prose is for corpora captured before the slugs were known.
+        if (play.type not in _KNOWN_SLUGS
+                and any(marker in text for marker in _TURNOVER_MARKERS)
+                and ("RECOVERED BY" in text or "INTERCEPTED" in text)):
             current.outcome = DriveOutcome.TURNOVER
             current.closed = True
 

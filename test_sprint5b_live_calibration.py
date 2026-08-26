@@ -185,10 +185,17 @@ print("\n5B-B · drives, three-and-outs and a pick-six, counted from real plays"
 
 _drives = F.classify_drives(_plays, home=HOME, visitor=VISITOR)
 _counted = [d for d in _drives if d.counts_toward_sample]
+# SPRINT 6 CORRECTED THE CLASSIFIER AND THE COUNTS MOVED WITH IT. Reading the
+# same corpus for kicking and defensive events turned up two faults Sprint 5B
+# did not see: `sack-opp-fumble-recovery` was in no vocabulary, so a real
+# turnover left its drive unterminated; and the legacy text fallback fired on
+# `fumble-recovery-own` — an offence keeping its own fumble — ending drives
+# that had not ended. Across two seasons the fix removed 423 phantom
+# possessions and found 43 more genuine three-and-outs.
 _assert("the real game classifies into possessions",
-        len(_drives) == 29, f"{len(_drives)} drives")
+        len(_drives) == 27, f"{len(_drives)} drives")
 _assert("  · and most of them are judgeable",
-        len(_counted) == 23, f"{len(_counted)} of {len(_drives)} counted")
+        len(_counted) == 21, f"{len(_counted)} of {len(_drives)} counted")
 _unknown = [d for d in _drives if d.outcome == F.DriveOutcome.UNKNOWN]
 _assert("  · an unclassifiable possession is excluded from BOTH halves of "
         "every rate, never counted as a stop",
@@ -201,7 +208,7 @@ _assert("Chicago's defence forced three-and-outs, with the sample beside them",
         _chi["three_and_outs"] == 4 and _chi["opponent_drives"] == 12,
         f"{_chi['three_and_outs']} of {_chi['opponent_drives']}")
 _assert("  · and Tennessee's, measured the same way",
-        _ten["three_and_outs"] == 2 and _ten["opponent_drives"] == 11,
+        _ten["three_and_outs"] == 2 and _ten["opponent_drives"] == 9,
         f"{_ten['three_and_outs']} of {_ten['opponent_drives']}")
 _assert("  · every counted drive belongs to one of the two teams",
         {d.team for d in _counted} <= {HOME, VISITOR})
@@ -278,7 +285,7 @@ _assert("re-deriving the SAME history writes nothing at all",
 _drive_row = _db.query(R).filter(R.model_type == R.MODEL_DRIVES,
                                  R.entity_type == R.ENTITY_LEAGUE).one()
 _assert("drives per team-game is MEASURED, not assumed",
-        _near(_drive_row.rate, 23 / 2) and _drive_row.sample_size == 2,
+        _near(_drive_row.rate, 21 / 2) and _drive_row.sample_size == 2,
         f"{_drive_row.rate:.4f} per team-game from {_drive_row.sample_size}")
 
 _tao_row = _db.query(R).filter(R.model_type == R.MODEL_THREE_AND_OUT,
