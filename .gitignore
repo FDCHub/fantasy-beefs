@@ -53,3 +53,11 @@ step6b_run.txt
 # decision, matching the exact-name convention on lines 28-30. See vol. II 23.2.
 /spec/FantasyBeefs_Findings_Register_Delta_2026-07-30.md
 /spec/FantasyBeefs_Findings_Register_Delta_2026-07-31.md
+
+# BALLDONTLIE credentials. `secrets/` is already ignored above; these patterns
+# catch the same file landing ANYWHERE else in the tree. Sprint 5B found a
+# byte-identical copy of the live key sitting in the repository root, outside
+# the one directory that was protected, where `git add .` would have staged it.
+balldontlie.json
+**/balldontlie.json
+*api_key*.json

@@ -138,6 +138,19 @@ POSSESSION_INVERTED_SLUGS = frozenset({"punt", "kickoff", "field-goal-missed"})
 #: thing one slug apart, which is why nothing reads it directly.
 POSSESSION_KICKING_SLUGS = frozenset({"field-goal-good"})
 
+#: A THIRD MEANING OF THE SAME FIELD, measured in Sprint 5B. On a takeaway,
+#: `play.team` is the team GAINING the ball — Kansas City threw the pass and
+#: `team` reads BAL — so the play itself belongs to the possession that is
+#: ENDING, and possession passes only afterwards. Reading `team` directly here
+#: put the interception in the intercepting team's drive and left the drive it
+#: actually ended with no ending at all, which is how 35% of real drives
+#: classified UNKNOWN before this was understood.
+POSSESSION_TAKEAWAY_SLUGS = frozenset({
+    "pass-interception-return", "interception-return-touchdown",
+    "fumble-recovery-opponent", "fumble-return-touchdown",
+    "blocked-punt", "blocked-punt-touchdown", "punt-return-touchdown",
+})
+
 #: EVERY field-goal slug, listed rather than matched by prefix. `startswith
 #: ("field-goal")` MISSES `blocked-field-goal` entirely — Phase 0 found a
 #: blocked 37-yarder appearing only as "Jared Verse 76 Yd Return of Blocked
@@ -470,6 +483,15 @@ def carry_possession(plays: Sequence[PlayRow], *, home: str, visitor: str
                 possession = other(abbreviation)
             yield play, possession
             possession = other(possession)     # the ball changes hands
+            continue
+
+        if play.type in POSSESSION_TAKEAWAY_SLUGS:
+            # The play belongs to whoever HAD the ball; `team` is who takes it.
+            losing = other(abbreviation) if abbreviation in teams else possession
+            if possession is None:
+                possession = losing
+            yield play, possession
+            possession = abbreviation if abbreviation in teams else other(possession)
             continue
 
         if play.type in POSSESSION_KICKING_SLUGS:

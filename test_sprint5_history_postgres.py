@@ -253,8 +253,8 @@ BEFORE = datetime(2025, 11, 1, tzinfo=timezone.utc)
 
 rate = H.HistoricalRate(
     provider="balldontlie", model_type=R.MODEL_RECEPTION,
-    model_version=H.RECEPTION_MODEL_VERSION, entity_type=R.ENTITY_PLAYER,
-    entity_key="bdl.p.113", position="WR", season_window="2024-2025",
+    model_version=H.RECEPTION_MODEL_VERSION, entity_type=R.ENTITY_POSITION,
+    entity_key="WR", position="WR", season_window="2024-2025",
     as_of=CUTOFF, numerator=142.0, denominator=196.0, sample_size=196,
     source_kind="fantasy/weekly_stats",
     parameters={"receptions": 142, "targets": 196, "excluded": 3})
@@ -286,7 +286,7 @@ _assert("  · the derivation document round-trips through JSONB exactly",
 _assert("  · and the rate reads back as measured",
         _res.get("RATE") == repr(round(142 / 196, 6)), _res.get("RATE", "?"))
 _assert("the as-of cutoff holds on PostgreSQL: in force after, invisible before",
-        _res.get("AFTER_LEVEL") == "MODELLED_PLAYER_HISTORY"
+        _res.get("AFTER_LEVEL") == "MODELLED_POSITIONAL_FALLBACK"
         and _res.get("BEFORE_LEVEL") == "MODEL_UNRESOLVED",
         f"{_res.get('AFTER_LEVEL')} / {_res.get('BEFORE_LEVEL')}")
 
@@ -323,6 +323,62 @@ _a, _b = _describe(_fresh_insp), _describe(_insp)
 for _facet in ("columns", "uniques", "indexes"):
     _assert(f"fresh and migrated agree on {_facet}", _a[_facet] == _b[_facet],
             "" if _a[_facet] == _b[_facet] else str(_a[_facet])[:150])
+
+# ── 5 · the Sprint 5B drives model shares the table ─────────────────────────
+
+print("\n5 · drives-model rows live in the same table, under the same rules")
+
+_drives_url = _new_db("drives")
+_dm = _child(_drives_url, """
+import json
+from datetime import datetime, timezone
+from sqlalchemy.orm import sessionmaker
+from db.schema import Base, ProviderHistoricalRate as R, engine
+from scoring import history as H
+
+Base.metadata.create_all(engine)
+db = sessionmaker(bind=engine)()
+CUT = datetime(2026, 3, 1, tzinfo=timezone.utc)
+rate = H.HistoricalRate(
+    provider="balldontlie", model_type=R.MODEL_DRIVES,
+    model_version=H.DRIVES_MODEL_VERSION, entity_type=R.ENTITY_LEAGUE,
+    entity_key=H.LEAGUE_KEY, season_window="2024-2025", as_of=CUT,
+    numerator=5731.0, denominator=544.0, sample_size=544,
+    source_kind="plays", parameters={"drives": 5731, "team_games": 544})
+first = H.persist_rates(db, [rate]); db.commit()
+again = H.persist_rates(db, [rate]); db.commit()
+row = db.query(R).filter(R.model_type == R.MODEL_DRIVES).one()
+print("FIRST=" + str(first["persisted"]))
+print("AGAIN=" + str(again["persisted"]))
+print("RATE=" + repr(round(row.rate, 6)))
+print("PARAMS=" + json.dumps(row.parameters, sort_keys=True))
+b = H.resolve_bundle(db, provider="balldontlie",
+                     as_of=datetime(2026, 9, 10, tzinfo=timezone.utc),
+                     player_key="bdl.dst.CHI", position="DEF", nfl_team="CHI")
+print("DRIVES_LEVEL=" + b.drives.level)
+print("DRIVES_RATE=" + repr(round(b.drives.rate, 6)))
+early = H.resolve_bundle(db, provider="balldontlie",
+                         as_of=datetime(2025, 9, 10, tzinfo=timezone.utc),
+                         player_key="bdl.dst.CHI", position="DEF", nfl_team="CHI")
+print("EARLY_LEVEL=" + early.drives.level)
+""")
+_d = dict(line.split("=", 1) for line in _dm.stdout.splitlines() if "=" in line)
+_assert("a drives-model parameter persists on PostgreSQL",
+        _d.get("FIRST") == "1",
+        _d.get("FIRST", (_dm.stderr or "").strip().splitlines()[-1][:140]
+               if _dm.returncode else "?"))
+_assert("  · and re-deriving it writes nothing, under the same append-only key",
+        _d.get("AGAIN") == "0", _d.get("AGAIN", "?"))
+_assert("  · drives per team-game reads back exactly as measured",
+        _d.get("RATE") == repr(round(5731 / 544, 6)), _d.get("RATE", "?"))
+_assert("  · its derivation document round-trips through JSONB",
+        _d.get("PARAMS") == '{"drives": 5731, "team_games": 544}',
+        _d.get("PARAMS", "?"))
+_assert("  · and the resolver reads it at the league level",
+        _d.get("DRIVES_LEVEL") == "MODELLED_LEAGUE_FALLBACK",
+        _d.get("DRIVES_LEVEL", "?"))
+_assert("the drive count obeys the SAME as-of cutoff as every other model",
+        _d.get("EARLY_LEVEL") == "MODEL_UNRESOLVED", _d.get("EARLY_LEVEL", "?"))
 
 _drop_all()
 

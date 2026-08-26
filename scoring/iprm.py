@@ -850,7 +850,20 @@ def _three_and_outs(profile: ScoringProfile, config: IprmConfig,
     resolution = (getattr(rates, "three_and_out", None)
                   if rates is not None else None)
     if resolution is not None and resolution.resolved:
+        # ── THE DRIVE COUNT IS NOW MEASURED TOO (Sprint 5B) ────────────────
+        # Sprint 5 could only read this from configuration, where it defaulted
+        # to None and correctly refused. It is now a stored parameter derived
+        # from real classified possessions, resolved beside the three-and-out
+        # rate and carrying its own sample size and as-of. An explicitly
+        # configured value still wins, so an operator can override the model;
+        # absent both, the refusal is unchanged.
+        drive_resolution = (getattr(rates, "drives", None)
+                            if rates is not None else None)
         drives = config.expected_opponent_drives
+        drive_detail = "configured"
+        if drives is None and drive_resolution is not None and drive_resolution.resolved:
+            drives = drive_resolution.rate
+            drive_detail = drive_resolution.detail
         if drives is None:
             return ModelledContribution(
                 "dst_three_and_outs", 0.0, Quality.MODEL_UNRESOLVED,
@@ -875,6 +888,15 @@ def _three_and_outs(profile: ScoringProfile, config: IprmConfig,
             quality=resolution.level, model="drive_rate_x_expected_drives",
             parameters={"three_and_out_rate_per_drive": resolution.rate,
                         "expected_opponent_drives": float(drives),
+                        "expected_drives_source": drive_detail,
+                        "expected_drives_sample": (
+                            drive_resolution.sample_size
+                            if drive_resolution is not None
+                            and drive_resolution.resolved else None),
+                        "expected_drives_model_version": (
+                            drive_resolution.model_version
+                            if drive_resolution is not None
+                            and drive_resolution.resolved else None),
                         "expected_three_and_outs": expected,
                         "historical_three_and_outs": resolution.numerator,
                         "historical_opponent_drives": resolution.denominator,

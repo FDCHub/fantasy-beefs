@@ -2774,6 +2774,11 @@ class ProviderHistoricalRate(Base):
     MODEL_RECEPTION = "reception-model"
     MODEL_PICK_SIX = "pick-six-model"
     MODEL_THREE_AND_OUT = "three-and-out-model"
+    #: Sprint 5B. Not an IPRM gap of its own — it is the SECOND HALF of the
+    #: three-and-out projection, which is a rate per opponent drive and needs a
+    #: drive count to become a per-game expectation. Sprint 5 left that count
+    #: unmeasured and correctly refused; this is the measurement.
+    MODEL_DRIVES = "drives-model"
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
     provider       = Column(String,  nullable=False)

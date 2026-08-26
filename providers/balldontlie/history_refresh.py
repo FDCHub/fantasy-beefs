@@ -179,7 +179,7 @@ def refresh(db, transport, *, seasons: Sequence[int], weeks: Sequence[int],
     for entry in game_ids:
         game_id, home, visitor = entry
         try:
-            plays = transport.paginate("plays", **{"game_ids[]": game_id})
+            plays = transport.paginate("plays", game_id=game_id)
         except BalldontlieRateLimited as exc:
             report_skips.append(
                 f"plays game={game_id}: rate limited, retry after "

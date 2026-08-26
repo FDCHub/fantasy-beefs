@@ -85,35 +85,112 @@ class DriveOutcome:
     UNKNOWN = "UNKNOWN"
 
 
-#: Text markers for an awarded first down. BALLDONTLIE writes them into the play
-#: text — "FIRST DOWN", and the penalty form — and there is no structured field
-#: for it, so the text is read HERE and nowhere else in the codebase.
+#: Legacy text markers for an awarded first down. RETAINED ONLY FOR OLDER
+#: CAPTURED CORPORA — the live stream does not use them. Sprint 5B read 1,199
+#: consecutive real plays and found the words "FIRST DOWN" in exactly none of
+#: them; the live signal is `end_down == 1`, handled in `_earned_first_down`.
 FIRST_DOWN_MARKERS = ("FIRST DOWN", "1ST DOWN")
 
+# ── THE LIVE TYPE VOCABULARY, MEASURED RATHER THAN GUESSED ──────────────────
+#
+# Every slug below was observed in real `/plays` payloads during Sprint 5B.
+# The names WP2 originally guessed — "interception", "fumble", "downs",
+# "end-of-quarter", "penalty-no-play" — are NOT what the provider emits, and
+# the two spellings that happened to coincide ("punt", "field-goal-good") hid
+# that for two sprints. Legacy spellings are kept alongside the live ones so
+# older captured corpora keep classifying.
+#
+# ANYTHING NOT LISTED HERE LEAVES THE DRIVE `UNKNOWN`, which excludes it from
+# both halves of every rate. That is the fail-closed direction: an unrecognised
+# ending must never be read as "the offence punted".
+
 _TERMINATING = {
+    # punts — the ordinary three-and-out ending
     "punt": DriveOutcome.PUNT,
+    # a blocked punt is NOT a clean punt: possession changes by a route the
+    # three-and-out definition does not describe, so it is excluded rather
+    # than counted as a defensive stop.
+    "blocked-punt": DriveOutcome.TURNOVER,
+    "blocked-punt-touchdown": DriveOutcome.TURNOVER,
+    "punt-return-touchdown": DriveOutcome.TURNOVER,
+    # kicks
     "field-goal-good": DriveOutcome.FIELD_GOAL,
     "field-goal-missed": DriveOutcome.MISSED_FIELD_GOAL,
+    "field-goal-blocked": DriveOutcome.MISSED_FIELD_GOAL,
     "blocked-field-goal": DriveOutcome.MISSED_FIELD_GOAL,
     "blocked-field-goal-touchdown": DriveOutcome.TURNOVER,
+    # turnovers — LIVE spellings first
+    "pass-interception-return": DriveOutcome.TURNOVER,
+    "interception-return-touchdown": DriveOutcome.TURNOVER,
+    "fumble-recovery-opponent": DriveOutcome.TURNOVER,
+    "fumble-return-touchdown": DriveOutcome.TURNOVER,
+    "safety": DriveOutcome.TURNOVER,
+    # legacy fixture spellings
     "interception": DriveOutcome.TURNOVER,
     "fumble": DriveOutcome.TURNOVER,
-    "fumble-recovery-opponent": DriveOutcome.TURNOVER,
-    "safety": DriveOutcome.TURNOVER,
-    "downs": DriveOutcome.DOWNS,
+    # scores by the offence
+    "rushing-touchdown": DriveOutcome.TOUCHDOWN,
+    "passing-touchdown": DriveOutcome.TOUCHDOWN,
+    # downs
     "turnover-on-downs": DriveOutcome.DOWNS,
+    "downs": DriveOutcome.DOWNS,
 }
 
-_PERIOD_END = {"end-of-half", "end-of-game", "end-of-quarter",
-               "end-of-regulation", "two-minute-warning"}
+#: `fumble-recovery-own` deliberately absent: the offence keeps the ball and
+#: the drive continues.
 
-_NON_SNAP = {"kickoff", "timeout", "penalty-no-play", "two-minute-warning",
-             "end-of-half", "end-of-game", "end-of-quarter",
-             "end-of-regulation"}
+#: Endings that genuinely END a possession. `end-period` is NOT one of them:
+#: it marks the quarter boundary, and a drive runs straight through the end of
+#: the first and third quarters. Sprint 5B measured its `end_down` as 2, 3 or 4
+#: as often as 1 — a drive in progress, not a drive finished. Treating it as an
+#: ending closed roughly two live drives per game in the wrong place.
+_PERIOD_END = {"end-of-half", "end-of-game", "end-of-regulation",
+               "end-of-quarter"}
+
+_NON_SNAP = {"kickoff", "kickoff-return-offense", "kickoff-return-touchdown",
+             "timeout", "official-timeout", "penalty", "penalty-no-play",
+             "two-minute-warning", "end-period", "coin-toss"}
+
+#: Slugs that identify an interception THROWN, and the subset returned for six.
+#: Structural, not textual: the live stream names the intercepting defender in
+#: the prose and the quarterback only in `participants`.
+INTERCEPTION_SLUGS = frozenset({"pass-interception-return",
+                                "interception-return-touchdown"})
+PICK_SIX_SLUGS = frozenset({"interception-return-touchdown"})
 
 _TOUCHDOWN_MARKER = "TOUCHDOWN"
 _KNEEL_MARKERS = ("KNEEL", "KNEELS", "VICTORY FORMATION")
 _TURNOVER_MARKERS = ("INTERCEPT", "FUMBLE")
+
+
+
+_KNOWN_SLUGS = (frozenset(_TERMINATING) | _PERIOD_END | _NON_SNAP
+                | INTERCEPTION_SLUGS | PICK_SIX_SLUGS
+                | {"rush", "pass-reception", "pass-incompletion", "sack",
+                   "fumble-recovery-own", "extra-point-good",
+                   "extra-point-missed", "two-point-conversion"})
+
+
+def _earned_first_down(play, text: str) -> bool:
+    """Did this play produce a first down?
+
+    THE LIVE SIGNAL IS `end_down == 1`. A play that leaves the offence on first
+    down converted; one that leaves them on second, third or fourth did not. A
+    touchdown shows `end_down == -1` and is handled as a score, not a
+    conversion. The text markers are checked only when the stream carries no
+    `end_down` at all, which is how pre-Sprint-5B captured corpora look.
+    """
+    # A PLAY THAT HANDS THE BALL OVER NEVER CONVERTS FOR THE OFFENCE. On a
+    # punt the stream reports `end_down == 1` because the RECEIVING team is
+    # about to snap first-and-ten, and on an interception likewise. Reading
+    # that as a conversion credited every punting drive with a first down and
+    # made three-and-outs literally uncountable — 45 punts, zero found.
+    if play.type in _TERMINATING:
+        return False
+    end_down = getattr(play, "end_down", None)
+    if isinstance(end_down, int):
+        return end_down == 1
+    return any(marker in text for marker in FIRST_DOWN_MARKERS)
 
 
 @dataclass
@@ -178,6 +255,44 @@ def classify_drives(plays: Sequence, *, home: str, visitor: str) -> list:
     for play, possession in carry_possession(plays, home=home, visitor=visitor):
         text = (play.text or "").upper()
 
+        # ── A PERIOD ENDING CLOSES THE DRIVE IT INTERRUPTS ─────────────────
+        if play.type in _PERIOD_END:
+            if current is not None and current.outcome == DriveOutcome.UNKNOWN:
+                current.outcome = DriveOutcome.END_OF_PERIOD
+                current.closed = True
+            continue
+
+        # ── A NON-SNAP NEVER STARTS, JOINS OR SPLITS A POSSESSION ──────────
+        # Kickoffs, timeouts, official timeouts and penalty records all carry a
+        # `team`, and treating that as possession invented a one-play drive
+        # every time one appeared: real games classified at 16.5 drives per
+        # team-game against a true figure near 11, and a third of all drives
+        # ended UNKNOWN holding nothing but a kickoff. They are skipped
+        # entirely — the drive on either side of them is the same drive.
+        if play.type in _NON_SNAP:
+            continue
+
+        # ── TURNOVER ON DOWNS HAS NO SLUG. IT IS A TEAM FLIP ON FOURTH ────
+        # The provider emits no `turnover-on-downs` type at all: a failed
+        # fourth-down conversion is an ordinary `rush` or `pass-reception`
+        # whose `team` has already become the team taking over, with
+        # `end_down == 1` for their new series. Sprint 5B measured all fifteen
+        # fourth-down scrimmage plays in the sample reading `end_down == 1`
+        # whether they converted or not — so the down cannot distinguish them
+        # and only the team flip can. Missing this left the drive with no
+        # ending, which is most of what remained UNKNOWN.
+        if (current is not None and not current.closed
+                and current.team is not None
+                and play.start_down == 4
+                and possession != current.team
+                and play.type not in _TERMINATING
+                and play.type not in _NON_SNAP):
+            current.plays.append(play)
+            current.offensive_play_count += 1
+            current.outcome = DriveOutcome.DOWNS
+            current.closed = True
+            continue
+
         if current is None or possession != current.team or current.closed:
             current = Drive(team=possession)
             drives.append(current)
@@ -191,15 +306,9 @@ def classify_drives(plays: Sequence, *, home: str, visitor: str) -> list:
 
         current.plays.append(play)
 
-        if play.type in _PERIOD_END:
-            if current.outcome == DriveOutcome.UNKNOWN:
-                current.outcome = DriveOutcome.END_OF_PERIOD
-            continue
+        current.offensive_play_count += 1
 
-        if play.type not in _NON_SNAP:
-            current.offensive_play_count += 1
-
-        if any(marker in text for marker in FIRST_DOWN_MARKERS):
+        if _earned_first_down(play, text):
             current.earned_first_down = True
         if any(marker in text for marker in _KNEEL_MARKERS):
             current.kneel_down = True
@@ -260,19 +369,36 @@ def pick_six_events(plays: Sequence) -> dict:
     """
     interceptions: dict = {}
     pick_sixes: dict = {}
+    unattributed = 0
     for play in ordered_plays(plays):
         text = (play.text or "").upper()
-        if "INTERCEPT" not in text:
+        kind = play.type
+
+        # THE SLUG IS THE EVIDENCE, NOT THE PROSE. `pass-interception-return`
+        # and `interception-return-touchdown` are the provider's own names for
+        # these two events; the older text search for "INTERCEPT" also matched
+        # a description mentioning an earlier interception, and could not tell
+        # a returned touchdown from a two-point return without re-reading the
+        # sentence. The legacy text path survives only for corpora captured
+        # before the live slugs were known.
+        is_interception = kind in INTERCEPTION_SLUGS or (
+            kind not in _KNOWN_SLUGS and "INTERCEPT" in text)
+        if not is_interception:
             continue
+
         passers = play.participant_ids(PARTICIPANT_PASSER)
         if not passers:
             # An interception the stream cannot attribute contributes to
             # NEITHER term. Counting it in the denominator alone would push
             # every quarterback's rate down.
+            unattributed += 1
             continue
         passer = passers[0]
         interceptions[passer] = interceptions.get(passer, 0) + 1
-        if _TOUCHDOWN_MARKER in text:
+        returned_for_six = (kind in PICK_SIX_SLUGS
+                            or (kind not in _KNOWN_SLUGS
+                                and _TOUCHDOWN_MARKER in text))
+        if returned_for_six:
             pick_sixes[passer] = pick_sixes.get(passer, 0) + 1
     return {"interceptions": interceptions, "pick_sixes": pick_sixes,
-            "unattributed": 0}
+            "unattributed": unattributed}

@@ -118,7 +118,7 @@ def capture_week(transport: Any, directory: str | None = None, *,
                                       "per_page": 100})
     _capture("games", {"seasons[]": season, "weeks[]": week, "per_page": 100})
     for game_id in game_ids:
-        _capture("plays", {"game_ids[]": game_id, "per_page": 100})
+        _capture("plays", {"game_id": game_id, "per_page": 100})
     if not game_ids:
         skipped.append(
             "plays: no game ids requested. At the free tier's five requests a "

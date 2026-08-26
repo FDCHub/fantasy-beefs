@@ -142,10 +142,30 @@ ENDPOINTS: Mapping[str, frozenset[str]] = {
     "games": _PAGING | frozenset({
         "seasons[]", "weeks[]", "team_ids[]", "postseason", "dates[]",
     }),
-    "plays": _PAGING | frozenset({"game_ids[]", "player_ids[]"}),
+    # `plays` IS THE ODD ONE OUT, AND IT IS NOT A TYPO. Every other collection
+    # endpoint filters with a repeated array parameter (`game_ids[]`); `plays`
+    # takes a SINGLE REQUIRED `game_id` and answers HTTP 400 —
+    # {"param": "game_id", "error": "must be a valid integer"} — to anything
+    # else, including a well-formed `game_ids[]` and including `player_id` on
+    # its own. Sprint 5B measured this against the live API; WP2 had inferred
+    # the plural by symmetry with its neighbours and no fixture could contradict
+    # it, because a fixture answers whatever it was written to answer.
+    "plays": _PAGING | frozenset({"game_id"}),
+    # Season aggregates: one row per player per season, with `receiving_targets`
+    # and `receptions` already summed. Verified live in Sprint 5B.
+    "season_stats": _PAGING | frozenset({
+        "season", "player_ids[]", "team_ids[]", "postseason",
+    }),
+    # `weeks[]` IS NOT HONOURED HERE AND IS DELIBERATELY ABSENT. Sprint 5B sent
+    # `seasons[]=2025&weeks[]=1` and paginated: page 1 held week 1, page 72 held
+    # week 8, page 145 held week 15. The season filter applied; the week filter
+    # was IGNORED and the response walked the whole season, exactly the failure
+    # mode behaviour 1 in the module docstring describes — a 200 with the filter
+    # silently unapplied. Listing it here would let a caller believe a week had
+    # been fetched when a season had. Filter by `game_ids[]`, or take the season
+    # and bucket by `game.week` in memory.
     "stats": _PAGING | frozenset({
-        "seasons[]", "weeks[]", "player_ids[]", "team_ids[]", "game_ids[]",
-        "postseason",
+        "seasons[]", "player_ids[]", "team_ids[]", "game_ids[]", "postseason",
     }),
     "team_stats": _PAGING | frozenset({
         "seasons[]", "weeks[]", "team_ids[]", "game_ids[]", "postseason",
@@ -513,7 +533,8 @@ class BalldontlieLiveTransport:
                                          "postseason": postseason}, **params)
 
     def fetch_plays(self, *, game_id: int, **params: Any) -> list[dict]:
-        return self.paginate("plays", **{"game_ids[]": game_id}, **params)
+        """Every play of ONE game. `game_id` is required by the API, not optional."""
+        return self.paginate("plays", game_id=game_id, **params)
 
     def fetch_players(self, **params: Any) -> list[dict]:
         return self.paginate("players", **params)

@@ -162,13 +162,17 @@ _rates = [
     _rate(R.MODEL_PICK_SIX, R.ENTITY_LEAGUE, H.LEAGUE_KEY, 58, 884,
           position="QB", source="plays"),
     _rate(R.MODEL_THREE_AND_OUT, R.ENTITY_TEAM, "TEN", 71, 352, source="plays"),
+    # three-and-out-model-v2 resolves the LEAGUE rate; the team row above is
+    # still stored, as evidence, and deliberately no longer consulted.
+    _rate(R.MODEL_THREE_AND_OUT, R.ENTITY_LEAGUE, H.LEAGUE_KEY, 1000, 5595,
+          source="plays"),
 ]
 _first = H.persist_rates(_db, _rates)
-_assert("derived parameters persist", _first["persisted"] == 5, str(_first))
+_assert("derived parameters persist", _first["persisted"] == 6, str(_first))
 _again = H.persist_rates(_db, _rates)
 _assert("re-running an unchanged derivation writes NOTHING",
-        _again["persisted"] == 0 and _again["duplicate"] == 5
-        and _db.query(R).count() == 5, str(_again))
+        _again["persisted"] == 0 and _again["duplicate"] == 6
+        and _db.query(R).count() == 6, str(_again))
 _assert("a rate is numerator over denominator, and the sample travels with it",
         _near(_db.query(R).filter_by(entity_key="bdl.p.113").one().rate,
               142 / 196) and
@@ -201,12 +205,18 @@ _assert("a player rate and a team rate are different populations and never "
 
 print("\n5-B · a projection can never read the future")
 
+# THE AS-OF PROPERTY IS EXERCISED THROUGH THE POSITION TIER, because that is
+# the tier reception-model-v2 resolves. The cutoff logic is shared by every
+# model and every entity type, so nothing about the property is weakened.
+H.persist_rates(_db, [_rate(R.MODEL_RECEPTION, R.ENTITY_POSITION, "WR",
+                            142, 196, position="WR")])
+_db.flush()
 _bundle = H.resolve_bundle(_db, provider=BALLDONTLIE, as_of=PRICED_AT,
                            player_key="bdl.p.113", position="WR",
                            nfl_team="TEN")
 _assert("at a later instant, the parameter is in force",
         _bundle.reception.resolved and _bundle.reception.level
-        == "MODELLED_PLAYER_HISTORY")
+        == "MODELLED_POSITIONAL_FALLBACK", _bundle.reception.level)
 _early = H.resolve_bundle(_db, provider=BALLDONTLIE, as_of=BEFORE,
                           player_key="bdl.p.113", position="WR",
                           nfl_team="TEN")
@@ -220,7 +230,7 @@ _assert("  · and the refusal names the absence rather than inventing a rate",
 
 # TWO CUTOFFS, THE OLDER ONE STILL READABLE. This is what lets a wager priced in
 # March reprice identically in September.
-H.persist_rates(_db, [_rate(R.MODEL_RECEPTION, R.ENTITY_PLAYER, "bdl.p.113",
+H.persist_rates(_db, [_rate(R.MODEL_RECEPTION, R.ENTITY_POSITION, "WR",
                             150, 200, position="WR",
                             as_of=datetime(2026, 6, 1, tzinfo=timezone.utc),
                             window="2024-2026")])
@@ -430,7 +440,7 @@ _assert("a DIRECT reception projection beats the model — no model runs at all"
 
 _modelled = _iprm({"targets": 9.8, "receiving_yards": 84.3}, rates=_bundle)
 _receptions = _modelled.modelled("receptions")
-_assert("targets plus a player catch rate produce expected receptions",
+_assert("targets plus the POSITIONAL catch rate produce expected receptions",
         _near(_receptions.parameters["expected_receptions"], 9.8 * (142 / 196)),
         f"{_receptions.parameters['expected_receptions']:.4f}")
 _assert("  · and the result is simulation-ready with the fallback recorded",
@@ -441,7 +451,28 @@ _assert("  · the provenance answers 'why this many receptions?'",
         <= set(_receptions.parameters),
         str(sorted(_receptions.parameters)[:4]))
 _assert("  · naming the level that answered",
-        _receptions.quality == "MODELLED_PLAYER_HISTORY")
+        _receptions.quality == "MODELLED_POSITIONAL_FALLBACK",
+        _receptions.quality)
+
+# ── WHY reception-model-v2 HAS NO PLAYER TIER (Sprint 5B) ──────────────────
+# v1 preferred a player his own catch rate once he cleared fifty targets.
+# Measured against two real BALLDONTLIE seasons that rule is WORSE than simply
+# using his position: over the SAME 134 qualifying players, training on 2024
+# and testing on 2025, position scored MAE 4.01 against the player rate 4.65 —
+# and across all 502 receivers, 2.28 against 2.87, the worst of every rule
+# tried. Shrinkage between them was measured too: it bottoms just 2.6% below
+# pure position, at a blend constant obtainable only by fitting the very season
+# used to judge it. So the player rate is stored as evidence and not consulted.
+_stored_player_rates = _db.query(R).filter(
+    R.model_type == R.MODEL_RECEPTION,
+    R.entity_type == R.ENTITY_PLAYER).count()
+_assert("a measured PLAYER catch rate is still stored, as evidence",
+        _stored_player_rates >= 1, f"{_stored_player_rates} row(s)")
+_assert("  · and v2 answers from the POSITION anyway, because two real "
+        "seasons say the player rate predicts worse",
+        H.resolve_bundle(_db, provider=BALLDONTLIE, as_of=PRICED_AT,
+                         player_key="bdl.p.113", position="WR"
+                         ).reception.level == "MODELLED_POSITIONAL_FALLBACK")
 
 _small_db = _session()
 H.persist_rates(_small_db, [
@@ -452,11 +483,10 @@ H.persist_rates(_small_db, [
 _small_db.flush()
 _small = H.resolve_bundle(_small_db, provider=BALLDONTLIE, as_of=PRICED_AT,
                           player_key="bdl.p.999", position="WR")
-_assert("a player sample below the minimum falls back to the POSITION, and "
-        "says why",
-        _small.reception.level == "MODELLED_POSITIONAL_FALLBACK"
-        and "below the minimum" in _small.reception.detail,
-        f"n={11} against a minimum of {I.IPRM_V1.minimum_player_targets}")
+_assert("a thin player sample resolves to the POSITION — under v2 every "
+        "player does, so a small sample cannot mislead by construction",
+        _small.reception.level == "MODELLED_POSITIONAL_FALLBACK",
+        f"n=11 player targets, position answered")
 
 _league_db = _session()
 H.persist_rates(_league_db, [
@@ -539,11 +569,21 @@ H.persist_rates(_qb_history, [
     _rate(R.MODEL_PICK_SIX, R.ENTITY_LEAGUE, H.LEAGUE_KEY, 58, 884,
           position="QB", source="plays")])
 _qb_history.flush()
-_assert("a quarterback with a large enough sample uses his OWN rate",
+# pick-six-model-v2 (Sprint 5B): THE LEAGUE CONDITIONAL, ALWAYS. A quarterback
+# with 41 interceptions would have cleared v1's threshold of 20 -- and two real
+# seasons say that estimate is worse than the pooled one. The busiest passer in
+# 2024 threw 16 interceptions; the median threw 7; a rate from 20 carries a
+# standard error of 82% OF ITSELF. Held out on 2025, per-QB rates scored MAE
+# 0.771 against the league conditional's 0.529.
+_assert("a quarterback with a LARGE sample still resolves at the league "
+        "conditional, because his own rate predicts worse",
         H.resolve_bundle(_qb_history, provider=BALLDONTLIE, as_of=PRICED_AT,
                          player_key="bdl.p.63",
                          position="QB").pick_six.level
-        == "MODELLED_PLAYER_HISTORY")
+        == "MODELLED_LEAGUE_FALLBACK")
+_assert("  · and his measured rate is still STORED, as evidence",
+        _qb_history.query(R).filter(R.model_type == R.MODEL_PICK_SIX,
+                                    R.entity_type == R.ENTITY_PLAYER).count() == 1)
 _sparse = _session()
 H.persist_rates(_sparse, [
     _rate(R.MODEL_PICK_SIX, R.ENTITY_PLAYER, "bdl.p.63", 1, 6, position="QB",
@@ -551,7 +591,7 @@ H.persist_rates(_sparse, [
     _rate(R.MODEL_PICK_SIX, R.ENTITY_LEAGUE, H.LEAGUE_KEY, 58, 884,
           position="QB", source="plays")])
 _sparse.flush()
-_assert("  · and a sparse one falls back rather than pricing a 1-in-6 fluke",
+_assert("  · a sparse one likewise never prices a 1-in-6 fluke",
         H.resolve_bundle(_sparse, provider=BALLDONTLIE, as_of=PRICED_AT,
                          player_key="bdl.p.63",
                          position="QB").pick_six.level
@@ -575,7 +615,7 @@ _assert("a MEASURED defensive rate alone is not enough — the model still "
         _dst.status == I.Status.REFUSED
         and _tao.quality == I.Quality.MODEL_UNRESOLVED)
 _assert("  · and it says which half is missing, with the measured half shown",
-        _near(_tao.parameters["three_and_out_rate_per_drive"], 71 / 352)
+        _near(_tao.parameters["three_and_out_rate_per_drive"], 1000 / 5595)
         and _tao.parameters["expected_opponent_drives"] is None
         and "expected opponent drive count" in _tao.note)
 
@@ -585,13 +625,16 @@ _resolved_dst = _iprm({"defensive_sacks": 2.4, "dst_points_allowed": 21.3},
                       rates=_bundle, config=_with_drives)
 _assert("with a drive count supplied, the expectation is rate x drives",
         _near(_resolved_dst.modelled("dst_three_and_outs")
-              .parameters["expected_three_and_outs"], (71 / 352) * 11.2))
+              .parameters["expected_three_and_outs"], (1000 / 5595) * 11.2))
 _assert("  · and the defence becomes simulation-ready",
         _resolved_dst.status == I.Status.SIMULATION_READY_WITH_FALLBACKS)
 _assert("  · the expectation is non-negative and plausibly bounded",
         0.0 <= _resolved_dst.modelled("dst_three_and_outs")
         .parameters["expected_three_and_outs"] <= 11.2)
-_assert("a team sample below the minimum falls back rather than trusting it",
+# v2 HAS NO TEAM TIER, so there is no thin team sample to mistrust. What must
+# still hold is the stronger property: with NO parameter at all, the model
+# refuses rather than reaching for a number.
+_assert("with no parameter stored at all, the defence refuses",
         H.resolve_bundle(
             _session_small := _session(), provider=BALLDONTLIE,
             as_of=PRICED_AT, nfl_team="TEN").three_and_out.level
@@ -624,7 +667,7 @@ print("\n5-H · a provider correction never mutates a frozen parameter")
 
 _corrections = _session()
 H.persist_rates(_corrections, [
-    _rate(R.MODEL_RECEPTION, R.ENTITY_PLAYER, "bdl.p.113", 142, 196,
+    _rate(R.MODEL_RECEPTION, R.ENTITY_POSITION, "WR", 142, 196,
           position="WR")],
     generated_at=datetime(2026, 3, 1, tzinfo=timezone.utc))
 _corrections.flush()
@@ -632,7 +675,7 @@ _original = _corrections.query(R).one()
 _original_fingerprint = _original.fingerprint
 
 H.persist_rates(_corrections, [
-    _rate(R.MODEL_RECEPTION, R.ENTITY_PLAYER, "bdl.p.113", 143, 196,
+    _rate(R.MODEL_RECEPTION, R.ENTITY_POSITION, "WR", 143, 196,
           position="WR")],
     generated_at=datetime(2026, 3, 2, tzinfo=timezone.utc))
 _corrections.flush()
@@ -682,6 +725,9 @@ H.persist_rates(_e2e, [
           position="QB", source="plays"),
     _rate(R.MODEL_THREE_AND_OUT, R.ENTITY_TEAM, "DET", 68, 340, source="plays"),
     _rate(R.MODEL_THREE_AND_OUT, R.ENTITY_TEAM, "TEN", 71, 352, source="plays"),
+    # v2 prices from the pooled rate; the team rows above are evidence.
+    _rate(R.MODEL_THREE_AND_OUT, R.ENTITY_LEAGUE, H.LEAGUE_KEY, 1000, 5595,
+          source="plays"),
 ])
 _e2e.flush()
 

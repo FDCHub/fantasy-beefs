@@ -635,12 +635,20 @@ print("\nWP2-F · the corpus says what it is")
 _manifest = json.load(open(os.path.join(CORPUS, "MANIFEST.json"),
                            encoding="utf-8"))
 _assert("the BALLDONTLIE corpus declares its provenance",
-        _manifest.get("provenance") == "SYNTHETIC",
+        _manifest.get("provenance") == "MIXED",
         str(_manifest.get("provenance")))
-_assert("  · and never claims the CAPTURED tier, which no BALLDONTLIE payload "
-        "in this repository has earned",
-        "CAPTURED" not in _manifest.get("provenance", "")
-        and "NOT CAPTURED" in _manifest.get("provenance_note", ""))
+# SPRINT 5B EARNED THE CAPTURED TIER, and the assertion had to move with it.
+# Until then no BALLDONTLIE payload in this repository was verbatim provider
+# bytes, and this suite asserted exactly that. It now asserts the stronger
+# property: every file is one tier or the other, and says which.
+_assert("  · every captured file is declared CAPTURED, and is a real response",
+        all(entry.get("tier") == "CAPTURED"
+            for entry in _manifest.get("captured", {}).values())
+        and set(_manifest.get("captured", {})) <= set(_manifest["fixtures"]),
+        f"{len(_manifest.get('captured', {}))} captured payload(s)")
+_assert("  · and the synthetic majority still says it is synthetic",
+        "SYNTHETIC" in _manifest.get("provenance_note", "")
+        and len(_manifest["fixtures"]) > len(_manifest.get("captured", {})))
 _assert("  · every fixture file on disk is described in the manifest",
         {name for name in os.listdir(CORPUS) if name.endswith(".json")
          and name != "MANIFEST.json"} == set(_manifest["fixtures"]),

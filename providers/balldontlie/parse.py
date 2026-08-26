@@ -287,6 +287,12 @@ class PlayRow:
     clock: str | None
     wallclock: str | None
     start_down: int | None
+    #: The down the ball is on AFTER this play. `1` is how the live stream says
+    #: a first down was earned, and it is the ONLY way it says so: Sprint 5B
+    #: measured 1,199 consecutive real plays and not one of them carried the
+    #: words "FIRST DOWN" in its text. A touchdown ends the series and shows
+    #: as `-1`. Absent on plays with no down state (kickoffs, timeouts).
+    end_down: int | None = None
     participants: tuple = ()
     raw: Mapping[str, Any] = field(repr=False, default_factory=dict)
 
@@ -328,19 +334,45 @@ def parse_plays(payload: Any) -> list[PlayRow]:
                 f"ordinary — it was observed on a timeout — and is skipped by "
                 f"the rules layer rather than failing a whole game.")
         participants = row.get("participants")
+
+        # ── THE LIVE FIELD NAMES, MEASURED IN SPRINT 5B ────────────────────
+        # `/plays` returns `type_slug` (hyphenated: "pass-interception-return"),
+        # nests the game as an OBJECT, and spells the game clock
+        # `clock_display`. It emits no field called `type` and none called
+        # `game_id` at all. WP2 wrote this parser against a hand-authored
+        # fixture that used `type`/`game_id`/`clock`, and a fixture answers
+        # whatever it was written to answer — so nothing contradicted the guess
+        # until a real payload arrived. Both spellings are accepted here: the
+        # live one because it is what the provider sends, the legacy one so
+        # older captured corpora keep replaying.
+        kind = row.get("type_slug")
+        if kind is None:
+            kind = row.get("type")
+        if kind is None:
+            raise ProviderParseError(
+                f"{context}: no play type. Expected 'type_slug' (live) or "
+                f"'type' (legacy fixture); got keys {sorted(row)!r}.")
+
+        game_id = row.get("game_id")
+        if game_id is None and isinstance(row.get("game"), dict):
+            game_id = row["game"].get("id")
+
         parsed.append(PlayRow(
             id=row.get("id"),
-            game_id=row.get("game_id"),
-            type=str(_require(row, "type", context)),
+            game_id=game_id,
+            type=str(kind),
             team=team,
-            text=str(row.get("text") or row.get("description") or ""),
+            text=str(row.get("text") or row.get("short_text")
+                     or row.get("description") or ""),
             stat_yardage=_optional_number(row.get("stat_yardage")),
             period=(int(row["period"]) if isinstance(row.get("period"), int)
                     else None),
-            clock=row.get("clock"),
+            clock=row.get("clock") or row.get("clock_display"),
             wallclock=row.get("wallclock"),
             start_down=(int(row["start_down"])
                         if isinstance(row.get("start_down"), int) else None),
+            end_down=(int(row["end_down"])
+                      if isinstance(row.get("end_down"), int) else None),
             participants=tuple(participants) if isinstance(participants, list)
             else (),
             raw=row,
