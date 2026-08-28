@@ -1,0 +1,1169 @@
+{
+  "passed": 166,
+  "failed": 0,
+  "total": 166,
+  "results": [
+    {
+      "id": "R0.1",
+      "section": "0 · Artifacts execute",
+      "description": "Action artifact executes with no runtime error",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "R0.2",
+      "section": "0 · Artifacts execute",
+      "description": "Standings + Wrap Up artifact executes with no runtime error",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "R0.3",
+      "section": "0 · Artifacts execute",
+      "description": "Account + Gear artifact executes with no runtime error",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "R0.4",
+      "section": "0 · Artifacts execute",
+      "description": "Action self-audit passes",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "R0.5",
+      "section": "0 · Artifacts execute",
+      "description": "Standings + Wrap Up self-audit passes",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "R0.6",
+      "section": "0 · Artifacts execute",
+      "description": "Account ledger self-audit passes",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "R0.7",
+      "section": "0 · Artifacts execute",
+      "description": "Gear self-audit passes",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F1.1",
+      "section": "F1 · Shared canonical source",
+      "description": "All three artifacts inline a fixture block",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F1.2",
+      "section": "F1 · Shared canonical source",
+      "description": "Inlined fixture is byte-identical to the standalone v2 file in all three artifacts",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F1.3",
+      "section": "F1 · Shared canonical source",
+      "description": "Declared canonical SHA-256 matches the standalone fixture in all three artifacts",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F1.4",
+      "section": "F1 · Shared canonical source",
+      "description": "All three artifacts report the same fixture version",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F1.5",
+      "section": "F1 · Shared canonical source",
+      "description": "Fixture version is FS_CANONICAL_CROSS_TAB_FIXTURE_V4",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F2.1",
+      "section": "F2 · Gear Season Allocation",
+      "description": "Weekly FantasyStakes Competition is T140.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F2.2",
+      "section": "F2 · Gear Season Allocation",
+      "description": "FantasyStakes Championship is T80.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F2.3",
+      "section": "F2 · Gear Season Allocation",
+      "description": "Season Allocation is T220.00 and equals the two weighting components",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F2.4",
+      "section": "F2 · Gear Season Allocation",
+      "description": "Account Sheet season contribution equals Gear Season Allocation",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F3.1",
+      "section": "F3 · Standard Prop Pool Entry",
+      "description": "Gear Standard Prop Pool Entry is T1.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F3.2",
+      "section": "F3 · Standard Prop Pool Entry",
+      "description": "Action pool entry resolver is T1.00 in integer cents",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F3.3",
+      "section": "F3 · Standard Prop Pool Entry",
+      "description": "Ledger posts exactly one Prop Pool entry of T1.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F3.4",
+      "section": "F3 · Standard Prop Pool Entry",
+      "description": "Gear, Action and Ledger agree on the entry amount",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F4.1",
+      "section": "F4 · Current-week qualifying commitments",
+      "description": "Unresolved Versus escrow reconstructed from the Ledger is T80.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F4.2",
+      "section": "F4 · Current-week qualifying commitments",
+      "description": "Unresolved Prop Pool commitment reconstructed from the Ledger is T1.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F4.3",
+      "section": "F4 · Current-week qualifying commitments",
+      "description": "Current-week committed capital is T81.00 (Versus + Pool)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F4.4",
+      "section": "F4 · Current-week qualifying commitments",
+      "description": "The Prop Pool ticket is counted exactly once",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F5.1",
+      "section": "F5 · Weekly Minimum",
+      "description": "Weekly Minimum setting is T10.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F5.2",
+      "section": "F5 · Weekly Minimum",
+      "description": "Account WEEKLY MIN remaining = max(T10 - qualifying commitments T41, 0) = T0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F5.3",
+      "section": "F5 · Weekly Minimum",
+      "description": "Action WEEKLY MIN equals Account WEEKLY MIN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F6.1",
+      "section": "F6 · IN PLAY",
+      "description": "Account IN PLAY = unresolved Versus escrow + unresolved Pool capital = T81.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F6.2",
+      "section": "F6 · IN PLAY",
+      "description": "Action IN PLAY equals Account IN PLAY",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F6.3",
+      "section": "F6 · IN PLAY",
+      "description": "Canonical fixture IN PLAY equals both",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F6.4",
+      "section": "F6 · IN PLAY",
+      "description": "Skunk Pot is NOT counted as IN PLAY",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F6.5",
+      "section": "F6 · IN PLAY",
+      "description": "Wallet is NOT counted as IN PLAY",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F7.1",
+      "section": "F7 · Wallet",
+      "description": "Wallet reconstructed independently from the Ledger is T94.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F7.2",
+      "section": "F7 · Wallet",
+      "description": "Account Wallet equals the Ledger reconstruction",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F7.3",
+      "section": "F7 · Wallet",
+      "description": "Action Wallet equals the Ledger reconstruction",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F7.4",
+      "section": "F7 · Wallet",
+      "description": "Wallet arithmetic still reconciles after the Prop Pool ticket is committed",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F8.1",
+      "section": "F8 · Skunk routing",
+      "description": "At least one Skunk Fee is posted",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F8.2",
+      "section": "F8 · Skunk routing",
+      "description": "Every Skunk Fee credits the governed Skunk Pot",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F8.3",
+      "section": "F8 · Skunk routing",
+      "description": "No Skunk Fee touches Settled Counterparties",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F8.4",
+      "section": "F8 · Skunk routing",
+      "description": "Every Skunk Fee debits the assessed GM's Wallet",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F8.5",
+      "section": "F8 · Skunk routing",
+      "description": "Skunk Pot balance equals the posted Skunk contributions (T10.00)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F8.6",
+      "section": "F8 · Skunk routing",
+      "description": "Skunk impacts the FantasyStakes Score exactly once",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F8.7",
+      "section": "F8 · Skunk routing",
+      "description": "Skunk Pot is a distinct account from Wallet, escrow and pools",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F8.8",
+      "section": "F8 · Skunk routing",
+      "description": "Final Reconciliation does not double-count the Skunk",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F9.1",
+      "section": "F9 · Score chain",
+      "description": "Ledger score-bearing Matchups net is +T45.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F9.2",
+      "section": "F9 · Score chain",
+      "description": "Ledger score-bearing Prop Pools net is +T30.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F9.3",
+      "section": "F9 · Score chain",
+      "description": "Ledger score-bearing Skunk net is -T10.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F9.4",
+      "section": "F9 · Score chain",
+      "description": "Ledger components sum to the Account FantasyStakes Score",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F9.5",
+      "section": "F9 · Score chain",
+      "description": "Account FantasyStakes Score equals Standings FantasyStakes Score",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F9.6",
+      "section": "F9 · Score chain",
+      "description": "Standings score equals the sum of published Wrap Ups (checked in-artifact for all 12 teams)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F9.7",
+      "section": "F9 · Score chain",
+      "description": "Non-score-bearing postings do not enter the score",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F10.1",
+      "section": "F10 · FSR-001 probability model preserved",
+      "description": "Exactly one simulation model is declared",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F10.2",
+      "section": "F10 · FSR-001 probability model preserved",
+      "description": "Shared sigma is 20.0 fantasy points",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F10.3",
+      "section": "F10 · FSR-001 probability model preserved",
+      "description": "Every matchup stamps the same model provenance",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F10.4",
+      "section": "F10 · FSR-001 probability model preserved",
+      "description": "p is derived from the projected margin on every matchup",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F10.5",
+      "section": "F10 · FSR-001 probability model preserved",
+      "description": "p is monotonic in projected margin across all 11 matchups",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F10.6",
+      "section": "F10 · FSR-001 probability model preserved",
+      "description": "Moneyline is derived from p on every matchup",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F10.7",
+      "section": "F10 · FSR-001 probability model preserved",
+      "description": "Counter-board p is derived from the counter-board projections",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F10.8",
+      "section": "F10 · FSR-001 probability model preserved",
+      "description": "GE-603 holds on every matchup: Derived is the strict floor of Anchor x (1-p)/p",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.1",
+      "section": "F11 · Action integer-cent economics",
+      "description": "Anchor, Derived and Pot are integer cents on every matchup",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.2",
+      "section": "F11 · Action integer-cent economics",
+      "description": "Pot is exactly Anchor + Derived with no residue",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.3",
+      "section": "F11 · Action integer-cent economics",
+      "description": "Epsilon flooring is gone from executable Action code",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.4",
+      "section": "F11 · Action integer-cent economics",
+      "description": "Canonical case: Anchor T20.00 derives the expected cents for all 11 matchups",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.5",
+      "section": "F11 · Action integer-cent economics",
+      "description": "Underdog case: opponent Derived exceeds Anchor when p < 0.5",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.6",
+      "section": "F11 · Action integer-cent economics",
+      "description": "Cent-boundary battery: exact division floors exactly",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.7",
+      "section": "F11 · Action integer-cent economics",
+      "description": "Cent-boundary battery: inexact division floors DOWN and never rounds up",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.8",
+      "section": "F11 · Action integer-cent economics",
+      "description": "No off-by-one-cent regression against the previous release on canonical data",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F11.9",
+      "section": "F11 · Action integer-cent economics",
+      "description": "Pool pot is integer cents and equals entrants x entry",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.1",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "Rendered rows descend by real transaction date",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.2",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "Same-date ordering is deterministic on posting sequence",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.3",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "Transaction identity and immutability are preserved",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.4",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "Every row keeps its description, date and double-entry route",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.5",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "One signed movement column, never the same amount on both sides",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.6",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "Movement column foots exactly to the Wallet balance",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.7",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "Running Wallet balance ends at the Wallet balance",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.8",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "Movement is reported only for transactions that touch the Wallet",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F12.9",
+      "section": "F12 · Ledger chronology and presentation",
+      "description": "Underlying double-entry data is intact (every posting has both sides)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F13.1",
+      "section": "F13 · AVAILABLE gating",
+      "description": "AVAILABLE appears only where a wager can still be initiated",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F13.2",
+      "section": "F13 · AVAILABLE gating",
+      "description": "LIVE / OVER no-wager cards use a neutral closed treatment",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F13.3",
+      "section": "F13 · AVAILABLE gating",
+      "description": "LIVE / OVER no-wager cards expose no action controls",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F13.4",
+      "section": "F13 · AVAILABLE gating",
+      "description": "Terminal DECLINED / EXPIRED treatment is unchanged (O-3 untouched)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F14.1",
+      "section": "F14 · Gear authority and season lock",
+      "description": "Every governed setting carries an authority classification",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F14.2",
+      "section": "F14 · Gear authority and season lock",
+      "description": "Season Allocation is declared DERIVED",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F14.3",
+      "section": "F14 · Gear authority and season lock",
+      "description": "Season configuration is frozen at the first accepted wager (CFG-107)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F14.4",
+      "section": "F14 · Gear authority and season lock",
+      "description": "Season-fixed settings render a season-lock chip",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F14.5",
+      "section": "F14 · Gear authority and season lock",
+      "description": "The DERIVED chip is rendered for Season Allocation",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F14.6",
+      "section": "F14 · Gear authority and season lock",
+      "description": "GM Gear view is read only and exposes no edit control",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F14.7",
+      "section": "F14 · Gear authority and season lock",
+      "description": "The authority basis cites CFG-107 and CFG-1003",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.1",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Filters partition the board as locked (opponents / challengers / pending / accepted)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.2",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Counter produces a Was -> Is comparison on the countered matchup",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.3",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Accept / decline are offered only on a proposal awaiting this GM",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.4",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "No re-counter: a matchup whose counter is used offers no COUNTER control",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.5",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Cancel is offered on this GM's own outgoing initial proposal only",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.6",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Reissue is gated to this GM's own challenge in a pre-game matchup",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.7",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Prop Pools have zero preselection",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.8",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Reset Pick control is present on an open pool",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.9",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Lineup renders the full seven starter slots",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.10",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Bench rows are labelled BN",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.11",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "LIVE / OVER matchups expose no impossible action",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.12",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Proposal freeze: an accepted proposal keeps its own frozen economics",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.13",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Fixed and Dynamic terms modes are both represented",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F15.14",
+      "section": "F15 · Locked lifecycle regression battery",
+      "description": "Combined Teams pool field uses the official Yahoo fantasy matchups",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.Hank",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Hank Williams: escrow derived from lifecycle is T20.00 (ACCEPTED)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.Dolly",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Dolly Parton: escrow derived from lifecycle is T20.00 (PENDING_OUTGOING)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.Reba",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Reba McEntire: escrow derived from lifecycle is T20.00 (COUNTER_PENDING)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.Loretta",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Loretta Lynn: escrow derived from lifecycle is T20.00 (ACCEPTED)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.5",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Total Versus escrow derived from Action lifecycle is T80.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.6",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Pool committed capital derived from Action pool state is T1.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.7",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Derived IN PLAY is T81.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.8",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Account / Ledger escrow balances equal the derived IN PLAY",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.9",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Rendered Action IN PLAY strip reads T81",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.10",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Rendered Account IN PLAY strip reads T81",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.11",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Qualifying weekly commitments derived from lifecycle are T41.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.12",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Weekly Min Remaining derived from qualifying commitments is T0, on both strips",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.13",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Pending outgoing Dolly is committed but NOT qualifying",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.14",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Counter-pending Reba is committed but NOT qualifying, at the ORIGINAL Anchor",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.15",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Accepted Hank IS qualifying",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.16",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Accepted Loretta IS qualifying",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.17",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Funded Pool ticket counted exactly once and IS qualifying",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.18",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Wallet reconstructs from the Ledger to T94.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.19",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Final Reconciliation remains T285.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.20",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "FantasyStakes Score remains +T65.00",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.21",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Escrow transfers have no score impact",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.22",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "No Ledger posting describes a pending commitment as accepted",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.23",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Every held Action commitment has exactly one matching Ledger posting",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.24",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "No Ledger escrow exists for a released or terminal Action state",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.25",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Canonical schedule is a materialisation of the derived state, not an independent source",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.26",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "IN PLAY and Weekly Minimum qualification are genuinely different quantities here",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.27",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Total GM holdings conserve to T285.00 after the escrow restatement",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.28",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Rendered Account WALLET strip reads T94",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.29",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Rendered Action WALLET strip reads T94",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F16.30",
+      "section": "F16 · FSR-023 cross-surface committed capital",
+      "description": "Action publishes its commitment detail for cross-surface inspection",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.1",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Hank Williams upside = 740 cents (opponent Derived stake on an accepted wager)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.2",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Loretta Lynn upside = 874 cents (opponent Derived stake on an accepted wager)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.3",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Dolly Parton (PENDING outgoing) contributes 0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.4",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Reba McEntire (COUNTER_PENDING) contributes 0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.5",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Total UPSIDE LEFT = 1614 cents",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.6",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Rendered Action UPSIDE LEFT strip reads T16.14",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.7",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "No unaccepted proposal contributes to UPSIDE LEFT",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.8",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Only accepted unresolved wagers contribute",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.9",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "A settled (OVER) accepted wager would contribute 0",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.10",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Prop Pool tickets are excluded from this Versus metric",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.11",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "The stale canonical upsideLeft literal is gone from the fixture",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.12",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "UPSIDE LEFT reads the FROZEN accepted proposal, not the live board price",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.13",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "UPSIDE LEFT is integer cents",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.14",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Action publishes upside detail for independent recomputation",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.15",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Escrow / Wallet / Weekly Min / In Play are untouched by this pass",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "F17.16",
+      "section": "F17 · FSR-024 UPSIDE LEFT derived from accepted wagers",
+      "description": "Score and Final Reconciliation are untouched by this pass",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Action.1",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Action: navigation contract is published",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Action.2",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Action: gear control resolves to a real target",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Action.3",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Action: gear control is focusable and labelled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Action.4",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Action: every chrome control resolves (no dead decorative control)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Action.5",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Action: all four nav destinations are present",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Standings + Wrap Up.1",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Standings + Wrap Up: navigation contract is published",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Standings + Wrap Up.2",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Standings + Wrap Up: gear control resolves to a real target",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Standings + Wrap Up.3",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Standings + Wrap Up: gear control is focusable and labelled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Standings + Wrap Up.4",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Standings + Wrap Up: every chrome control resolves (no dead decorative control)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Standings + Wrap Up.5",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Standings + Wrap Up: all four nav destinations are present",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Account + Gear.1",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Account + Gear: navigation contract is published",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Account + Gear.2",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Account + Gear: gear control resolves to a real target",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Account + Gear.3",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Account + Gear: gear control is focusable and labelled",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Account + Gear.4",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Account + Gear: every chrome control resolves (no dead decorative control)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.Account + Gear.5",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Account + Gear: all four nav destinations are present",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "N.glyphs",
+      "section": "N · Persistent gear entry point and navigation contract",
+      "description": "Bottom nav uses one unified glyph set across all three artifacts",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "T.1",
+      "section": "T · Type floor",
+      "description": "No user-facing type below 8px in any artifact (debug-only rules excluded)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "id": "T.2",
+      "section": "T · Type floor",
+      "description": "Sub-8px rules that remain are debug-only",
+      "pass": true,
+      "detail": ""
+    }
+  ]
+}

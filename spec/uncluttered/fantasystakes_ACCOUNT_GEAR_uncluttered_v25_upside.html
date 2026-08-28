@@ -1,0 +1,998 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FantasyStakes — Account + Gear v25 · Upside Derived</title>
+<style>
+:root{--bg:#090907;--panel:#11110d;--line:#302b22;--line2:#4a4336;--text:#f2ebdf;--muted:#9d978a;--gold:#d9aa25;--green:#8fd45f;--red:#e66b6b}
+*{box-sizing:border-box}html,body{margin:0;background:#000;color:var(--text);font-family:Arial,sans-serif}body{display:flex;justify-content:center;padding:18px}
+.phone{position:relative;width:390px;height:844px;background:var(--bg);border:1px solid #3b3933;border-radius:34px;overflow:hidden;display:flex;flex-direction:column}
+.status{position:relative;z-index:60;height:34px;padding:9px 17px 0;display:flex;justify-content:space-between;font-size:14px;font-weight:800}
+.brand{position:relative;z-index:60;padding:10px 16px 9px;display:grid;grid-template-columns:28px 1fr auto 26px;gap:9px;align-items:center;border-bottom:1px solid var(--line)}
+.logo{font-size:17px;font-weight:900}.logo span{color:var(--gold)}.tag{font-size:8px;color:var(--muted);margin-top:4px}.menu{font-size:20px;color:var(--muted)}
+.gearBtn{width:26px;height:26px;padding:0;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gearIcon{width:20px;height:20px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.gearBtn:hover .gearIcon,.gearBtn:focus-visible .gearIcon{stroke:var(--gold)}
+.accountPane{flex:0 0 auto;background:var(--bg);border-bottom:1px solid var(--line)}.head{padding:12px 14px 9px;border-bottom:1px solid var(--line)}.head h1{margin:0;font-size:18px}.sub{margin-top:5px;color:var(--muted);font-size:9px;letter-spacing:.75px}
+.content{flex:1;min-height:0;overflow:hidden;padding:10px 12px 14px;display:flex;flex-direction:column;gap:10px}.strip{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line2);border-radius:10px;overflow:hidden;margin:14px 12px 12px}
+.cell{padding:10px 4px;text-align:center;border-right:1px solid var(--line)}.cell:last-child{border-right:0}.k{font-size:8px;color:var(--muted);letter-spacing:.42px;font-weight:800;line-height:1.15;min-height:20px;display:flex;align-items:center;justify-content:center}.v{font-size:15px;font-weight:900;margin-top:5px}
+.section{border:1px solid var(--line2);border-radius:10px;background:var(--panel);overflow:hidden;display:flex;flex-direction:column;min-height:0}.section.sheetCard{flex:0 0 60%}.section.ledgerCard{flex:1 1 40%}.section:first-of-type{border-top:1px solid var(--line2)}.sectionHead{min-height:76px;color:var(--text);padding:13px 16px;display:grid;grid-template-columns:1fr auto;text-align:left;align-items:center;flex:0 0 auto}
+.t{font-size:13px;color:var(--gold);font-weight:900;letter-spacing:.75px}.hint{font-size:9.5px;color:var(--muted);margin-top:5px;line-height:1.4}.body{border-top:1px solid #252118;overflow-y:auto;min-height:0;flex:1 1 auto}#season,#ledger{height:auto}
+.row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 2px;border-bottom:1px solid #252118}.row:last-child{border-bottom:0}
+.label{font-size:9px;font-weight:800}.desc{font-size:8px;color:var(--muted);margin-top:3px;line-height:1.35}.val{text-align:right;font-size:9px;font-weight:900}.good{color:var(--green)}.bad{color:var(--red)}
+.ledgerHead,.ledgerRow{display:grid;grid-template-columns:64px 1fr 58px 58px;gap:6px}.ledgerHead{padding:8px 10px;border-bottom:1px solid var(--line);font-size:8px;color:var(--muted);font-weight:900}.ledgerRow{padding:10px 10px;border-bottom:1px solid #252118;font-size:9px;line-height:1.3}.right{text-align:right}
+.more{display:block;width:100%;border:0;background:none;padding:12px 10px;font-size:8.5px;color:var(--gold);font-weight:900;text-align:right;cursor:pointer}.sheet{width:100%;border-collapse:collapse}.sheet td{padding:11px 12px;border-bottom:1px solid #252118;font-size:10.5px;line-height:1.25}.sheet td:last-child{text-align:right;font-weight:900;font-variant-numeric:tabular-nums}.sheet .grp td{padding-top:14px;padding-bottom:7px;color:var(--muted);font-size:8.5px;font-weight:900;letter-spacing:.7px;border-bottom:1px solid var(--line)}.sheet .subtotal td{font-weight:900}.sheet .score td{color:var(--gold);font-size:11.5px;font-weight:900}.sheet .settle td{padding-top:12px;color:var(--gold);font-size:12px;font-weight:900;border-top:1px solid var(--line2)}.sheet .reconnote td{text-align:left;font-weight:400;color:var(--muted);font-size:8.5px;line-height:1.5;padding-top:8px;padding-bottom:12px}
+.nav{position:relative;z-index:60;height:64px;border-top:1px solid #3a3224;background:#0d0d0a;display:grid;grid-template-columns:repeat(4,1fr);align-items:center}.navitem{text-align:center;color:#9d9789;font-size:10px;background:none;border:0;padding:0;font-family:inherit;cursor:pointer}.navitem .ni{font-size:17px;margin-bottom:3px;display:block}.navitem.active{color:var(--gold)}.navitem:focus-visible{outline:2px solid var(--gold);outline-offset:-3px}
+.recon{padding:9px 10px;display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:8px;border-top:1px solid var(--line)}.recon strong{color:var(--green)}
+
+
+/* ---- Gear / Settings ---- */
+.settingsOverlay{position:absolute;left:0;right:0;top:96px;bottom:64px;z-index:50;background:var(--bg);display:none;border-top:1px solid var(--line)}
+.settingsOverlay.open{display:block}
+.settingsSheet{width:100%;height:100%;min-height:0;background:var(--bg);display:flex;flex-direction:column}
+.settingsTop{flex:0 0 auto;border-bottom:1px solid var(--line)}
+.settingsAccountHead{padding:12px 14px 9px}
+.settingsAccountHead h1{margin:0;font-size:18px}
+.settingsAccountHead .sub{margin-top:5px;color:var(--muted);font-size:9px;letter-spacing:.75px}
+.settingsClose{position:absolute;right:14px;top:14px;width:28px;height:28px;border:0;background:transparent;color:var(--muted);font-size:22px;cursor:pointer}
+.settingsBody{flex:1;min-height:0;overflow-y:auto;padding:12px 12px 16px;overscroll-behavior:contain}
+.gearCard{border:1px solid var(--line2);border-radius:10px;background:var(--panel);overflow:hidden;margin-bottom:10px}
+.gearCardHead{width:100%;min-height:74px;border:0;background:transparent;color:var(--text);padding:13px 16px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;text-align:left;cursor:pointer}
+.gearCardHead .t{font-size:13px;color:var(--gold);font-weight:900;letter-spacing:.75px}
+.gearCardHead .hint{font-size:9.5px;color:var(--muted);margin-top:5px;line-height:1.4}
+.gearCardHead .chev{font-size:16px;color:var(--muted)}
+.gearCardBody{border-top:1px solid #252118;max-height:320px;overflow-y:auto}
+.gearCardBody.hidden{display:none}
+.health{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid #29251e}
+.health:last-child{border-bottom:0}
+.healthLabel{font-size:10.5px;font-weight:900}.healthSub{font-size:8.5px;color:var(--muted);margin-top:4px;line-height:1.35}
+.healthPill{border:1px solid #4b6c3a;border-radius:999px;padding:4px 7px;color:var(--green);font-size:8px;font-weight:900;letter-spacing:.45px;white-space:nowrap}
+.goalbox{margin:12px;border:1px solid #4c4122;border-radius:9px;padding:14px 13px}
+.goaleyebrow{font-size:8px;color:var(--gold);font-weight:900;letter-spacing:.7px}
+.goaltext{font-size:13px;font-weight:900;line-height:1.35;margin-top:6px}
+.howStep{padding:11px 14px;border-bottom:1px solid #29251e;font-size:10px;line-height:1.45}
+.howStep b{display:block;font-size:10.5px;margin-bottom:3px}
+.bigSettingRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:12px 14px;border-bottom:1px solid #29251e}
+.bigSettingRow:last-child{border-bottom:0}
+.bigSettingLabel{font-size:10.5px;font-weight:900;line-height:1.25}
+.bigSettingHelp{font-size:8.5px;color:var(--muted);line-height:1.35;margin-top:4px}
+.bigSettingValue{font-size:10.5px;font-weight:900;text-align:right;color:var(--text);white-space:nowrap}
+.bigSettingValue.gold{color:var(--gold)}
+.groupLabel{padding:12px 14px 6px;color:var(--muted);font-size:8px;font-weight:900;letter-spacing:.8px}
+.bigSettingValueWrap{text-align:right}
+.authChip{margin-top:5px;display:inline-block;border:1px solid currentColor;border-radius:999px;padding:2px 6px;font-size:8px;font-weight:900;letter-spacing:.4px;white-space:nowrap;opacity:.92}
+.authChip.cmsr{color:var(--muted)}.authChip.derived{color:var(--gold)}.authChip.locked{color:var(--green)}
+.authLegend{margin:0 14px 4px;color:var(--muted);font-size:8px;line-height:1.5}
+.aboutRow{display:grid;grid-template-columns:1fr auto;gap:12px;padding:13px 14px;border-bottom:1px solid #29251e;font-size:10.5px}
+.aboutRow:last-child{border-bottom:0}
+.notice{margin:12px;border:1px solid var(--line);border-radius:9px;padding:11px;color:var(--muted);font-size:8.5px;line-height:1.45}
+
+.ruleIndexRow{width:100%;border:0;background:transparent;color:var(--text);padding:12px 14px;border-bottom:1px solid #29251e;display:grid;grid-template-columns:1fr auto;gap:12px;text-align:left;align-items:center;cursor:pointer}
+.ruleIndexRow:last-child{border-bottom:0}
+.ruleIndexTitle{font-size:10.5px;font-weight:900;line-height:1.25}
+.ruleIndexSub{font-size:8.5px;color:var(--muted);line-height:1.35;margin-top:4px}
+.ruleChapter{display:none;padding:0 14px 12px;border-bottom:1px solid #29251e}
+.ruleChapter.open{display:block}
+.ruleChapter p{margin:10px 0 0;font-size:9.5px;line-height:1.5;color:#d8d0c1}
+.ruleChapter b{color:var(--text)}
+.ruleChapter .formula{margin-top:10px;padding:10px;border:1px solid #3b3427;border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:900;line-height:1.45}
+
+
+/* ---- FantasyStakes shared legibility/type hierarchy v1 ---- */
+:root{
+  --fs-card-title:13px;
+  --fs-body:10.5px;
+  --fs-help:9.5px;
+  --fs-meta:8.5px;
+  --fs-label:8.5px;
+}
+.gearCardHead .t,.t{font-size:var(--fs-card-title)}
+.gearCardHead .hint,.hint{font-size:var(--fs-help);color:var(--muted)}
+.healthLabel,.bigSettingLabel,.ruleIndexTitle,.aboutRow,.howStep{font-size:var(--fs-body)}
+.healthSub,.bigSettingHelp,.ruleIndexSub,.notice{font-size:var(--fs-help);color:var(--muted)}
+.groupLabel,.goaleyebrow{font-size:var(--fs-label)}
+.healthPill{font-size:8px}
+.ruleChapter p,.ruleChapter .formula{font-size:var(--fs-body)}
+.howStep{line-height:1.5}
+.howStep b{font-size:11px;margin-bottom:4px}
+.howStep strong{color:var(--text);font-weight:900}
+.ledgerRow{font-size:9.5px}
+.ledgerHead{font-size:8px}
+.k{font-size:8px}
+
+</style></head><body>
+<div class="phone">
+<div class="status"><span>10:08</span><span>▮▮▮ ◉ 72</span></div>
+<div class="brand"><div class="menu">☰</div><div><div class="logo">Fantasy<span>Stakes</span></div><div class="tag">Real odds. Pure action. More ways to win.</div></div><div id="userName"></div>
+    <button class="gearBtn" id="gearBtn" type="button" data-route="gear" aria-label="Open Gear settings">
+      <svg class="gearIcon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9.7 2.8h4.6l.6 2.3c.5.2 1 .4 1.4.7l2.1-1.2 3.2 3.2-1.2 2.1c.3.4.5.9.7 1.4l2.3.6v4.6l-2.3.6c-.2.5-.4 1-.7 1.4l1.2 2.1-3.2 3.2-2.1-1.2c-.4.3-.9.5-1.4.7l-.6 2.3H9.7l-.6-2.3c-.5-.2-1-.4-1.4-.7l-2.1 1.2-3.2-3.2 1.2-2.1c-.3-.4-.5-.9-.7-1.4l-2.3-.6v-4.6l2.3-.6c.2-.5.4-1 .7-1.4L2.4 7.8l3.2-3.2 2.1 1.2c.4-.3.9-.5 1.4-.7l.6-2.3Z"/>
+        <circle cx="12" cy="14.2" r="3.1"/>
+      </svg>
+    </button></div>
+<div class="accountPane">
+  <div class="head"><h1>ACCOUNT</h1><div class="sub">MY CREDITS · MY LEDGER · MY SEASON</div></div>
+  <div class="strip">
+    <div class="cell"><div class="k">WALLET</div><div class="v" id="walletStrip"></div></div>
+    <div class="cell"><div class="k">WEEKLY MIN</div><div class="v" id="weeklyStrip"></div></div>
+    <div class="cell"><div class="k">IN PLAY</div><div class="v" id="escrowStrip"></div></div>
+    <div class="cell"><div class="k">FANTASYSTAKES SCORE</div><div class="v" id="fsScoreStrip"></div></div>
+  </div>
+</div>
+<main class="content">
+
+
+
+<section class="section sheetCard"><div class="sectionHead"><div><div class="t">SHEET SNAPSHOT</div><div class="hint">Season weighting, performance, and final reconciliation</div></div></div><div class="body" id="season">
+<table class="sheet" id="seasonRows"></table>
+</div></section>
+
+<section class="section ledgerCard"><div class="sectionHead"><div><div class="t">MY LEDGER</div><div class="hint">Every FantasyStakes credit transaction · newest first · movement shown from your Wallet</div></div></div><div class="body" id="ledger">
+<div class="ledgerHead"><span>DATE</span><span>TRANSACTION</span><span class="right">MOVEMENT</span><span class="right">WALLET</span></div>
+<div id="ledgerRows"></div>
+<div class="recon" id="ledgerFoot"></div>
+</div></section>
+</main>
+
+
+
+<div class="settingsOverlay" id="settingsOverlay">
+  <section class="settingsSheet" aria-modal="true" aria-label="FantasyStakes Gear">
+    <div class="settingsTop">
+      <div class="settingsAccountHead">
+        <h1>GEAR</h1>
+        <div class="sub">CONNECTIONS · LEAGUE SETTINGS · HOW TO PLAY · ABOUT</div>
+      </div>
+      <button class="settingsClose" id="settingsClose" type="button" aria-label="Close">×</button>
+    </div>
+
+    <div class="settingsBody">
+      <section class="gearCard">
+        <button class="gearCardHead" type="button" data-card="connectionsBody">
+          <div><div class="t">CONNECTIONS</div><div class="hint">League, data, and scoring status</div></div><span class="chev">▸</span>
+        </button>
+        <div class="gearCardBody hidden" id="connectionsBody"></div>
+      </section>
+
+      <section class="gearCard">
+        <button class="gearCardHead" type="button" data-card="leagueBody">
+          <div><div class="t">LEAGUE SETTINGS</div><div class="hint">Commissioner-configurable FantasyStakes game settings</div></div><span class="chev">▸</span>
+        </button>
+        <div class="gearCardBody hidden" id="leagueBody"></div>
+      </section>
+
+      <section class="gearCard">
+        <button class="gearCardHead" type="button" data-card="howToBody">
+          <div><div class="t">HOW TO PLAY</div><div class="hint">A six-step quick-start guide to FantasyStakes</div></div><span class="chev">▸</span>
+        </button>
+        <div class="gearCardBody hidden" id="howToBody"></div>
+      </section>
+
+      <section class="gearCard">
+        <button class="gearCardHead" type="button" data-card="rulebookBody">
+          <div><div class="t">RULES</div><div class="hint">Detailed gameplay, scoring, championship, and accounting reference</div></div><span class="chev">▸</span>
+        </button>
+        <div class="gearCardBody hidden" id="rulebookBody"></div>
+      </section>
+
+      <section class="gearCard">
+        <button class="gearCardHead" type="button" data-card="aboutBody">
+          <div><div class="t">ABOUT & LEGAL</div><div class="hint">Provider information, contact, terms, privacy, and version</div></div><span class="chev">▸</span>
+        </button>
+        <div class="gearCardBody hidden" id="aboutBody"></div>
+      </section>
+    </div>
+  </section>
+</div>
+<nav class="nav" aria-label="Primary"><button class="navitem" type="button" data-route="standings" aria-label="Go to Standings"><span class="ni">≡</span>Standings</button><button class="navitem" type="button" data-route="action" aria-label="Go to Action"><span class="ni">▣</span>Action</button><button class="navitem" type="button" data-route="wrapup" aria-label="Go to Wrap Up"><span class="ni">⌁</span>Wrap Up</button><button class="navitem active" type="button" data-route="account" aria-label="Account, current screen"><span class="ni">◎</span>Account</button></nav>
+</div>
+
+<script data-canonical-fixture="FantasyStakes_Canonical_CrossTab_Fixture_v4.js" data-canonical-sha256="9e23be451b1719d9a0db412ae35d15b4d640d8a8b4dc9770bcc485d7597d478d">
+/*
+ FantasyStakes Canonical Cross-Tab Fixture v4
+ Independent UI-coherence source of truth.
+
+ v4 remediation delta (FSR-024, UPSIDE LEFT):
+  The Action strip's UPSIDE LEFT cell read a hard-coded 5700 that no longer described
+  anything. It is now derived from the accepted, unresolved proposals in Action's own
+  lifecycle, so the literal is deleted rather than corrected. No other canonical value
+  changed in this pass.
+
+ v3 remediation delta (FSR-023, cross-surface escrow blocker):
+  The Action lifecycle held four live issuer commitments (Hank accepted, Dolly pending
+  outgoing, Reba issuer-escrow retained under counter, Loretta accepted) plus one funded
+  Prop Pool ticket, but the Ledger carried only Hank T20, a mis-stated Dolly T16 and the
+  pool ticket. Committed capital is now DERIVED from lifecycle state on both surfaces and
+  materialised here as one schedule, so the two can be independently cross-checked instead
+  of both reading the same literal.
+
+  IN PLAY and WEEKLY MINIMUM qualification are deliberately NOT the same quantity:
+    IN PLAY      = every held commitment  (accepted + pending issuer + counter-pending
+                   issuer + funded pool)                                   = 8100 cents
+    QUALIFYING   = governed qualifying gameplay only (accepted Versus + funded pool);
+                   a pending or counter-pending offer is committed but does not yet
+                   qualify                                                 = 4100 cents
+
+ v2 remediation deltas (UI-contract closeout):
+  FSR-005  IN PLAY / qualifying weekly commitments include unresolved Prop Pool capital.
+  FSR-016  Governed Skunk Pot is a named canonical account; Skunk never routes to Settled Counterparties.
+  FSR-007  Governed settings carry explicit authority / season-lock classification (CFG-107, CFG-1003).
+  FSR-002  Canonical demo navigation routes, so the persistent gear entry point is never a dead control.
+
+ All locked UI modules consume this same object/version.
+ Production provider/ledger services replace the fixture later without changing UI contracts.
+*/
+(function(global){
+  const teams = [
+    {id:"T01",name:"Pain Sanders"},
+    {id:"T02",name:"Hank Williams"},
+    {id:"T03",name:"Dolly Parton"},
+    {id:"T04",name:"Reba McEntire"},
+    {id:"T05",name:"Willie Nelson"},
+    {id:"T06",name:"Johnny Cash"},
+    {id:"T07",name:"Patsy Cline"},
+    {id:"T08",name:"Waylon Jennings"},
+    {id:"T09",name:"Loretta Lynn"},
+    {id:"T10",name:"George Strait"},
+    {id:"T11",name:"Tammy Wynette"},
+    {id:"T12",name:"Merle Haggard"}
+  ];
+
+  const painMatch = [5,-5,10,0,15,-10,5,10,0,15];
+  const painPool  = [0,5,-5,10,5,-5,10,0,5,5];
+
+  function balancedWeek(seedPain, week, salt){
+    const vals=[seedPain];
+    for(let i=1;i<=10;i++) vals.push(((i*3 + week*(salt+1) + salt*2)%13)-6);
+    vals.push(-vals.reduce((a,v)=>a+v,0));
+    return vals;
+  }
+
+  const weeklyResults={};
+  for(let week=1;week<=10;week++){
+    const matchVals=balancedWeek(painMatch[week-1],week,1);
+    const poolVals=balancedWeek(painPool[week-1],week,3);
+    const skunkTeamIndex = week===7 ? 0 : ((week*2)%11)+1;
+    const match={},pool={},skunk={};
+    teams.forEach((t,i)=>{
+      match[t.id]=matchVals[i];
+      pool[t.id]=poolVals[i];
+      skunk[t.id]=i===skunkTeamIndex ? -10 : 0;
+    });
+    weeklyResults[week]=Object.freeze({
+      published:true,
+      match:Object.freeze(match),
+      pool:Object.freeze(pool),
+      skunk:Object.freeze(skunk),
+      yahoo:Object.freeze({skunkTeamId:teams[skunkTeamIndex].id})
+    });
+  }
+  weeklyResults[11]=Object.freeze({published:false});
+
+  function seasonTotalsThrough(throughWeek){
+    const out={};
+    teams.forEach(t=>out[t.id]={match:0,pool:0,skunk:0,score:0});
+    for(let w=1;w<=throughWeek;w++){
+      const r=weeklyResults[w];
+      if(!r?.published) continue;
+      teams.forEach(t=>{
+        out[t.id].match += r.match[t.id]||0;
+        out[t.id].pool += r.pool[t.id]||0;
+        out[t.id].skunk += r.skunk[t.id]||0;
+      });
+    }
+    teams.forEach(t=>out[t.id].score=out[t.id].match+out[t.id].pool+out[t.id].skunk);
+    return out;
+  }
+
+  const seasonThroughWeek10=seasonTotalsThrough(10);
+
+  const FS_CANON = Object.freeze({
+    version:"FS_CANONICAL_CROSS_TAB_FIXTURE_V4",
+    brand:Object.freeze({
+      tagline:"Real odds. Pure action. More ways to win."
+    }),
+    league:Object.freeze({
+      id:"whispers-demo-2026",
+      name:"WHISPERS DEMO LEAGUE",
+      season:2026,
+      currentWeek:11,
+      completedThroughWeek:10,
+      currentUserId:"T01",
+      currentUser:"Pain Sanders",
+      teams:Object.freeze(teams.map(Object.freeze)),
+      officialYahooMatchups:Object.freeze([
+        Object.freeze(["Pain Sanders","Dolly Parton"]),
+        Object.freeze(["Hank Williams","Johnny Cash"]),
+        Object.freeze(["Reba McEntire","Willie Nelson"]),
+        Object.freeze(["Patsy Cline","Merle Haggard"]),
+        Object.freeze(["Waylon Jennings","Loretta Lynn"]),
+        Object.freeze(["George Strait","Tammy Wynette"])
+      ])
+    }),
+    scoringProfile:Object.freeze({
+      version:"FS_SCORING_PROFILE_WHISPERS_2026_V1",
+      upstream:"YAHOO_LEAGUE_SCORING_SETTINGS",
+      status:"CONFIRMED"
+    }),
+    settings:Object.freeze({
+      weeklyFantasyStakesCompetition:14000,
+      fantasyStakesChampionship:8000,
+      seasonAllocation:22000,
+      weeklyMinimum:1000,
+      standardPropPoolEntry:100,
+      skunkFee:1000,
+      unspentMinimumDestination:"FROZEN · RETURNED AT SEASON END",
+      matchupMarkets:"MONEYLINE · SPREAD · O/U",
+      termsModes:"FIXED + DYNAMIC",
+      propPoolsEnabled:true
+    }),
+    action:Object.freeze({
+      // FSR-005 / FSR-023: current-week committed capital is decomposed so every module
+      // aggregates components rather than hard-coding a total. Every value below is a
+      // materialisation of currentWeekCommitments and is proven against the Action
+      // lifecycle by the reconciliation suite - it is not an independent source.
+      wallet:9400,
+      unresolvedVersusEscrow:8000,
+      unresolvedPropPoolCommitments:100,
+      inPlay:8100,
+      // FSR-023: narrower than inPlay on purpose - pending and counter-pending offers are
+      // committed capital but are not yet qualifying gameplay.
+      qualifyingCommitmentsThisWeek:4100,
+      // FSR-024: upsideLeft is deliberately absent. Remaining upside is a property of the
+      // accepted, unresolved proposals in the Action lifecycle, so Action derives it via
+      // Resolver.commitmentTotals().upsideLeft. There is no canonical literal to drift.
+      currentWeek:11
+    }),
+
+    /* FSR-023 - the current week's unresolved commitments, in posting order.
+       Each record is derived from Action lifecycle state; the Account Ledger builds its
+       current-week postings from this schedule instead of from hard-coded literals, and
+       the reconciliation suite proves the schedule against the live lifecycle. */
+    currentWeekCommitments:Object.freeze([
+      Object.freeze({key:"POOL_SINGLE",kind:"POOL",definitionKey:"punterPointsSingle",
+        opponent:null,lifecycle:"FUNDED",role:"ENTRANT",cents:100,qualifying:true,
+        date:"Nov 13",desc:"Single Team: Punter Points \u00b7 funded pool entry"}),
+      Object.freeze({key:"VERSUS_HANK",kind:"VERSUS",definitionKey:null,
+        opponent:"Hank Williams",lifecycle:"ACCEPTED",role:"ISSUER",cents:2000,qualifying:true,
+        date:"Nov 15",desc:"Pain vs Hank \u00b7 accepted wager escrow"}),
+      Object.freeze({key:"VERSUS_DOLLY",kind:"VERSUS",definitionKey:null,
+        opponent:"Dolly Parton",lifecycle:"PENDING_OUTGOING",role:"ISSUER",cents:2000,qualifying:false,
+        date:"Nov 15",desc:"Pain vs Dolly \u00b7 pending issuer escrow"}),
+      Object.freeze({key:"VERSUS_REBA",kind:"VERSUS",definitionKey:null,
+        opponent:"Reba McEntire",lifecycle:"COUNTER_PENDING",role:"ISSUER",cents:2000,qualifying:false,
+        date:"Nov 15",desc:"Pain vs Reba \u00b7 issuer escrow retained under counter"}),
+      Object.freeze({key:"VERSUS_LORETTA",kind:"VERSUS",definitionKey:null,
+        opponent:"Loretta Lynn",lifecycle:"ACCEPTED",role:"ISSUER",cents:2000,qualifying:true,
+        date:"Nov 15",desc:"Pain vs Loretta \u00b7 accepted wager escrow"})
+    ]),
+    accounts:Object.freeze({
+      leagueEconomy:"League Economy",
+      wallet:"Wallet",
+      weeklyMinimumEscrow:"Weekly Minimum Escrow",
+      activeBetEscrow:"Active Bet Escrow",
+      propPoolCommitted:"Punter Points Pool",
+      championshipReserve:"Championship Reserve",
+      skunkPot:"Skunk Pot",
+      settledCounterparties:"Settled Counterparties"
+    }),
+    // FSR-005: user-facing IN PLAY aggregates exactly these unresolved-commitment accounts.
+    inPlayAccounts:Object.freeze(["Active Bet Escrow","Punter Points Pool"]),
+    // FSR-016: governed destination for a score-bearing Skunk Fee (LED-105, LED-343).
+    skunkRouting:Object.freeze({
+      destination:"Skunk Pot",
+      basis:"LED-343",
+      scoreBearing:true,
+      countsTowardWallet:false,
+      countsTowardInPlay:false
+    }),
+    // FSR-007: authority + season-lock classification for governed League Settings.
+    // Basis: CFG-107 (first-acceptance freeze) and CFG-1003 (season-fixed parameters).
+    settingsAuthority:Object.freeze({
+      basis:"CFG-107 · CFG-1003",
+      seasonConfigurationFrozen:true,
+      frozenAt:"FIRST_ACCEPTED_WAGER",
+      seasonLockLabel:"LOCKED FOR 2026",
+      gmView:"READ ONLY",
+      classification:Object.freeze({
+        weeklyFantasyStakesCompetition:"COMMISSIONER_SEASON_FIXED",
+        fantasyStakesChampionship:"COMMISSIONER_SEASON_FIXED",
+        seasonAllocation:"DERIVED",
+        weeklyMinimum:"COMMISSIONER_SEASON_FIXED",
+        standardPropPoolEntry:"COMMISSIONER_SEASON_FIXED",
+        skunkFee:"COMMISSIONER_SEASON_FIXED",
+        unspentMinimumDestination:"COMMISSIONER_SEASON_FIXED",
+        matchupMarkets:"COMMISSIONER_SEASON_FIXED",
+        termsModes:"COMMISSIONER_SEASON_FIXED",
+        propPools:"COMMISSIONER_SEASON_FIXED"
+      })
+    }),
+    // FSR-002 / FSR-021: one canonical route target per locked screen, so the persistent
+    // gear entry point and the bottom nav resolve deterministically in the demo package.
+    routes:Object.freeze({
+      standings:"fantasystakes_STANDINGS_WRAPUP_deterministic_v8_upside.html#standings",
+      action:"fantasystakes_ACTION_uncluttered_full_prototype_v24_upside.html",
+      wrapup:"fantasystakes_STANDINGS_WRAPUP_deterministic_v8_upside.html#wrap",
+      account:"fantasystakes_ACCOUNT_GEAR_uncluttered_v25_upside.html",
+      gear:"fantasystakes_ACCOUNT_GEAR_uncluttered_v25_upside.html#gear"
+    }),
+    account:Object.freeze({
+      pointsChampionshipNet:0,
+      fantasyStakesChampionshipNet:0,
+      topOffs:0
+    }),
+    weeklyResults:Object.freeze(weeklyResults),
+    seasonThroughWeek10:Object.freeze(
+      Object.fromEntries(Object.entries(seasonThroughWeek10).map(([k,v])=>[k,Object.freeze(v)]))
+    )
+  });
+
+  global.FS_CANON=FS_CANON;
+})(window);
+
+</script>
+<script>
+const RULES=Object.freeze({
+  ledger:"LEDGER_DOUBLE_ENTRY_V1",
+  opening:"OPENING_ALLOCATION_220_V1",
+  weeklyFunding:"WEEKLY_MIN_RELEASE_V1",
+  sheet:"SEASON_RECONCILIATION_V1",
+  precision:"INTEGER_CENTS_V1"
+});
+const FIXTURE=Object.freeze({
+  user:{id:FS_CANON.league.currentUserId,name:FS_CANON.league.currentUser},
+  opening:{
+    weeklyMin:FS_CANON.settings.weeklyFantasyStakesCompetition,
+    championship:FS_CANON.settings.fantasyStakesChampionship,
+    wallet:0
+  },
+  weeksReleased:FS_CANON.league.currentWeek,
+  matchupNet:FS_CANON.seasonThroughWeek10[FS_CANON.league.currentUserId].match*100,
+  poolNet:FS_CANON.seasonThroughWeek10[FS_CANON.league.currentUserId].pool*100,
+  skunkFees:Math.abs(FS_CANON.seasonThroughWeek10[FS_CANON.league.currentUserId].skunk)*100,
+  pointsChampionshipNet:FS_CANON.account.pointsChampionshipNet,
+  fantasyStakesChampionshipNet:FS_CANON.account.fantasyStakesChampionshipNet,
+  topOffs:FS_CANON.account.topOffs,
+  poolEntries:FS_CANON.settings.standardPropPoolEntry,
+  activeEscrow:FS_CANON.action.unresolvedVersusEscrow,
+  weeklyMinimum:FS_CANON.settings.weeklyMinimum,
+  qualifyingCommitmentsThisWeek:FS_CANON.action.qualifyingCommitmentsThisWeek
+});
+// Account names come from the shared canonical fixture so every module agrees on the
+// governed chart of accounts. FSR-016 adds the Skunk Pot required by LED-105.
+const ACCTS=Object.freeze({
+  issuance:FS_CANON.accounts.leagueEconomy,
+  wallet:FS_CANON.accounts.wallet,
+  weekly:FS_CANON.accounts.weeklyMinimumEscrow,
+  escrow:FS_CANON.accounts.activeBetEscrow,
+  champ:FS_CANON.accounts.championshipReserve,
+  pool:FS_CANON.accounts.propPoolCommitted,
+  skunkPot:FS_CANON.accounts.skunkPot,
+  settled:FS_CANON.accounts.settledCounterparties
+});
+let seq=0;
+const tx=[];
+// FSR-004: the display label alone ("Sep 03") cannot be ordered, so each posting also
+// carries the real calendar date on which it occurred. Posting sequence is retained as
+// the deterministic tie-break within a single date.
+const CALENDAR={"Sep 03":"2026-09-03","Sep 10":"2026-09-10","Sep 17":"2026-09-17","Sep 24":"2026-09-24",
+  "Oct 01":"2026-10-01","Oct 08":"2026-10-08","Oct 15":"2026-10-15","Oct 22":"2026-10-22","Oct 29":"2026-10-29",
+  "Nov 05":"2026-11-05","Nov 12":"2026-11-12","Nov 13":"2026-11-13","Nov 15":"2026-11-15"};
+function post(type,date,week,from,to,cents,desc){
+  if(!Number.isInteger(cents)||cents<0)throw new Error("ledger cents must be nonnegative integers");
+  const iso=CALENDAR[date];
+  if(!iso)throw new Error("ledger transaction has no resolvable calendar date: "+date);
+  seq++;
+  tx.push(Object.freeze({id:`TX-${String(seq).padStart(4,"0")}`,seq,type,date,iso,week,from,to,cents,desc}));
+}
+post("OPEN_WEEKLY","Sep 03",0,ACCTS.issuance,ACCTS.weekly,FS_CANON.settings.weeklyFantasyStakesCompetition,"Season-opening Weekly FantasyStakes Competition allocation");
+post("OPEN_CHAMP","Sep 03",0,ACCTS.issuance,ACCTS.champ,FS_CANON.settings.fantasyStakesChampionship,"Season-opening FantasyStakes Championship allocation");
+
+const weekDates={1:"Sep 10",2:"Sep 17",3:"Sep 24",4:"Oct 01",5:"Oct 08",6:"Oct 15",7:"Oct 22",8:"Oct 29",9:"Nov 05",10:"Nov 12",11:"Nov 15"};
+for(let w=1;w<=FS_CANON.league.currentWeek;w++){
+  post("WEEKLY_RELEASE",weekDates[w],w,ACCTS.weekly,ACCTS.wallet,FS_CANON.settings.weeklyMinimum,`Week ${w} minimum release`);
+}
+
+// Every score-bearing weekly result is represented as a posted Ledger movement.
+// Positive net: Settled Counterparties -> Wallet. Negative net: Wallet -> Settled Counterparties.
+for(let w=1;w<=FS_CANON.league.completedThroughWeek;w++){
+  const r=FS_CANON.weeklyResults[w],uid=FS_CANON.league.currentUserId;
+  const components=[
+    ["MATCHUP_NET",r.match[uid],"Week "+w+" Matchups net"],
+    ["POOL_NET",r.pool[uid],"Week "+w+" Prop Pools net"],
+    ["SKUNK",r.skunk[uid],"Week "+w+" Skunk Fees net"]
+  ];
+  for(const [type,units,desc] of components){
+    const cents=Math.abs(units)*100;
+    if(!cents)continue;
+    // FSR-016 / LED-343: a Skunk Fee is a governed contribution debited from the assessed
+    // GM's Wallet and credited to the Skunk Pot. It is never a counterparty settlement,
+    // and LED-346 keeps that balance in the Pot until an authorized distribution.
+    if(type==="SKUNK"){
+      if(units>0)throw new Error("Skunk Fee cannot credit the assessed GM");
+      post(type,weekDates[w],w,ACCTS.wallet,ACCTS.skunkPot,cents,desc);
+      continue;
+    }
+    if(units>0)post(type,weekDates[w],w,ACCTS.settled,ACCTS.wallet,cents,desc);
+    else post(type,weekDates[w],w,ACCTS.wallet,ACCTS.settled,cents,desc);
+  }
+}
+
+/* Current-week non-score-bearing activity (FSR-023).
+   Previously three hard-coded postings, which omitted the Reba and Loretta commitments
+   entirely and mis-stated Dolly as Ŧ16 of "accepted exposure" while that challenge was
+   still a pending outgoing offer. The Ledger now builds every current-week posting from
+   the canonical commitment schedule, which the reconciliation suite proves against live
+   Action lifecycle state - so a live commitment can no longer go unrepresented here, and
+   a description can no longer contradict the lifecycle it describes. */
+for(const c of FS_CANON.currentWeekCommitments){
+  post(c.kind==="POOL"?"POOL_ENTRY":"VERSUS_ESCROW",
+       c.date,FS_CANON.league.currentWeek,
+       ACCTS.wallet,c.kind==="POOL"?ACCTS.pool:ACCTS.escrow,
+       c.cents,c.desc);
+}
+
+function balance(account){
+  return tx.reduce((b,t)=>b+(t.to===account?t.cents:0)-(t.from===account?t.cents:0),0);
+}
+function fmt(v){return `Ŧ${(v/100).toFixed(2).replace(/\.00$/,"")}`}
+function signed(v){return v===0?"Ŧ0":`${v>0?"+":"−"}Ŧ${(Math.abs(v)/100).toFixed(2).replace(/\.00$/,"")}`}
+function balances(){return{wallet:balance(ACCTS.wallet),weekly:balance(ACCTS.weekly),escrow:balance(ACCTS.escrow),
+  champ:balance(ACCTS.champ),pool:balance(ACCTS.pool),skunkPot:balance(ACCTS.skunkPot),settled:balance(ACCTS.settled)}}
+// FSR-005: a funded Prop Pool ticket is committed, unavailable capital exactly like
+// Versus escrow, so user-facing IN PLAY aggregates both unresolved subaccounts. The
+// subaccounts stay distinct underneath; only the presented total is combined.
+function inPlayTotal(){return FS_CANON.inPlayAccounts.reduce((sum,name)=>sum+balance(name),0)}
+
+/* ---- FSR-003 - single signed movement column ------------------------------
+   The prior ledger printed the same amount under both DEBIT and CREDIT whenever a
+   transaction moved value between two of the GM's own subaccounts, which is unreadable
+   as an account history. The double-entry record is untouched: every row still prints
+   its full from -> to route. Presentation now uses one signed MOVEMENT column taken from
+   the Wallet's perspective (Wallet = currently available credits) plus the running Wallet
+   balance, so the movement column foots to the Wallet balance exactly. */
+function walletMovement(t){
+  if(t.to===ACCTS.wallet)return t.cents;
+  if(t.from===ACCTS.wallet)return -t.cents;
+  return 0;
+}
+// FSR-004: real transaction chronology, with posting sequence as the tie-break.
+function ledgerChronological(){
+  return [...tx].sort((a,b)=>a.iso===b.iso?a.seq-b.seq:(a.iso<b.iso?-1:1));
+}
+function ledgerRowsModel(){
+  let running=0;
+  return ledgerChronological().map(t=>{
+    const movement=walletMovement(t);
+    running+=movement;
+    return{t,movement,walletAfter:running};
+  }).reverse();
+}
+function render(){
+  const b=balances();
+  document.getElementById("userName").textContent=FIXTURE.user.name;
+  const fsScore=FIXTURE.matchupNet+FIXTURE.poolNet-FIXTURE.skunkFees;
+  const weeklyMinRemaining=Math.max(FIXTURE.weeklyMinimum-FIXTURE.qualifyingCommitmentsThisWeek,0);
+  for(const [id,val] of [["walletStrip",b.wallet],["weeklyStrip",weeklyMinRemaining],["escrowStrip",inPlayTotal()]])document.getElementById(id).textContent=fmt(val);
+  document.getElementById("fsScoreStrip").textContent=signed(fsScore);
+
+  const rows=ledgerRowsModel();
+  document.getElementById("ledgerRows").innerHTML=rows.map(r=>
+    `<div class="ledgerRow"><span>${r.t.date}</span><span>${r.t.from} → ${r.t.to}<br>${r.t.desc}</span>`+
+    `<span class="right ${r.movement>0?"good":r.movement<0?"bad":""}">${r.movement?signed(r.movement):"—"}</span>`+
+    `<span class="right">${fmt(r.walletAfter)}</span></div>`).join("");
+  document.getElementById("ledgerFoot").innerHTML=
+    `<span>${rows.length} transactions · newest first</span><span>WALLET <strong>${fmt(rows.reduce((a,r)=>a+r.movement,0))}</strong></span>`;
+
+  const seasonContribution=FIXTURE.opening.weeklyMin+FIXTURE.opening.championship;
+  const finalReconciliation=
+      seasonContribution
+    + fsScore
+    + FIXTURE.pointsChampionshipNet
+    + FIXTURE.fantasyStakesChampionshipNet
+    + FIXTURE.topOffs;
+
+  document.getElementById("seasonRows").innerHTML=`
+    <tr class="grp"><td colspan="2">SEASON WEIGHTING</td></tr>
+    <tr><td>Weekly FantasyStakes Competition</td><td>${fmt(FIXTURE.opening.weeklyMin)}</td></tr>
+    <tr><td>FantasyStakes Championship</td><td>${fmt(FIXTURE.opening.championship)}</td></tr>
+    <tr class="score"><td>SEASON ALLOCATION</td><td>${fmt(seasonContribution)}</td></tr>
+
+    <tr class="grp"><td colspan="2">SEASON PERFORMANCE</td></tr>
+    <tr><td>Matchups net</td><td class="${FIXTURE.matchupNet>=0?"good":"bad"}">${signed(FIXTURE.matchupNet)}</td></tr>
+    <tr><td>Prop Pools net</td><td class="${FIXTURE.poolNet>=0?"good":"bad"}">${signed(FIXTURE.poolNet)}</td></tr>
+    <tr><td>Skunk Fees net</td><td class="bad">${signed(-FIXTURE.skunkFees)}</td></tr>
+    <tr class="score"><td>FANTASYSTAKES SCORE</td><td>${signed(fsScore)}</td></tr>
+
+    <tr class="grp"><td colspan="2">SEASON CHAMPIONSHIPS</td></tr>
+    <tr><td>Points Championship net</td><td>${signed(FIXTURE.pointsChampionshipNet)}</td></tr>
+    <tr><td>FantasyStakes Championship net</td><td>${signed(FIXTURE.fantasyStakesChampionshipNet)}</td></tr>
+
+    <tr class="grp"><td colspan="2">FINAL RECONCILIATION</td></tr>
+    <tr class="reconnote"><td colspan="2">The season accounting reconciliation of your FantasyStakes position: Season Allocation plus FantasyStakes Score, championship nets, Top-Offs and any governed adjustments. It stays provisional while weeks are still being published and becomes final only at authorized season close, once every wager, Prop Pool and Skunk Fee is settled. It is a season scoring position, not a cash payout.</td></tr>
+    <tr><td>SEASON ALLOCATION</td><td>${fmt(seasonContribution)}</td></tr>
+    <tr><td>FantasyStakes Score</td><td class="${fsScore>=0?"good":"bad"}">${signed(fsScore)}</td></tr>
+    <tr><td>Points Championship net</td><td>${signed(FIXTURE.pointsChampionshipNet)}</td></tr>
+    <tr><td>FantasyStakes Championship net</td><td>${signed(FIXTURE.fantasyStakesChampionshipNet)}</td></tr>
+    <tr><td>Top-Offs</td><td>${signed(FIXTURE.topOffs)}</td></tr>
+    <tr class="settle"><td>FINAL RECONCILIATION</td><td>${fmt(finalReconciliation)}</td></tr>`;
+}
+function audit(){
+  const failures=[],b=balances();
+  const weeklyMinRemaining=Math.max(FIXTURE.weeklyMinimum-FIXTURE.qualifyingCommitmentsThisWeek,0);
+  const fsScore=FIXTURE.matchupNet+FIXTURE.poolNet-FIXTURE.skunkFees;
+  const seasonContribution=FIXTURE.opening.weeklyMin+FIXTURE.opening.championship;
+  const finalReconciliation=
+      seasonContribution
+    + fsScore
+    + FIXTURE.pointsChampionshipNet
+    + FIXTURE.fantasyStakesChampionshipNet
+    + FIXTURE.topOffs;
+
+  const inPlay=inPlayTotal();
+  const rows=ledgerRowsModel();
+
+  if(b.wallet!==9400)failures.push(`wallet ${b.wallet}`);
+  if(weeklyMinRemaining!==0)failures.push(`weekly min remaining ${weeklyMinRemaining}`);
+  if(fsScore!==6500)failures.push(`fs score ${fsScore}`);
+  if(fsScore!==FS_CANON.seasonThroughWeek10[FS_CANON.league.currentUserId].score*100)failures.push("Account score differs from canonical season score");
+  if(b.wallet!==FS_CANON.action.wallet)failures.push("Wallet differs from canonical Action state");
+  if(seasonContribution!==22000)failures.push(`season contribution ${seasonContribution}`);
+  if(finalReconciliation!==28500)failures.push(`final reconciliation ${finalReconciliation}`);
+  if(new Set(tx.map(t=>t.id)).size!==tx.length)failures.push("duplicate tx id");
+  if(tx.some(t=>!Number.isInteger(t.cents)))failures.push("noninteger cents");
+
+  // FSR-005: IN PLAY is unresolved Versus escrow plus unresolved Prop Pool capital,
+  // the Pool ticket is counted exactly once, and Weekly Min uses the same total.
+  if(inPlay!==8100)failures.push(`in play ${inPlay}`);
+  if(inPlay!==b.escrow+b.pool)failures.push("In Play is not the sum of its unresolved components");
+  if(inPlay!==FS_CANON.action.inPlay)failures.push("In Play differs from canonical Action state");
+  if(b.escrow!==FS_CANON.action.unresolvedVersusEscrow)failures.push("Versus escrow differs from canonical Action state");
+  if(b.pool!==FS_CANON.action.unresolvedPropPoolCommitments)failures.push("Pool commitment differs from canonical Action state");
+  if(tx.filter(t=>t.type==="POOL_ENTRY").length!==1)failures.push("Prop Pool entry is not posted exactly once");
+
+  /* ---- FSR-023: IN PLAY and Weekly Minimum qualification are separate ------
+     IN PLAY is every held commitment. Qualification is narrower - accepted Versus plus
+     funded Pool tickets only - so a pending or counter-pending offer is committed capital
+     that does not yet qualify. The previous release asserted these were equal, which is
+     exactly the conflation this pass removes. */
+  const schedule=FS_CANON.currentWeekCommitments;
+  const schedHeld=schedule.reduce((a,c)=>a+c.cents,0);
+  const schedQualifying=schedule.filter(c=>c.qualifying).reduce((a,c)=>a+c.cents,0);
+  if(schedHeld!==inPlay)failures.push(`commitment schedule ${schedHeld} does not match Ledger In Play ${inPlay}`);
+  if(schedQualifying!==FIXTURE.qualifyingCommitmentsThisWeek)failures.push("qualifying commitments do not match the schedule's qualifying entries");
+  if(FIXTURE.qualifyingCommitmentsThisWeek!==4100)failures.push(`qualifying commitments ${FIXTURE.qualifyingCommitmentsThisWeek} != 4100`);
+  if(FIXTURE.qualifyingCommitmentsThisWeek>=inPlay)failures.push("qualifying commitments must be strictly narrower than In Play in this fixture");
+  if(weeklyMinRemaining!==Math.max(FIXTURE.weeklyMinimum-FIXTURE.qualifyingCommitmentsThisWeek,0))failures.push("Weekly Min remaining is not derived from qualifying commitments");
+
+  // Every scheduled commitment must have exactly one matching current-week posting, and
+  // no current-week commitment posting may exist without a schedule entry.
+  const weekTx=tx.filter(t=>t.week===FS_CANON.league.currentWeek&&(t.type==="VERSUS_ESCROW"||t.type==="POOL_ENTRY"));
+  if(weekTx.length!==schedule.length)failures.push(`${weekTx.length} current-week commitment postings for ${schedule.length} scheduled commitments`);
+  schedule.forEach(c=>{
+    const hits=weekTx.filter(t=>t.desc===c.desc&&t.cents===c.cents);
+    if(hits.length!==1)failures.push(`${c.key}: ${hits.length} matching Ledger postings, expected 1`);
+    if(hits.length===1&&hits[0].from!==ACCTS.wallet)failures.push(`${c.key}: commitment was not debited from the Wallet`);
+    if(hits.length===1&&hits[0].to!==(c.kind==="POOL"?ACCTS.pool:ACCTS.escrow))failures.push(`${c.key}: commitment routed to the wrong account`);
+  });
+  // A posting must not describe a pending commitment as accepted.
+  weekTx.forEach(t=>{
+    const c=schedule.find(x=>x.desc===t.desc);
+    if(c&&c.lifecycle!=="ACCEPTED"&&/accepted/i.test(t.desc))failures.push(`${t.id}: description claims acceptance for a ${c.lifecycle} commitment`);
+  });
+  // Escrow transfers are non-score-bearing.
+  if(weekTx.some(t=>t.to===ACCTS.settled||t.from===ACCTS.settled))failures.push("a commitment posting reached Settled Counterparties");
+  if(weekTx.some(t=>t.to===ACCTS.skunkPot))failures.push("a commitment posting reached the Skunk Pot");
+
+  /* Total holdings must conserve: re-stating escrow moved value between the GM's own
+     accounts and created nothing. The Skunk Pot is deliberately NOT counted - LED-346
+     keeps contributed BAB in the Pot until an authorized distribution, so it has left the
+     GM's holdings even though it still shows in the FantasyStakes Score. */
+  const holdings=b.wallet+b.weekly+b.champ+b.escrow+b.pool;
+  if(holdings!==28500)failures.push(`total GM holdings ${holdings} != 28500`);
+  if(b.skunkPot!==1000)failures.push(`Skunk Pot ${b.skunkPot} should sit outside GM holdings at 1000`);
+
+  // FSR-016: Skunk is score-bearing and routes to the governed Skunk Pot only.
+  const skunkTx=tx.filter(t=>t.type==="SKUNK");
+  if(!skunkTx.length)failures.push("no Skunk transaction posted");
+  if(skunkTx.some(t=>t.to!==ACCTS.skunkPot))failures.push("Skunk Fee did not route to the Skunk Pot");
+  if(skunkTx.some(t=>t.from!==ACCTS.wallet))failures.push("Skunk Fee was not debited from the Wallet");
+  if(skunkTx.some(t=>t.to===ACCTS.settled||t.from===ACCTS.settled))failures.push("Skunk Fee touched Settled Counterparties");
+  if(b.skunkPot!==FIXTURE.skunkFees)failures.push(`skunk pot ${b.skunkPot}`);
+  if(b.skunkPot!==skunkTx.reduce((a,t)=>a+t.cents,0))failures.push("Skunk Pot balance does not equal posted Skunk contributions");
+  if(FS_CANON.inPlayAccounts.includes(ACCTS.skunkPot))failures.push("Skunk Pot must not count as In Play");
+  if(ACCTS.skunkPot===ACCTS.wallet)failures.push("Skunk Pot must not be the Wallet");
+
+  // FSR-004: rendered rows descend by real transaction date, deterministically.
+  for(let i=1;i<rows.length;i++){
+    if(rows[i].t.iso>rows[i-1].t.iso){failures.push("Ledger rows are not in descending date order");break}
+    if(rows[i].t.iso===rows[i-1].t.iso&&rows[i].t.seq>=rows[i-1].t.seq){failures.push("Same-date ledger ordering is not deterministic");break}
+  }
+  // FSR-003: one signed movement column that foots to the Wallet balance.
+  if(rows.reduce((a,r)=>a+r.movement,0)!==b.wallet)failures.push("Ledger movement column does not foot to Wallet");
+  if(rows.length&&rows[0].walletAfter!==b.wallet)failures.push("Running Wallet balance does not end at Wallet");
+  if(rows.some(r=>r.movement!==0&&r.t.from!==ACCTS.wallet&&r.t.to!==ACCTS.wallet))failures.push("Movement reported for a transaction that does not touch the Wallet");
+
+  const result={
+    pass:failures.length===0,
+    failures,
+    rules:RULES,
+    metrics:{
+      wallet:b.wallet,
+      weeklyMinRemaining,
+      qualifyingCommitments:FIXTURE.qualifyingCommitmentsThisWeek,
+      inPlay,
+      weeklyReserve:b.weekly,
+      championshipReserve:b.champ,
+      totalHoldings:b.wallet+b.weekly+b.champ+b.escrow+b.pool,
+      inPlayVersusEscrow:b.escrow,
+      inPlayPoolCommitted:b.pool,
+      skunkPot:b.skunkPot,
+      fsScore,
+      seasonContribution,
+      finalReconciliation
+    },
+    ledger:{
+      rows:rows.length,
+      movementFoot:rows.reduce((a,r)=>a+r.movement,0),
+      firstRow:rows.length?rows[0].t.iso:null,
+      lastRow:rows.length?rows[rows.length-1].t.iso:null
+    },
+    transactionCount:tx.length
+  };
+  window.__FS_ACCOUNT_LEDGER_AUDIT__=result;
+  return result;
+}
+
+
+
+/* ---- GEAR authoritative demo configuration ---- */
+const GEAR_CONFIG=Object.freeze({
+  league:{
+    name:FS_CANON.league.name,
+    season:FS_CANON.league.season,
+    teams:FS_CANON.league.teams.length,
+    seasonPhase:"IN SEASON"
+  },
+  economy:{
+    weeklyFantasyStakesCompetition:FS_CANON.settings.weeklyFantasyStakesCompetition,
+    fantasyStakesChampionship:FS_CANON.settings.fantasyStakesChampionship,
+    seasonAllocation:FS_CANON.settings.seasonAllocation,
+    weeklyMinimum:FS_CANON.settings.weeklyMinimum,
+    standardPoolEntry:FS_CANON.settings.standardPropPoolEntry,
+    skunkFee:FS_CANON.settings.skunkFee,
+    unspentMinimumDestination:FS_CANON.settings.unspentMinimumDestination
+  },
+  game:{
+    matchupMarkets:FS_CANON.settings.matchupMarkets,
+    terms:FS_CANON.settings.termsModes,
+    pools:FS_CANON.settings.propPoolsEnabled?"ENABLED":"DISABLED",
+    betPrivacy:"CONFIGURED",
+    postseason:"CONFIGURED"
+  },
+  providers:{
+    yahoo:{label:"Yahoo League",status:"CONNECTED",detail:"League identity, teams, rosters, starters and weekly schedule."},
+    bdl:{label:"BALLDONTLIE Data",status:"AVAILABLE",detail:"Projection components and live/final NFL factual evidence."},
+    scoring:{label:"FantasyStakes Scoring",status:FS_CANON.scoringProfile.status,detail:`${FS_CANON.scoringProfile.upstream} normalized as ${FS_CANON.scoringProfile.version}.`}
+  }
+});
+function gearFmt(cents){return `Ŧ${(cents/100).toFixed(2).replace(/\.00$/,"")}`}
+
+/* ---- FSR-007 - authority / season-lock declaration -------------------------
+   The Gear values were already correct but carried no statement of who controls a
+   setting, which values are derived, or which are frozen for the season. The vocabulary
+   below is deliberately minimal and read-only: this prototype does not add commissioner
+   edit controls. Basis: CFG-107 (first accepted wager freezes season-fixed parameters)
+   and CFG-1003 (the enumerated season-fixed list). Season Allocation is DERIVED from the
+   two Season Weighting components and is never independently editable. */
+const AUTHORITY=FS_CANON.settingsAuthority;
+function authChip(key){
+  const cls=AUTHORITY.classification[key];
+  if(!cls)return "";
+  if(cls==="DERIVED")return `<div class="authChip derived">DERIVED</div>`;
+  if(cls==="COMMISSIONER_SEASON_FIXED"){
+    return AUTHORITY.seasonConfigurationFrozen
+      ? `<div class="authChip locked">${AUTHORITY.seasonLockLabel}</div>`
+      : `<div class="authChip cmsr">COMMISSIONER SETTING</div>`;
+  }
+  return `<div class="authChip cmsr">COMMISSIONER SETTING</div>`;
+}
+function settingRow(key,label,help,value,gold){
+  const helpHtml=help?`<div class="bigSettingHelp">${help}</div>`:"";
+  return `<div class="bigSettingRow"><div><div class="bigSettingLabel">${label}</div>${helpHtml}</div>`+
+    `<div class="bigSettingValueWrap"><div class="bigSettingValue${gold?" gold":""}">${value}</div>${authChip(key)}</div></div>`;
+}
+function gearAudit(){
+  const failures=[],e=GEAR_CONFIG.economy;
+  if(e.weeklyFantasyStakesCompetition+e.fantasyStakesChampionship!==e.seasonAllocation)failures.push("Season Weighting mismatch");
+  if(e.weeklyMinimum!==FIXTURE.weeklyMinimum)failures.push("Weekly Minimum mismatch");
+  if(e.standardPoolEntry!==100)failures.push("Pool entry mismatch");
+  // FSR-007: every governed setting shown in League Settings must carry an authority
+  // classification, Season Allocation must be declared DERIVED, and the GM view must
+  // stay read-only.
+  const governed=["weeklyFantasyStakesCompetition","fantasyStakesChampionship","seasonAllocation",
+    "weeklyMinimum","standardPropPoolEntry","skunkFee","unspentMinimumDestination",
+    "matchupMarkets","termsModes","propPools"];
+  governed.forEach(k=>{if(!AUTHORITY.classification[k])failures.push(`Unclassified governed setting: ${k}`)});
+  if(AUTHORITY.classification.seasonAllocation!=="DERIVED")failures.push("Season Allocation must be DERIVED");
+  if(AUTHORITY.gmView!=="READ ONLY")failures.push("GM Gear view must be read only");
+  if(AUTHORITY.seasonConfigurationFrozen&&AUTHORITY.frozenAt!=="FIRST_ACCEPTED_WAGER")failures.push("Season freeze basis mismatch");
+  const result={pass:failures.length===0,failures,config:GEAR_CONFIG,authority:AUTHORITY,
+    chips:Object.fromEntries(governed.map(k=>[k,AUTHORITY.classification[k]]))};
+  window.__FS_GEAR_AUDIT__=result; return result;
+}
+function connectionsHtml(){
+  return Object.values(GEAR_CONFIG.providers).map(p=>`
+    <div class="health">
+      <div><div class="healthLabel">${p.label}</div><div class="healthSub">${p.detail}</div></div>
+      <div class="healthPill">${p.status}</div>
+    </div>`).join("");
+}
+function leagueHtml(){
+  const e=GEAR_CONFIG.economy,g=GEAR_CONFIG.game,l=GEAR_CONFIG.league;
+  const lock=AUTHORITY.seasonConfigurationFrozen
+    ? `Season configuration was frozen by the first accepted wager (CFG-107). The settings marked ${AUTHORITY.seasonLockLabel} cannot change for the rest of the season (CFG-1003).`
+    : `Season configuration is still amendable until the first accepted wager (CFG-107).`;
+  return `
+    <div class="authLegend">${lock} <strong>DERIVED</strong> values are computed from other settings. Your GM view is ${AUTHORITY.gmView.toLowerCase()}; commissioner changes are made in League Configuration.</div>
+
+    <div class="groupLabel">SEASON WEIGHTING</div>
+    ${settingRow("weeklyFantasyStakesCompetition","Weekly FantasyStakes Competition","Season value assigned to weekly FantasyStakes competition.",gearFmt(e.weeklyFantasyStakesCompetition))}
+    ${settingRow("fantasyStakesChampionship","FantasyStakes Championship","Season value assigned to the FantasyStakes Championship.",gearFmt(e.fantasyStakesChampionship))}
+    ${settingRow("seasonAllocation","Season Allocation","Total FantasyStakes value assigned to each GM for the season. Always equals Weekly FantasyStakes Competition plus FantasyStakes Championship.",gearFmt(e.seasonAllocation),true)}
+
+    <div class="groupLabel">WEEKLY GAME</div>
+    ${settingRow("weeklyMinimum","Weekly Minimum","Minimum qualifying action required each week.",gearFmt(e.weeklyMinimum))}
+    ${settingRow("standardPropPoolEntry","Standard Prop Pool Entry","",gearFmt(e.standardPoolEntry))}
+    ${settingRow("skunkFee","Skunk Fee","Assessed weekly and routed to the governed Skunk Pot.",gearFmt(e.skunkFee))}
+    ${settingRow("unspentMinimumDestination","Unused Weekly Minimum","",e.unspentMinimumDestination)}
+
+    <div class="groupLabel">MATCHUPS & POOLS</div>
+    ${settingRow("matchupMarkets","Matchup Markets","",g.matchupMarkets)}
+    ${settingRow("termsModes","Terms Modes","",g.terms)}
+    ${settingRow("propPools","Prop Pools","",g.pools)}
+
+    <div class="groupLabel">LEAGUE</div>
+    <div class="bigSettingRow"><div><div class="bigSettingLabel">League</div></div><div class="bigSettingValue">${l.name}</div></div>
+    <div class="bigSettingRow"><div><div class="bigSettingLabel">Season</div></div><div class="bigSettingValue">${l.season}</div></div>
+    <div class="bigSettingRow"><div><div class="bigSettingLabel">Teams</div></div><div class="bigSettingValue">${l.teams}</div></div>
+    <div class="bigSettingRow"><div><div class="bigSettingLabel">Configuration Version</div></div><div class="bigSettingValueWrap"><div class="bigSettingValue">${FS_CANON.version}</div><div class="authChip locked">${AUTHORITY.basis}</div></div></div>`;
+}
+function howToHtml(){
+  return `<div class="howStep"><b>1. Start with your Season Allocation.</b>Your league weights each GM's Season Allocation between <strong>Weekly FantasyStakes Competition</strong> and the <strong>FantasyStakes Championship</strong>.</div>
+    <div class="howStep"><b>2. Compete every week.</b>Use your Weekly FantasyStakes Competition allocation to challenge league opponents through <strong>Matchups</strong> and enter league-wide <strong>Prop Pools</strong>.</div>
+    <div class="howStep"><b>3. Meet your Weekly Minimum.</b>Each week, commit at least the league's required amount of your Weekly FantasyStakes Competition allocation to qualifying FantasyStakes action.</div>
+    <div class="howStep"><b>4. Build your FantasyStakes Score.</b>Your settled Matchup results, Prop Pool results, and Skunk Fees combine to determine your season-to-date <strong>FantasyStakes Score</strong>.</div>
+    <div class="howStep"><b>5. Follow the championship race.</b><strong>Standings</strong> shows where your FantasyStakes Score puts you in the league, while <strong>Wrap Up</strong> shows the weekly results that moved the race.</div>
+    <div class="howStep"><b>6. Win the FantasyStakes Championship.</b>Finish the season with the highest FantasyStakes Score and become your league's <strong>FantasyStakes Champion</strong>.</div>`;
+}
+
+function rulebookHtml(){
+  const chapters=[
+    ["matchups","MATCHUPS","Challenges, markets, stakes, Fixed/Dynamic, counters, locks, and settlement.",
+      `<p><b>Who you can challenge.</b> Any eligible GM in your league, subject to the current-week and postseason eligibility rules.</p>
+       <p><b>Markets.</b> Moneyline, Spread, and Over/Under use FantasyStakes prices and proposal terms.</p>
+       <p><b>Proposal lifecycle.</b> Issue, accept, decline, counter once, expire, and reissue are governed lifecycle states. Counter creates a new immutable proposal.</p>
+       <p><b>Terms modes.</b> Fixed preserves proposal terms. Dynamic follows the governed repricing model until lock.</p>
+       <p><b>Settlement.</b> Accepted action locks under the governing rules and posts its credit movements to the Ledger when settled.</p>`],
+    ["pools","PROP POOLS","Pool types, eligible fields, picks, entries, lock, and payouts.",
+      `<p><b>Pool types.</b> Single Team uses the eligible league-team field. Combined Teams uses official Yahoo weekly matchups.</p>
+       <p><b>Entry.</b> Standard entry is configured by the league. Picks may be selected, reset, or updated before lock.</p>
+       <p><b>Lock.</b> Once the governed lock occurs, the pick freezes.</p>
+       <p><b>Settlement.</b> Entry, payout, refund, rollover, or championship routing posts through the Ledger.</p>`],
+    ["minimum","WEEKLY MINIMUM & SKUNK","Qualifying action, remaining minimum, unused value, and Skunk mechanics.",
+      `<p><b>Weekly Minimum.</b> The Account strip shows the amount of this week's minimum the GM still needs to commit to qualifying gameplay.</p>
+       <div class="formula">WEEKLY MIN = max(configured weekly minimum − qualifying commitments this week, 0)</div>
+       <p><b>Unused value.</b> Any governed unused weekly-minimum amount follows the configured destination at weekly close and remains a Ledger event.</p>
+       <p><b>Skunk.</b> The governed Skunk mechanic posts a score-bearing fee when triggered.</p>`],
+    ["score","FANTASYSTAKES SCORE","How Matchups, Prop Pools, and Skunk Fees become the season performance measure.",
+      `<div class="formula">FANTASYSTAKES SCORE = Matchups Net + Prop Pools Net + Skunk Fees Net</div>
+       <p>FantasyStakes Score is the GM's season performance measure. It is reflected in Account, Standings, and published Wrap Ups from the same deterministic source.</p>`],
+    ["championships","CHAMPIONSHIPS & POSTSEASON","FantasyStakes Championship, Points Championship, eligibility, and distributions.",
+      `<p><b>FantasyStakes Championship.</b> The league's season-long FantasyStakes competition is decided by the governing championship rules and the FantasyStakes Score standings.</p>
+       <p><b>Points Championship.</b> Any configured Points Championship result remains a separate championship outcome.</p>
+       <p><b>Postseason.</b> Eligibility, official third-place treatment, and championship-week exceptions follow the governing postseason rules.</p>
+       <p><b>Distributions.</b> Championship awards and related season-end movements post through the Ledger.</p>`],
+    ["accounting","CREDITS & ACCOUNTING","Season Allocation, Wallet, In Play, Top-Offs, Ledger, Sheet, and Final Reconciliation.",
+      `<p><b>Season Allocation.</b> The league's Season Weighting determines how each GM's total Season Allocation is divided between Weekly FantasyStakes Competition and the FantasyStakes Championship.</p>
+       <p><b>Wallet.</b> Credits currently available to use.</p>
+       <p><b>In Play.</b> Credits committed or escrowed in unresolved action.</p>
+       <p><b>Top-Offs.</b> Approved Top-Offs are Ledger transactions but are not score-bearing results.</p>
+       <p><b>Ledger.</b> Every credit movement is recorded chronologically as an immutable transaction.</p>
+       <p><b>Sheet Snapshot.</b> A season-level distillation of Season Weighting, performance, championships, and Final Reconciliation.</p>
+       <p><b>Corrections.</b> Posted transactions are not edited; corrections require new compensating transactions.</p>`]
+  ];
+  return chapters.map(([id,title,sub,body])=>`
+    <button class="ruleIndexRow" type="button" data-rule="${id}">
+      <div><div class="ruleIndexTitle">${title}</div><div class="ruleIndexSub">${sub}</div></div><span class="arrow">›</span>
+    </button>
+    <div class="ruleChapter" id="rule-${id}">${body}</div>`).join("");
+}
+
+function aboutHtml(){
+  return `
+    <div class="groupLabel">PROVIDER INFORMATION</div>
+    <div class="aboutRow"><span>Yahoo</span><span>League / roster / schedule authority</span></div>
+    <div class="aboutRow"><span>BALLDONTLIE</span><span>NFL data provider</span></div>
+    <div class="aboutRow"><span>FantasyStakes Scoring</span><span>Confirmed league scoring profile</span></div>
+    <div class="notice">Provider details are shown here for transparency. Normal gameplay surfaces consume normalized FantasyStakes data and do not expose provider implementation detail.</div>
+    <div class="groupLabel">ABOUT & LEGAL</div>
+    <div class="aboutRow"><span>Contact FantasyStakes</span><span>›</span></div>
+    <div class="aboutRow"><span>Terms of Use</span><span>›</span></div>
+    <div class="aboutRow"><span>Privacy</span><span>›</span></div>
+    <div class="aboutRow"><span>About FantasyStakes</span><strong>UI POR</strong></div>`;
+}
+
+document.getElementById("connectionsBody").innerHTML=connectionsHtml();
+document.getElementById("leagueBody").innerHTML=leagueHtml();
+document.getElementById("howToBody").innerHTML=howToHtml();
+document.getElementById("rulebookBody").innerHTML=rulebookHtml();
+document.getElementById("aboutBody").innerHTML=aboutHtml();
+
+
+document.querySelectorAll(".ruleIndexRow").forEach(btn=>btn.addEventListener("click",()=>{
+  const target=document.getElementById(`rule-${btn.dataset.rule}`);
+  const wasOpen=target.classList.contains("open");
+  document.querySelectorAll(".ruleChapter").forEach(ch=>ch.classList.remove("open"));
+  document.querySelectorAll(".ruleIndexRow .arrow").forEach(a=>a.textContent="›");
+  if(!wasOpen){
+    target.classList.add("open");
+    btn.querySelector(".arrow").textContent="⌄";
+  }
+}));
+
+
+document.querySelectorAll(".gearCardHead").forEach(btn=>btn.addEventListener("click",()=>{
+  const body=document.getElementById(btn.dataset.card);
+  const hidden=body.classList.toggle("hidden");
+  btn.querySelector(".chev").textContent=hidden?"▸":"▾";
+}));
+
+
+/* ---- FSR-002 / FSR-021 · deterministic demo navigation contract ------------
+   The uncluttered UI package ships as three self-contained artifacts. Rather than
+   embedding every screen into every file (a redesign), each locked chrome control
+   resolves to one canonical route target published by the shared fixture. A control
+   whose target is the screen already on show stays inert and is marked aria-current;
+   a screen that exists inside this artifact is handled locally; everything else
+   navigates to its canonical target. No chrome control is a decorative dead div. */
+const FS_NAV=(function(){
+  const routes=FS_CANON.routes;
+  const state={local:{},screen:null};
+  function resolve(key){return routes[key]||null}
+  function go(key){
+    const target=resolve(key);
+    if(!target)return{key,handled:false,reason:"NO_ROUTE"};
+    if(state.local[key]){state.local[key]();return{key,handled:true,mode:"LOCAL",target}}
+    if(key===state.screen)return{key,handled:true,mode:"CURRENT",target};
+    try{window.location.href=target}catch(err){return{key,handled:false,reason:"NAV_BLOCKED",target}}
+    return{key,handled:true,mode:"ROUTE",target};
+  }
+  function wire(screenKey,localHandlers){
+    state.screen=screenKey;Object.assign(state.local,localHandlers||{});
+    const controls=[...document.querySelectorAll("[data-route]")];
+    controls.forEach(el=>{
+      const key=el.dataset.route,target=resolve(key);
+      if(!target){el.setAttribute("data-route-status","unresolved");return}
+      el.setAttribute("data-route-target",target);
+      const current=(key===screenKey&&!state.local[key]);
+      el.setAttribute("data-route-status",current?"current":"active");
+      if(current)el.setAttribute("aria-current","page");
+      el.addEventListener("click",()=>go(key));
+    });
+    const report={screen:screenKey,routes:Object.assign({},routes),
+      controls:controls.map(el=>({route:el.dataset.route,target:el.getAttribute("data-route-target"),
+        status:el.getAttribute("data-route-status"),label:el.getAttribute("aria-label")||null,
+        focusable:el.tagName==="BUTTON"||el.hasAttribute("tabindex")}))};
+    window.__FS_NAV__=report;return report;
+  }
+  return{wire,go,resolve};
+})();
+
+// Gear lives inside this artifact, so the persistent gear entry point is handled
+// locally here; on Action and Standings the same control routes to this file's #gear.
+FS_NAV.wire("account",{gear:()=>settingsOverlay.classList.add("open")});
+document.getElementById("settingsClose").addEventListener("click",()=>settingsOverlay.classList.remove("open"));
+if(location.hash==="#gear")settingsOverlay.classList.add("open");
+gearAudit();
+
+render();audit();
+</script>
+</body></html>

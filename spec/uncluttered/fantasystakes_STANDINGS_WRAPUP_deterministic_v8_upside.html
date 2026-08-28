@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>FantasyStakes — Standings + Wrap Up v8 · Upside Derived</title>
+<style>
+:root{--bg:#090907;--panel:#11110d;--line:#302817;--line-soft:#24221a;--text:#efe8dc;--muted:#aaa394;--gold:#d6a62b;--green:#8fd45f;--red:#ef7777;}
+*{box-sizing:border-box} html,body{margin:0;background:#000;color:var(--text);font-family:Arial,Helvetica,sans-serif}
+body{display:flex;justify-content:center;padding:18px}.phone{width:390px;height:844px;background:var(--bg);border:1px solid #3d3a33;border-radius:34px;overflow:hidden;box-shadow:0 0 0 7px #171717,0 0 0 9px #4a4a4a;position:relative}
+.statusbar{height:34px;padding:9px 17px 0;font-size:14px;font-weight:700;display:flex;justify-content:space-between}.brandbar{padding:10px 16px 9px;display:grid;grid-template-columns:28px 1fr auto 26px;gap:9px;align-items:center;border-bottom:1px solid var(--line-soft)}
+.menu{font-size:22px;color:var(--muted)}.brand{font-size:17px;font-weight:800;line-height:1}.brand span{color:var(--gold)}.tag{font-size:8px;color:var(--muted);margin-top:4px}.user{font-size:13px}.gearBtn{width:26px;height:26px;padding:0;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer}.gearIcon{width:20px;height:20px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.gearBtn:hover .gearIcon,.gearBtn:focus-visible .gearIcon{stroke:var(--gold)}
+.screen{display:none;height:calc(844px - 34px - 55px);overflow-y:auto;padding-bottom:74px}.screen.active{display:block}.pagehead{padding:16px 14px 10px;border-bottom:1px solid var(--line-soft)}.pagehead h1{margin:0;font-size:23px;line-height:1.05;letter-spacing:.3px;font-weight:800}.pagehead .sub{margin-top:7px;color:var(--muted);font-size:13px;letter-spacing:.2px}
+.sectionrow{display:flex;justify-content:space-between;align-items:center;padding:12px 14px 5px}.sectiontitle{color:var(--gold);font-size:14px;letter-spacing:1.2px;font-weight:800}.sectionmeta{color:var(--muted);font-size:10px;font-weight:700}.support{margin:4px 14px 10px;color:var(--muted);font-size:11px;line-height:1.45}
+.content{padding:0 12px 14px}.table{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}.table th{color:#9c9587;font-size:9px;font-weight:600;letter-spacing:.7px;text-align:right;padding:5px 3px 7px;border-bottom:1px solid var(--line-soft)}.table th:nth-child(1),.table th:nth-child(2){text-align:left}.table th:nth-child(1){width:30px}.table th:nth-child(2){width:42%}.table td{padding:7px 3px;border-bottom:1px solid #242218;text-align:right;vertical-align:middle}.table td:nth-child(1),.table td:nth-child(2){text-align:left}.team{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.you{font-size:9px;background:#d7ac42;color:#19140a;border-radius:5px;padding:2px 4px;font-weight:800;margin-left:4px}.hirow{background:#33280f;box-shadow:inset 2px 0 var(--gold)}.pos{color:var(--green)}.neg{color:var(--red)}.zero{color:#aaa}
+.weeknav{display:grid;grid-template-columns:82px 1fr 82px;align-items:center;padding:9px 14px 8px}.arrow{border:1px solid var(--gold);color:var(--gold);border-radius:18px;text-align:center;padding:3px 0;font-size:19px}.week{text-align:center;color:var(--gold);font-weight:800;letter-spacing:.6px;font-size:13px}.tabs{display:grid;grid-template-columns:repeat(2,1fr);margin:0 14px;border:1px solid #4a4336;border-radius:9px;overflow:hidden}.tab{padding:10px 4px;text-align:center;color:var(--muted);border-right:1px solid #3a342a;font-size:13px}.tab:last-child{border-right:0}.tab.active{color:var(--gold);background:#17150f;box-shadow:inset 0 -2px var(--gold)}
+.legend{margin-top:8px;border:1px solid #363024;border-radius:9px;padding:8px;font-size:9.4px;color:#d4cec2;display:flex;gap:9px;flex-wrap:wrap}.legend span{white-space:nowrap}.sym{font-weight:800;margin-left:3px}.up{color:var(--green)}.down{color:var(--red)}.accent{color:var(--gold)}
+.cards{border:1px solid #3b321f;border-radius:9px;overflow:hidden}.card{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;padding:10px;border-bottom:1px solid #3b321f}.card:last-child{border-bottom:0}.icon{font-size:22px;text-align:center}.eyebrow{font-size:8px;color:#a8a092;letter-spacing:1.2px;font-weight:700}.name{font-size:13px;margin-top:2px}.detail{font-size:10px;color:#aaa394;margin-top:4px;line-height:1.25}.amt{font-size:18px;font-weight:700;text-align:right}.credits{font-size:8px;letter-spacing:.7px}
+.hidden{display:none}.activity{padding:8px 0 8px 31px;color:#cfc8bb;font-size:11px;line-height:1.7;background:#0f0f0c}.activity strong{color:var(--gold);font-size:9px;letter-spacing:1px}
+.nav{position:absolute;bottom:0;left:0;right:0;height:72px;border-top:1px solid var(--line);background:#0d0d0a;display:grid;grid-template-columns:repeat(4,1fr);align-items:center}.navitem{text-align:center;color:#9d9789;font-size:10px;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}.navitem .ni{font-size:17px;margin-bottom:3px;display:block}.navitem.active{color:var(--gold)}.navitem:focus-visible{outline:2px solid var(--gold);outline-offset:-3px}
+@media(max-width:420px){body{padding:8px}.phone{width:min(390px,100vw - 16px)}}
+
+/* FantasyStakes token mark — standard Unicode Latin capital T with stroke (Ŧ).
+   Use only immediately before values denominated in FantasyStakes tokens. */
+.tok{
+  display:inline;
+  margin:0 .06em 0 .03em;
+  vertical-align:baseline;
+  color:currentColor;
+  font:inherit;
+}
+.tok::before{content:"Ŧ"}
+
+
+.weeknav .weeklink{
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  font-family:inherit;
+  font-size:13px;
+  line-height:normal;
+  letter-spacing:.6px;
+  font-weight:400;
+  white-space:nowrap;
+  padding:0;
+  cursor:pointer;
+  text-decoration:none;
+}
+.weeknav .weeklink:hover,
+.weeknav .weeklink:focus-visible{
+  text-decoration:underline;
+  outline:none;
+}
+
+
+.emptywrap{border:1px solid #3b321f;border-radius:9px;padding:18px 14px;color:var(--muted);font-size:12px;line-height:1.5;text-align:center}
+.audit-fail::after{content:"DETERMINISTIC RECONCILIATION FAILED";position:absolute;left:10px;right:10px;top:8px;z-index:100;background:#471b1b;color:#fff;padding:6px;text-align:center;font-size:10px;font-weight:800}
+.weeklink:disabled{opacity:.35;cursor:default;text-decoration:none}
+
+
+/* ---- FantasyStakes shared legibility/type hierarchy v1 ---- */
+.tag{font-size:8.5px}
+.eyebrow{font-size:8.5px}
+.detail{font-size:10.5px;line-height:1.35}
+.activity strong{font-size:9.5px}
+.legend{font-size:9.5px}
+
+</style>
+
+<!--
+FANTASYSTAKES UNCLUTTERED POR
+LOCKED TABS:
+- Standings
+- Wrap Up
+These two tabs are the visual/terminology POR baseline for the Uncluttered effort.
+-->
+
+</head>
+<body>
+<div class="phone">
+  <div class="statusbar"><span>10:08</span><span>▮▮▮ ◉ 72</span></div>
+  <div class="brandbar"><div class="menu">☰</div><div><div class="brand">Fantasy<span>Stakes</span></div><div class="tag">Real odds. Pure action. More ways to win.</div></div><div class="user" id="currentUser"></div><button class="gearBtn" id="gearBtn" type="button" data-route="gear" aria-label="Open Gear settings"><svg class="gearIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 2.8h4.6l.6 2.3c.5.2 1 .4 1.4.7l2.1-1.2 3.2 3.2-1.2 2.1c.3.4.5.9.7 1.4l2.3.6v4.6l-2.3.6c-.2.5-.4 1-.7 1.4l1.2 2.1-3.2 3.2-2.1-1.2c-.4.3-.9.5-1.4.7l-.6 2.3H9.7l-.6-2.3c-.5-.2-1-.4-1.4-.7l-2.1 1.2-3.2-3.2 1.2-2.1c-.3-.4-.5-.9-.7-1.4l-2.3-.6v-4.6l2.3-.6c.2-.5.4-1 .7-1.4L2.4 7.8l3.2-3.2 2.1 1.2c.4-.3.9-.5 1.4-.7l.6-2.3Z"/><circle cx="12" cy="14.2" r="3.1"/></svg></button></div>
+
+  <section class="screen active" id="standingsScreen">
+    <div class="pagehead"><h1>FANTASYSTAKES STANDINGS</h1><div class="sub" id="standingsLeague"></div></div>
+    <div class="sectionrow"><div class="sectiontitle" id="chaseTitle"></div><div class="sectionmeta" id="teamCount"></div></div>
+    <p class="support">FantasyStakes is a Vegas-style peer-to-peer sportsbook game: no money, no house, no vig, just sportsbook odds powering a season-long competition. Matchups, Prop Pools and Skunk fees shape your FantasyStakes Score and the standings. Finish with the highest FantasyStakes Score to win the FantasyStakes Championship.</p>
+    <div class="content">
+      <table class="table">
+        <thead><tr><th>RK</th><th>TEAM</th><th>MATCH</th><th>POOL</th><th>SKUNK</th><th>SCORE</th></tr></thead>
+        <tbody id="seasonStandingsBody"></tbody>
+      </table><p class="footnote-token" style="margin:10px 0 0;color:var(--muted);font-size:11px;line-height:1.45;">Scores are denominated in Ŧ, the fictional FantasyStakes token used only for game scoring and with no cash value.</p>
+    </div>
+  </section>
+
+  <section class="screen" id="wrapScreen">
+    <div class="pagehead"><h1>FANTASYSTAKES WRAP UP</h1><div class="sub" id="wrapLeague"></div></div>
+    <div class="weeknav"><button class="weeklink prev-week" type="button"></button><div class="week" id="wrapWeek"></div><button class="weeklink next-week" type="button"></button></div>
+    <p class="support"><span id="wrapExplanation">Every week matters in the FantasyStakes Championship chase. Matchups, Prop Pools and Skunk fees each shape your weekly FantasyStakes Score, moving you up or down in the championship race.</span></p>
+    <div class="tabs"><div class="tab active" data-wrap="standings">Standings</div><div class="tab" data-wrap="highlights">Highlights</div></div>
+    <main class="content" style="padding-top:10px">
+      <section id="wrapStandings">
+        <table class="table">
+          <thead><tr><th>RK</th><th>TEAM</th><th>MATCH</th><th>POOL</th><th>SKUNK</th><th>SCORE</th></tr></thead>
+          <tbody id="wrapStandingsBody"></tbody>
+        </table>
+        <p class="footnote-token" style="margin:10px 0 0;color:var(--muted);font-size:11px;line-height:1.45;">Values are denominated in Ŧ, the fictional FantasyStakes token used only for game scoring and with no cash value.</p>
+        <div class="legend"><span><b class="up">▲</b> Biggest net increase</span><span><b class="accent">□</b> Biggest FS matchup win</span><span><b class="accent">◇</b> Biggest FS pool win</span><span><b class="accent">‡</b> Skunk loser</span><span><b class="down">▼</b> Biggest net decrease</span></div>
+      </section>
+      <section id="wrapHighlights" class="hidden">
+        <div class="cards" id="wrapHighlightCards"></div>
+      </section>
+    </main>
+  </section>
+
+  <nav class="nav" aria-label="Primary"><button class="navitem active" type="button" data-screen="standings" data-route="standings" aria-label="Standings, current screen"><span class="ni">≡</span>Standings</button><button class="navitem" type="button" data-route="action" aria-label="Go to Action"><span class="ni">▣</span>Action</button><button class="navitem" type="button" data-screen="wrap" data-route="wrapup" aria-label="Go to Wrap Up"><span class="ni">⌁</span>Wrap Up</button><button class="navitem" type="button" data-route="account" aria-label="Go to Account"><span class="ni">◎</span>Account</button></nav>
+</div>
+
+<script data-canonical-fixture="FantasyStakes_Canonical_CrossTab_Fixture_v4.js" data-canonical-sha256="9e23be451b1719d9a0db412ae35d15b4d640d8a8b4dc9770bcc485d7597d478d">
+/*
+ FantasyStakes Canonical Cross-Tab Fixture v4
+ Independent UI-coherence source of truth.
+
+ v4 remediation delta (FSR-024, UPSIDE LEFT):
+  The Action strip's UPSIDE LEFT cell read a hard-coded 5700 that no longer described
+  anything. It is now derived from the accepted, unresolved proposals in Action's own
+  lifecycle, so the literal is deleted rather than corrected. No other canonical value
+  changed in this pass.
+
+ v3 remediation delta (FSR-023, cross-surface escrow blocker):
+  The Action lifecycle held four live issuer commitments (Hank accepted, Dolly pending
+  outgoing, Reba issuer-escrow retained under counter, Loretta accepted) plus one funded
+  Prop Pool ticket, but the Ledger carried only Hank T20, a mis-stated Dolly T16 and the
+  pool ticket. Committed capital is now DERIVED from lifecycle state on both surfaces and
+  materialised here as one schedule, so the two can be independently cross-checked instead
+  of both reading the same literal.
+
+  IN PLAY and WEEKLY MINIMUM qualification are deliberately NOT the same quantity:
+    IN PLAY      = every held commitment  (accepted + pending issuer + counter-pending
+                   issuer + funded pool)                                   = 8100 cents
+    QUALIFYING   = governed qualifying gameplay only (accepted Versus + funded pool);
+                   a pending or counter-pending offer is committed but does not yet
+                   qualify                                                 = 4100 cents
+
+ v2 remediation deltas (UI-contract closeout):
+  FSR-005  IN PLAY / qualifying weekly commitments include unresolved Prop Pool capital.
+  FSR-016  Governed Skunk Pot is a named canonical account; Skunk never routes to Settled Counterparties.
+  FSR-007  Governed settings carry explicit authority / season-lock classification (CFG-107, CFG-1003).
+  FSR-002  Canonical demo navigation routes, so the persistent gear entry point is never a dead control.
+
+ All locked UI modules consume this same object/version.
+ Production provider/ledger services replace the fixture later without changing UI contracts.
+*/
+(function(global){
+  const teams = [
+    {id:"T01",name:"Pain Sanders"},
+    {id:"T02",name:"Hank Williams"},
+    {id:"T03",name:"Dolly Parton"},
+    {id:"T04",name:"Reba McEntire"},
+    {id:"T05",name:"Willie Nelson"},
+    {id:"T06",name:"Johnny Cash"},
+    {id:"T07",name:"Patsy Cline"},
+    {id:"T08",name:"Waylon Jennings"},
+    {id:"T09",name:"Loretta Lynn"},
+    {id:"T10",name:"George Strait"},
+    {id:"T11",name:"Tammy Wynette"},
+    {id:"T12",name:"Merle Haggard"}
+  ];
+
+  const painMatch = [5,-5,10,0,15,-10,5,10,0,15];
+  const painPool  = [0,5,-5,10,5,-5,10,0,5,5];
+
+  function balancedWeek(seedPain, week, salt){
+    const vals=[seedPain];
+    for(let i=1;i<=10;i++) vals.push(((i*3 + week*(salt+1) + salt*2)%13)-6);
+    vals.push(-vals.reduce((a,v)=>a+v,0));
+    return vals;
+  }
+
+  const weeklyResults={};
+  for(let week=1;week<=10;week++){
+    const matchVals=balancedWeek(painMatch[week-1],week,1);
+    const poolVals=balancedWeek(painPool[week-1],week,3);
+    const skunkTeamIndex = week===7 ? 0 : ((week*2)%11)+1;
+    const match={},pool={},skunk={};
+    teams.forEach((t,i)=>{
+      match[t.id]=matchVals[i];
+      pool[t.id]=poolVals[i];
+      skunk[t.id]=i===skunkTeamIndex ? -10 : 0;
+    });
+    weeklyResults[week]=Object.freeze({
+      published:true,
+      match:Object.freeze(match),
+      pool:Object.freeze(pool),
+      skunk:Object.freeze(skunk),
+      yahoo:Object.freeze({skunkTeamId:teams[skunkTeamIndex].id})
+    });
+  }
+  weeklyResults[11]=Object.freeze({published:false});
+
+  function seasonTotalsThrough(throughWeek){
+    const out={};
+    teams.forEach(t=>out[t.id]={match:0,pool:0,skunk:0,score:0});
+    for(let w=1;w<=throughWeek;w++){
+      const r=weeklyResults[w];
+      if(!r?.published) continue;
+      teams.forEach(t=>{
+        out[t.id].match += r.match[t.id]||0;
+        out[t.id].pool += r.pool[t.id]||0;
+        out[t.id].skunk += r.skunk[t.id]||0;
+      });
+    }
+    teams.forEach(t=>out[t.id].score=out[t.id].match+out[t.id].pool+out[t.id].skunk);
+    return out;
+  }
+
+  const seasonThroughWeek10=seasonTotalsThrough(10);
+
+  const FS_CANON = Object.freeze({
+    version:"FS_CANONICAL_CROSS_TAB_FIXTURE_V4",
+    brand:Object.freeze({
+      tagline:"Real odds. Pure action. More ways to win."
+    }),
+    league:Object.freeze({
+      id:"whispers-demo-2026",
+      name:"WHISPERS DEMO LEAGUE",
+      season:2026,
+      currentWeek:11,
+      completedThroughWeek:10,
+      currentUserId:"T01",
+      currentUser:"Pain Sanders",
+      teams:Object.freeze(teams.map(Object.freeze)),
+      officialYahooMatchups:Object.freeze([
+        Object.freeze(["Pain Sanders","Dolly Parton"]),
+        Object.freeze(["Hank Williams","Johnny Cash"]),
+        Object.freeze(["Reba McEntire","Willie Nelson"]),
+        Object.freeze(["Patsy Cline","Merle Haggard"]),
+        Object.freeze(["Waylon Jennings","Loretta Lynn"]),
+        Object.freeze(["George Strait","Tammy Wynette"])
+      ])
+    }),
+    scoringProfile:Object.freeze({
+      version:"FS_SCORING_PROFILE_WHISPERS_2026_V1",
+      upstream:"YAHOO_LEAGUE_SCORING_SETTINGS",
+      status:"CONFIRMED"
+    }),
+    settings:Object.freeze({
+      weeklyFantasyStakesCompetition:14000,
+      fantasyStakesChampionship:8000,
+      seasonAllocation:22000,
+      weeklyMinimum:1000,
+      standardPropPoolEntry:100,
+      skunkFee:1000,
+      unspentMinimumDestination:"FROZEN · RETURNED AT SEASON END",
+      matchupMarkets:"MONEYLINE · SPREAD · O/U",
+      termsModes:"FIXED + DYNAMIC",
+      propPoolsEnabled:true
+    }),
+    action:Object.freeze({
+      // FSR-005 / FSR-023: current-week committed capital is decomposed so every module
+      // aggregates components rather than hard-coding a total. Every value below is a
+      // materialisation of currentWeekCommitments and is proven against the Action
+      // lifecycle by the reconciliation suite - it is not an independent source.
+      wallet:9400,
+      unresolvedVersusEscrow:8000,
+      unresolvedPropPoolCommitments:100,
+      inPlay:8100,
+      // FSR-023: narrower than inPlay on purpose - pending and counter-pending offers are
+      // committed capital but are not yet qualifying gameplay.
+      qualifyingCommitmentsThisWeek:4100,
+      // FSR-024: upsideLeft is deliberately absent. Remaining upside is a property of the
+      // accepted, unresolved proposals in the Action lifecycle, so Action derives it via
+      // Resolver.commitmentTotals().upsideLeft. There is no canonical literal to drift.
+      currentWeek:11
+    }),
+
+    /* FSR-023 - the current week's unresolved commitments, in posting order.
+       Each record is derived from Action lifecycle state; the Account Ledger builds its
+       current-week postings from this schedule instead of from hard-coded literals, and
+       the reconciliation suite proves the schedule against the live lifecycle. */
+    currentWeekCommitments:Object.freeze([
+      Object.freeze({key:"POOL_SINGLE",kind:"POOL",definitionKey:"punterPointsSingle",
+        opponent:null,lifecycle:"FUNDED",role:"ENTRANT",cents:100,qualifying:true,
+        date:"Nov 13",desc:"Single Team: Punter Points \u00b7 funded pool entry"}),
+      Object.freeze({key:"VERSUS_HANK",kind:"VERSUS",definitionKey:null,
+        opponent:"Hank Williams",lifecycle:"ACCEPTED",role:"ISSUER",cents:2000,qualifying:true,
+        date:"Nov 15",desc:"Pain vs Hank \u00b7 accepted wager escrow"}),
+      Object.freeze({key:"VERSUS_DOLLY",kind:"VERSUS",definitionKey:null,
+        opponent:"Dolly Parton",lifecycle:"PENDING_OUTGOING",role:"ISSUER",cents:2000,qualifying:false,
+        date:"Nov 15",desc:"Pain vs Dolly \u00b7 pending issuer escrow"}),
+      Object.freeze({key:"VERSUS_REBA",kind:"VERSUS",definitionKey:null,
+        opponent:"Reba McEntire",lifecycle:"COUNTER_PENDING",role:"ISSUER",cents:2000,qualifying:false,
+        date:"Nov 15",desc:"Pain vs Reba \u00b7 issuer escrow retained under counter"}),
+      Object.freeze({key:"VERSUS_LORETTA",kind:"VERSUS",definitionKey:null,
+        opponent:"Loretta Lynn",lifecycle:"ACCEPTED",role:"ISSUER",cents:2000,qualifying:true,
+        date:"Nov 15",desc:"Pain vs Loretta \u00b7 accepted wager escrow"})
+    ]),
+    accounts:Object.freeze({
+      leagueEconomy:"League Economy",
+      wallet:"Wallet",
+      weeklyMinimumEscrow:"Weekly Minimum Escrow",
+      activeBetEscrow:"Active Bet Escrow",
+      propPoolCommitted:"Punter Points Pool",
+      championshipReserve:"Championship Reserve",
+      skunkPot:"Skunk Pot",
+      settledCounterparties:"Settled Counterparties"
+    }),
+    // FSR-005: user-facing IN PLAY aggregates exactly these unresolved-commitment accounts.
+    inPlayAccounts:Object.freeze(["Active Bet Escrow","Punter Points Pool"]),
+    // FSR-016: governed destination for a score-bearing Skunk Fee (LED-105, LED-343).
+    skunkRouting:Object.freeze({
+      destination:"Skunk Pot",
+      basis:"LED-343",
+      scoreBearing:true,
+      countsTowardWallet:false,
+      countsTowardInPlay:false
+    }),
+    // FSR-007: authority + season-lock classification for governed League Settings.
+    // Basis: CFG-107 (first-acceptance freeze) and CFG-1003 (season-fixed parameters).
+    settingsAuthority:Object.freeze({
+      basis:"CFG-107 · CFG-1003",
+      seasonConfigurationFrozen:true,
+      frozenAt:"FIRST_ACCEPTED_WAGER",
+      seasonLockLabel:"LOCKED FOR 2026",
+      gmView:"READ ONLY",
+      classification:Object.freeze({
+        weeklyFantasyStakesCompetition:"COMMISSIONER_SEASON_FIXED",
+        fantasyStakesChampionship:"COMMISSIONER_SEASON_FIXED",
+        seasonAllocation:"DERIVED",
+        weeklyMinimum:"COMMISSIONER_SEASON_FIXED",
+        standardPropPoolEntry:"COMMISSIONER_SEASON_FIXED",
+        skunkFee:"COMMISSIONER_SEASON_FIXED",
+        unspentMinimumDestination:"COMMISSIONER_SEASON_FIXED",
+        matchupMarkets:"COMMISSIONER_SEASON_FIXED",
+        termsModes:"COMMISSIONER_SEASON_FIXED",
+        propPools:"COMMISSIONER_SEASON_FIXED"
+      })
+    }),
+    // FSR-002 / FSR-021: one canonical route target per locked screen, so the persistent
+    // gear entry point and the bottom nav resolve deterministically in the demo package.
+    routes:Object.freeze({
+      standings:"fantasystakes_STANDINGS_WRAPUP_deterministic_v8_upside.html#standings",
+      action:"fantasystakes_ACTION_uncluttered_full_prototype_v24_upside.html",
+      wrapup:"fantasystakes_STANDINGS_WRAPUP_deterministic_v8_upside.html#wrap",
+      account:"fantasystakes_ACCOUNT_GEAR_uncluttered_v25_upside.html",
+      gear:"fantasystakes_ACCOUNT_GEAR_uncluttered_v25_upside.html#gear"
+    }),
+    account:Object.freeze({
+      pointsChampionshipNet:0,
+      fantasyStakesChampionshipNet:0,
+      topOffs:0
+    }),
+    weeklyResults:Object.freeze(weeklyResults),
+    seasonThroughWeek10:Object.freeze(
+      Object.fromEntries(Object.entries(seasonThroughWeek10).map(([k,v])=>[k,Object.freeze(v)]))
+    )
+  });
+
+  global.FS_CANON=FS_CANON;
+})(window);
+
+</script>
+<script>
+const VALUE_RULES=Object.freeze({
+  source:FS_CANON.version,
+  seasonScore:"FANTASYSTAKES_SCORE_V1",
+  seasonRanking:"SCORE_DESC_THEN_TEAM_ID_V1",
+  wrapHighlights:"WRAP_DETERMINISTIC_SELECTION_V2",
+  scoringProfile:FS_CANON.scoringProfile.version
+});
+
+function fmtToken(v){
+  const n=Number(v);
+  if(n===0)return "Ŧ0";
+  return `${n>0?"+":"−"}Ŧ${Math.abs(n).toFixed(2).replace(/\.00$/,"")}`;
+}
+function valueClass(v){return v>0?"pos":v<0?"neg":"zero"}
+function teamById(id){return FS_CANON.league.teams.find(t=>t.id===id)}
+function score(p){return Number(p.match||0)+Number(p.pool||0)+Number(p.skunk||0)}
+function rankRows(rows){return [...rows].sort((a,b)=>b.score-a.score||a.teamId.localeCompare(b.teamId)).map((r,i)=>({...r,rank:i+1}))}
+
+const Resolver={
+  week(week){return FS_CANON.weeklyResults[week]||{published:false}},
+  weekRows(week){
+    const w=this.week(week); if(!w.published)return [];
+    return rankRows(FS_CANON.league.teams.map(t=>{
+      const p={match:w.match[t.id]||0,pool:w.pool[t.id]||0,skunk:w.skunk[t.id]||0};
+      return {teamId:t.id,name:t.name,...p,score:score(p)};
+    }));
+  },
+  seasonRows(){
+    return rankRows(FS_CANON.league.teams.map(t=>{
+      const p=FS_CANON.seasonThroughWeek10[t.id];
+      return {teamId:t.id,name:t.name,match:p.match,pool:p.pool,skunk:p.skunk,score:p.score};
+    }));
+  },
+  highlights(week){
+    const w=this.week(week),rows=this.weekRows(week);
+    if(!w.published||!rows.length)return [];
+    const biggestWeek=rows[0], biggestDrop=rows[rows.length-1];
+    const bestMatch=[...rows].sort((a,b)=>b.match-a.match||a.teamId.localeCompare(b.teamId))[0];
+    const bestPool=[...rows].sort((a,b)=>b.pool-a.pool||a.teamId.localeCompare(b.teamId))[0];
+    const skunk=rows.find(r=>r.teamId===w.yahoo.skunkTeamId);
+    return [
+      {icon:"▲",cls:"up",eyebrow:"BOLDEST WEEK",teamId:biggestWeek.teamId,amount:biggestWeek.score,
+       detail:`<b>The result:</b> ${fmtToken(biggestWeek.score)} was the strongest combined FantasyStakes Score of Week ${week}.`},
+      {icon:"□",cls:"accent",eyebrow:"BOLDEST MATCHUP MOVE",teamId:bestMatch.teamId,amount:bestMatch.match,
+       detail:`<b>Matchups:</b> ${fmtToken(bestMatch.match)} was the best Matchup net of Week ${week}.`},
+      {icon:"◇",cls:"accent",eyebrow:"BOLDEST POOL CALL",teamId:bestPool.teamId,amount:bestPool.pool,
+       detail:`<b>Prop Pools:</b> ${fmtToken(bestPool.pool)} was the best Pool net of Week ${week}.`},
+      {icon:"‡",cls:"accent",eyebrow:"COSTLIEST BLUNDER",teamId:skunk?.teamId,amount:skunk?.skunk||0,
+       detail:`<b>Skunk:</b> the governed Week ${week} Skunk assessment posted ${fmtToken(skunk?.skunk||0)}.`},
+      {icon:"▼",cls:"down",eyebrow:"BIGGEST STEP BACK",teamId:biggestDrop.teamId,amount:biggestDrop.score,
+       detail:`<b>The result:</b> ${fmtToken(biggestDrop.score)} was the week's largest FantasyStakes Score decline.`}
+    ];
+  }
+};
+
+function tokenCell(v,bold=false){const x=fmtToken(v);return `<td class="${valueClass(v)}">${bold?`<b>${x}</b>`:x}</td>`}
+function seasonRow(r){
+  const you=r.name===FS_CANON.league.currentUser;
+  return `<tr class="${you?"hirow":""}"><td>${r.rank}</td><td><div class="team">${r.name}${you?' <span class="you">YOU</span>':""}</div></td>${tokenCell(r.match)}${tokenCell(r.pool)}${tokenCell(r.skunk)}${tokenCell(r.score,true)}</tr>`;
+}
+function weekSymbols(week,row){
+  const hs=Resolver.highlights(week); let out="";
+  if(hs[0]?.teamId===row.teamId)out+=' <span class="sym up">▲</span>';
+  if(hs[1]?.teamId===row.teamId)out+=' <span class="sym accent">□</span>';
+  if(hs[2]?.teamId===row.teamId)out+=' <span class="sym accent">◇</span>';
+  if(hs[3]?.teamId===row.teamId)out+=' <span class="sym accent">‡</span>';
+  if(hs[4]?.teamId===row.teamId)out+=' <span class="sym down">▼</span>';
+  return out;
+}
+function activityHtml(week,r){
+  if(!Resolver.week(week).published)return "";
+  return `<tr class="activity hidden" data-activity="${r.teamId}"><td colspan="6">
+    <strong>WEEK ${week} ACTIVITY</strong><br>
+    Matchups <span class="${valueClass(r.match)}">${fmtToken(r.match)}</span><br>
+    Prop Pools <span class="${valueClass(r.pool)}">${fmtToken(r.pool)}</span><br>
+    Skunk <span class="${valueClass(r.skunk)}">${fmtToken(r.skunk)}</span><br>
+    <b>FANTASYSTAKES SCORE <span class="${valueClass(r.score)}">${fmtToken(r.score)}</span></b>
+  </td></tr>`;
+}
+function wrapRow(week,r){
+  const you=r.name===FS_CANON.league.currentUser;
+  return `<tr class="accordion ${you?"hirow":""}" data-team="${r.teamId}"><td>${r.rank}</td><td><div class="team">${r.name}${you?' <span class="you">YOU</span>':""}${weekSymbols(week,r)}</div></td>${tokenCell(r.match)}${tokenCell(r.pool)}${tokenCell(r.skunk)}${tokenCell(r.score,true)}</tr>${activityHtml(week,r)}`;
+}
+
+function renderChrome(){
+  document.getElementById("currentUser").textContent=FS_CANON.league.currentUser;
+  document.getElementById("standingsLeague").textContent=`${FS_CANON.league.name} · ${FS_CANON.league.season}`;
+  document.getElementById("wrapLeague").textContent=`${FS_CANON.league.name} · ${FS_CANON.league.season}`;
+  document.getElementById("chaseTitle").textContent=`CHAMPIONSHIP CHASE · WEEK ${FS_CANON.league.currentWeek}`;
+  document.getElementById("teamCount").textContent=`${FS_CANON.league.teams.length} TEAMS`;
+}
+function renderSeason(){document.getElementById("seasonStandingsBody").innerHTML=Resolver.seasonRows().map(seasonRow).join("")}
+
+let wrapWeek=FS_CANON.league.completedThroughWeek;
+function renderWrap(){
+  const w=Resolver.week(wrapWeek);
+  document.getElementById("wrapWeek").textContent=`WEEK ${wrapWeek}`;
+  const prev=document.querySelector(".prev-week"),next=document.querySelector(".next-week");
+  prev.textContent=`WEEK ${wrapWeek-1}`; next.textContent=`WEEK ${wrapWeek+1}`;
+  prev.disabled=!FS_CANON.weeklyResults[wrapWeek-1];
+  next.disabled=!FS_CANON.weeklyResults[wrapWeek+1];
+  if(!w.published){
+    document.getElementById("wrapStandingsBody").innerHTML=`<tr><td colspan="6"><div class="emptywrap">Week ${wrapWeek} has not been published.</div></td></tr>`;
+    document.getElementById("wrapHighlightCards").innerHTML=`<div class="emptywrap">Highlights are available after Week ${wrapWeek} is published.</div>`;
+  }else{
+    document.getElementById("wrapStandingsBody").innerHTML=Resolver.weekRows(wrapWeek).map(r=>wrapRow(wrapWeek,r)).join("");
+    document.getElementById("wrapHighlightCards").innerHTML=Resolver.highlights(wrapWeek).map(h=>`<div class="card"><div class="icon ${h.cls}">${h.icon}</div><div><div class="eyebrow">${h.eyebrow}</div><div class="name">${teamById(h.teamId).name}</div><div class="detail">${h.detail}</div></div><div class="amt ${valueClass(h.amount)}">${fmtToken(h.amount)}</div></div>`).join("");
+  }
+  document.querySelectorAll(".accordion").forEach(r=>r.addEventListener("click",()=>document.querySelector(`[data-activity="${r.dataset.team}"]`)?.classList.toggle("hidden")));
+}
+function audit(){
+  const failures=[],season=Resolver.seasonRows();
+  const pain=season.find(r=>r.teamId===FS_CANON.league.currentUserId);
+  if(pain.match!==45||pain.pool!==30||pain.skunk!==-10||pain.score!==65)failures.push("Pain Sanders canonical season score mismatch");
+  for(let w=1;w<=10;w++){
+    const rows=Resolver.weekRows(w);
+    if(rows.reduce((a,r)=>a+r.match,0)!==0)failures.push(`Week ${w} Matchup conservation`);
+    if(rows.reduce((a,r)=>a+r.pool,0)!==0)failures.push(`Week ${w} Pool conservation`);
+  }
+  // Season score chain: for every team the season FantasyStakes Score must equal the
+  // sum of its published weekly Wrap Up rows, component by component, and the three
+  // components must sum to the score.
+  season.forEach(r=>{
+    let m=0,p=0,s=0;
+    for(let w=1;w<=FS_CANON.league.currentWeek;w++){
+      if(!FS_CANON.weeklyResults[w]?.published)continue;
+      const row=Resolver.weekRows(w).find(x=>x.teamId===r.teamId);
+      if(!row){failures.push(`${r.name}: missing published Week ${w} row`);continue}
+      m+=row.match;p+=row.pool;s+=row.skunk;
+    }
+    if(m!==r.match||p!==r.pool||s!==r.skunk)failures.push(`${r.name}: season components differ from the published weekly Wrap Ups`);
+    if(r.match+r.pool+r.skunk!==r.score)failures.push(`${r.name}: score is not Matchups + Prop Pools + Skunk`);
+    if(m+p+s!==r.score)failures.push(`${r.name}: season score differs from the sum of published Wrap Ups`);
+  });
+  // The current week is still unpublished and must contribute nothing to any score.
+  if(FS_CANON.weeklyResults[FS_CANON.league.currentWeek]?.published)failures.push(`Week ${FS_CANON.league.currentWeek} must remain unpublished`);
+  if(Resolver.weekRows(FS_CANON.league.currentWeek).length)failures.push(`Unpublished Week ${FS_CANON.league.currentWeek} produced Wrap Up rows`);
+  if(Resolver.highlights(FS_CANON.league.currentWeek).length)failures.push(`Unpublished Week ${FS_CANON.league.currentWeek} produced highlights`);
+
+  const result={pass:failures.length===0,failures,source:FS_CANON.version,scoringProfile:FS_CANON.scoringProfile,
+    currentUser:{
+      teamId:FS_CANON.league.currentUserId,
+      match:pain.match,pool:pain.pool,skunk:pain.skunk,score:pain.score,
+      scoreCents:pain.score*100
+    },
+    publishedThroughWeek:FS_CANON.league.completedThroughWeek,
+    // FSR-022: the card eyebrows and the symbol legend are two registers of one locked
+    // vocabulary - editorial headline versus mechanical key - and are retained as-is.
+    highlightVocabulary:Resolver.highlights(FS_CANON.league.completedThroughWeek).map(h=>h.eyebrow)};
+  window.__FS_STANDINGS_WRAP_AUDIT__=result; return result;
+}
+
+const screenEls={standings:document.getElementById("standingsScreen"),wrap:document.getElementById("wrapScreen")};
+function showLocalScreen(key){
+  const el=screenEls[key]; if(!el)return;
+  Object.values(screenEls).forEach(x=>x.classList.remove("active")); el.classList.add("active");
+  document.querySelectorAll(".navitem").forEach(x=>x.classList.remove("active"));
+  const btn=document.querySelector(`.navitem[data-screen="${key}"]`); if(btn)btn.classList.add("active");
+}
+
+/* ---- FSR-002 / FSR-021 · deterministic demo navigation contract ------------
+   The uncluttered UI package ships as three self-contained artifacts. Rather than
+   embedding every screen into every file (a redesign), each locked chrome control
+   resolves to one canonical route target published by the shared fixture. A control
+   whose target is the screen already on show stays inert and is marked aria-current;
+   a screen that exists inside this artifact is handled locally; everything else
+   navigates to its canonical target. No chrome control is a decorative dead div. */
+const FS_NAV=(function(){
+  const routes=FS_CANON.routes;
+  const state={local:{},screen:null};
+  function resolve(key){return routes[key]||null}
+  function go(key){
+    const target=resolve(key);
+    if(!target)return{key,handled:false,reason:"NO_ROUTE"};
+    if(state.local[key]){state.local[key]();return{key,handled:true,mode:"LOCAL",target}}
+    if(key===state.screen)return{key,handled:true,mode:"CURRENT",target};
+    try{window.location.href=target}catch(err){return{key,handled:false,reason:"NAV_BLOCKED",target}}
+    return{key,handled:true,mode:"ROUTE",target};
+  }
+  function wire(screenKey,localHandlers){
+    state.screen=screenKey;Object.assign(state.local,localHandlers||{});
+    const controls=[...document.querySelectorAll("[data-route]")];
+    controls.forEach(el=>{
+      const key=el.dataset.route,target=resolve(key);
+      if(!target){el.setAttribute("data-route-status","unresolved");return}
+      el.setAttribute("data-route-target",target);
+      const current=(key===screenKey&&!state.local[key]);
+      el.setAttribute("data-route-status",current?"current":"active");
+      if(current)el.setAttribute("aria-current","page");
+      el.addEventListener("click",()=>go(key));
+    });
+    const report={screen:screenKey,routes:Object.assign({},routes),
+      controls:controls.map(el=>({route:el.dataset.route,target:el.getAttribute("data-route-target"),
+        status:el.getAttribute("data-route-status"),label:el.getAttribute("aria-label")||null,
+        focusable:el.tagName==="BUTTON"||el.hasAttribute("tabindex")}))};
+    window.__FS_NAV__=report;return report;
+  }
+  return{wire,go,resolve};
+})();
+
+// Standings and Wrap Up are both screens of this artifact, so those two routes stay
+// local; Action, Account and Gear resolve to their canonical files (FSR-002 / FSR-021).
+FS_NAV.wire("standings",{standings:()=>showLocalScreen("standings"),wrapup:()=>showLocalScreen("wrap")});
+if(location.hash==="#wrap")showLocalScreen("wrap");
+document.querySelectorAll("[data-wrap]").forEach(t=>t.addEventListener("click",()=>{
+  document.querySelectorAll("[data-wrap]").forEach(x=>x.classList.remove("active"));t.classList.add("active");
+  document.getElementById("wrapStandings").classList.toggle("hidden",t.dataset.wrap!=="standings");
+  document.getElementById("wrapHighlights").classList.toggle("hidden",t.dataset.wrap!=="highlights");
+}));
+document.querySelector(".prev-week").addEventListener("click",()=>{if(FS_CANON.weeklyResults[wrapWeek-1]){wrapWeek--;renderWrap()}});
+document.querySelector(".next-week").addEventListener("click",()=>{if(FS_CANON.weeklyResults[wrapWeek+1]){wrapWeek++;renderWrap()}});
+
+renderChrome();renderSeason();renderWrap();audit();
+</script>
+
+</body>
+</html>

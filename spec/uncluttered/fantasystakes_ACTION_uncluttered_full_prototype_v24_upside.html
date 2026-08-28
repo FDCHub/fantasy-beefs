@@ -1,0 +1,1866 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>FantasyStakes — Action v24 · Upside Derived</title>
+<style>
+:root{
+  --bg:#090907;--panel:#11110d;--panel2:#15140f;--line:#302b22;--line2:#4a4336;
+  --text:#f2ebdf;--muted:#9d978a;--gold:#d9aa25;--blue:#7eace8;--green:#8fd45f;
+  --red:#d77777;--gray:#b7b0a4;--shadow:#000;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#000;color:var(--text);font-family:Arial,Helvetica,sans-serif}
+body{display:flex;justify-content:center;padding:18px}
+.phone{
+  position:relative;width:390px;height:844px;background:var(--bg);border:1px solid #3b3933;border-radius:34px;
+  overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 7px #171717,0 0 0 9px #4a4a4a;
+}
+.statusbar{height:34px;padding:9px 17px 0;display:flex;justify-content:space-between;font-size:14px;font-weight:800}
+.brandbar{padding:10px 16px 9px;display:grid;grid-template-columns:28px 1fr auto 26px;gap:9px;align-items:center;border-bottom:1px solid var(--line)}
+.menu{font-size:22px;color:var(--muted)}.brand{font-size:17px;font-weight:900}.brand span{color:var(--gold)}
+.tag{font-size:8px;color:var(--muted);margin-top:4px}.user{font-size:13px}.gearBtn{width:26px;height:26px;padding:0;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer}.gearIcon{width:20px;height:20px;fill:none;stroke:var(--muted);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.gearBtn:hover .gearIcon,.gearBtn:focus-visible .gearIcon{stroke:var(--gold)}
+.pagehead{padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+.pagehead h1{margin:0;font-size:23px;font-weight:900;white-space:nowrap;letter-spacing:.25px}.pagehead .sub{margin-top:7px;color:var(--muted);font-size:12px;letter-spacing:.2px}
+.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line)}
+.sumcell{padding:9px 4px 8px;text-align:center;border-right:1px solid var(--line)}.sumcell:last-child{border-right:0}
+.sumvalue{font-size:15px;font-weight:900;line-height:1;color:var(--text);white-space:nowrap}.sumlabel{margin-top:5px;font-size:8px;font-weight:900;letter-spacing:.35px;color:var(--muted);white-space:nowrap}.sumlabel.gold{color:var(--gold)}
+.subtabs{display:grid;grid-template-columns:1fr 1fr;padding:8px 12px 7px;gap:0}
+.tabbtn{border:1px solid var(--line2);background:#11100d;color:var(--muted);padding:10px 5px;font-size:11px;font-weight:900;border-radius:0}
+.tabbtn:first-child{border-radius:8px 0 0 8px}.tabbtn:last-child{border-radius:0 8px 8px 0;border-left:0}
+.tabbtn.active{background:#1b170c;color:var(--gold);border-color:#66531d;box-shadow:inset 0 -2px 0 var(--gold)}
+.filterbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;padding:0 12px 10px;width:100%}
+.filter{width:100%;min-width:0;border:1px solid var(--line2);background:#11100d;color:var(--muted);border-radius:999px;padding:7px 3px;font-size:8px;font-weight:900;white-space:nowrap;text-align:center}
+.filter.active{color:var(--gold);border-color:#66531d;background:#1a170e}
+.content{flex:1;min-height:0;overflow-y:auto;padding:0 12px 12px;scrollbar-width:none}.content::-webkit-scrollbar{display:none}
+.sectionrow{display:flex;justify-content:space-between;align-items:center;margin:2px 2px 6px}
+.sectiontitle{font-size:13px;color:var(--gold);font-weight:900;letter-spacing:1px}
+.count{font-size:9px;color:var(--muted);font-weight:700}
+.tile{border:1px solid #443d30;border-radius:10px;background:var(--panel);overflow:hidden;box-shadow:inset 3px 0 0 var(--gold);margin-bottom:8px;cursor:pointer}
+.tilehead{display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 10px 6px}
+.pillrow{display:flex;gap:5px;align-items:center;margin-bottom:4px}
+.pill{border:1px solid currentColor;border-radius:999px;padding:3px 7px;font-size:8px;font-weight:900;letter-spacing:.45px}
+.bet-no,.bet-closed{color:var(--gray)}.bet-pending,.bet-countered{color:var(--blue)}.bet-wagered{color:var(--gold)}.bet-declined,.bet-expired{color:var(--red)}
+.game-pregame{color:var(--gold)}.game-live{color:var(--green)}.game-over{color:var(--gray)}
+.title{font-size:13px;font-weight:900;line-height:1.15}.context{font-size:9px;color:#bdb5a8;margin-top:4px}.meta{font-size:8px;color:var(--muted);text-align:right;line-height:1.35}
+.score{display:grid;grid-template-columns:1fr auto 1fr;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.team{padding:8px 9px}.team.right{text-align:right}.name{font-size:8.5px;color:var(--muted)}.scorebig{font-size:19px;font-weight:900;margin-top:3px}.scoresub{font-size:8.5px;color:#bdb5a8;margin-top:4px}.vs{display:flex;align-items:center;font-size:8px;color:var(--muted)}
+.markets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--line)}
+.cell{padding:7px 5px;text-align:center;border-right:1px solid var(--line)}.cell:last-child{border-right:0}
+.state{font-size:8px;font-weight:900;margin-top:3px}.good{color:var(--green)}.bad{color:var(--red)}
+.foot{display:flex;justify-content:space-between;gap:8px;padding:8px 9px;font-size:8.5px;color:var(--muted)}.foot strong{color:var(--text)}
+.nav{height:64px;flex:0 0 64px;border-top:1px solid #3a3224;background:#0d0d0a;display:grid;grid-template-columns:repeat(4,1fr);align-items:center}
+.navitem{text-align:center;color:#9d9789;font-size:10px;background:none;border:0;padding:0;font-family:inherit;cursor:pointer}.navitem.active{color:var(--gold)}.ni{font-size:17px;margin-bottom:3px;display:block}
+.navitem:focus-visible{outline:2px solid var(--gold);outline-offset:-3px}
+
+/* Expanded sheet */
+.sheet{position:absolute;left:0;width:100%;background:rgba(0,0,0,.82);display:flex;align-items:stretch;justify-content:center;padding:8px 12px;z-index:20;overflow:hidden}
+.sheet.hidden{display:none}
+.sheetcard{width:100%;height:100%;max-height:none;background:#0f0e0b;border:1px solid #514838;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 30px rgba(0,0,0,.55)}
+.sheethead{flex:0 0 auto;padding:9px 11px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:1fr auto;gap:8px}
+.sheetscroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}.sheetscroll::-webkit-scrollbar{display:none}
+.close{width:28px;height:28px;border-radius:50%;border:1px solid var(--line2);background:#11100d;color:var(--text);font-size:16px}
+.scorebanner{display:grid;grid-template-columns:1fr auto 1fr;border-bottom:1px solid var(--line)}
+.scorebanner .team{padding:10px}.scorebanner .name{font-size:10px}.scorebanner .scorebig{font-size:24px}.scorebanner .scoresub{font-size:10px}
+.accordion{margin:8px;border:1px solid #443d30;border-radius:8px;overflow:hidden}
+.accbtn{width:100%;border:0;background:#15140f;color:var(--text);padding:10px 10px;display:flex;justify-content:space-between;font-size:11px;font-weight:900}
+.accbody{border-top:1px solid var(--line)}.accbody:not(.hiddenBody){max-height:252px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}.accbody:not(.hiddenBody)::-webkit-scrollbar{width:5px}.accbody:not(.hiddenBody)::-webkit-scrollbar-thumb{background:#494338;border-radius:999px}.hiddenBody{display:none}
+.vslineuphead{display:grid;grid-template-columns:1fr 34px 1fr;gap:0;padding:8px 9px;border-bottom:1px solid var(--line);font-size:9px;color:var(--muted);font-weight:900;letter-spacing:.25px}
+.vslineuphead .r{text-align:right}
+.vsplayer{display:grid;grid-template-columns:1fr 34px 1fr;gap:0;border-bottom:1px solid var(--line);min-height:56px}
+.vsplayer:last-child{border-bottom:0}
+.vsside{padding:9px 9px}.vsside.right{text-align:right}
+.vspos{display:flex;align-items:center;justify-content:center;border-left:1px solid var(--line);border-right:1px solid var(--line);font-size:9px;color:var(--muted);font-weight:900}
+.vspname{font-size:10px;font-weight:900}.vsproj{font-size:14px;font-weight:900;margin-top:4px}.vsmeta{font-size:9px;color:var(--muted);margin-top:4px;line-height:1.25}
+.metrics,.econ{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.markethead{padding:10px 10px 7px;font-size:10px;color:var(--gold);font-weight:900;letter-spacing:.5px}
+.refreshbar{display:flex;justify-content:space-between;align-items:center;padding:9px 10px;border-bottom:1px solid var(--line);font-size:10px;color:var(--muted)}
+.btn{border:1px solid #575043;border-radius:7px;background:#11100d;color:var(--text);padding:9px 7px;font-size:10px;font-weight:900}
+.btn.primary{background:var(--gold);border-color:var(--gold);color:#171207}.btn.blue{border-color:var(--blue);color:var(--blue)}
+.module{margin:8px;border:1px solid #443d30;border-radius:8px;overflow:hidden}
+.modulehead{padding:9px 10px;color:var(--gold);font-size:10px;font-weight:900;border-bottom:1px solid var(--line)}
+.modulenote{padding:9px 10px;font-size:10px;color:#c7bfb2;line-height:1.4;border-bottom:1px solid var(--line)}
+.choicegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:9px}
+.choice,.pick,.termsbtn{min-height:42px;display:flex;align-items:center;justify-content:center}
+.choice{border:1px solid #4c4538;border-radius:8px;background:#11100d;color:var(--muted);padding:8px 5px;font-size:10px;font-weight:900}
+.choice.active{border-color:var(--gold);background:#1c180d;color:var(--gold)}
+.pickpanel{margin:0 9px 9px}.picklabel{font-size:9px;color:var(--muted);margin:0 0 7px 1px}.pickgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.pick{border:1px solid #4c4538;border-radius:8px;background:#11100d;color:var(--muted);padding:8px 6px;flex-direction:column;gap:4px;font-size:10px;font-weight:900}.pick.active{border-color:var(--gold);background:#1c180d;color:var(--gold)}.pick.disabled{opacity:.48}
+.mini{font-size:8px;color:var(--muted);font-weight:800}
+.termsrow{position:relative;padding:9px;border-top:1px solid var(--line)}.termsgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:6px}
+.termsbtn{border:1px solid #4c4538;border-radius:8px;background:#11100d;color:var(--muted);font-size:10px;font-weight:900}.termsbtn.active{border-color:var(--gold);color:var(--gold);background:#1c180d}
+.infobtn{position:absolute;right:9px;top:7px;width:25px;height:25px;border-radius:50%;border:1px solid #575043;background:#11100d;color:var(--muted);font-size:10px;font-weight:900}
+.stakewrap{padding:9px;border-top:1px solid var(--line)}.stakecontrol{display:grid;grid-template-columns:42px 1fr 42px;gap:7px;align-items:center;margin-top:6px}
+.stakecontrol .btn,.stakevalue{height:42px;min-height:42px}.stakevalue{display:flex;align-items:center;justify-content:center;border:1px solid #4c4538;border-radius:8px;font-size:11px;font-weight:900}
+.reviewline{padding:9px 10px;border-top:1px solid var(--line);font-size:10px;font-weight:900}.reviewsub{font-size:9px;color:var(--muted);margin-top:4px}
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px}.actions.two{grid-template-columns:1fr 1fr}.actions.one{grid-template-columns:1fr}
+.offergrid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+.offercol{padding:8px;border-right:1px solid var(--line)}.offercol:last-child{border-right:0}.offerlabel{font-size:9px;color:var(--muted);font-weight:900}.offerbig{font-size:13px;font-weight:900;margin-top:4px}.offersub{font-size:9px;color:#bdb5a8;margin-top:4px}
+.liveRow{display:grid;grid-template-columns:1fr 34px 1fr;border-bottom:1px solid var(--line);min-height:56px}
+.liveRow:last-child{border-bottom:0}.liveSide{padding:9px 9px}.liveSide.right{text-align:right}.livePos{display:flex;align-items:center;justify-content:center;border-left:1px solid var(--line);border-right:1px solid var(--line);font-size:9px;color:var(--muted);font-weight:900}
+.liveStats{font-size:9px;color:var(--muted);margin-top:4px;line-height:1.25}.liveStats strong{font-size:14px;color:var(--text);font-weight:900}
+.debug{position:fixed;right:10px;top:10px;z-index:50;background:#12110d;border:1px solid #514838;border-radius:10px;padding:8px;width:165px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.debug.hidden{display:none}.debugtitle{font-size:7px;color:var(--gold);font-weight:900;margin-bottom:6px}
+.debug select,.debug button{width:100%;margin-top:5px;background:#11100d;color:var(--text);border:1px solid #4c4538;border-radius:6px;padding:6px;font-size:7px}
+.debugtoggle{display:none}.debug-enabled .debugtoggle{display:block;position:fixed;right:12px;bottom:12px;z-index:60;width:32px;height:32px;border-radius:50%;border:1px solid #514838;background:#15140f;color:var(--gold);font-size:14px}
+.poolcard{border:1px solid #443d30;border-radius:10px;background:var(--panel);overflow:hidden;box-shadow:inset 3px 0 0 var(--blue);margin-bottom:8px}
+.poolchoices{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:8px}
+.poolchoice{border:1px solid #4c4538;border-radius:8px;padding:8px;background:#11100d;font-size:8px;font-weight:900}
+
+/* PROP POOLS BASE REVIEW */
+.poolcard{border:1px solid #443d30;border-radius:10px;background:var(--panel);overflow:hidden;box-shadow:inset 3px 0 0 var(--gold);margin-bottom:8px}
+.poolstats{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.poolstat{padding:9px 6px;text-align:center;border-right:1px solid var(--line)}.poolstat:last-child{border-right:0}
+.poolstat .k{font-size:9px;color:var(--muted);font-weight:900}.poolstat .v{font-size:15px;margin-top:3px}
+.poolprompt{padding:10px 11px;font-size:12px;line-height:1.35}
+.poolprompt .eyebrow{font-size:9px;color:var(--gold);font-weight:900;margin-bottom:5px}
+.poolfield{border:1px solid #443d30;border-radius:9px;overflow:hidden;margin:9px 0}
+.poolfieldhead{padding:9px 10px;font-size:10px;font-weight:900;color:var(--gold);border-bottom:1px solid var(--line)}
+.poolrow{display:grid;grid-template-columns:1fr 70px;border-bottom:1px solid var(--line);min-height:42px;align-items:center}.poolrow:last-child{border-bottom:0}
+.poolteam{padding:8px 10px;font-size:10px;font-weight:900}.poolproj{padding:8px 10px;text-align:right;border-left:1px solid var(--line);font-size:11px}.poolproj small{display:block;color:var(--muted);font-size:8px;margin-top:2px}
+.poolcomposer{border:1px solid #443d30;border-radius:9px;overflow:hidden;margin-top:10px}
+.poolcomposer .head{padding:9px 10px;color:var(--gold);font-size:10px;font-weight:900;border-bottom:1px solid var(--line)}
+.poolcomposer .copy{padding:9px 10px;font-size:10px;color:#d4cec3;border-bottom:1px solid var(--line)}
+.poolpickgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:9px}
+.poolpick{min-height:56px;border:1px solid #eee8dc;border-radius:8px;background:#11100d;color:#f1ece3;padding:8px 10px;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:10px}.poolpick.active{border-color:var(--gold);color:var(--gold);background:#1c180d}.poolpick.dimmed{border-color:#5a554b;color:#8f8a81}.poolpick .pickname{font-size:10px;font-weight:900;line-height:1.2}.poolpick .pickproj{font-size:11px;font-weight:900;white-space:nowrap;text-align:right}.poolpick .pickproj small{display:block;font-size:8px;font-weight:700;color:inherit;opacity:.72;margin-top:2px}.poolpick.active .pickproj small{color:#b9a86b}.poolpick:disabled{cursor:not-allowed;opacity:.55}.poolactions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.btn:disabled{opacity:.38;cursor:not-allowed}
+.poolentry{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line)}
+.poolentry .cell{padding:8px 5px;text-align:center;border-right:1px solid var(--line)}.poolentry .cell:last-child{border-right:0}.poolentry .k{font-size:8px;color:var(--muted);font-weight:900}.poolentry .v{font-size:13px;margin-top:3px}
+.poolaction{padding:9px;border-top:1px solid var(--line)}
+
+.statusline{margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:8px;text-align:center;color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.04em}
+.wasis{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.compare{display:flex;justify-content:space-between;gap:10px;padding:7px 9px;border-top:1px solid var(--line);font-size:9px;color:var(--muted)}
+.compare:first-of-type{border-top:0}.compare strong{color:var(--gold)}
+
+
+.termsexplain{font-size:10px;line-height:1.45;color:#d4cec3;margin:10px 0}.termsexplain strong{color:var(--gold)}
+.markets .k,.metrics .k,.econ .k{font-size:9px;color:var(--muted);font-weight:900;letter-spacing:.1px;line-height:1.15}
+.markets .v{font-size:14px;line-height:1.15;margin-top:3px}
+.metrics .v,.econ .v{font-size:16px;line-height:1.15;margin-top:3px}
+#poolSheet .sheetcard{height:auto;max-height:100%;align-self:flex-start}
+#poolSheet .sheetscroll{flex:0 1 auto;min-height:0;overflow-y:auto}
+
+@media(max-width:360px){
+  .pagehead h1{font-size:20px}.pagehead .sub{font-size:11px}
+  .markets .k,.metrics .k,.econ .k{font-size:8px}
+  .markets .v{font-size:12px}
+  .metrics .v,.econ .v{font-size:14px}
+  .markets .cell,.metrics .cell,.econ .cell{padding-left:3px;padding-right:3px}
+  .filter{font-size:8px;padding-left:1px;padding-right:1px}
+  .tabbtn{font-size:10px}
+  .sectiontitle{font-size:12px}
+}
+
+
+/* ---- FantasyStakes shared legibility/type hierarchy v1 ---- */
+.tag{font-size:8.5px}
+.filter{font-size:8.5px}
+.pill{font-size:8px}
+.context,.meta,.name,.scoresub,.foot,.mini{font-size:9px}
+.state{font-size:8.5px}
+.count{font-size:9.5px}
+.picklabel{font-size:9.5px}
+.vslineuphead,.vspos,.vsmeta{font-size:9.5px}
+.modulehead,.modulenote,.markethead,.refreshbar,.btn,.choice,.pick,.termsbtn{font-size:10.5px}
+
+</style>
+</head>
+<body>
+<!-- UNCLUTTERED — DESIGN ONLY — NOT APPROVED FOR DEVELOPMENT.
+ACTION UNCLUTTERED FULL PROTOTYPE v17 · TIER 3 REFINED / CROSS-POR CLEANUP.
+All governed demo values resolve from one canonical deterministic fixture plus versioned transformations. Production provider integrations replace fixture sources behind the same resolver boundary.
+-->
+<div class="phone">
+  <div class="statusbar"><span>10:08</span><span>▮▮▮ ◉ 72</span></div>
+  <div class="brandbar"><div class="menu">☰</div><div><div class="brand">Fantasy<span>Stakes</span></div><div class="tag">Real odds. Pure action. More ways to win.</div></div><div class="user" id="currentUserName"></div><button class="gearBtn" id="gearBtn" type="button" data-route="gear" aria-label="Open Gear settings"><svg class="gearIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.7 2.8h4.6l.6 2.3c.5.2 1 .4 1.4.7l2.1-1.2 3.2 3.2-1.2 2.1c.3.4.5.9.7 1.4l2.3.6v4.6l-2.3.6c-.2.5-.4 1-.7 1.4l1.2 2.1-3.2 3.2-2.1-1.2c-.4.3-.9.5-1.4.7l-.6 2.3H9.7l-.6-2.3c-.5-.2-1-.4-1.4-.7l-2.1 1.2-3.2-3.2 1.2-2.1c-.3-.4-.5-.9-.7-1.4l-2.3-.6v-4.6l2.3-.6c.2-.5.4-1 .7-1.4L2.4 7.8l3.2-3.2 2.1 1.2c.4-.3.9-.5 1.4-.7l.6-2.3Z"/><circle cx="12" cy="14.2" r="3.1"/></svg></button></div>
+
+  <div class="pagehead">
+    <h1>FANTASYSTAKES ACTION</h1>
+    <div class="sub" id="leagueContext"></div>
+  </div>
+
+  <div class="summary" aria-label="Action summary">
+    <div class="sumcell"><div class="sumvalue" id="summaryWallet"></div><div class="sumlabel">WALLET</div></div>
+    <div class="sumcell"><div class="sumvalue" id="summaryWeeklyMin"></div><div class="sumlabel">WEEKLY MIN</div></div>
+    <div class="sumcell"><div class="sumvalue" id="summaryInPlay"></div><div class="sumlabel">IN PLAY</div></div>
+    <div class="sumcell"><div class="sumvalue" id="summaryUpside"></div><div class="sumlabel">UPSIDE LEFT</div></div>
+  </div>
+
+  <div class="subtabs">
+    <button class="tabbtn active" data-tab="matchups">MATCHUPS</button>
+    <button class="tabbtn" data-tab="pools">PROP POOLS</button>
+  </div>
+
+  <div class="filterbar" id="filters">
+    <button class="filter active" data-filter="opponents">OPPONENTS</button>
+    <button class="filter" data-filter="challengers">CHALLENGERS</button>
+    <button class="filter" data-filter="pending">PENDING</button>
+    <button class="filter" data-filter="accepted">ACCEPTED</button>
+  </div>
+
+  <main class="content">
+    <section id="matchupSurface">
+      <div class="sectionrow"><div class="sectiontitle">MATCHUPS</div><div class="count" id="matchupCount"></div></div>
+      <div id="tiles"></div>
+    </section>
+
+    <section id="poolSurface" style="display:none">
+      <div class="sectionrow"><div class="sectiontitle">PROP POOLS</div><div class="count" id="poolCount"></div></div>
+      <div id="pools"></div>
+    </section>
+  </main>
+
+  <nav class="nav" aria-label="Primary">
+    <button class="navitem" type="button" data-route="standings" aria-label="Go to Standings"><span class="ni">≡</span>Standings</button>
+    <button class="navitem active" type="button" data-route="action" aria-label="Action, current screen"><span class="ni">▣</span>Action</button>
+    <button class="navitem" type="button" data-route="wrapup" aria-label="Go to Wrap Up"><span class="ni">⌁</span>Wrap Up</button>
+    <button class="navitem" type="button" data-route="account" aria-label="Go to Account"><span class="ni">◎</span>Account</button>
+  </nav>
+</div>
+
+<div class="sheet hidden" id="sheet">
+  <div class="sheetcard">
+    <div class="sheethead">
+      <div><div class="pillrow" id="sheetPills"></div><div class="title" id="sheetTitle">Pain Sanders vs Hank Williams</div><div class="context" id="sheetContext"></div></div>
+      <button class="close" id="closeSheet">×</button>
+    </div>
+    <div class="sheetscroll" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="sheet hidden" id="poolSheet">
+  <div class="sheetcard">
+    <div class="sheethead">
+      <div><div class="pillrow" id="poolSheetPills"></div><div class="title" id="poolSheetTitle"></div><div class="context" id="poolSheetContext"></div></div>
+      <button class="close" id="closePoolSheet">×</button>
+    </div>
+    <div class="sheetscroll" id="poolSheetBody"></div>
+  </div>
+</div>
+
+<div class="sheet hidden" id="termsSheet">
+  <div class="sheetcard" style="max-height:280px">
+    <div class="sheethead"><div><div class="title">Fixed vs Dynamic</div><div class="context">Wager terms</div></div><button class="close" id="closeTerms">×</button></div>
+    <div class="sheetscroll" style="padding:12px">
+      <p class="termsexplain"><strong>Fixed</strong> — Sending the challenge freezes that proposal. Acceptance selects those exact frozen terms; there is no acceptance-time repricing.</p>
+      <p class="termsexplain"><strong>Dynamic</strong> — Your Anchor stays fixed. The opponent Derived Stake may reprice downward under the governed model until lock; odds changes do not create an Anchor refund.</p>
+    </div>
+  </div>
+</div>
+
+<button class="debugtoggle" id="debugToggle">⚙</button>
+<div class="debug hidden" id="debugPanel">
+  <div class="debugtitle">DESIGN CONTROLS</div>
+  <label class="k">SELECTED MATCHUP</label>
+  <select id="debugMatchup"></select>
+  <label class="k" style="display:block;margin-top:6px">BET STATE</label>
+  <select id="debugBet">
+    <option value="no">AVAILABLE</option>
+    <option value="pending">PENDING</option>
+    <option value="countered">PENDING · COUNTER</option>
+    <option value="wagered">ACCEPTED</option>
+    <option value="declined">DECLINED</option>
+    <option value="expired">EXPIRED</option>
+  </select>
+  <label class="k" style="display:block;margin-top:6px">GAME STATE</label>
+  <select id="debugGame">
+    <option value="pregame">PRE-GAME</option>
+    <option value="live">LIVE</option>
+    <option value="over">OVER</option>
+  </select>
+  <label class="k" style="display:block;margin-top:6px">DECISION OWNER</label>
+  <select id="debugOwner">
+    <option value="you">YOUR ACTION</option>
+    <option value="them">WITH OPPONENT</option>
+  </select>
+  <button id="applyDebug">APPLY TO SELECTED</button>
+  <div style="border-top:1px solid #4c4538;margin:8px 0 3px"></div>
+  <label class="k">PROP POOL</label>
+  <select id="debugPool"><option value="0">Single Team: Punter Points</option><option value="1">Combined Teams: Punter Points</option></select>
+  <label class="k" style="display:block;margin-top:6px">POOL STATE</label>
+  <select id="debugPoolState">
+    <option value="open_none">OPEN · NO PICK</option>
+    <option value="open_selected">OPEN · PICK SELECTED</option>
+    <option value="entered_pregame">ENTERED · PRE-GAME</option>
+    <option value="entered_live">ENTERED · LIVE</option>
+    <option value="entered_over">ENTERED · OVER</option>
+    <option value="closed">CLOSED · NOT ENTERED</option>
+  </select>
+  <button id="applyPoolDebug">APPLY POOL STATE</button>
+</div>
+
+<script data-canonical-fixture="FantasyStakes_Canonical_CrossTab_Fixture_v4.js" data-canonical-sha256="9e23be451b1719d9a0db412ae35d15b4d640d8a8b4dc9770bcc485d7597d478d">
+/*
+ FantasyStakes Canonical Cross-Tab Fixture v4
+ Independent UI-coherence source of truth.
+
+ v4 remediation delta (FSR-024, UPSIDE LEFT):
+  The Action strip's UPSIDE LEFT cell read a hard-coded 5700 that no longer described
+  anything. It is now derived from the accepted, unresolved proposals in Action's own
+  lifecycle, so the literal is deleted rather than corrected. No other canonical value
+  changed in this pass.
+
+ v3 remediation delta (FSR-023, cross-surface escrow blocker):
+  The Action lifecycle held four live issuer commitments (Hank accepted, Dolly pending
+  outgoing, Reba issuer-escrow retained under counter, Loretta accepted) plus one funded
+  Prop Pool ticket, but the Ledger carried only Hank T20, a mis-stated Dolly T16 and the
+  pool ticket. Committed capital is now DERIVED from lifecycle state on both surfaces and
+  materialised here as one schedule, so the two can be independently cross-checked instead
+  of both reading the same literal.
+
+  IN PLAY and WEEKLY MINIMUM qualification are deliberately NOT the same quantity:
+    IN PLAY      = every held commitment  (accepted + pending issuer + counter-pending
+                   issuer + funded pool)                                   = 8100 cents
+    QUALIFYING   = governed qualifying gameplay only (accepted Versus + funded pool);
+                   a pending or counter-pending offer is committed but does not yet
+                   qualify                                                 = 4100 cents
+
+ v2 remediation deltas (UI-contract closeout):
+  FSR-005  IN PLAY / qualifying weekly commitments include unresolved Prop Pool capital.
+  FSR-016  Governed Skunk Pot is a named canonical account; Skunk never routes to Settled Counterparties.
+  FSR-007  Governed settings carry explicit authority / season-lock classification (CFG-107, CFG-1003).
+  FSR-002  Canonical demo navigation routes, so the persistent gear entry point is never a dead control.
+
+ All locked UI modules consume this same object/version.
+ Production provider/ledger services replace the fixture later without changing UI contracts.
+*/
+(function(global){
+  const teams = [
+    {id:"T01",name:"Pain Sanders"},
+    {id:"T02",name:"Hank Williams"},
+    {id:"T03",name:"Dolly Parton"},
+    {id:"T04",name:"Reba McEntire"},
+    {id:"T05",name:"Willie Nelson"},
+    {id:"T06",name:"Johnny Cash"},
+    {id:"T07",name:"Patsy Cline"},
+    {id:"T08",name:"Waylon Jennings"},
+    {id:"T09",name:"Loretta Lynn"},
+    {id:"T10",name:"George Strait"},
+    {id:"T11",name:"Tammy Wynette"},
+    {id:"T12",name:"Merle Haggard"}
+  ];
+
+  const painMatch = [5,-5,10,0,15,-10,5,10,0,15];
+  const painPool  = [0,5,-5,10,5,-5,10,0,5,5];
+
+  function balancedWeek(seedPain, week, salt){
+    const vals=[seedPain];
+    for(let i=1;i<=10;i++) vals.push(((i*3 + week*(salt+1) + salt*2)%13)-6);
+    vals.push(-vals.reduce((a,v)=>a+v,0));
+    return vals;
+  }
+
+  const weeklyResults={};
+  for(let week=1;week<=10;week++){
+    const matchVals=balancedWeek(painMatch[week-1],week,1);
+    const poolVals=balancedWeek(painPool[week-1],week,3);
+    const skunkTeamIndex = week===7 ? 0 : ((week*2)%11)+1;
+    const match={},pool={},skunk={};
+    teams.forEach((t,i)=>{
+      match[t.id]=matchVals[i];
+      pool[t.id]=poolVals[i];
+      skunk[t.id]=i===skunkTeamIndex ? -10 : 0;
+    });
+    weeklyResults[week]=Object.freeze({
+      published:true,
+      match:Object.freeze(match),
+      pool:Object.freeze(pool),
+      skunk:Object.freeze(skunk),
+      yahoo:Object.freeze({skunkTeamId:teams[skunkTeamIndex].id})
+    });
+  }
+  weeklyResults[11]=Object.freeze({published:false});
+
+  function seasonTotalsThrough(throughWeek){
+    const out={};
+    teams.forEach(t=>out[t.id]={match:0,pool:0,skunk:0,score:0});
+    for(let w=1;w<=throughWeek;w++){
+      const r=weeklyResults[w];
+      if(!r?.published) continue;
+      teams.forEach(t=>{
+        out[t.id].match += r.match[t.id]||0;
+        out[t.id].pool += r.pool[t.id]||0;
+        out[t.id].skunk += r.skunk[t.id]||0;
+      });
+    }
+    teams.forEach(t=>out[t.id].score=out[t.id].match+out[t.id].pool+out[t.id].skunk);
+    return out;
+  }
+
+  const seasonThroughWeek10=seasonTotalsThrough(10);
+
+  const FS_CANON = Object.freeze({
+    version:"FS_CANONICAL_CROSS_TAB_FIXTURE_V4",
+    brand:Object.freeze({
+      tagline:"Real odds. Pure action. More ways to win."
+    }),
+    league:Object.freeze({
+      id:"whispers-demo-2026",
+      name:"WHISPERS DEMO LEAGUE",
+      season:2026,
+      currentWeek:11,
+      completedThroughWeek:10,
+      currentUserId:"T01",
+      currentUser:"Pain Sanders",
+      teams:Object.freeze(teams.map(Object.freeze)),
+      officialYahooMatchups:Object.freeze([
+        Object.freeze(["Pain Sanders","Dolly Parton"]),
+        Object.freeze(["Hank Williams","Johnny Cash"]),
+        Object.freeze(["Reba McEntire","Willie Nelson"]),
+        Object.freeze(["Patsy Cline","Merle Haggard"]),
+        Object.freeze(["Waylon Jennings","Loretta Lynn"]),
+        Object.freeze(["George Strait","Tammy Wynette"])
+      ])
+    }),
+    scoringProfile:Object.freeze({
+      version:"FS_SCORING_PROFILE_WHISPERS_2026_V1",
+      upstream:"YAHOO_LEAGUE_SCORING_SETTINGS",
+      status:"CONFIRMED"
+    }),
+    settings:Object.freeze({
+      weeklyFantasyStakesCompetition:14000,
+      fantasyStakesChampionship:8000,
+      seasonAllocation:22000,
+      weeklyMinimum:1000,
+      standardPropPoolEntry:100,
+      skunkFee:1000,
+      unspentMinimumDestination:"FROZEN · RETURNED AT SEASON END",
+      matchupMarkets:"MONEYLINE · SPREAD · O/U",
+      termsModes:"FIXED + DYNAMIC",
+      propPoolsEnabled:true
+    }),
+    action:Object.freeze({
+      // FSR-005 / FSR-023: current-week committed capital is decomposed so every module
+      // aggregates components rather than hard-coding a total. Every value below is a
+      // materialisation of currentWeekCommitments and is proven against the Action
+      // lifecycle by the reconciliation suite - it is not an independent source.
+      wallet:9400,
+      unresolvedVersusEscrow:8000,
+      unresolvedPropPoolCommitments:100,
+      inPlay:8100,
+      // FSR-023: narrower than inPlay on purpose - pending and counter-pending offers are
+      // committed capital but are not yet qualifying gameplay.
+      qualifyingCommitmentsThisWeek:4100,
+      // FSR-024: upsideLeft is deliberately absent. Remaining upside is a property of the
+      // accepted, unresolved proposals in the Action lifecycle, so Action derives it via
+      // Resolver.commitmentTotals().upsideLeft. There is no canonical literal to drift.
+      currentWeek:11
+    }),
+
+    /* FSR-023 - the current week's unresolved commitments, in posting order.
+       Each record is derived from Action lifecycle state; the Account Ledger builds its
+       current-week postings from this schedule instead of from hard-coded literals, and
+       the reconciliation suite proves the schedule against the live lifecycle. */
+    currentWeekCommitments:Object.freeze([
+      Object.freeze({key:"POOL_SINGLE",kind:"POOL",definitionKey:"punterPointsSingle",
+        opponent:null,lifecycle:"FUNDED",role:"ENTRANT",cents:100,qualifying:true,
+        date:"Nov 13",desc:"Single Team: Punter Points \u00b7 funded pool entry"}),
+      Object.freeze({key:"VERSUS_HANK",kind:"VERSUS",definitionKey:null,
+        opponent:"Hank Williams",lifecycle:"ACCEPTED",role:"ISSUER",cents:2000,qualifying:true,
+        date:"Nov 15",desc:"Pain vs Hank \u00b7 accepted wager escrow"}),
+      Object.freeze({key:"VERSUS_DOLLY",kind:"VERSUS",definitionKey:null,
+        opponent:"Dolly Parton",lifecycle:"PENDING_OUTGOING",role:"ISSUER",cents:2000,qualifying:false,
+        date:"Nov 15",desc:"Pain vs Dolly \u00b7 pending issuer escrow"}),
+      Object.freeze({key:"VERSUS_REBA",kind:"VERSUS",definitionKey:null,
+        opponent:"Reba McEntire",lifecycle:"COUNTER_PENDING",role:"ISSUER",cents:2000,qualifying:false,
+        date:"Nov 15",desc:"Pain vs Reba \u00b7 issuer escrow retained under counter"}),
+      Object.freeze({key:"VERSUS_LORETTA",kind:"VERSUS",definitionKey:null,
+        opponent:"Loretta Lynn",lifecycle:"ACCEPTED",role:"ISSUER",cents:2000,qualifying:true,
+        date:"Nov 15",desc:"Pain vs Loretta \u00b7 accepted wager escrow"})
+    ]),
+    accounts:Object.freeze({
+      leagueEconomy:"League Economy",
+      wallet:"Wallet",
+      weeklyMinimumEscrow:"Weekly Minimum Escrow",
+      activeBetEscrow:"Active Bet Escrow",
+      propPoolCommitted:"Punter Points Pool",
+      championshipReserve:"Championship Reserve",
+      skunkPot:"Skunk Pot",
+      settledCounterparties:"Settled Counterparties"
+    }),
+    // FSR-005: user-facing IN PLAY aggregates exactly these unresolved-commitment accounts.
+    inPlayAccounts:Object.freeze(["Active Bet Escrow","Punter Points Pool"]),
+    // FSR-016: governed destination for a score-bearing Skunk Fee (LED-105, LED-343).
+    skunkRouting:Object.freeze({
+      destination:"Skunk Pot",
+      basis:"LED-343",
+      scoreBearing:true,
+      countsTowardWallet:false,
+      countsTowardInPlay:false
+    }),
+    // FSR-007: authority + season-lock classification for governed League Settings.
+    // Basis: CFG-107 (first-acceptance freeze) and CFG-1003 (season-fixed parameters).
+    settingsAuthority:Object.freeze({
+      basis:"CFG-107 · CFG-1003",
+      seasonConfigurationFrozen:true,
+      frozenAt:"FIRST_ACCEPTED_WAGER",
+      seasonLockLabel:"LOCKED FOR 2026",
+      gmView:"READ ONLY",
+      classification:Object.freeze({
+        weeklyFantasyStakesCompetition:"COMMISSIONER_SEASON_FIXED",
+        fantasyStakesChampionship:"COMMISSIONER_SEASON_FIXED",
+        seasonAllocation:"DERIVED",
+        weeklyMinimum:"COMMISSIONER_SEASON_FIXED",
+        standardPropPoolEntry:"COMMISSIONER_SEASON_FIXED",
+        skunkFee:"COMMISSIONER_SEASON_FIXED",
+        unspentMinimumDestination:"COMMISSIONER_SEASON_FIXED",
+        matchupMarkets:"COMMISSIONER_SEASON_FIXED",
+        termsModes:"COMMISSIONER_SEASON_FIXED",
+        propPools:"COMMISSIONER_SEASON_FIXED"
+      })
+    }),
+    // FSR-002 / FSR-021: one canonical route target per locked screen, so the persistent
+    // gear entry point and the bottom nav resolve deterministically in the demo package.
+    routes:Object.freeze({
+      standings:"fantasystakes_STANDINGS_WRAPUP_deterministic_v8_upside.html#standings",
+      action:"fantasystakes_ACTION_uncluttered_full_prototype_v24_upside.html",
+      wrapup:"fantasystakes_STANDINGS_WRAPUP_deterministic_v8_upside.html#wrap",
+      account:"fantasystakes_ACCOUNT_GEAR_uncluttered_v25_upside.html",
+      gear:"fantasystakes_ACCOUNT_GEAR_uncluttered_v25_upside.html#gear"
+    }),
+    account:Object.freeze({
+      pointsChampionshipNet:0,
+      fantasyStakesChampionshipNet:0,
+      topOffs:0
+    }),
+    weeklyResults:Object.freeze(weeklyResults),
+    seasonThroughWeek10:Object.freeze(
+      Object.fromEntries(Object.entries(seasonThroughWeek10).map(([k,v])=>[k,Object.freeze(v)]))
+    )
+  });
+
+  global.FS_CANON=FS_CANON;
+})(window);
+
+</script>
+<script>
+
+const urlDebug=new URLSearchParams(location.search).get("debug")==="1";
+if(urlDebug)document.documentElement.classList.add("debug-enabled");
+const VALUE_RULES={
+  fixture:FS_CANON.version,
+  versusEconomics:"GE-603",
+  fairMoneyline:"FAIR_ODDS_V1",
+  projectedMarket:"DEMO_MARKET_DERIVATION_V1",
+  poolPot:"POOL_POT_ENTRY_X_VALID_ENTRANTS_V1",
+  scoringProfile:FS_CANON.scoringProfile.version,
+  proposalDeadline:"PROPOSAL_DEADLINE_MIN_CREATED_PLUS_60_OR_LOCK_V1",
+  proposalLifecycle:"SPEC1_REV3_LIFECYCLE_V1",
+  poolEntries:"POOL_ENTRY_RECORDS_V1"
+};
+
+const DEMO_FIXTURE=Object.freeze({
+  sourceVersion:FS_CANON.version,
+  league:{
+    name:FS_CANON.league.name,
+    season:FS_CANON.league.season,
+    week:FS_CANON.league.currentWeek,
+    currentUser:FS_CANON.league.currentUser,
+    teams:FS_CANON.league.teams.map(t=>t.name),
+    officialYahooMatchups:FS_CANON.league.officialYahooMatchups.map(p=>[...p]),
+    scoringProfile:{
+      version:FS_CANON.scoringProfile.version,
+      source:FS_CANON.scoringProfile.upstream,
+      status:FS_CANON.scoringProfile.status
+    }
+  },
+  // FSR-015: carried straight through in canonical integer cents - no token-unit
+  // division on the way in, no float to re-round on the way out.
+  // FSR-010: the strip uses the locked Account terminology, WEEKLY MIN and IN PLAY.
+  fantasyStakesSettings:{
+    propPoolEntryAmount:FS_CANON.settings.standardPropPoolEntry,
+    weeklyMinimum:FS_CANON.settings.weeklyMinimum,
+    actionSummary:{
+      wallet:FS_CANON.action.wallet,
+      // FSR-023: retained only as the canonical expectation the audit checks the derived
+      // values against. The rendered strip uses Resolver.commitmentTotals().
+      weeklyMin:Math.max(FS_CANON.settings.weeklyMinimum-FS_CANON.action.qualifyingCommitmentsThisWeek,0),
+      inPlay:FS_CANON.action.inPlay
+      // FSR-024: no upsideLeft here. It is derived, not canonical.
+    }
+  },
+  clock:{
+    now:"2026-11-15T17:18:00Z",
+    boardUpdatedAt:"2026-11-15T17:08:00Z",
+    liveGameClock:"Q3 08:41"
+  },
+  poolEntryRecords:{
+    punterPointsSingle:["Hank Williams","Dolly Parton","Reba McEntire","Willie Nelson","Johnny Cash","Patsy Cline","Waylon Jennings"],
+    punterPointsCombined:["Hank Williams","Dolly Parton","Reba McEntire","Willie Nelson","Johnny Cash","Patsy Cline"]
+  },
+  poolDefinitions:{
+    punterPointsSingle:{scope:"Single Team",name:"Punter Points",type:"single",prompt:"Which single fantasy team gets the most points from its punter this week?"},
+    punterPointsCombined:{scope:"Combined Teams",name:"Punter Points",type:"combined",prompt:"Which Yahoo fantasy matchup produces the most combined punter points this week?"}
+  },
+  teamPunterProjection:{
+    "Pain Sanders":8.6,"Hank Williams":7.7,"Dolly Parton":8.1,"Reba McEntire":7.0,
+    "Willie Nelson":6.6,"Johnny Cash":7.3,"Patsy Cline":6.3,"Waylon Jennings":6.9,
+    "Loretta Lynn":5.8,"George Strait":5.2,"Tammy Wynette":4.9,"Merle Haggard":6.0
+  },
+  simulationModel:{
+    version:"FS_DEMO_MARGIN_NORMAL_V1",
+    distribution:"NORMAL_MARGIN",
+    sigmaFantasyPoints:20.0,
+    probabilityRule:"p = Φ((painProj − oppProj) / sigma)"
+  },
+  versusSeeds:[
+    ["Hank Williams",116.42,104.18],
+    ["Dolly Parton",111.95,108.30],
+    ["Reba McEntire",113.70,114.85],
+    ["Willie Nelson",119.20,106.55],
+    ["Johnny Cash",107.45,112.90],
+    ["Patsy Cline",115.05,109.60],
+    ["Waylon Jennings",110.80,110.25],
+    ["Loretta Lynn",121.35,111.10],
+    ["George Strait",108.65,115.40],
+    ["Tammy Wynette",117.10,113.15],
+    ["Merle Haggard",112.30,107.65]
+  ],
+  initialLifecycle:{
+    bet:["wagered","pending","countered","no","declined","expired","pending","wagered","pending","no","no"],
+    game:["live","pregame","pregame","live","over","over","pregame","live","pregame","pregame","over"]
+  },
+  playerNamePools:{
+    QB:["J. Allen","J. Burrow","P. Mahomes","L. Jackson","J. Hurts","J. Herbert","C. Stroud","D. Prescott","B. Mayfield","J. Love","B. Nix","K. Murray"],
+    RB:["B. Hall","J. Gibbs","C. McCaffrey","B. Robinson","S. Barkley","J. Taylor","D. Henry","J. Cook","K. Williams","D. Achane","K. Walker","R. White"],
+    WR:["J. Chase","C. Lamb","J. Jefferson","A. St. Brown","P. Nacua","A. Brown","D. Smith","M. Evans","T. Higgins","Z. Flowers","D. Adams","D. London"],
+    TE:["T. Kelce","S. LaPorta","G. Kittle","T. McBride","M. Andrews","E. Engram","J. Ferguson","D. Kincaid","C. Kmet","D. Njoku","K. Pitts","P. Freiermuth"],
+    K:["B. Aubrey","H. Butker","J. Elliott","C. Dicker","E. McPherson","J. Tucker","Y. Koo","J. Moody","K. Fairbairn","C. Boswell","B. McManus","M. Gay"],
+    DEF:["49ers","Steelers","Cowboys","Bills","Ravens","Jets","Browns","Chiefs","Eagles","Packers","Vikings","Broncos"]
+  }
+});
+
+function roundHalf(x){return Math.round(x*2)/2}
+
+// Abramowitz-Stegun style erf approximation; deterministic and adequate for the demo fixture.
+// The production adapter later supplies the governed simulation output without changing this UI contract.
+function erfApprox(x){
+  const sign=x<0?-1:1, ax=Math.abs(x);
+  const a1=.254829592,a2=-.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=.3275911;
+  const t=1/(1+p*ax);
+  const y=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-ax*ax);
+  return sign*y;
+}
+function normalCdf(z){return .5*(1+erfApprox(z/Math.sqrt(2)))}
+function probabilityFromProjection(painProj,oppProj){
+  const sigma=Number(DEMO_FIXTURE.simulationModel.sigmaFantasyPoints);
+  if(!(sigma>0))throw new Error("Invalid demo simulation sigma");
+  return normalCdf((Number(painProj)-Number(oppProj))/sigma);
+}
+function fairMoneyline(p){
+  const n=p>=.5 ? -100*p/(1-p) : 100*(1-p)/p;
+  return Math.round(n);
+}
+function mlText(n){return n<0?`−${Math.abs(n)}`:`+${Math.abs(n)}`}
+/* ---- FSR-015 - integer FantasyStakes cents --------------------------------
+   Anchor, Derived, Pot and every other Ledger-facing economic quantity is stored and
+   computed as an integer number of FantasyStakes cents. The previous path did this
+   arithmetic in token-unit floats and flattened it with a helper of the form
+
+       Math.floor((x + 1e-9) * 100) / 100
+
+   whose epsilon nudge can lift a value across an exact cent boundary and hand back a
+   cent that GE-603 requires to be floored away. Formatting into Ŧ now happens only at
+   render time, so no sub-cent residue can reach state or the Ledger. */
+const CENTS_PER_TOKEN=100;
+function assertCents(v,what){
+  if(!Number.isInteger(v))throw new Error(`${what||"economic value"} must be integer FantasyStakes cents, received ${v}`);
+  return v;
+}
+/* GE-603: the opponent's Derived Stake is the strict floor of Anchor x (1 - p) / p into
+   whole FantasyStakes cents. Integer inputs, one floor, no epsilon, never a round-up. */
+// A finite double is exactly a binary rational. Recovering that rational lets the floor
+// below be taken on the true value rather than on a thrice-rounded float.
+function exactBinaryFraction(x){
+  let scaled=x,e=0;
+  while(!Number.isInteger(scaled)&&e<1100){scaled*=2;e++}
+  if(!Number.isInteger(scaled))throw new Error("probability is not exactly representable");
+  return[BigInt(scaled),1n<<BigInt(e)];
+}
+function derivedStakeCents(anchorCents,pIssuer){
+  assertCents(anchorCents,"Anchor");
+  const p=Number(pIssuer);
+  if(!(p>0&&p<1))throw new Error("GE-603 requires a probability strictly between 0 and 1, received "+p);
+  // fair value = Anchor x (1 - p) / p, with p taken as its exact binary value num/den,
+  // so the whole expression is Anchor x (den - num) / num over the integers. BigInt
+  // division truncates, and both operands are non-negative, so this is a strict floor.
+  const[num,den]=exactBinaryFraction(p);
+  const cents=(BigInt(anchorCents)*(den-num))/num;
+  if(cents>BigInt(Number.MAX_SAFE_INTEGER))throw new Error("Derived Stake exceeds safe integer range");
+  return Number(cents);
+}
+function potCents(anchorCents,derivedCents){
+  return assertCents(anchorCents,"Anchor")+assertCents(derivedCents,"Derived");
+}
+// Exact predicate: is the GE-603 fair value at least `cents`? Used by the audit to prove
+// the strict-floor property without going back through a lossy float.
+function fairValueAtLeast(anchorCents,pIssuer,cents){
+  const[num,den]=exactBinaryFraction(Number(pIssuer));
+  return BigInt(anchorCents)*(den-num)>=BigInt(cents)*num;
+}
+// Display-only conversion. Refuses any value that is not already integer cents.
+function fmtCents(cents){
+  assertCents(cents,"display amount");
+  return `Ŧ${(cents/CENTS_PER_TOKEN).toFixed(2).replace(/\.00$/,'')}`;
+}
+function signed(x,d=2){const v=Number(x).toFixed(d);return Number(x)>=0?`+${v}`:v.replace('-', '−')}
+
+function isoMs(v){return new Date(v).getTime()}
+function addMinutes(iso,min){return new Date(isoMs(iso)+min*60000).toISOString()}
+function minIso(a,b){return isoMs(a)<=isoMs(b)?a:b}
+function formatClockTime(iso){return new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"UTC"}).replace(" "," ")}
+function proposalDeadline(createdAt,lockAt){return minIso(addMinutes(createdAt,60),lockAt)}
+function minutesRemaining(deadline,now=DEMO_FIXTURE.clock.now){return Math.max(0,Math.ceil((isoMs(deadline)-isoMs(now))/60000))}
+let eventSequence=0;
+function eventTime(){const t=addMinutes(DEMO_FIXTURE.clock.now,eventSequence);eventSequence+=1;return t}
+let idSequence=1000;
+function nextId(prefix){idSequence+=1;return `${prefix}-${DEMO_FIXTURE.league.week}-${idSequence}`}
+
+const Resolver={
+  leagueTeams(){return [...DEMO_FIXTURE.league.teams]},
+  opponents(){return this.leagueTeams().filter(n=>n!==DEMO_FIXTURE.league.currentUser)},
+  officialYahooMatchups(){return DEMO_FIXTURE.league.officialYahooMatchups.map(p=>[...p])},
+  teamCount(){return DEMO_FIXTURE.league.teams.length},
+  poolEntryAmount(){return Number(DEMO_FIXTURE.fantasyStakesSettings.propPoolEntryAmount)},
+  initialPoolEntries(key){return [...(DEMO_FIXTURE.poolEntryRecords[key]||[])]},
+  poolDefinition(key){return DEMO_FIXTURE.poolDefinitions[key]},
+  poolField(type){
+    if(type==="single"){
+      return this.leagueTeams().map(name=>[name,Number(DEMO_FIXTURE.teamPunterProjection[name]).toFixed(1),"punter pts"]);
+    }
+    return this.officialYahooMatchups().map(pair=>[
+      `${pair[0]} vs ${pair[1]}`,
+      (Number(DEMO_FIXTURE.teamPunterProjection[pair[0]])+Number(DEMO_FIXTURE.teamPunterProjection[pair[1]])).toFixed(1),
+      "combined pts"
+    ]);
+  },
+  derivedStake(anchorCents,pIssuer){
+    return derivedStakeCents(anchorCents,pIssuer);
+  },
+
+  /* ---- FSR-023 - committed-capital resolver -------------------------------
+     Committed capital is DERIVED from lifecycle state and is never read back from a
+     stored total. Governing behaviour this encodes:
+       - escrow at issue      the issuer's Anchor is escrowed when the proposal is issued
+                              and stays held while the challenge is live;
+       - counter moves money  never. A counter creates a new immutable proposal; the
+                              ORIGINAL issuer's escrow (the ORIGINAL Anchor, not the
+                              counter's) stays held, and the counter's Anchor is not yet
+                              escrowed by anyone;
+       - acceptance           converts held issuer escrow into accepted exposure, still
+                              held until settlement;
+       - terminal states      declined / expired / cancelled release the issuer escrow.
+     IN PLAY counts every held commitment. WEEKLY MINIMUM qualification is deliberately
+     narrower: only accepted Versus commitments and funded Pool tickets qualify, because a
+     pending or counter-pending offer is committed capital but not yet qualifying
+     gameplay. The two totals are computed separately and must not be conflated. */
+  versusCommitment(m){
+    const me=DEMO_FIXTURE.league.currentUser;
+    const ch=m.challenge;
+    const none=extra=>Object.assign({opponent:m.opponent,kind:"VERSUS",role:"NONE",
+      lifecycle:"NONE",cents:0,held:false,qualifying:false,reason:""},extra);
+    if(!ch||m.bet==="no") return none({reason:"no live proposal - nothing committed"});
+    const role=ch.issuer===me?"ISSUER":"RECIPIENT";
+    if(m.bet==="declined") return none({role,lifecycle:"DECLINED",reason:"terminal - issuer escrow released"});
+    if(m.bet==="expired")  return none({role,lifecycle:"EXPIRED", reason:"terminal - issuer escrow released"});
+    if(m.bet==="wagered"){
+      const ap=ch.acceptedProposal;
+      if(!ap) return none({role,lifecycle:"ACCEPTED",reason:"accepted proposal missing"});
+      return none({role,lifecycle:"ACCEPTED",held:true,qualifying:true,
+        cents:role==="ISSUER"?ap.anchor:ap.derived,
+        reason:role==="ISSUER"?"accepted wager - Anchor held until settlement"
+                              :"accepted wager - Derived exposure held until settlement"});
+    }
+    // Pending or countered. Only the original issuer has money committed; the recipient
+    // commits nothing until they accept.
+    const countered=m.bet==="countered";
+    if(role!=="ISSUER") return none({role,
+      lifecycle:countered?"COUNTER_PENDING":"PENDING_INCOMING",
+      reason:"recipient commits nothing before acceptance"});
+    return none({role,lifecycle:countered?"COUNTER_PENDING":"PENDING_OUTGOING",
+      held:true,qualifying:false,
+      // The ORIGINAL Anchor, deliberately - not activeProposal.anchor, which on a
+      // countered challenge is the counter's Anchor and has escrowed nothing.
+      cents:ch.proposalHistory[0].anchor,
+      reason:countered?"counter moved no money - original issuer Anchor still held"
+                      :"issuer Anchor escrowed at issue"});
+  },
+  poolCommitment(raw){
+    const base={kind:"POOL",definitionKey:raw.definitionKey,opponent:null,role:"ENTRANT",
+      lifecycle:"NOT_ENTERED",cents:0,held:false,qualifying:false,reason:"no funded ticket"};
+    const entry=currentUserEntry(raw);
+    if(!entry) return base;
+    if(raw.closed||raw.game!=="PRE-GAME")
+      return Object.assign({},base,{lifecycle:"RESOLVED",reason:"ticket no longer unresolved"});
+    return Object.assign({},base,{lifecycle:"FUNDED",cents:this.poolEntryAmount(),
+      held:true,qualifying:true,reason:"funded ticket held until governed settlement"});
+  },
+  commitments(){
+    return [...matchups.map(m=>this.versusCommitment(m)),
+            ...poolReviewData.map(raw=>this.poolCommitment(raw))];
+  },
+
+  /* ---- FSR-024 - UPSIDE LEFT ----------------------------------------------
+     Remaining potential positive return from unresolved ACCEPTED wagers, read off the
+     frozen accepted proposal rather than a stored literal:
+       - Pain holds the Anchor  -> upside is the opponent's Derived stake;
+       - Pain holds the Derived -> upside is the Anchor stake Pain collects on a win.
+     A pending or counter-pending proposal has no accepted counterparty and contributes
+     nothing. A matchup whose game is OVER has a determined outcome and no remaining
+     potential, so it contributes nothing either - note this is a deliberately different
+     test from the escrow one, which keeps an accepted wager committed until settlement.
+     Prop Pool tickets are excluded: this is a Versus metric. */
+  upsideCommitment(m){
+    const me=DEMO_FIXTURE.league.currentUser;
+    const ch=m.challenge;
+    const rec=extra=>Object.assign({opponent:m.opponent,kind:"VERSUS",lifecycle:"NONE",
+      role:"NONE",cents:0,accepted:false,unresolved:false,reason:""},extra);
+    if(!ch||m.bet!=="wagered"){
+      const lifecycle=m.bet==="countered"?"COUNTER_PENDING":m.bet==="pending"?"PENDING":
+        m.bet==="declined"?"DECLINED":m.bet==="expired"?"EXPIRED":"NONE";
+      return rec({lifecycle,reason:"no accepted wager - nothing left to win"});
+    }
+    const ap=ch.acceptedProposal;
+    if(!ap) return rec({lifecycle:"ACCEPTED",reason:"accepted proposal missing"});
+    const role=ch.issuer===me?"ANCHOR":"DERIVED";
+    if(m.game==="over") return rec({lifecycle:"ACCEPTED",role,accepted:true,
+      reason:"outcome determined - no remaining upside"});
+    return rec({lifecycle:"ACCEPTED",role,accepted:true,unresolved:true,
+      cents:role==="ANCHOR"?ap.derived:ap.anchor,
+      reason:role==="ANCHOR"?"Pain holds the Anchor - upside is the opponent's Derived stake"
+                            :"Pain holds the Derived side - upside is the Anchor stake"});
+  },
+  upsideCommitments(){return matchups.map(m=>this.upsideCommitment(m))},
+  commitmentTotals(){
+    const all=this.commitments();
+    const sum=f=>all.filter(f).reduce((a,c)=>a+c.cents,0);
+    const versusEscrow=sum(c=>c.held&&c.kind==="VERSUS");
+    const poolCommitted=sum(c=>c.held&&c.kind==="POOL");
+    const qualifying=sum(c=>c.qualifying);
+    const upsideLeft=this.upsideCommitments().reduce((a,c)=>a+c.cents,0);
+    return{versusEscrow,poolCommitted,
+      inPlay:versusEscrow+poolCommitted,
+      qualifying,
+      weeklyMinRemaining:Math.max(DEMO_FIXTURE.fantasyStakesSettings.weeklyMinimum-qualifying,0),
+      upsideLeft};
+  },
+  versusMatchups(){
+    return DEMO_FIXTURE.versusSeeds.map((r,i)=>{
+      const [name,painProj,oppProj]=r;
+      const p=probabilityFromProjection(painProj,oppProj);
+      const margin=painProj-oppProj;
+      const total=painProj+oppProj;
+      const spread=-roundHalf(margin);
+      const overUnder=roundHalf(total);
+      const ml=fairMoneyline(p);
+      const anchor=2000;                 // Ŧ20.00 held as integer FantasyStakes cents
+      const derived=this.derivedStake(anchor,p);
+      const painActual=Number((painProj*(.62 + i*.012)).toFixed(2));
+      const oppActual=Number((oppProj*(.59 + i*.011)).toFixed(2));
+      const painFinal=Number((painProj + ((i%3)-1)*3.15).toFixed(2));
+      const oppFinal=Number((oppProj + ((i%4)-1.5)*2.25).toFixed(2));
+      const cPain=painProj+(i%2?-.9:1.1), cOpp=oppProj+((i%3)-1)*.75;
+      const cp=probabilityFromProjection(cPain,cOpp);
+      const cSpread=-roundHalf(cPain-cOpp), cAnchor=2400+(i%3)*100, cDerived=this.derivedStake(cAnchor,cp);
+      return {
+        id:i,opponent:name,
+        bet:DEMO_FIXTURE.initialLifecycle.bet[i],
+        game:DEMO_FIXTURE.initialLifecycle.game[i],
+        owner:i%2===0?"you":"them",
+        painProj:painProj.toFixed(2),oppProj:oppProj.toFixed(2),
+        painActual:painActual.toFixed(2),oppActual:oppActual.toFixed(2),
+        painFinal:painFinal.toFixed(2),oppFinal:oppFinal.toFixed(2),
+        p,ml,margin,total,spread,overUnder,anchor,derived,pot:potCents(anchor,derived),
+        termsMode:i%3===0?"DYNAMIC":"FIXED",
+        source:{fixture:VALUE_RULES.fixture,economics:VALUE_RULES.versusEconomics,market:VALUE_RULES.projectedMarket,simulationModel:DEMO_FIXTURE.simulationModel.version},
+        wager:{market:"SPREAD",pick:`Pain ${spread<0?'−':'+'}${Math.abs(spread).toFixed(1)}`,odds:mlText(ml),stake:anchor,them:derived,pot:potCents(anchor,derived)},
+        counter:{p:cp,ml:fairMoneyline(cp),spread:cSpread,anchor:cAnchor,derived:cDerived,pot:potCents(cAnchor,cDerived)}
+      };
+    });
+  },
+  roster(teamName, teamProjectedScore, phase, actualScore, finalScore){
+    const idx=Math.max(0,DEMO_FIXTURE.league.teams.indexOf(teamName));
+    const pools=DEMO_FIXTURE.playerNamePools;
+    const pick=(arr,offset=0)=>arr[(idx+offset)%arr.length];
+    const starters=[
+      {name:pick(pools.QB),slot:"QB",w:.205},
+      {name:pick(pools.RB),slot:"RB",w:.145},
+      {name:pick(pools.WR),slot:"WR",w:.175},
+      {name:pick(pools.TE),slot:"TE",w:.125},
+      {name:pick(pools.WR,5),slot:"FLEX",w:.115},
+      {name:pick(pools.K),slot:"K",w:.075},
+      {name:pick(pools.DEF),slot:"DEF",w:.065}
+    ];
+    const sumW=starters.reduce((a,b)=>a+b.w,0);
+    const projected=starters.map(x=>({...x,proj:Number((Number(teamProjectedScore)*x.w/sumW).toFixed(2))}));
+    const actualFactor=Number(teamProjectedScore)>0?Number(actualScore||0)/Number(teamProjectedScore):0;
+    const finalFactor=Number(teamProjectedScore)>0?Number(finalScore||0)/Number(teamProjectedScore):0;
+    return projected.map(x=>({
+      ...x,
+      actual:Number((x.proj*actualFactor).toFixed(2)),
+      final:Number((x.proj*finalFactor).toFixed(2)),
+      rem:Number(Math.max(0,x.proj-(x.proj*actualFactor)).toFixed(2))
+    }));
+  },
+  bench(teamName){
+    const idx=Math.max(0,DEMO_FIXTURE.league.teams.indexOf(teamName));
+    const p=DEMO_FIXTURE.playerNamePools, pick=(arr,o=0)=>arr[(idx+o)%arr.length];
+    return [
+      {name:pick(p.RB,10),proj:11.30},{name:pick(p.WR,9),proj:10.85},{name:pick(p.WR,8),proj:9.95},
+      {name:pick(p.TE,6),proj:8.40},{name:pick(p.RB,11),proj:8.05},{name:pick(p.DEF,3),proj:6.90}
+    ];
+  }
+};
+
+const leagueTeams=Resolver.leagueTeams();
+const opponents=Resolver.opponents();
+const officialYahooMatchups=Resolver.officialYahooMatchups();
+
+const matchups=Resolver.versusMatchups();
+
+function marketTermsFromMatchup(m, source=m){
+  return {
+    market:"SPREAD",
+    pick:`Pain ${source.spread<0?'−':'+'}${Math.abs(source.spread).toFixed(1)}`,
+    line:source.spread,
+    odds:source.ml,
+    anchor:Number(source.anchor),
+    derived:Number(source.derived),
+    pot:Number(source.pot),
+    termsMode:m.termsMode
+  };
+}
+function createProposal(m,{author,termsMode=m.termsMode,anchor=m.anchor,useCounter=false,createdAt=eventTime()}={}){
+  const src=useCounter?m.counter:m;
+  const pIssuer=useCounter?m.counter.p:m.p;
+  const derived=Resolver.derivedStake(anchor,pIssuer);
+  const lockAt=addMinutes(DEMO_FIXTURE.clock.now,47 + (m.id%9));
+  const deadline=proposalDeadline(createdAt,lockAt);
+  return {
+    id:nextId("P"),
+    challengeId:m.challenge?.id||nextId("C"),
+    versionKind:useCounter?"counter":"initial",
+    author,
+    createdAt,
+    proposalLockAt:lockAt,
+    deadline,
+    termsMode,
+    market:"SPREAD",
+    pick:`Pain ${src.spread<0?'−':'+'}${Math.abs(src.spread).toFixed(1)}`,
+    line:src.spread,
+    odds:src.ml,
+    anchor:assertCents(Number(anchor),"proposal Anchor"),
+    derived,
+    pot:potCents(Number(anchor),derived),
+    source:{fixture:VALUE_RULES.fixture,economics:VALUE_RULES.versusEconomics,lifecycle:VALUE_RULES.proposalLifecycle}
+  };
+}
+function seedLifecycle(m){
+  const pain=DEMO_FIXTURE.league.currentUser;
+  const incoming=[6,8].includes(m.id);
+  const issuer=incoming?m.opponent:pain;
+  const recipient=incoming?pain:m.opponent;
+  const initial=createProposal(m,{author:issuer,termsMode:m.termsMode,anchor:m.anchor,createdAt:addMinutes(DEMO_FIXTURE.clock.now,-18-(m.id%7))});
+  m.challenge={id:initial.challengeId,issuer,recipient,proposalHistory:[initial],activeProposal:initial,counterUsed:false,acceptedProposal:null,status:"open"};
+  if(m.bet==="countered"){
+    const counterAuthor=recipient;
+    const cp=createProposal(m,{author:counterAuthor,termsMode:m.termsMode,anchor:m.counter.anchor,useCounter:true,createdAt:addMinutes(DEMO_FIXTURE.clock.now,-9-(m.id%4))});
+    cp.challengeId=m.challenge.id;
+    m.challenge.proposalHistory.push(cp);m.challenge.activeProposal=cp;m.challenge.counterUsed=true;
+  }
+  if(m.bet==="wagered"){m.challenge.acceptedProposal=m.challenge.activeProposal;m.challenge.status="accepted";}
+  if(m.bet==="declined")m.challenge.status="declined";
+  if(m.bet==="expired")m.challenge.status="expired";
+}
+matchups.forEach(seedLifecycle);
+
+function activeProposal(m){return m.challenge?.activeProposal||null}
+function acceptedProposal(m){return m.challenge?.acceptedProposal||activeProposal(m)}
+function actionOwner(m){
+  if(!(m.bet==="pending"||m.bet==="countered")) return null;
+  const p=activeProposal(m); if(!p) return null;
+  return p.author===DEMO_FIXTURE.league.currentUser?m.opponent:DEMO_FIXTURE.league.currentUser;
+}
+function syncOwnerCompatibility(m){m.owner=actionOwner(m)===DEMO_FIXTURE.league.currentUser?"you":"them"}
+matchups.forEach(syncOwnerCompatibility);
+
+function hydrateDeterministicChrome(){
+  document.getElementById("currentUserName").textContent=DEMO_FIXTURE.league.currentUser;
+  document.getElementById("leagueContext").textContent=`${DEMO_FIXTURE.league.name} · WEEK ${DEMO_FIXTURE.league.week} · ${DEMO_FIXTURE.league.season}`;
+  const s=DEMO_FIXTURE.fantasyStakesSettings.actionSummary;
+  // FSR-023: WEEKLY MIN and IN PLAY render from live lifecycle state, so the strip cannot
+  // drift from the commitments the board is actually showing.
+  const committed=Resolver.commitmentTotals();
+  document.getElementById("summaryWallet").textContent=fmtCents(s.wallet);
+  document.getElementById("summaryWeeklyMin").textContent=fmtCents(committed.weeklyMinRemaining);
+  document.getElementById("summaryInPlay").textContent=fmtCents(committed.inPlay);
+  document.getElementById("summaryUpside").textContent=fmtCents(committed.upsideLeft);
+  window.__FS_COMMITMENTS__={records:Resolver.commitments(),totals:committed,
+    upside:Resolver.upsideCommitments(),
+    renderedWeeklyMin:committed.weeklyMinRemaining,renderedInPlay:committed.inPlay,
+    renderedWallet:s.wallet,renderedUpsideLeft:committed.upsideLeft};
+  document.getElementById("matchupCount").textContent=`${Resolver.opponents().length} · SCROLL`;
+  document.getElementById("poolCount").textContent=`2 · SCROLL`;
+}
+const betLabel={no:"AVAILABLE",pending:"PENDING",countered:"PENDING",wagered:"ACCEPTED",declined:"DECLINED",expired:"EXPIRED"};
+const gameLabel={pregame:"PRE-GAME",live:"LIVE",over:"OVER"};
+const betClass={no:"bet-no",pending:"bet-pending",countered:"bet-countered",wagered:"bet-wagered",declined:"bet-declined",expired:"bet-expired"};
+const gameClass={pregame:"game-pregame",live:"game-live",over:"game-over"};
+
+let filter="opponents", selected=1, currentTab="matchups";
+
+function pills(m){
+  // FSR-006: AVAILABLE is an opportunity state. Once a matchup is LIVE or OVER with no
+  // accepted wager there is nothing left to initiate, so the card falls back to the
+  // neutral CLOSED treatment this artifact already uses on terminal footers rather than
+  // advertising availability. Terminal DECLINED / EXPIRED pills (O-3) are untouched.
+  const closed=m.bet==="no"&&m.game!=="pregame";
+  const text=closed?"CLOSED":betLabel[m.bet];
+  const cls=closed?"bet-closed":betClass[m.bet];
+  return `<span class="pill ${cls}">${text}</span><span class="pill ${gameClass[m.game]}">${gameLabel[m.game]}</span>`;
+}
+
+function scoreBlock(m,full=false){
+  if(m.game==="pregame"){
+    return `<div class="${full?'scorebanner':'score'}"><div class="team"><div class="name">PAIN SANDERS</div><div class="scorebig">${m.painProj}</div><div class="scoresub">PROJECTED FINAL</div></div><div class="vs">VS</div><div class="team right"><div class="name">${m.opponent.toUpperCase()}</div><div class="scorebig">${m.oppProj}</div><div class="scoresub">PROJECTED FINAL</div></div></div>`;
+  }
+  if(m.game==="live"){
+    return `<div class="${full?'scorebanner':'score'}"><div class="team"><div class="name">PAIN SANDERS</div><div class="scorebig">${m.painActual}</div><div class="scoresub">Proj final ${m.painProj}</div></div><div class="vs">VS</div><div class="team right"><div class="name">${m.opponent.toUpperCase()}</div><div class="scorebig">${m.oppActual}</div><div class="scoresub">Proj final ${m.oppProj}</div></div></div>`;
+  }
+  return `<div class="${full?'scorebanner':'score'}"><div class="team"><div class="name">PAIN SANDERS</div><div class="scorebig">${m.painFinal}</div><div class="scoresub">FINAL</div></div><div class="vs">VS</div><div class="team right"><div class="name">${m.opponent.toUpperCase()}</div><div class="scorebig">${m.oppFinal}</div><div class="scoresub">FINAL</div></div></div>`;
+}
+
+function marketBlock(m){
+  const spreadText=`Pain ${m.spread<0?'−':'+'}${Math.abs(m.spread).toFixed(1)}`;
+  const ml=`Pain ${mlText(m.ml)}`;
+  const ou=m.overUnder.toFixed(1);
+  if(m.game==="pregame") return `<div class="markets"><div class="cell"><div class="k">MONEYLINE</div><div class="v">${ml}</div></div><div class="cell"><div class="k">SPREAD</div><div class="v">${spreadText}</div></div><div class="cell"><div class="k">O/U</div><div class="v">${ou}</div></div></div>`;
+  const actualMargin=Number(m.painActual)-Number(m.oppActual);
+  const finalMargin=Number(m.painFinal)-Number(m.oppFinal);
+  const actualTotal=Number(m.painActual)+Number(m.oppActual);
+  const finalTotal=Number(m.painFinal)+Number(m.oppFinal);
+  if(m.game==="live") return `<div class="markets"><div class="cell"><div class="k">MONEYLINE</div><div class="v">${ml}</div><div class="state ${actualMargin>=0?'good':'bad'}">${actualMargin>=0?'LEADING':'TRAILING'}</div></div><div class="cell"><div class="k">SPREAD</div><div class="v">${spreadText}</div><div class="state ${(actualMargin+m.spread)>=0?'good':'bad'}">${(actualMargin+m.spread)>=0?'COVERING':'NOT COVERING'} ${signed(actualMargin+m.spread)}</div></div><div class="cell"><div class="k">O/U</div><div class="v">${ou}</div><div class="state ${(actualTotal-m.overUnder)>=0?'good':'bad'}">PACING ${(actualTotal-m.overUnder)>=0?'OVER':'UNDER'}</div></div></div>`;
+  return `<div class="markets"><div class="cell"><div class="k">MONEYLINE</div><div class="v">${ml}</div><div class="state ${finalMargin>=0?'good':'bad'}">${finalMargin>=0?'WON':'LOST'}</div></div><div class="cell"><div class="k">SPREAD</div><div class="v">${spreadText}</div><div class="state ${(finalMargin+m.spread)>=0?'good':'bad'}">${(finalMargin+m.spread)>=0?'COVERED':'MISSED'} ${signed(finalMargin+m.spread)}</div></div><div class="cell"><div class="k">O/U</div><div class="v">${ou}</div><div class="state ${(finalTotal-m.overUnder)>=0?'good':'bad'}">${finalTotal>=m.overUnder?'OVER':'UNDER'} ${signed(finalTotal-m.overUnder)}</div></div></div>`;
+}
+
+function footBlock(m){
+  if(m.bet==="no") return `<div class="foot"><span>No wager activity</span><strong>${m.game==="pregame"?"AVAILABLE":"FOLLOW MATCHUP"}</strong></div>`;
+  if(m.bet==="pending"||m.bet==="countered"){
+    const p=activeProposal(m), yours=actionOwner(m)===DEMO_FIXTURE.league.currentUser;
+    return `<div class="foot"><span>${m.bet==="countered"?"Counter · ":""}${p?.pick||m.wager.pick} · ${fmtCents(p?.anchor??m.anchor)}</span><strong>${yours?"YOUR ACTION":"WAITING ON "+m.opponent.split(" ")[0].toUpperCase()}</strong></div>`;
+  }
+  if(m.bet==="wagered"){
+    const finalCover=(Number(m.painFinal)-Number(m.oppFinal)+m.spread); const label=m.game==="over"?`${finalCover>=0?"WON":"LOST"} · ${finalCover>=0?"+"+fmtCents(m.derived):"−"+fmtCents(m.anchor)}`:m.game==="live"?`${(Number(m.painActual)-Number(m.oppActual)+m.spread)>=0?"COVERING":"NOT COVERING"}`:"YOUR WAGER";
+    return `<div class="foot"><span>${m.wager.pick} · ${fmtCents(m.anchor)}</span><strong>${label}</strong></div>`;
+  }
+  if(m.bet==="declined") return `<div class="foot"><span>Prior offer declined</span><strong>CLOSED</strong></div>`;
+  return `<div class="foot"><span>Prior offer expired at lock</span><strong>CLOSED</strong></div>`;
+}
+
+function tile(m){
+  const meta=m.game==="pregame"?`BOARD OPEN<br>updated ${formatClockTime(DEMO_FIXTURE.clock.boardUpdatedAt)}`:m.game==="live"?`LIVE<br>${DEMO_FIXTURE.clock.liveGameClock}`:`FINAL<br>WEEK ${DEMO_FIXTURE.league.week}`;
+  return `<article class="tile" data-id="${m.id}">
+    <div class="tilehead"><div><div class="pillrow">${pills(m)}</div><div class="title">${DEMO_FIXTURE.league.currentUser} vs ${m.opponent}</div><div class="context">Week ${DEMO_FIXTURE.league.week} · Regular Season</div></div><div class="meta">${meta}</div></div>
+    ${scoreBlock(m)}
+    ${marketBlock(m)}
+    ${footBlock(m)}
+  </article>`;
+}
+
+function qualifies(m){
+  // OPPONENTS is the master Week 11 view: Pain vs every other league GM.
+  if(filter==="opponents") return true;
+  // CHALLENGERS: an incoming wager or counter is waiting for Pain to act.
+  if(filter==="challengers") return (m.bet==="pending"||m.bet==="countered") && actionOwner(m)===DEMO_FIXTURE.league.currentUser;
+  // PENDING: active proposal is waiting on the other GM.
+  if(filter==="pending") return (m.bet==="pending"||m.bet==="countered") && actionOwner(m)===m.opponent;
+  // ACCEPTED: accepted wagers stay here pre-game, live, and after settlement.
+  if(filter==="accepted") return m.bet==="wagered";
+  return true;
+}
+
+function normalizeExpired(){matchups.forEach(m=>{
+  if(!(m.bet==="pending"||m.bet==="countered")) return;
+  const p=activeProposal(m);
+  const deadlinePassed=p && isoMs(DEMO_FIXTURE.clock.now)>=isoMs(p.deadline);
+  if(m.game!=="pregame"||deadlinePassed){m.bet="expired";m.challenge.status="expired";syncOwnerCompatibility(m);}
+});}
+function renderTiles(){
+  normalizeExpired();
+  document.getElementById("tiles").innerHTML=matchups.filter(qualifies).map(tile).join("");
+  document.querySelectorAll(".tile").forEach(t=>t.addEventListener("click",()=>openMatchup(+t.dataset.id)));
+}
+
+function lineup(m){
+  const left=Resolver.roster(DEMO_FIXTURE.league.currentUser,m.painProj,m.game,m.painActual,m.painFinal);
+  const right=Resolver.roster(m.opponent,m.oppProj,m.game,m.oppActual,m.oppFinal);
+  const rows=left.map((l,i)=>[l,right[i]]);
+  const body=rows.map(([l,r])=>{
+    if(m.game==="pregame"){
+      return `<div class="vsplayer"><div class="vsside"><div class="vspname">${l.name}</div><div class="vsproj">${l.proj.toFixed(2)}</div><div class="vsmeta">Projected</div></div><div class="vspos">${l.slot}</div><div class="vsside right"><div class="vspname">${r.name}</div><div class="vsproj">${r.proj.toFixed(2)}</div><div class="vsmeta">Projected</div></div></div>`;
+    }
+    if(m.game==="live"){
+      return `<div class="liveRow"><div class="liveSide"><div class="vspname">${l.name}</div><div class="liveStats"><strong>${l.actual.toFixed(2)}</strong> actual · ${l.proj.toFixed(2)} proj · ${l.rem.toFixed(2)} rem</div></div><div class="livePos">${l.slot}</div><div class="liveSide right"><div class="vspname">${r.name}</div><div class="liveStats"><strong>${r.actual.toFixed(2)}</strong> actual · ${r.proj.toFixed(2)} proj · ${r.rem.toFixed(2)} rem</div></div></div>`;
+    }
+    return `<div class="liveRow"><div class="liveSide"><div class="vspname">${l.name}</div><div class="liveStats"><strong>${l.final.toFixed(2)}</strong> final · ${l.proj.toFixed(2)} proj</div></div><div class="livePos">${l.slot}</div><div class="liveSide right"><div class="vspname">${r.name}</div><div class="liveStats"><strong>${r.final.toFixed(2)}</strong> final · ${r.proj.toFixed(2)} proj</div></div></div>`;
+  }).join("");
+  return `<div class="accordion"><button class="accbtn" data-acc="starters">STARTING LINEUPS <span>▸</span></button><div class="accbody hiddenBody" id="starters"><div class="vslineuphead"><span>${DEMO_FIXTURE.league.currentUser.toUpperCase()}</span><span></span><span class="r">${m.opponent.toUpperCase()}</span></div>${body}</div></div>`;
+}
+
+function bench(m){
+  const left=Resolver.bench(DEMO_FIXTURE.league.currentUser);
+  const right=Resolver.bench(m.opponent);
+  const body=left.map((l,i)=>`<div class="vsplayer"><div class="vsside"><div class="vspname">${l.name}</div><div class="vsproj">${l.proj.toFixed(2)}</div><div class="vsmeta">Projected</div></div><div class="vspos">BN</div><div class="vsside right"><div class="vspname">${right[i].name}</div><div class="vsproj">${right[i].proj.toFixed(2)}</div><div class="vsmeta">Projected</div></div></div>`).join("");
+  return `<div class="accordion"><button class="accbtn" data-acc="bench">BENCH <span>▸</span></button><div class="accbody hiddenBody" id="bench"><div class="vslineuphead"><span>${DEMO_FIXTURE.league.currentUser.toUpperCase()}</span><span></span><span class="r">${m.opponent.toUpperCase()}</span></div>${body}</div></div>`;
+}
+
+function metrics(m){
+  if(m.game==="pregame") return `<div class="metrics"><div class="cell"><div class="k">WIN%</div><div class="v">${Math.round(m.p*100)}%</div></div><div class="cell"><div class="k">PROJ MARGIN</div><div class="v">${signed(m.margin)}</div></div><div class="cell"><div class="k">PROJ TOTAL</div><div class="v">${m.total.toFixed(2)}</div></div></div>`;
+  // FSR-013: on a LIVE card this is still the frozen pre-game probability, not a live
+  // win-probability model, so the basis is stated in the label.
+  if(m.game==="live") return `<div class="metrics"><div class="cell"><div class="k">PRE-GAME WIN%</div><div class="v">${Math.round(m.p*100)}%</div></div><div class="cell"><div class="k">CURRENT MARGIN</div><div class="v">${signed(Number(m.painActual)-Number(m.oppActual))}</div></div><div class="cell"><div class="k">PROJ MARGIN</div><div class="v">${signed(m.margin)}</div></div></div>`;
+  const fm=Number(m.painFinal)-Number(m.oppFinal), ft=Number(m.painFinal)+Number(m.oppFinal);
+  return `<div class="metrics"><div class="cell"><div class="k">FINAL MARGIN</div><div class="v">${signed(fm)}</div></div><div class="cell"><div class="k">FINAL TOTAL</div><div class="v">${ft.toFixed(2)}</div></div><div class="cell"><div class="k">VS PROJ</div><div class="v">${signed(fm-m.margin)}</div></div></div>`;
+}
+
+function noActionModule(m){
+  if(m.game!=="pregame") return `<div class="module"><div class="modulehead">NO WAGER</div><div class="modulenote">No wager was accepted for this matchup.</div></div>`;
+  return `<div class="module">
+    <div class="modulehead">BUILD YOUR CHALLENGE</div>
+    <div class="modulenote">Choose a market, confirm your side, select terms, and set your stake.</div>
+    <div class="choicegrid">
+      <button class="choice active" data-market="Moneyline">MONEYLINE</button>
+      <button class="choice" data-market="Spread">SPREAD</button>
+      <button class="choice" data-market="O/U">O/U</button>
+    </div>
+    <div class="pickpanel"><div class="picklabel">MARKET SIDES</div><div class="pickgrid" id="composerPickGrid">
+      <button class="pick active"><span>PAIN ${mlText(m.ml)}</span><span class="mini">YOUR SIDE</span></button>
+      <button class="pick disabled" disabled><span>${m.opponent.split(" ")[0].toUpperCase()} ${mlText(fairMoneyline(1-m.p))}</span><span class="mini">OPPONENT SIDE</span></button>
+    </div></div>
+    <div class="termsrow"><div class="k">TERMS</div><button class="infobtn" id="termsInfo">i</button><div class="termsgrid"><button class="termsbtn active" data-terms="FIXED">FIXED</button><button class="termsbtn" data-terms="DYNAMIC">DYNAMIC</button></div></div>
+    <div class="stakewrap"><div class="k">WAGER AMOUNT</div><div class="stakecontrol"><button class="btn" id="minusStake">−</button><div class="stakevalue" id="stakeValue">Ŧ0</div><button class="btn" id="plusStake">+</button></div></div>
+    <div class="reviewline"><div id="reviewSummary">Pain ${mlText(m.ml)} · Fixed</div><div class="reviewsub" id="reviewSub">Current terms freeze when the challenge is sent.</div></div>
+    <div class="econ"><div class="cell"><div class="k">YOU STAKE</div><div class="v" id="youStake">Ŧ0</div></div><div class="cell"><div class="k">THEY STAKE</div><div class="v" id="theyStake">Ŧ0</div></div><div class="cell"><div class="k">TOTAL POT</div><div class="v" id="potValue">Ŧ0</div></div></div>
+    <div class="actions one"><button class="btn primary" id="sendChallengeBtn" data-life="send">SEND CHALLENGE</button></div>
+  </div>`;
+}
+
+function proposalModeCopy(p){
+  return p.termsMode==="DYNAMIC"?"Dynamic · Anchor fixed; Derived can reprice down until lock":"Fixed · frozen proposal economics";
+}
+function deadlineCopy(p){
+  const mins=minutesRemaining(p.deadline);
+  return mins>0?`${mins} MIN LEFT`:"EXPIRED";
+}
+function counterWasIs(m){
+  if(!m.challenge?.counterUsed||m.challenge.proposalHistory.length<2) return "";
+  const [was,is]=m.challenge.proposalHistory.slice(-2);
+  const row=(label,a,b,fmt=v=>v)=>`<div class="compare"><span>${label}</span><span>${fmt(a)} → <strong>${fmt(b)}</strong></span></div>`;
+  return `<div class="wasis"><div class="picklabel">WAS → IS · REFRESH & RELOCK</div>
+    ${row("ANCHOR",was.anchor,is.anchor,fmtCents)}
+    ${row("DERIVED",was.derived,is.derived,fmtCents)}
+    ${row("ODDS",was.odds,is.odds,mlText)}
+    ${row("LINE",was.line,is.line,v=>`Pain ${v<0?'−':'+'}${Math.abs(v).toFixed(1)}`)}
+  </div>`;
+}
+function pendingModule(m, counter=false){
+  const p=activeProposal(m), first=m.opponent.split(" ")[0].toUpperCase();
+  if(!p) return `<div class="module"><div class="modulehead">PENDING CHALLENGE</div><div class="modulenote">Proposal data unavailable.</div></div>`;
+  if(m.game!=="pregame"||minutesRemaining(p.deadline)<=0) return `<div class="module"><div class="modulehead">PENDING CHALLENGE</div><div class="modulenote">Betting is closed. This unresolved proposal transitions to EXPIRED.</div></div>`;
+  const line=`${p.pick} · ${mlText(p.odds)}`;
+  const econ=`<div class="econ"><div class="cell"><div class="k">ANCHOR</div><div class="v">${fmtCents(p.anchor)}</div></div><div class="cell"><div class="k">DERIVED</div><div class="v">${fmtCents(p.derived)}</div></div><div class="cell"><div class="k">TOTAL POT</div><div class="v">${fmtCents(p.pot)}</div></div></div>`;
+  const yourAction=actionOwner(m)===DEMO_FIXTURE.league.currentUser;
+  if(yourAction){
+    const isCounter=p.versionKind==="counter";
+    const title=isCounter?"COUNTER RECEIVED":"CHALLENGE RECEIVED";
+    const note=isCounter?`${m.opponent} countered your offer. Review the new frozen proposal and respond.`:`${m.opponent} challenged you. Review the terms and respond.`;
+    const canCounter=!isCounter&&!m.challenge.counterUsed&&m.challenge.issuer!==DEMO_FIXTURE.league.currentUser;
+    const buttons=canCounter?`<div class="actions"><button class="btn primary" data-life="accept">ACCEPT</button><button class="btn blue" data-life="counter">COUNTER</button><button class="btn" data-life="decline">DECLINE</button></div>`:`<div class="actions two"><button class="btn primary" data-life="accept">ACCEPT</button><button class="btn" data-life="decline">DECLINE</button></div>`;
+    return `<div class="module"><div class="modulehead">${title}</div><div class="modulenote">${note}</div><div class="offergrid"><div class="offercol"><div class="offerlabel">TERMS</div><div class="offerbig">${line}</div><div class="offersub">${proposalModeCopy(p)}</div></div><div class="offercol"><div class="offerlabel">RESPONSE WINDOW</div><div class="offerbig">${deadlineCopy(p)}</div><div class="offersub">Expires sooner if the wager locks</div></div></div>${counterWasIs(m)}${econ}${buttons}</div>`;
+  }
+  const isCounter=p.versionKind==="counter";
+  return `<div class="module ${isCounter?"":"pending-outgoing"}"><div class="modulehead">${isCounter?"COUNTER SENT":"CHALLENGE SENT"}</div><div class="modulenote">Waiting for ${m.opponent} to ${isCounter?"accept or decline":"accept, counter, or decline"}.</div><div class="offergrid"><div class="offercol"><div class="offerlabel">${isCounter?"YOUR COUNTER":"YOUR OFFER"}</div><div class="offerbig">${line}</div><div class="offersub">${proposalModeCopy(p)}</div></div><div class="offercol"><div class="offerlabel">RESPONSE WINDOW</div><div class="offerbig">${deadlineCopy(p)}</div><div class="offersub">No action needed from you</div></div></div>${counterWasIs(m)}${econ}${isCounter?`<div class="statusline">WAITING ON ${first}</div>`:`<div class="actions one"><button class="btn" data-life="cancel">CANCEL CHALLENGE</button></div>`}</div>`;
+}
+
+function wageredModule(m){
+  const p=acceptedProposal(m);
+  const spread=p?.line??m.spread, anchor=p?.anchor??m.anchor, derived=p?.derived??m.derived, pot=p?.pot??m.pot;
+  const currentCover=(Number(m.painActual)-Number(m.oppActual)+spread);
+  const finalCover=(Number(m.painFinal)-Number(m.oppFinal)+spread);
+  const status=m.game==="pregame"?"ACCEPTED":m.game==="live"?(currentCover>=0?`CURRENTLY COVERING ${signed(currentCover)}`:`NOT COVERING ${signed(currentCover)}`):(finalCover>=0?`WON · +${fmtCents(derived)}`:`LOST · −${fmtCents(anchor)}`);
+  const line=`${p?.pick||`Pain ${spread<0?'−':'+'}${Math.abs(spread).toFixed(1)}`} · ${mlText(p?.odds??m.ml)}`;
+  return `<div class="module"><div class="modulehead">YOUR WAGER</div>
+    <div class="offergrid"><div class="offercol"><div class="offerlabel">MARKET</div><div class="offerbig">${line}</div><div class="offersub">${m.game==="pregame"?proposalModeCopy(p||{termsMode:m.termsMode}):"Frozen accepted terms"}</div></div><div class="offercol"><div class="offerlabel">STATUS</div><div class="offerbig">${status}</div><div class="offersub">${m.game==="over"?"Authoritative settlement result":"Against accepted market"}</div></div></div>
+    <div class="econ"><div class="cell"><div class="k">ANCHOR</div><div class="v">${fmtCents(anchor)}</div></div><div class="cell"><div class="k">DERIVED</div><div class="v">${fmtCents(derived)}</div></div><div class="cell"><div class="k">TOTAL POT</div><div class="v">${fmtCents(pot)}</div></div></div>
+  </div>`;
+}
+
+function closedModule(m){
+  const canReissue=m.game==="pregame"&&m.challenge?.issuer===DEMO_FIXTURE.league.currentUser;
+  return `<div class="module"><div class="modulehead">${m.bet==="declined"?"PRIOR OFFER DECLINED":"PRIOR OFFER EXPIRED"}</div>
+    <div class="modulenote">${m.bet==="declined"?"The proposal was declined.":"The proposal expired at betting lock."} The prior challenge remains immutable history.</div>
+    ${canReissue?`<div class="actions one"><button class="btn primary" data-life="reissue">REISSUE CHALLENGE</button></div>`:""}
+  </div>`;
+}
+
+function stateModule(m){
+  if(m.bet==="no") return noActionModule(m);
+  if(m.bet==="pending") return pendingModule(m,false);
+  if(m.bet==="countered") return pendingModule(m,true);
+  if(m.bet==="wagered") return wageredModule(m);
+  return closedModule(m);
+}
+
+function positionSheets(){
+  const phone=document.querySelector(".phone");
+  const brand=document.querySelector(".brandbar");
+  const nav=document.querySelector(".nav");
+  if(!phone||!brand||!nav) return;
+
+  // The expanded card is a true in-phone sheet. Its viewport is permanently
+  // bounded by the bottom of the FantasyStakes header and the top of nav.
+  const top=brand.offsetTop + brand.offsetHeight;
+  const bottom=nav.offsetHeight;
+  const height=Math.max(0,phone.clientHeight-top-bottom);
+
+  document.querySelectorAll(".sheet").forEach(sh=>{
+    if(sh.parentElement!==phone) phone.appendChild(sh);
+    sh.style.left="0px";
+    sh.style.top=`${top}px`;
+    sh.style.width="100%";
+    sh.style.height=`${height}px`;
+  });
+}
+
+window.addEventListener("resize",positionSheets);
+window.addEventListener("scroll",positionSheets,{passive:true});
+
+function openMatchup(id){
+  selected=id;
+  const m=matchups[id];
+  document.getElementById("sheetPills").innerHTML=pills(m);
+  document.getElementById("sheetTitle").textContent=`${DEMO_FIXTURE.league.currentUser} vs ${m.opponent}`;
+  document.getElementById("sheetContext").textContent=`${DEMO_FIXTURE.league.week ? 'Week '+DEMO_FIXTURE.league.week : ''} · ${gameLabel[m.game]}`;
+  document.getElementById("sheetBody").innerHTML=`
+    ${scoreBlock(m,true)}
+    ${lineup(m)}
+    ${bench(m)}
+    ${metrics(m)}
+    <div class="markethead">${m.game==="pregame"?"MARKETS · PRE-GAME":m.game==="live"?"FROZEN MARKETS · LIVE":"FROZEN MARKETS · FINAL"}</div>
+    ${marketBlock(m)}
+    ${m.game==="pregame"?`<div class="markethead">BOARD PRICE · INFORMATIONAL</div><div class="refreshbar"><span>Current board price. Refreshing never reprices a frozen proposal.</span><button class="btn" id="refreshOdds">↻ REFRESH ODDS</button></div>`:""}
+    ${stateModule(m)}
+  `;
+  wireSheet(m);
+  positionSheets();
+  const sheet=document.getElementById("sheet");
+  sheet.classList.remove("hidden");
+  requestAnimationFrame(()=>{ document.getElementById("sheetBody").scrollTop=0; });
+  syncDebug();
+}
+
+function wireSheet(m){
+  document.querySelectorAll(".accbtn").forEach(btn=>btn.addEventListener("click",()=>{
+    const body=document.getElementById(btn.dataset.acc);
+    if(!body) return;
+    const hidden=body.classList.toggle("hiddenBody");
+    btn.lastElementChild.textContent=hidden?"▸":"▾";
+  }));
+  document.querySelectorAll(".accbody").forEach(body=>{
+    body.addEventListener("wheel",e=>{
+      if(body.classList.contains("hiddenBody")) return;
+      const atTop=body.scrollTop<=0;
+      const atBottom=Math.ceil(body.scrollTop+body.clientHeight)>=body.scrollHeight;
+      if((e.deltaY<0&&!atTop)||(e.deltaY>0&&!atBottom)) e.stopPropagation();
+    },{passive:true});
+  });
+  const refresh=document.getElementById("refreshOdds");
+  if(refresh) refresh.addEventListener("click",()=>{const old=refresh.textContent;refresh.textContent="✓ ODDS UPDATED";setTimeout(()=>refresh.textContent=old,700)});
+
+  const termsInfo=document.getElementById("termsInfo");
+  if(termsInfo) termsInfo.addEventListener("click",()=>{positionSheets();document.getElementById("termsSheet").classList.remove("hidden")});
+
+  if(m.bet==="no" && m.game==="pregame"){
+    let market="Moneyline", terms="FIXED", stake=0, selectedPick=`Pain ${mlText(m.ml)}`;
+    const renderPick=()=>{
+      const grid=document.getElementById("composerPickGrid");
+      if(!grid) return;
+      if(market==="Moneyline"){
+        selectedPick=`Pain ${mlText(m.ml)}`;
+        grid.innerHTML=`<button class="pick active"><span>${selectedPick.toUpperCase()}</span><span class="mini">YOUR SIDE</span></button><button class="pick disabled" disabled><span>${m.opponent.split(" ")[0].toUpperCase()} ${mlText(fairMoneyline(1-m.p))}</span><span class="mini">OPPONENT SIDE</span></button>`;
+      }else if(market==="Spread"){
+        selectedPick=`Pain ${m.spread<0?'−':'+'}${Math.abs(m.spread).toFixed(1)}`;
+        grid.innerHTML=`<button class="pick active"><span>${selectedPick.toUpperCase()}</span><span class="mini">YOUR SIDE</span></button><button class="pick disabled" disabled><span>${m.opponent.split(" ")[0].toUpperCase()} ${m.spread>0?'−':'+'}${Math.abs(m.spread).toFixed(1)}</span><span class="mini">OPPONENT SIDE</span></button>`;
+      }else{
+        selectedPick=`Over ${m.overUnder.toFixed(1)}`;
+        grid.innerHTML=`<button class="pick active" data-ou="Over">OVER ${m.overUnder.toFixed(1)}</button><button class="pick" data-ou="Under">UNDER ${m.overUnder.toFixed(1)}</button>`;
+        grid.querySelectorAll("[data-ou]").forEach(b=>b.addEventListener("click",()=>{grid.querySelectorAll("[data-ou]").forEach(x=>x.classList.remove("active"));b.classList.add("active");selectedPick=b.dataset.ou+" "+m.overUnder.toFixed(1);renderSummary()}));
+      }
+      renderSummary();
+    };
+    const renderSummary=()=>{
+      // stake is held in integer FantasyStakes cents; Ŧ appears only in these labels.
+      document.getElementById("stakeValue").textContent=fmtCents(stake);
+      document.getElementById("youStake").textContent=fmtCents(stake);
+      const them=stake===0?0:Resolver.derivedStake(stake,m.p);
+      document.getElementById("theyStake").textContent=fmtCents(them);
+      document.getElementById("potValue").textContent=fmtCents(potCents(stake,them));
+      document.getElementById("reviewSummary").textContent=`${selectedPick} · ${terms[0]+terms.slice(1).toLowerCase()}`;
+      document.getElementById("reviewSub").textContent=terms==="FIXED"?"Current proposal freezes when the challenge is sent.":"Dynamic: your Anchor stays fixed; the opponent Derived Stake may reprice down until lock. No odds-driven Anchor refund.";
+      const send=document.getElementById("sendChallengeBtn"); if(send)send.disabled=stake<=0;
+    };
+    document.querySelectorAll("[data-market]").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("[data-market]").forEach(x=>x.classList.remove("active"));b.classList.add("active");market=b.dataset.market;renderPick()}));
+    document.querySelectorAll("[data-terms]").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll("[data-terms]").forEach(x=>x.classList.remove("active"));b.classList.add("active");terms=b.dataset.terms;renderPick()}));
+    document.getElementById("minusStake").addEventListener("click",()=>{stake=Math.max(0,stake-CENTS_PER_TOKEN);renderSummary()});
+    document.getElementById("plusStake").addEventListener("click",()=>{stake+=CENTS_PER_TOKEN;renderSummary()});
+    renderSummary();
+    const send=document.getElementById("sendChallengeBtn");
+    if(send)send.addEventListener("click",()=>sendChallenge(m,{market,pick:selectedPick,termsMode:terms,anchor:stake}));
+  }
+  document.querySelectorAll("[data-life]").forEach(btn=>btn.addEventListener("click",()=>{
+    const action=btn.dataset.life;
+    if(action==="accept") acceptChallenge(m);
+    else if(action==="counter") counterChallenge(m);
+    else if(action==="decline") declineChallenge(m);
+    else if(action==="cancel") cancelChallenge(m);
+    else if(action==="reissue") reissueChallenge(m);
+  }));
+}
+
+
+function rerenderAfterLifecycle(m){
+  syncOwnerCompatibility(m);renderTiles();openMatchup(m.id);runDeterministicReconciliation();
+}
+function sendChallenge(m,{market,pick,termsMode,anchor}){
+  if(m.game!=="pregame"||anchor<=0)return;
+  const pain=DEMO_FIXTURE.league.currentUser;
+  const createdAt=eventTime();
+  const base=createProposal(m,{author:pain,termsMode,anchor,createdAt});
+  if(market==="Moneyline"){base.market="MONEYLINE";base.pick=pick;base.line=null;base.odds=m.ml;}
+  else if(market==="O/U"){base.market="O/U";base.pick=pick;base.line=m.overUnder;base.odds=m.ml;}
+  else {base.market="SPREAD";base.pick=pick;base.line=m.spread;base.odds=m.ml;}
+  base.derived=Resolver.derivedStake(anchor,m.p);base.pot=potCents(anchor,base.derived);
+  m.challenge={id:base.challengeId,issuer:pain,recipient:m.opponent,proposalHistory:[base],activeProposal:base,counterUsed:false,acceptedProposal:null,status:"pending"};
+  m.bet="pending";m.termsMode=termsMode;rerenderAfterLifecycle(m);
+}
+function acceptChallenge(m){
+  if(actionOwner(m)!==DEMO_FIXTURE.league.currentUser)return;
+  const p=activeProposal(m);if(!p)return;
+  m.challenge.acceptedProposal={...p};m.challenge.status="accepted";m.bet="wagered";rerenderAfterLifecycle(m);
+}
+function counterChallenge(m){
+  if(actionOwner(m)!==DEMO_FIXTURE.league.currentUser||m.challenge.counterUsed)return;
+  if(m.challenge.issuer===DEMO_FIXTURE.league.currentUser)return;
+  const prior=activeProposal(m);if(!prior)return;
+  const newAnchor=prior.anchor+4*CENTS_PER_TOKEN;   // integer cents; nothing to floor
+  const cp=createProposal(m,{author:DEMO_FIXTURE.league.currentUser,termsMode:prior.termsMode,anchor:newAnchor,useCounter:true,createdAt:eventTime()});
+  cp.challengeId=m.challenge.id;
+  m.challenge.proposalHistory.push(cp);m.challenge.activeProposal=cp;m.challenge.counterUsed=true;m.challenge.status="pending";
+  m.bet="countered";rerenderAfterLifecycle(m);
+}
+function declineChallenge(m){
+  if(actionOwner(m)!==DEMO_FIXTURE.league.currentUser)return;
+  m.challenge.status="declined";m.bet="declined";rerenderAfterLifecycle(m);
+}
+function cancelChallenge(m){
+  const p=activeProposal(m);if(!p||p.author!==DEMO_FIXTURE.league.currentUser||p.versionKind!=="initial")return;
+  m.challenge.status="cancelled";m.challenge.cancelledAt=eventTime();m.bet="no";rerenderAfterLifecycle(m);
+}
+function reissueChallenge(m){
+  if(m.game!=="pregame"||m.challenge?.issuer!==DEMO_FIXTURE.league.currentUser)return;
+  const old=m.challenge;
+  const anchor=old?.activeProposal?.anchor||m.anchor;
+  const termsMode=old?.activeProposal?.termsMode||m.termsMode;
+  const p=createProposal(m,{author:DEMO_FIXTURE.league.currentUser,termsMode,anchor,createdAt:eventTime()});
+  p.challengeId=nextId("C");
+  m.challenge={id:p.challengeId,issuer:DEMO_FIXTURE.league.currentUser,recipient:m.opponent,proposalHistory:[p],activeProposal:p,counterUsed:false,acceptedProposal:null,status:"pending",reissuedFrom:old?.id||null};
+  m.bet="pending";rerenderAfterLifecycle(m);
+}
+function expireChallengeForTest(m){
+  if(!(m.bet==="pending"||m.bet==="countered"))return;
+  const p=activeProposal(m);p.deadline=addMinutes(DEMO_FIXTURE.clock.now,-1);normalizeExpired();renderTiles();
+}
+
+const poolReviewData=[
+  // FSR-023: Pain's funded ticket is an entry record here, matching the Ledger's
+  // POOL_ENTRY posting. pick:null is the existing "entry active, choose a pick" state, so
+  // zero Pool preselection is preserved.
+  {definitionKey:"punterPointsSingle",game:"PRE-GAME",closed:false,userPick:null,entryRecords:[
+    ...Resolver.initialPoolEntries("punterPointsSingle").map(team=>({team,pick:null,enteredAt:"fixture"})),
+    {team:FS_CANON.league.currentUser,pick:null,enteredAt:"fixture"}
+  ]},
+  {definitionKey:"punterPointsCombined",game:"PRE-GAME",closed:false,userPick:null,entryRecords:Resolver.initialPoolEntries("punterPointsCombined").map(team=>({team,pick:null,enteredAt:"fixture"}))}
+];
+function currentUserEntry(raw){return raw.entryRecords.find(e=>e.team===DEMO_FIXTURE.league.currentUser)||null}
+function poolMeta(raw){
+  const entry=currentUserEntry(raw);
+  const status=entry?"ENTERED":raw.closed?"CLOSED":"OPEN";
+  return {status,game:raw.game,entered:raw.entryRecords.length};
+}
+function hydratePool(raw){
+  const d=Resolver.poolDefinition(raw.definitionKey);
+  return {...raw,...d,entryAmount:Resolver.poolEntryAmount(),field:Resolver.poolField(d.type)};
+}
+// Integer entrants x integer entry cents stays integer: nothing to floor.
+function poolPot(raw){return poolMeta(raw).entered*Resolver.poolEntryAmount()}
+function poolFilterState(raw){const st=poolMeta(raw).status;return st==="OPEN"?"open":st==="ENTERED"?"entered":"closed"}
+function renderPools(){
+  document.getElementById('poolCount').textContent=`${poolReviewData.length} · SCROLL`;
+  document.getElementById("pools").innerHTML=poolReviewData.map((raw,i)=>{
+    const p=hydratePool(raw), meta=poolMeta(raw), pot=poolPot(raw), entry=currentUserEntry(raw);
+    return `<article class="poolcard" data-pool="${i}" data-poolstate="${poolFilterState(raw)}">
+      <div class="tilehead"><div><div class="pillrow"><span class="pill ${meta.status==='OPEN'?'bet-no':meta.status==='ENTERED'?'bet-wagered':'game-over'}">${meta.status}</span><span class="pill ${meta.game==='PRE-GAME'?'game-pregame':meta.game==='LIVE'?'game-live':'game-over'}">${meta.game}</span></div><div class="title">${p.scope}: ${p.name}</div><div class="context">${p.prompt}</div></div><div class="meta">WEEK ${DEMO_FIXTURE.league.week}</div></div>
+      <div class="poolstats"><div class="poolstat"><div class="k">ENTRY</div><div class="v">${fmtCents(p.entryAmount)}</div></div><div class="poolstat"><div class="k">ENTERED</div><div class="v">${meta.entered} / ${Resolver.teamCount()}</div></div><div class="poolstat"><div class="k">POT</div><div class="v">${fmtCents(pot)}</div></div></div>
+      <div class="foot"><span>${meta.status==='OPEN'?(raw.userPick!==null?'Pick selected':'Available to enter'):meta.status==='CLOSED'?'Entry window closed':meta.game==='LIVE'?'Your entry is live':meta.game==='OVER'?'Pool settled':entry?.pick===null?'Entry active · choose replacement pick':'Your pick is entered'}</span><strong>${meta.status==='OPEN'?'ENTER':'VIEW'}</strong></div>
+    </article>`;
+  }).join("");
+  document.querySelectorAll('.poolcard').forEach(c=>c.addEventListener('click',()=>openPoolSheet(Number(c.dataset.pool))));
+  applyPoolFilter();
+}
+let poolFilter='all';
+function applyPoolFilter(){
+  document.querySelectorAll('.poolcard').forEach(c=>{c.style.display=(poolFilter==='all'||c.dataset.poolstate===poolFilter)?'block':'none'});
+}
+function openPoolSheet(idx){
+  const raw=poolReviewData[idx], p=hydratePool(raw), meta=poolMeta(raw), entry=currentUserEntry(raw), sh=document.getElementById('poolSheet');
+  const selection=entry?entry.pick:raw.userPick;
+  positionSheets();
+  document.getElementById('poolSheetPills').innerHTML=`<span class="pill ${meta.status==='OPEN'?'bet-no':meta.status==='ENTERED'?'bet-wagered':'game-over'}">${meta.status}</span><span class="pill ${meta.game==='PRE-GAME'?'game-pregame':meta.game==='LIVE'?'game-live':'game-over'}">${meta.game}</span>`;
+  document.getElementById('poolSheetTitle').textContent=p.scope+': '+p.name;
+  document.getElementById('poolSheetContext').textContent=`Week ${DEMO_FIXTURE.league.week} · League-wide Prop Pool`;
+  const locked=meta.game!=="PRE-GAME"||raw.closed;
+  const choiceHtml=p.field.map((r,i)=>{
+    const selected=selection===i;
+    const dim=selection!==null&&!selected;
+    return `<button class="poolpick ${selected?'active':dim?'dimmed':''}" data-pick="${i}" ${locked?'disabled':''}><span class="pickname">${r[0]}</span><span class="pickproj">${r[1]}<small>${r[2]}</small></span></button>`;
+  }).join('');
+  const currentPot=poolPot(raw), nextPot=entry?currentPot:currentPot+p.entryAmount;
+  const entered=!!entry;
+  const hasSelection=selection!==null;
+  document.getElementById('poolSheetBody').innerHTML=`
+    <div class="poolprompt"><div class="eyebrow">THE PROP</div><strong>${p.prompt}</strong></div>
+    <div class="poolstats"><div class="poolstat"><div class="k">ENTRY</div><div class="v">${fmtCents(p.entryAmount)}</div></div><div class="poolstat"><div class="k">ENTERED</div><div class="v">${meta.entered} / ${Resolver.teamCount()}</div></div><div class="poolstat"><div class="k">POT</div><div class="v">${fmtCents(currentPot)}</div></div></div>
+    <div class="poolcomposer"><div class="head">MAKE YOUR PICK</div><div class="copy">${p.type==='single'?'Pick one fantasy team.':'Pick one Yahoo fantasy matchup.'} Projected Punter Points are shown in each choice. ${locked?'Picks are frozen after lock.':entered?'Your entry remains active while you reset/change the pick until kickoff / lock.':`Your ${fmtCents(p.entryAmount)} entry is committed when you enter the pool.`}</div>
+      <div class="poolpickgrid">${choiceHtml}</div>
+      <div class="poolentry"><div class="cell"><div class="k">YOUR ENTRY</div><div class="v">${fmtCents(p.entryAmount)}</div></div><div class="cell"><div class="k">CURRENT POT</div><div class="v">${fmtCents(currentPot)}</div></div><div class="cell"><div class="k">${entered?'POT':'IF YOU ENTER'}</div><div class="v">${fmtCents(nextPot)}</div></div></div>
+      <div class="poolaction"><div class="poolactions"><button id="enterPoolBtn" class="btn primary" ${!hasSelection||locked?'disabled':''}>${entered?'UPDATE PICK':'ENTER POOL'}</button><button id="resetPoolBtn" class="btn" ${!hasSelection||locked?'disabled':''}>RESET PICK</button></div></div>
+    </div>`;
+  sh.classList.remove('hidden');positionSheets();requestAnimationFrame(()=>document.getElementById('poolSheetBody').scrollTop=0);
+  sh.querySelectorAll('.poolpick').forEach(b=>b.addEventListener('click',()=>{
+    if(locked)return;
+    const pick=Number(b.dataset.pick);
+    if(entry)entry.pick=pick;else raw.userPick=pick;
+    openPoolSheet(idx);renderPools();runDeterministicReconciliation();
+  }));
+  const reset=document.getElementById('resetPoolBtn');
+  if(reset)reset.addEventListener('click',()=>{
+    if(locked)return;
+    if(entry)entry.pick=null;else raw.userPick=null;
+    openPoolSheet(idx);renderPools();runDeterministicReconciliation();
+  });
+  const enter=document.getElementById('enterPoolBtn');
+  if(enter)enter.addEventListener('click',()=>{
+    if(locked||selection===null)return;
+    if(entry){entry.pick=selection;entry.updatedAt=eventTime();}
+    else{raw.entryRecords.push({team:DEMO_FIXTURE.league.currentUser,pick:selection,enteredAt:eventTime()});raw.userPick=null;}
+    openPoolSheet(idx);renderPools();runDeterministicReconciliation();
+  });
+}
+
+document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{
+  currentTab=b.dataset.tab;
+  document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===currentTab));
+  document.getElementById("matchupSurface").style.display=currentTab==="matchups"?"block":"none";
+  document.getElementById("poolSurface").style.display=currentTab==="pools"?"block":"none";
+  document.getElementById("filters").innerHTML=currentTab==="matchups"?`<button class="filter ${filter==='opponents'?'active':''}" data-filter="opponents">OPPONENTS</button><button class="filter ${filter==='challengers'?'active':''}" data-filter="challengers">CHALLENGERS</button><button class="filter ${filter==='pending'?'active':''}" data-filter="pending">PENDING</button><button class="filter ${filter==='accepted'?'active':''}" data-filter="accepted">ACCEPTED</button>`:`<button class="filter ${poolFilter==='all'?'active':''}" data-poolfilter="all">ALL</button><button class="filter ${poolFilter==='open'?'active':''}" data-poolfilter="open">OPEN</button><button class="filter ${poolFilter==='entered'?'active':''}" data-poolfilter="entered">ENTERED</button><button class="filter ${poolFilter==='closed'?'active':''}" data-poolfilter="closed">CLOSED</button>`;
+}));
+
+document.getElementById("filters").addEventListener("click",e=>{
+  const mb=e.target.closest("[data-filter]");
+  if(mb){filter=mb.dataset.filter;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x.dataset.filter===filter));renderTiles();return;}
+  const pb=e.target.closest("[data-poolfilter]");
+  if(pb){poolFilter=pb.dataset.poolfilter;document.querySelectorAll("[data-poolfilter]").forEach(x=>x.classList.toggle("active",x.dataset.poolfilter===poolFilter));applyPoolFilter();}
+});
+
+document.getElementById("closePoolSheet").addEventListener("click",()=>document.getElementById("poolSheet").classList.add("hidden"));
+
+document.getElementById("closeSheet").addEventListener("click",()=>document.getElementById("sheet").classList.add("hidden"));
+document.getElementById("closeTerms").addEventListener("click",()=>document.getElementById("termsSheet").classList.add("hidden"));
+
+document.getElementById("debugToggle").addEventListener("click",()=>document.getElementById("debugPanel").classList.toggle("hidden"));
+document.getElementById("debugMatchup").innerHTML=matchups.map(m=>`<option value="${m.id}">${m.opponent}</option>`).join("");
+document.getElementById("applyDebug").addEventListener("click",()=>{
+  const id=+document.getElementById("debugMatchup").value;
+  const m=matchups[id];
+  m.bet=document.getElementById("debugBet").value;
+  m.game=document.getElementById("debugGame").value;
+  m.owner=document.getElementById("debugOwner").value;
+  selected=id;
+  renderTiles();
+  openMatchup(id);
+});
+function syncDebug(){
+  const m=matchups[selected];
+  document.getElementById("debugMatchup").value=selected;
+  document.getElementById("debugBet").value=m.bet;
+  document.getElementById("debugGame").value=m.game;
+  document.getElementById("debugOwner").value=m.owner;
+}
+document.getElementById("applyPoolDebug").addEventListener("click",()=>{
+  const idx=Number(document.getElementById("debugPool").value);
+  const state=document.getElementById("debugPoolState").value;
+  const p=poolReviewData[idx], others=Resolver.initialPoolEntries(p.definitionKey).map(team=>({team,pick:null,enteredAt:"fixture"}));
+  p.entryRecords=others;p.userPick=null;p.closed=false;p.game="PRE-GAME";
+  if(state==="open_selected")p.userPick=0;
+  if(state.startsWith("entered_")){
+    p.entryRecords.push({team:DEMO_FIXTURE.league.currentUser,pick:0,enteredAt:"fixture"});
+    if(state==="entered_live")p.game="LIVE";
+    if(state==="entered_over")p.game="OVER";
+  }
+  if(state==="closed"){p.closed=true;p.userPick=null;}
+  renderPools();currentTab="pools";document.querySelector('[data-tab="pools"]').click();openPoolSheet(idx);runDeterministicReconciliation();
+});
+
+
+function deterministicSnapshot(){
+  return JSON.stringify({
+    source:DEMO_FIXTURE.sourceVersion,
+    league:DEMO_FIXTURE.league,
+    settings:DEMO_FIXTURE.fantasyStakesSettings,
+    simulationModel:DEMO_FIXTURE.simulationModel,
+    pools:poolReviewData.map(p=>({definitionKey:p.definitionKey,game:p.game,closed:p.closed,userPick:p.userPick,entryRecords:p.entryRecords})),
+    matchups:Resolver.versusMatchups().map(m=>({
+      opponent:m.opponent,p:m.p,ml:m.ml,margin:m.margin,total:m.total,spread:m.spread,overUnder:m.overUnder,
+      anchor:m.anchor,derived:m.derived,pot:m.pot
+    }))
+  });
+}
+
+/* GE-603 boundary battery. Expected values are the exact strict floors; the two cases
+   whose probability is exactly representable in binary (0.5, 0.25) must land on exact
+   values, and the cases whose probability is not (0.2, 0.4, 0.1) must floor DOWN rather
+   than round up to the tempting round number. */
+const GE603_BOUNDARY_CASES=[
+  {anchor:2000,p:0.5,  expect:2000, note:"exact division, Derived equals Anchor"},
+  {anchor:2000,p:0.25, expect:6000, note:"exact division, underdog Derived is 3x Anchor"},
+  {anchor:2000,p:0.2,  expect:7999, note:"inexact double just above 0.2 - must floor, not round to 8000"},
+  {anchor:2000,p:0.4,  expect:2999, note:"inexact double - must floor, not round to 3000"},
+  {anchor:1000,p:0.1,  expect:8999, note:"inexact double - must floor, not round to 9000"},
+  {anchor:2000,p:0.8,  expect:499,  note:"favourite, Derived well below Anchor"},
+  {anchor:2000,p:0.75, expect:666,  note:"repeating fair value 666.66"},
+  {anchor:2000,p:0.6,  expect:1333, note:"repeating fair value 1333.33"},
+  {anchor:2500,p:0.9,  expect:277,  note:"heavy favourite"},
+  {anchor:100, p:0.3,  expect:233,  note:"underdog at a small Anchor"},
+  {anchor:333, p:0.6667,expect:166, note:"non-round Anchor and probability"},
+  {anchor:1,   p:0.75, expect:0,    note:"sub-cent fair value floors to zero"}
+];
+
+function runDeterministicReconciliation(){
+  const failures=[];
+
+  // ---- FSR-015: GE-603 strict flooring into whole FantasyStakes cents -----
+  GE603_BOUNDARY_CASES.forEach(c=>{
+    const got=derivedStakeCents(c.anchor,c.p);
+    if(got!==c.expect) failures.push(`GE-603 boundary (${c.note}): anchor ${c.anchor} p ${c.p} expected ${c.expect}, got ${got}`);
+    if(!Number.isInteger(got)) failures.push(`GE-603 boundary produced non-integer cents: ${got}`);
+    // Strict floor, stated exactly: fair >= got, and fair < got + 1.
+    if(!fairValueAtLeast(c.anchor,c.p,got)) failures.push(`GE-603 boundary rounded up: anchor ${c.anchor} p ${c.p} produced ${got} above fair value`);
+    if(fairValueAtLeast(c.anchor,c.p,got+1)) failures.push(`GE-603 boundary floor is not tight: anchor ${c.anchor} p ${c.p} produced ${got} when ${got+1} is still covered`);
+  });
+  // The underdog direction must be reachable: at p < 0.5 the opponent stakes more.
+  if(!(derivedStakeCents(2000,0.4)>2000)) failures.push("GE-603 underdog case does not produce Derived > Anchor");
+  // Regression guard for the specific defect this fix targets: at these probabilities a
+  // plain float floor yields 8000 / 3000 / 9000, one cent above the true fair value.
+  [[2000,0.2,7999],[2000,0.4,2999],[1000,0.1,8999]].forEach(([a,p,expected])=>{
+    const got=derivedStakeCents(a,p);
+    if(got!==expected) failures.push(`GE-603 silent round-up regression at anchor ${a} p ${p}: ${got} != ${expected}`);
+  });
+
+  // ---- FSR-005: Action IN PLAY matches the canonical committed capital ----
+  const s=DEMO_FIXTURE.fantasyStakesSettings.actionSummary;
+  const canonInPlay=FS_CANON.action.unresolvedVersusEscrow+FS_CANON.action.unresolvedPropPoolCommitments;
+  if(s.inPlay!==canonInPlay) failures.push(`Action IN PLAY ${s.inPlay} is not unresolved Versus escrow plus unresolved Pool commitments (${canonInPlay})`);
+  if(s.inPlay!==FS_CANON.action.inPlay) failures.push("Action IN PLAY differs from canonical Action state");
+  if(s.weeklyMin!==Math.max(FS_CANON.settings.weeklyMinimum-FS_CANON.action.qualifyingCommitmentsThisWeek,0)) failures.push("Action WEEKLY MIN is not derived from qualifying commitments");
+
+  /* ---- FSR-023: committed capital derived from lifecycle, not from a total ----
+     IN PLAY and WEEKLY MINIMUM qualification are separate quantities and are proven
+     separately. Everything below starts from live lifecycle state. */
+  const derived=Resolver.commitmentTotals();
+  const records=Resolver.commitments();
+  const byOpponent=Object.fromEntries(records.filter(c=>c.kind==="VERSUS").map(c=>[c.opponent,c]));
+
+  // Per-matchup expected escrow, stated explicitly so a silent omission cannot pass.
+  const EXPECTED_ESCROW={
+    "Hank Williams":  {cents:2000,lifecycle:"ACCEPTED",        qualifying:true},
+    "Dolly Parton":   {cents:2000,lifecycle:"PENDING_OUTGOING",qualifying:false},
+    "Reba McEntire":  {cents:2000,lifecycle:"COUNTER_PENDING", qualifying:false},
+    "Loretta Lynn":   {cents:2000,lifecycle:"ACCEPTED",        qualifying:true}
+  };
+  Object.entries(EXPECTED_ESCROW).forEach(([opp,exp])=>{
+    const c=byOpponent[opp];
+    if(!c){failures.push(`${opp}: no commitment record derived`);return}
+    if(!c.held) failures.push(`${opp}: expected held escrow, got released`);
+    if(c.cents!==exp.cents) failures.push(`${opp}: escrow ${c.cents} != ${exp.cents}`);
+    if(c.lifecycle!==exp.lifecycle) failures.push(`${opp}: lifecycle ${c.lifecycle} != ${exp.lifecycle}`);
+    if(c.qualifying!==exp.qualifying) failures.push(`${opp}: qualifying ${c.qualifying} != ${exp.qualifying}`);
+    if(c.role!=="ISSUER") failures.push(`${opp}: role ${c.role} != ISSUER`);
+  });
+  // Nothing else may hold Versus escrow.
+  records.filter(c=>c.kind==="VERSUS"&&c.held).forEach(c=>{
+    if(!EXPECTED_ESCROW[c.opponent]) failures.push(`${c.opponent}: unexpected held Versus escrow of ${c.cents}`);
+  });
+  // A recipient of an unaccepted proposal commits nothing.
+  records.filter(c=>c.kind==="VERSUS"&&c.role==="RECIPIENT"&&c.lifecycle!=="ACCEPTED").forEach(c=>{
+    if(c.held||c.cents) failures.push(`${c.opponent}: recipient committed capital before acceptance`);
+  });
+  // Terminal states hold nothing.
+  records.filter(c=>["DECLINED","EXPIRED","NONE"].includes(c.lifecycle)).forEach(c=>{
+    if(c.held||c.cents) failures.push(`${c.opponent}: ${c.lifecycle} state still holds escrow`);
+  });
+  // A counter must not re-price the escrow: the ORIGINAL Anchor stays held.
+  const reba=matchups.find(m=>m.opponent==="Reba McEntire");
+  if(reba&&reba.challenge){
+    const original=reba.challenge.proposalHistory[0].anchor;
+    const active=reba.challenge.activeProposal.anchor;
+    if(byOpponent["Reba McEntire"].cents!==original) failures.push("Counter-pending escrow is not the original issuer Anchor");
+    if(active===original) failures.push("Counter fixture no longer exercises a different counter Anchor");
+    if(byOpponent["Reba McEntire"].cents===active) failures.push("Counter-pending escrow wrongly follows the counter Anchor");
+  }
+
+  // Totals.
+  if(derived.versusEscrow!==8000) failures.push(`derived Versus escrow ${derived.versusEscrow} != 8000`);
+  if(derived.poolCommitted!==100) failures.push(`derived Pool committed ${derived.poolCommitted} != 100`);
+  if(derived.inPlay!==8100) failures.push(`derived IN PLAY ${derived.inPlay} != 8100`);
+  if(derived.qualifying!==4100) failures.push(`derived qualifying commitments ${derived.qualifying} != 4100`);
+  if(derived.weeklyMinRemaining!==0) failures.push(`derived Weekly Min remaining ${derived.weeklyMinRemaining} != 0`);
+  if(derived.inPlay!==derived.versusEscrow+derived.poolCommitted) failures.push("IN PLAY is not the sum of its held components");
+  if(derived.qualifying>=derived.inPlay) failures.push("qualifying commitments should be strictly narrower than IN PLAY in this fixture");
+
+  // Exactly one funded Pool ticket, counted once.
+  const poolHeld=records.filter(c=>c.kind==="POOL"&&c.held);
+  if(poolHeld.length!==1) failures.push(`${poolHeld.length} funded Pool tickets held, expected 1`);
+  if(poolHeld.length&&poolHeld[0].cents!==Resolver.poolEntryAmount()) failures.push("funded Pool ticket is not one standard entry");
+
+  // The canonical fixture must be a faithful materialisation of the derived state, not an
+  // independent source. This is the check the previous pass lacked.
+  const schedule=FS_CANON.currentWeekCommitments;
+  const schedVersus=schedule.filter(c=>c.kind==="VERSUS").reduce((a,c)=>a+c.cents,0);
+  const schedPool=schedule.filter(c=>c.kind==="POOL").reduce((a,c)=>a+c.cents,0);
+  const schedQual=schedule.filter(c=>c.qualifying).reduce((a,c)=>a+c.cents,0);
+  if(schedVersus!==derived.versusEscrow) failures.push(`canonical schedule Versus ${schedVersus} != derived ${derived.versusEscrow}`);
+  if(schedPool!==derived.poolCommitted) failures.push(`canonical schedule Pool ${schedPool} != derived ${derived.poolCommitted}`);
+  if(schedQual!==derived.qualifying) failures.push(`canonical schedule qualifying ${schedQual} != derived ${derived.qualifying}`);
+  if(schedVersus+schedPool!==FS_CANON.action.inPlay) failures.push("canonical schedule does not sum to canonical IN PLAY");
+  schedule.filter(c=>c.kind==="VERSUS").forEach(sc=>{
+    const c=byOpponent[sc.opponent];
+    if(!c){failures.push(`schedule names ${sc.opponent} with no derived commitment`);return}
+    if(c.cents!==sc.cents) failures.push(`${sc.opponent}: schedule ${sc.cents} != derived ${c.cents}`);
+    if(c.lifecycle!==sc.lifecycle) failures.push(`${sc.opponent}: schedule lifecycle ${sc.lifecycle} != derived ${c.lifecycle}`);
+    if(c.qualifying!==sc.qualifying) failures.push(`${sc.opponent}: schedule qualifying ${sc.qualifying} != derived ${c.qualifying}`);
+  });
+  // No schedule entry may describe a pending offer as accepted.
+  schedule.forEach(sc=>{
+    if(sc.lifecycle!=="ACCEPTED"&&/accepted/i.test(sc.desc)) failures.push(`${sc.key}: description claims acceptance for a ${sc.lifecycle} commitment`);
+  });
+  if(!Number.isInteger(derived.inPlay)||!Number.isInteger(derived.qualifying)) failures.push("committed capital is not integer cents");
+
+  /* ---- FSR-024: UPSIDE LEFT derived from accepted, unresolved proposals ---- */
+  const upside=Resolver.upsideCommitments();
+  const upsideBy=Object.fromEntries(upside.map(c=>[c.opponent,c]));
+  const EXPECTED_UPSIDE={"Hank Williams":740,"Loretta Lynn":874};
+  Object.entries(EXPECTED_UPSIDE).forEach(([opp,cents])=>{
+    const c=upsideBy[opp];
+    if(!c){failures.push(`${opp}: no upside record derived`);return}
+    if(c.cents!==cents) failures.push(`${opp}: upside ${c.cents} != ${cents}`);
+    if(!c.accepted||!c.unresolved) failures.push(`${opp}: accepted unresolved wager not recognised`);
+    if(c.role!=="ANCHOR") failures.push(`${opp}: role ${c.role} != ANCHOR`);
+    // The upside must come from the FROZEN accepted proposal, not the live board price.
+    const m=matchups.find(x=>x.opponent===opp);
+    if(m.challenge.acceptedProposal.derived!==c.cents) failures.push(`${opp}: upside is not the accepted proposal Derived stake`);
+  });
+  // Nothing unaccepted may contribute.
+  upside.filter(c=>!c.accepted).forEach(c=>{
+    if(c.cents!==0) failures.push(`${c.opponent}: ${c.lifecycle} contributes ${c.cents} to UPSIDE LEFT`);
+  });
+  ["Dolly Parton","Reba McEntire"].forEach(opp=>{
+    const c=upsideBy[opp];
+    if(!c){failures.push(`${opp}: no upside record`);return}
+    if(c.cents!==0) failures.push(`${opp}: unaccepted proposal contributes ${c.cents} to UPSIDE LEFT`);
+    if(c.accepted) failures.push(`${opp}: unaccepted proposal marked accepted`);
+  });
+  // A settled matchup has no remaining potential.
+  upside.filter(c=>c.accepted&&!c.unresolved).forEach(c=>{
+    if(c.cents!==0) failures.push(`${c.opponent}: settled wager still reports upside`);
+  });
+  if(derived.upsideLeft!==1614) failures.push(`UPSIDE LEFT ${derived.upsideLeft} != 1614`);
+  if(derived.upsideLeft!==upside.reduce((a,c)=>a+c.cents,0)) failures.push("UPSIDE LEFT total does not equal the sum of its records");
+  if(!Number.isInteger(derived.upsideLeft)) failures.push("UPSIDE LEFT is not integer cents");
+  // Pool tickets are excluded from this Versus metric.
+  if(upside.some(c=>c.kind!=="VERSUS")) failures.push("a non-Versus commitment entered UPSIDE LEFT");
+  // The stale canonical literal must be gone.
+  if("upsideLeft" in FS_CANON.action) failures.push("canonical fixture still carries an upsideLeft literal");
+  if(FS_CANON.action.unresolvedPropPoolCommitments!==FS_CANON.settings.standardPropPoolEntry) failures.push("Unresolved Pool commitment is not one standard Prop Pool entry");
+  [["wallet",s.wallet],["weeklyMin",s.weeklyMin],["inPlay",s.inPlay],["upsideLeft",Resolver.commitmentTotals().upsideLeft]].forEach(([k,v])=>{
+    if(!Number.isInteger(v)) failures.push(`Action summary ${k} is not integer cents`);
+  });
+
+  // ---- FSR-006: AVAILABLE is an opportunity state only -------------------
+  matchups.forEach(m=>{
+    const rendered=pills(m);
+    if(rendered.includes("AVAILABLE")&&!(m.bet==="no"&&m.game==="pregame"))
+      failures.push(`${m.opponent}: AVAILABLE shown on a ${m.game.toUpperCase()} card with no open opportunity`);
+    if(m.bet==="no"&&m.game!=="pregame"){
+      if(!rendered.includes("CLOSED")) failures.push(`${m.opponent}: closed no-wager card is missing its neutral status`);
+      if(noActionModule(m).includes("BUILD YOUR CHALLENGE")) failures.push(`${m.opponent}: action controls exposed on a closed matchup`);
+    }
+  });
+  // ---- FSR-013: the LIVE win probability declares its pre-game basis ------
+  const liveCard=matchups.find(m=>m.game==="live");
+  if(liveCard&&!metrics(liveCard).includes("PRE-GAME WIN%")) failures.push("LIVE card does not declare the pre-game basis of WIN%");
+
+  const replayA=JSON.stringify(Resolver.versusMatchups().map(m=>[m.opponent,m.p,m.ml,m.spread,m.overUnder,m.anchor,m.derived,m.pot]));
+  const replayB=JSON.stringify(Resolver.versusMatchups().map(m=>[m.opponent,m.p,m.ml,m.spread,m.overUnder,m.anchor,m.derived,m.pot]));
+  if(replayA!==replayB) failures.push("Replay mismatch");
+
+  const auditedMatchups=Resolver.versusMatchups();
+  auditedMatchups.forEach(m=>{
+    const expectedP=probabilityFromProjection(Number(m.painProj),Number(m.oppProj));
+    if(Math.abs(m.p-expectedP)>1e-12) failures.push(`${m.opponent}: probability/projection mismatch`);
+    if(m.source.simulationModel!==DEMO_FIXTURE.simulationModel.version) failures.push(`${m.opponent}: simulation model provenance mismatch`);
+    if(m.ml!==fairMoneyline(m.p)) failures.push(`${m.opponent}: moneyline/probability mismatch`);
+    if(Math.abs((Number(m.painProj)-Number(m.oppProj))-m.margin)>.001) failures.push(`${m.opponent}: margin mismatch`);
+    if(Math.abs((Number(m.painProj)+Number(m.oppProj))-m.total)>.001) failures.push(`${m.opponent}: total mismatch`);
+    // FSR-015: economics are integers, so these are exact equality checks with no
+    // tolerance window that could hide a one-cent drift.
+    const expected=Resolver.derivedStake(m.anchor,m.p);
+    if(expected!==m.derived) failures.push(`${m.opponent}: GE-603 mismatch`);
+    if(potCents(m.anchor,m.derived)!==m.pot) failures.push(`${m.opponent}: pot mismatch`);
+    [["anchor",m.anchor],["derived",m.derived],["pot",m.pot],["counter anchor",m.counter.anchor],
+     ["counter derived",m.counter.derived],["counter pot",m.counter.pot],["wager stake",m.wager.stake],
+     ["wager them",m.wager.them],["wager pot",m.wager.pot]].forEach(([what,v])=>{
+      if(!Number.isInteger(v)) failures.push(`${m.opponent}: ${what} is not integer cents (${v})`);
+    });
+    // GE-603 is a strict floor: the derived stake never rounds up past fair value, and
+    // one more cent would always exceed it.
+    if(!fairValueAtLeast(m.anchor,m.p,m.derived)) failures.push(`${m.opponent}: Derived exceeds fair value`);
+    if(fairValueAtLeast(m.anchor,m.p,m.derived+1)) failures.push(`${m.opponent}: Derived is not the strict floor of fair value`);
+    if(m.counter.derived!==Resolver.derivedStake(m.counter.anchor,m.counter.p)) failures.push(`${m.opponent}: counter GE-603 mismatch`);
+  });
+
+  const byMargin=[...auditedMatchups].sort((a,b)=>a.margin-b.margin);
+  for(let i=1;i<byMargin.length;i++){
+    if(byMargin[i].p+1e-12<byMargin[i-1].p){
+      failures.push(`Probability monotonicity mismatch: ${byMargin[i-1].opponent} → ${byMargin[i].opponent}`);
+    }
+  }
+
+  const single=Resolver.poolField("single");
+  const combined=Resolver.poolField("combined");
+  if(single.length!==Resolver.teamCount()) failures.push("Single Team field/team count mismatch");
+  if(combined.length!==Resolver.officialYahooMatchups().length) failures.push("Combined Teams/Yahoo matchup count mismatch");
+  const names=new Set(single.map(r=>r[0]));
+  Resolver.leagueTeams().forEach(n=>{if(!names.has(n)) failures.push(`Missing eligible GM: ${n}`)});
+  if(Resolver.poolEntryAmount()!==DEMO_FIXTURE.fantasyStakesSettings.propPoolEntryAmount) failures.push("Pool entry resolver mismatch");
+  if(Resolver.poolEntryAmount()!==100) failures.push("Demo FS Prop Pool entry setting is not Ŧ1.00");
+  poolReviewData.forEach(raw=>{
+    const meta=poolMeta(raw);
+    if(meta.entered!==raw.entryRecords.length) failures.push(`${raw.definitionKey}: entrant count not sourced from entry records`);
+    if(poolPot(raw)!==raw.entryRecords.length*Resolver.poolEntryAmount()) failures.push(`${raw.definitionKey}: pool pot mismatch`);
+    if(!Number.isInteger(poolPot(raw))) failures.push(`${raw.definitionKey}: pool pot is not integer cents`);
+  });
+  matchups.forEach(m=>{
+    if(m.bet==="pending"||m.bet==="countered"){
+      const p=activeProposal(m);
+      if(!p?.deadline||!p?.termsMode) failures.push(`${m.opponent}: proposal provenance incomplete`);
+      if(p&&p.pot!==potCents(p.anchor,p.derived)) failures.push(`${m.opponent}: active proposal pot mismatch`);
+      if(p&&!Number.isInteger(p.anchor+p.derived+p.pot)) failures.push(`${m.opponent}: proposal economics are not integer cents`);
+    }
+  });
+
+  const result={pass:failures.length===0,failures,sourceVersion:DEMO_FIXTURE.sourceVersion,rules:VALUE_RULES,
+    precision:"INTEGER_CENTS_V1",
+    ge603BoundaryCases:GE603_BOUNDARY_CASES.length,
+    summary:DEMO_FIXTURE.fantasyStakesSettings.actionSummary,
+    committed:Resolver.commitmentTotals(),
+    upside:Resolver.upsideCommitments().filter(c=>c.cents).map(c=>({
+      opponent:c.opponent,role:c.role,cents:c.cents,reason:c.reason})),
+    commitments:Resolver.commitments().filter(c=>c.held).map(c=>({
+      what:c.kind==="POOL"?c.definitionKey:c.opponent,kind:c.kind,lifecycle:c.lifecycle,
+      role:c.role,cents:c.cents,qualifying:c.qualifying,reason:c.reason})),
+    economics:Resolver.versusMatchups().map(m=>({opponent:m.opponent,p:m.p,anchor:m.anchor,derived:m.derived,pot:m.pot})),
+    snapshotHashBasis:deterministicSnapshot().length};
+  window.__FS_DETERMINISM_AUDIT__=result;
+  document.documentElement.dataset.determinism=result.pass?"pass":"fail";
+  if(!result.pass) console.error("FantasyStakes deterministic reconciliation failed",result);
+  else console.info("FantasyStakes deterministic reconciliation PASS",result);
+  return result;
+}
+
+
+/* ---- FSR-002 / FSR-021 · deterministic demo navigation contract ------------
+   The uncluttered UI package ships as three self-contained artifacts. Rather than
+   embedding every screen into every file (a redesign), each locked chrome control
+   resolves to one canonical route target published by the shared fixture. A control
+   whose target is the screen already on show stays inert and is marked aria-current;
+   a screen that exists inside this artifact is handled locally; everything else
+   navigates to its canonical target. No chrome control is a decorative dead div. */
+const FS_NAV=(function(){
+  const routes=FS_CANON.routes;
+  const state={local:{},screen:null};
+  function resolve(key){return routes[key]||null}
+  function go(key){
+    const target=resolve(key);
+    if(!target)return{key,handled:false,reason:"NO_ROUTE"};
+    if(state.local[key]){state.local[key]();return{key,handled:true,mode:"LOCAL",target}}
+    if(key===state.screen)return{key,handled:true,mode:"CURRENT",target};
+    try{window.location.href=target}catch(err){return{key,handled:false,reason:"NAV_BLOCKED",target}}
+    return{key,handled:true,mode:"ROUTE",target};
+  }
+  function wire(screenKey,localHandlers){
+    state.screen=screenKey;Object.assign(state.local,localHandlers||{});
+    const controls=[...document.querySelectorAll("[data-route]")];
+    controls.forEach(el=>{
+      const key=el.dataset.route,target=resolve(key);
+      if(!target){el.setAttribute("data-route-status","unresolved");return}
+      el.setAttribute("data-route-target",target);
+      const current=(key===screenKey&&!state.local[key]);
+      el.setAttribute("data-route-status",current?"current":"active");
+      if(current)el.setAttribute("aria-current","page");
+      el.addEventListener("click",()=>go(key));
+    });
+    const report={screen:screenKey,routes:Object.assign({},routes),
+      controls:controls.map(el=>({route:el.dataset.route,target:el.getAttribute("data-route-target"),
+        status:el.getAttribute("data-route-status"),label:el.getAttribute("aria-label")||null,
+        focusable:el.tagName==="BUTTON"||el.hasAttribute("tabindex")}))};
+    window.__FS_NAV__=report;return report;
+  }
+  return{wire,go,resolve};
+})();
+
+hydrateDeterministicChrome();
+renderTiles();
+renderPools();
+// Action does not embed Gear or the other screens, so every chrome control resolves to
+// its canonical route target instead of sitting inert (FSR-002 / FSR-021).
+FS_NAV.wire("action");
+runDeterministicReconciliation();
+
+positionSheets();
+</script>
+<!-- Tier 3 POR: four-item bottom nav matches locked Standings/Wrap Up. Older Action HTML references are anatomy-only where they conflict with current status taxonomy, Ŧ token grammar, or proposal-freeze rulings. -->
+<!-- v22 remediation: FSR-002 gear entry point, FSR-006 AVAILABLE gating, FSR-010 strip terminology,
+     FSR-011 nav glyphs, FSR-012 8px type floor, FSR-013 pre-game WIN% basis, FSR-014 board-price
+     grouping, FSR-015 integer-cent economics with an exact GE-603 floor. The FSR-001 probability
+     model from v21 is carried through unchanged. -->
+<!-- v24 upside: FSR-024. UPSIDE LEFT is derived from the accepted, unresolved proposals in the
+     Action lifecycle via Resolver.upsideCommitments(); the canonical upsideLeft literal is deleted.
+     No escrow, Wallet, Weekly Minimum, In Play, probability or GE-603 behaviour was touched. -->
+<!-- v23 escrow reconciliation: FSR-023. Committed capital is derived from lifecycle state by
+     Resolver.commitmentTotals() rather than read from a stored total, IN PLAY and Weekly Minimum
+     qualification are computed as separate quantities, and Pain's funded Prop Pool ticket is
+     present in Action's own pool state so it agrees with the Ledger. No lifecycle rule, no
+     probability model, no economics formula and no visual treatment was changed. -->
+</body>
+</html>
