@@ -20,10 +20,11 @@
   /**
    * Point every `data-fs-demo-link` control at `config.demoUrl`.
    *
-   * The markup already carries `href="#demo"`, so a reader with JavaScript
-   * turned off still gets a working control that lands on the demo section.
-   * This only ever REPLACES that fallback - it never creates a link, and it
-   * never leaves one pointing at nothing.
+   * The v7 markup already carries the same destination in each control's
+   * `href`, so a reader with JavaScript turned off still reaches the demo.
+   * This only ever REPLACES that value - it never creates a link, and it
+   * never leaves one pointing at nothing. `config.js` remains the single
+   * place the destination is named.
    */
   function applyDemoDestination() {
     var config = window.FS_SITE_CONFIG || {};
