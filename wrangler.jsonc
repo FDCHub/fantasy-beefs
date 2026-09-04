@@ -22,9 +22,11 @@
 //   account_id      an account identifier is a credential-adjacent value and
 //                   belongs in the dashboard or the environment, never in a
 //                   committed file
-//   routes / custom domains
-//                   WEB-2a is preview only. fantasystakesapp.com is NOT
-//                   attached here, and no DNS is touched.
+//
+// ATTACHED HERE. `routes` binds this Worker to the custom domain
+// fantasystakesapp.com, so the site is served on the apex domain rather than
+// only on its workers.dev preview URL. `custom_domain: true` has Cloudflare
+// manage the zone's DNS record for that hostname on deploy.
 //
 // `_headers` and `_redirects` live inside ./site and are read by Workers Static
 // Assets from the assets directory; they are applied as configuration rather
@@ -34,6 +36,12 @@
 {
   "name": "fantasystakes-marketing",
   "compatibility_date": "2026-08-19",
+  "routes": [
+    {
+      "pattern": "fantasystakesapp.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./site",
     // WEB-2b. Left at its default of "none", an unknown path falls through to
