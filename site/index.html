@@ -1,358 +1,973 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>FantasyStakes — Fantasy Stakes for Fantasy Leagues</title>
-<meta name="description" content="Add a Vegas-style sportsbook game to your fantasy league: head-to-head FantasyStakes Matchups, calculated odds and league-wide FantasyStakes Prop Pools, all with virtual credits.">
-<link rel="canonical" href="https://fantasystakesapp.com/">
-<meta name="theme-color" content="#0b0b0a">
-<meta name="color-scheme" content="dark">
-<meta name="robots" content="index, follow">
-
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
+<title>FantasyStakes — Welcome to a New Championship</title>
+<meta content="FantasyStakes adds a new championship race to your fantasy leagues with head-to-head competition, calculated odds, Vegas-style action, virtual credits, standings and league-wide Prop Pools." name="description"/>
+<link href="https://fantasystakesapp.com/" rel="canonical"/>
+<meta content="#0b0b0a" name="theme-color"/>
+<meta content="dark" name="color-scheme"/>
+<meta content="index, follow" name="robots"/>
 <!-- Open Graph / social. The card image is a local 1200x630 PNG generated from
      tools/marketing/og-image.html by tools/marketing/build_assets.mjs, so
      nothing on this page reaches a third-party host. -->
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="FantasyStakes">
-<meta property="og:locale" content="en_US">
-<meta property="og:url" content="https://fantasystakesapp.com/">
-<meta property="og:title" content="FantasyStakes — Fantasy Stakes for Fantasy Leagues">
-<meta property="og:description" content="Real odds. Sportsbook action. More ways to win. Add a Vegas-style sportsbook game to your fantasy league — head-to-head Matchups and league-wide Prop Pools, all with virtual credits.">
-<meta property="og:image" content="https://fantasystakesapp.com/assets/og-image.png">
-<meta property="og:image:type" content="image/png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="FantasyStakes — Real odds. Sportsbook action. More ways to win.">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="FantasyStakes — Fantasy Stakes for Fantasy Leagues">
-<meta name="twitter:description" content="Real odds. Sportsbook action. More ways to win. Add a Vegas-style sportsbook game to your fantasy league — head-to-head Matchups and league-wide Prop Pools, all with virtual credits.">
-<meta name="twitter:image" content="https://fantasystakesapp.com/assets/og-image.png">
-<meta name="twitter:image:alt" content="FantasyStakes — Real odds. Sportsbook action. More ways to win.">
+<meta content="website" property="og:type"/>
+<meta content="FantasyStakes" property="og:site_name"/>
+<meta content="en_US" property="og:locale"/>
+<meta content="https://fantasystakesapp.com/" property="og:url"/>
+<meta content="FantasyStakes — Fantasy Stakes for Fantasy Leagues" property="og:title"/>
+<meta content="Real odds. Pure action. More ways to win. FantasyStakes adds a whole new game to your fantasy league with peer-to-peer Matchups, Prop Pools, calculated odds, virtual credits, standings and a FantasyStakes Championship." property="og:description"/>
+<meta content="https://fantasystakesapp.com/assets/og-image.png" property="og:image"/>
+<meta content="image/png" property="og:image:type"/>
+<meta content="1200" property="og:image:width"/>
+<meta content="630" property="og:image:height"/>
+<meta content="FantasyStakes — Real odds. Pure action. More ways to win." property="og:image:alt"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="FantasyStakes — Fantasy Stakes for Fantasy Leagues" name="twitter:title"/>
+<meta content="Real odds. Pure action. More ways to win. FantasyStakes adds a whole new game to your fantasy league with peer-to-peer Matchups, Prop Pools, calculated odds, virtual credits, standings and a FantasyStakes Championship." name="twitter:description"/>
+<meta content="https://fantasystakesapp.com/assets/og-image.png" name="twitter:image"/>
+<meta content="FantasyStakes — Real odds. Pure action. More ways to win." name="twitter:image:alt"/>
+<link href="/assets/favicon.svg" rel="icon" type="image/svg+xml"/>
+<link href="/assets/favicon-32.png" rel="icon" sizes="32x32" type="image/png"/>
+<link href="/assets/apple-touch-icon.png" rel="apple-touch-icon"/>
+<link href="/site.webmanifest" rel="manifest"/>
+<style>/* ==========================================================================
+ * FantasyStakes - public marketing site (fantasystakesapp.com)
+ * WEB-1a - reconciled to the approved visual POR
+ *
+ * VISUAL AUTHORITY: spec/fantasystakes_por_mobile_website.html
+ * (sha256 2cbb57582511d6775453e3c0eb7d7ba738e8c5a7278ccbeff6a5e1ba94f28106)
+ *
+ * Every token below is the POR's own value. The POR is a single-column,
+ * mobile-first, centred composition on near-black, with an ivory/gold lockup, a
+ * 760px measure, 22px card radii, hairline section rules and one solid-gold
+ * pill. WEB-1 built a wider two-column editorial layout from the written brief
+ * because the POR was not available; this file replaces that layout with the
+ * POR's, and keeps every engineering property WEB-1 certified.
+ *
+ * THREE DELIBERATE DEPARTURES FROM THE POR SOURCE, each recorded where it
+ * occurs below and none of them visual:
+ *
+ *   1. px sizes are expressed in rem at the same rendered size. The POR is
+ *      authored in px, which pins type against a reader's browser font-size
+ *      setting. Same pixels at default settings, but they now scale.
+ *   2. The topbar keeps a navigation disclosure. The POR topbar carries only a
+ *      brand and one gold link; the locked brief requires four section links,
+ *      and WEB-1 certified the mobile disclosure. It is styled as the POR
+ *      topbar rather than removed.
+ *   3. The FAQ keeps a small gold open/close marker. The POR hides the native
+ *      one and leaves no affordance at all.
+ *
+ * Still no framework, no webfont, no remote request. The POR names Inter first
+ * and loads nothing, so it renders in the system font for anyone without Inter
+ * installed; that stack is reproduced exactly rather than "fixed" by adding a
+ * font download the CSP forbids and the POR never had.
+ * ========================================================================== */
 
-<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-<link rel="icon" href="/assets/favicon-32.png" sizes="32x32" type="image/png">
-<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-<link rel="manifest" href="/site.webmanifest">
-<link rel="stylesheet" href="/styles/site.css">
-<script src="/js/config.js" defer></script>
-<script src="/js/site.js" defer></script>
+/* -- POR tokens ---------------------------------------------------------- */
+:root {
+  /* Foundation - POR values, load-bearing. */
+  --bg:     #0b0b0a;
+  --ivory:  #f3eddc;
+  --muted:  #b8ad8e;
+  --gold:   #c8a24d;
+  --gold2:  #e0bd68;
+
+  /* POR structure. `--line` is gold-derived; the section and FAQ rules are the
+     far fainter white hairlines the POR uses to separate without drawing. */
+  --line:       rgba(224, 189, 104, .22);
+  --hairline:   rgba(255, 255, 255, .05);
+  --hairline-2: rgba(255, 255, 255, .06);
+  --card-line:  rgba(224, 189, 104, .14);
+  --card-fill:  linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, .012));
+  --num-fill:   rgba(200, 162, 77, .12);
+  --num-line:   rgba(224, 189, 104, .26);
+
+  /* POR ink ramp. Body copy is warmer and lighter than WEB-1's muted tan. */
+  --ink:        var(--ivory);
+  --ink-body:   #d7cfb8;   /* section copy      - 12.4:1 on --bg */
+  --ink-lede:   #ddd4bc;   /* hero lede         - 13.3:1 */
+  --ink-card:   #cfc6ae;   /* card copy         - 11.4:1 */
+  --ink-fine:   #9c927b;   /* footer fine print -  6.4:1 */
+  --ink-link:   #b7ad96;   /* footer links      -  8.3:1 */
+  --on-gold:    #11100c;   /* text on a gold fill - 7.9:1 */
+
+  --max: 760px;
+  --radius: 22px;
+  --topbar-h: 62px;
+
+  /* The POR names Inter first and never loads it. Reproduced verbatim: with
+     Inter installed the page is the POR exactly; without it, the system UI
+     font, which is what the POR itself renders as on most machines. */
+  --font-ui: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+             Roboto, Helvetica, Arial, sans-serif;
+  --font-num: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Type scale - POR values converted px -> rem at a 16px base. */
+  /* The POR sets 12vw here, and at 12vw "FANTASYSTAKES" is wider than a
+     390px phone: the POR page itself clips the final S. "FANTASYSTAKES" is
+     8.57em wide at this weight and tracking, so 10.1vw is the largest
+     coefficient that still fits inside the 20px gutters at 320px and up.
+     Same intent - the wordmark as large as the viewport allows - actually
+     honoured. preview_check.mjs measures it at every viewport. */
+  --t-brand:      clamp(2rem, 10.1vw, 4.75rem);      /* 32 -> 76 */
+  --t-descriptor: clamp(1.0625rem, 4.7vw, 1.4375rem);/* 17 -> 23 */
+  --t-hero:       clamp(2rem, 8.6vw, 3.5rem);        /* 32 -> 56, see .hero h1 */
+  --t-lede:       clamp(1.125rem, 4.7vw, 1.4375rem); /* 18 -> 23 */
+  --t-h2:         clamp(1.875rem, 8vw, 2.875rem);    /* 30 -> 46 */
+  --t-close:      clamp(2.25rem, 9vw, 3.625rem);     /* 36 -> 58 */
+  --t-quote:      clamp(1.5rem, 7vw, 2.25rem);       /* 24 -> 36 */
+  --t-body:       1.125rem;   /* 18 */
+  --t-card:       1rem;       /* 16 */
+  --t-card-title: 1.375rem;   /* 22 */
+  --t-step-title: 1.1875rem;  /* 19 */
+  --t-summary:    1.125rem;   /* 18 */
+  --t-eyebrow:    .75rem;     /* 12 */
+  --t-fine:       .8125rem;   /* 13 */
+}
+
+/* -- Reset --------------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  /* `clip` rather than `hidden`: it prevents horizontal overflow without
+     creating a scroll container, which would break the sticky topbar. */
+  overflow-x: clip;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: clip;
+  /* POR: one gold wash from above the fold, centred. No image, no bytes. */
+  background:
+    radial-gradient(circle at 50% -10%, rgba(200, 162, 77, .12), transparent 28rem),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+img, svg { max-width: 100%; height: auto; display: block; }
+
+h1, h2, h3 { margin: 0; }
+p { margin: 0; }
+ul, ol { margin: 0; padding: 0; }
+li { list-style: none; }
+
+a { color: inherit; text-underline-offset: 3px; }
+
+/* Focus is VISIBLE EVERYWHERE and is never removed. */
+:focus { outline: 2px solid var(--gold2); outline-offset: 3px; }
+:focus:not(:focus-visible) { outline: none; }
+:focus-visible { outline: 2px solid var(--gold2); outline-offset: 3px; border-radius: 4px; }
+
+/* Anchor jumps have to clear the sticky topbar. */
+[id] { scroll-margin-top: calc(var(--topbar-h) + 12px); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* -- Utilities ----------------------------------------------------------- */
+/* POR: a 760px measure with 20px gutters, 28px from 700px up. */
+.wrap { width: min(100%, var(--max)); margin: 0 auto; padding: 0 20px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+
+.skip {
+  position: absolute; left: 50%; top: 0; transform: translate(-50%, -140%);
+  z-index: 100;
+  background: var(--gold); color: var(--on-gold); font-weight: 800;
+  padding: .7rem 1.1rem; border-radius: 0 0 12px 12px; text-decoration: none;
+}
+.skip:focus { transform: translate(-50%, 0); }
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase; letter-spacing: .12em;
+  color: var(--gold2); font-weight: 800; font-size: var(--t-eyebrow);
+}
+
+.copy { margin: 18px 0 0; color: var(--ink-body); font-size: var(--t-body); }
+
+/* -- Buttons (POR) ------------------------------------------------------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 52px; padding: 0 22px;
+  border-radius: 999px; border: 1px solid transparent;
+  font: inherit; font-weight: 800; line-height: 1.2;
+  text-decoration: none; text-align: center;
+  /* POR: full-width stacked on a phone, intrinsic from 700px up. */
+  width: min(100%, 320px);
+  transition: background-color .18s ease, border-color .18s ease;
+}
+.btn--primary {
+  background: var(--gold); color: var(--on-gold);
+  box-shadow: 0 10px 28px rgba(200, 162, 77, .18);
+}
+.btn--primary:hover, .btn--primary:focus-visible { background: var(--gold2); }
+.btn--secondary {
+  border-color: var(--line); color: var(--ivory); background: rgba(255, 255, 255, .02);
+}
+.btn--secondary:hover, .btn--secondary:focus-visible { border-color: var(--gold2); }
+
+.cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+
+/* -- Topbar (POR) -------------------------------------------------------- *
+ * POR geometry exactly: 62px, blurred near-black, one faint white hairline.
+ * The POR carries a brand and a single gold link; this adds the five locked
+ * section links behind a disclosure, which is why the toggle exists. */
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(14px);
+  background: rgba(11, 11, 10, .82);
+  border-bottom: 1px solid var(--hairline);
+}
+.topbar__inner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  min-height: var(--topbar-h); gap: 16px;
+}
+.mini-brand {
+  font-weight: 900; letter-spacing: .02em; font-size: 1rem;
+  text-decoration: none; order: 1; margin-right: auto;
+}
+.mini-brand .fantasy { color: var(--ivory); }
+.mini-brand .stakes  { color: var(--gold); }
+
+/* The POR's right-hand call to action: a gold text link, not a filled pill. */
+.mini-link {
+  text-decoration: none; color: var(--gold2); font-weight: 700; font-size: .875rem;
+  order: 2; padding: 8px 0; min-height: 44px; display: inline-flex; align-items: center;
+}
+.mini-link:hover, .mini-link:focus-visible { color: var(--ivory); }
+
+.nav__toggle {
+  order: 3; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  background: transparent; border: 1px solid var(--line); border-radius: 12px;
+  color: var(--ivory); cursor: pointer;
+}
+/* Restated because an author `display` rule outranks the UA rule behind
+   `hidden`; without this a reader with no JavaScript would see a dead button. */
+.nav__toggle[hidden] { display: none; }
+.nav__toggle span, .nav__toggle span::before, .nav__toggle span::after {
+  display: block; width: 17px; height: 1.5px; background: currentColor; border-radius: 2px;
+}
+.nav__toggle span { position: relative; }
+.nav__toggle span::before, .nav__toggle span::after { content: ""; position: absolute; left: 0; }
+.nav__toggle span::before { top: -5.5px; }
+.nav__toggle span::after  { top:  5.5px; }
+
+.nav {
+  display: block; order: 4; flex: 0 0 100%; width: 100%;
+  padding: 4px 0 12px;
+  border-top: 1px solid var(--hairline);
+}
+/* COLLAPSED STATE IS AN ATTRIBUTE, NOT `hidden`. The HTML rendering spec gives
+   `[hidden]` `display: none !important`, so a panel closed that way could not
+   be re-shown as a desktop row by any author rule - a reader who opened the
+   menu on a phone and rotated into a tablet layout would lose it entirely. */
+.nav[data-open="false"] { display: none; }
+.nav__link {
+  display: block; padding: 12px 2px;
+  color: var(--ink-link); font-weight: 700; font-size: var(--t-card);
+  text-decoration: none;
+  border-bottom: 1px solid var(--hairline);
+}
+.nav__link:hover, .nav__link:focus-visible { color: var(--ivory); }
+
+/* -- Hero (POR) ---------------------------------------------------------- *
+ * Full viewport below the topbar, vertically centred, everything on the centre
+ * line: wordmark lockup, descriptor, headline, lede, calls to action. */
+.hero {
+  min-height: calc(100vh - var(--topbar-h));
+  min-height: calc(100svh - var(--topbar-h));
+  display: flex; align-items: center;
+  padding: 52px 0 54px;
+  border-top: 0;
+}
+.lockup { text-align: center; margin-bottom: 32px; }
+.brand {
+  margin: 0;
+  font-size: var(--t-brand); line-height: .92; letter-spacing: .015em;
+  font-weight: 950; text-transform: uppercase;
+}
+.brand .fantasy { color: var(--ivory); }
+.brand .stakes  { color: var(--gold); text-shadow: 0 0 24px rgba(200, 162, 77, .14); }
+.descriptor {
+  margin: 16px 0 0; color: var(--muted);
+  font-size: var(--t-descriptor); letter-spacing: .01em; font-weight: 650;
+}
+
+.hero__copy { text-align: center; margin: 0 auto; max-width: 650px; }
+/* The POR tagline is three short lines at up to 68px. The locked headline is
+   one long sentence, so the ceiling comes down and the line-height comes up a
+   fraction - the POR's typographic voice at a length it was not set for. */
+.hero h1 {
+  margin: 0;
+  font-size: var(--t-hero); line-height: 1.04; letter-spacing: -.03em; font-weight: 900;
+}
+.hero h1 .gold { color: var(--gold2); }
+.lede { margin: 24px auto 0; max-width: 560px; color: var(--ink-lede); font-size: var(--t-lede); }
+.trust {
+  margin: 26px 0 0;
+  font-family: var(--font-num); font-size: var(--t-fine);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--gold);
+}
+
+/* -- Sections (POR) ------------------------------------------------------ */
+.section { padding: 56px 0; border-top: 1px solid var(--hairline); }
+.section h2 { font-size: var(--t-h2); line-height: 1.04; letter-spacing: -.025em; }
+
+/* -- Cards and the gold pill (POR) --------------------------------------- */
+.card-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 26px; }
+.card {
+  background: var(--card-fill);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  padding: 22px;
+
+  /* PARALLEL CONSTRUCTION, HELD STRUCTURALLY RATHER THAN BY COPY LENGTH.
+   *
+   * The two cards carry a heading and a paragraph of different lengths - one
+   * wraps to two lines where the other takes one - so in normal flow their
+   * chip rows and their closing lines landed 32px apart at every desktop
+   * width. Matching them by trimming a sentence would hold only until the next
+   * copy edit.
+   *
+   * The five parts are grid rows and the BODY COPY IS THE ONLY ONE ALLOWED TO
+   * GROW, so it absorbs the difference: the chip row and the closing line are
+   * then a fixed distance from the bottom of the card, and `.card-grid`
+   * already stretches both cards to a single height. Rows are auto-placed in
+   * source order - pill, heading, body, chips, closing line - which is what
+   * `test_the_two_cards_are_structurally_parallel` pins.
+   *
+   * Margins are left on the children rather than replaced by `row-gap`: grid
+   * items do not collapse margins, but every adjacent pair here already has a
+   * zero on one side, so the POR's spacing rhythm survives the change exactly.
+   */
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+}
+.card h3 { margin: 0; color: var(--ivory); font-size: var(--t-card-title); }
+.card p  { margin-top: 10px; font-size: var(--t-card); color: var(--ink-card); }
+
+/* The POR pill: SOLID gold, a category label. Not an odds chip.
+ *
+ * `.card .pill` IS IN THE SELECTOR LIST ON PURPOSE. The pill is a <p>, and
+ * `.card p` above it is more specific than a bare `.pill`, so without this the
+ * label inherits the card's light body colour and renders near-invisible gold
+ * on gold. */
+.pill,
+.card .pill {
+  display: inline-flex; align-items: center;
+  color: var(--on-gold); background: var(--gold2);
+  border-radius: 999px; padding: 6px 10px;
+  font-weight: 850; font-size: var(--t-eyebrow); line-height: 1.2;
+  letter-spacing: .02em;
+  margin: 0 0 14px;
+  /* Grid blockifies its items, turning this `inline-flex` into `flex` - which
+     would stretch a shrink-to-fit label the full width of the card. */
+  justify-self: start;
+}
+
+/* The line that closes BOTH cards - the claim the chips above it illustrate.
+ *
+ * BOTH SELECTORS FOR THE SAME REASON AS `.pill` ABOVE: these are <p> elements,
+ * and `.card p` is more specific than a bare class, so a single-class rule
+ * would lose its colour and size to the card's body copy. */
+.card__note,
+.card .card__note {
+  margin-top: 14px;
+  color: var(--gold2); font-size: var(--t-fine); font-weight: 800;
+}
+
+/* -- Quote / highlight (POR) --------------------------------------------- *
+ * The POR's signature emphasis block, used for the lines the brief calls
+ * closes. Gold rule on the left, gold wash falling away to the right. */
+.quote {
+  padding: 26px 24px;
+  border-left: 3px solid var(--gold);
+  background: linear-gradient(90deg, rgba(200, 162, 77, .09), transparent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-top: 26px;
+}
+.quote strong {
+  display: block;
+  font-size: var(--t-quote); line-height: 1.1; color: var(--ivory); font-weight: 900;
+}
+
+/* -- Steps (POR) --------------------------------------------------------- *
+ * A numbered list on hairlines, not a row of cards. */
+.steps { display: grid; gap: 14px; margin-top: 28px; }
+.step {
+  display: grid; grid-template-columns: 42px 1fr; gap: 14px; align-items: start;
+  padding: 18px 0; border-bottom: 1px solid var(--hairline);
+}
+.num {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--num-fill); border: 1px solid var(--num-line);
+  color: var(--gold2); font-weight: 900;
+}
+.step h3 { margin: 0; font-size: var(--t-step-title); }
+.step p  { margin: 5px 0 0; font-size: var(--t-card); color: var(--ink-body); }
+
+/* -- FAQ (POR) ----------------------------------------------------------- *
+ * Hairline rows, no boxes. `<details>` so it is keyboard operable and readable
+ * with JavaScript off. */
+.faq details { border-top: 1px solid var(--hairline-2); padding: 18px 0; }
+.faq details:last-child { border-bottom: 1px solid var(--hairline-2); }
+.faq summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  cursor: pointer; font-weight: 800; font-size: var(--t-summary);
+  color: var(--ivory); list-style: none;
+}
+.faq summary::-webkit-details-marker { display: none; }
+/* DEPARTURE FROM THE POR, DELIBERATE. The POR hides the native marker and puts
+   nothing in its place, which leaves a disclosure with no visible affordance -
+   readable, but not discoverable. This is the smallest possible replacement. */
+.faq summary::after {
+  content: "+";
+  flex: 0 0 auto;
+  font-family: var(--font-num); font-size: 1.25rem; line-height: 1;
+  color: var(--gold); font-weight: 400;
+}
+.faq details[open] summary::after { content: "\2013"; }
+.faq details p { font-size: var(--t-card); margin-top: 10px; color: var(--ink-body); }
+
+/* -- Closing call to action (POR) ---------------------------------------- */
+.close {
+  text-align: center;
+  padding: 68px 0 76px;
+  border-top: 1px solid var(--hairline);
+  background: radial-gradient(circle at 50% 50%, rgba(200, 162, 77, .12), transparent 22rem);
+}
+.close h2 { font-size: var(--t-close); line-height: 1.04; letter-spacing: -.025em; }
+.close p { max-width: 520px; margin-left: auto; margin-right: auto; }
+.close .tagline {
+  /* `auto` SIDE MARGINS, NOT `0`. `.close p` above gives the closing copy a
+     520px measure and centres it with auto margins; this rule is more specific
+     and its shorthand was resetting those margins to zero, which left a 520px
+     box pinned to the left of a 704px column. `text-align: center` then centred
+     the words inside that box rather than inside the section - 92px left of
+     true centre at every desktop width, close enough to look intentional. */
+  margin: 22px auto 0;
+  font-size: var(--t-lede); font-weight: 800; color: var(--gold2);
+}
+
+/* -- Restrained sportsbook motifs ---------------------------------------- *
+ * Odds chips, a standings strip and credit figures. Subordinate to the POR
+ * furniture above: outlined rather than filled, so the solid gold `.pill`
+ * stays the only saturated gold shape on the page. Each block is labelled
+ * `role="img"` so a screen reader is told what the illustration shows instead
+ * of reading a column of stray numbers. */
+/* ONE CHIP TREATMENT, BOTH CARDS. The markets and the pool names used to be
+   drawn differently - gold against a quiet grey - which read as two different
+   kinds of thing sitting in the same template. The `.chip--quiet` modifier
+   went with the difference; nothing selects it any more. */
+.odds { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.chip { white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 62px; padding: 6px 8px;
+  border-radius: 12px; border: 1px solid var(--card-line);
+  background: rgba(200, 162, 77, .07);
+  color: var(--gold2);
+  font-family: var(--font-num); font-size: .8125rem; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger { margin-top: 20px; }
+.ledger__row {
+  display: grid; grid-template-columns: 1.5rem 1fr auto; gap: 12px; align-items: center;
+  padding: 11px 0; font-size: var(--t-card);
+  border-bottom: 1px solid var(--hairline);
+}
+.ledger__pos { font-family: var(--font-num); color: var(--ink-fine); font-variant-numeric: tabular-nums; }
+.ledger__val { font-family: var(--font-num); color: var(--gold2); font-variant-numeric: tabular-nums; }
+.ledger__row--lead .ledger__pos { color: var(--gold); }
+
+.figures { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 26px; }
+.figure {
+  border: 1px solid var(--card-line); border-radius: 16px;
+  background: var(--card-fill);
+  padding: 16px 18px;
+}
+.figure__k { font-size: var(--t-eyebrow); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-fine); }
+.figure__v {
+  margin-top: 4px;
+  font-family: var(--font-num); font-variant-numeric: tabular-nums;
+  font-size: 1.5rem; font-weight: 800; color: var(--gold2);
+}
+.figure__n { font-size: var(--t-fine); color: var(--ink-fine); }
+
+/* -- Footer -------------------------------------------------------------- *
+ * UTILITY ONLY. Two rows: the five destinations, and the contractual line
+ * beside the copyright. The brand restatement, the descriptor, the claim and
+ * the credit disclaimer that used to sit between them were the reason a legal
+ * block read as one more content section directly under the closing call to
+ * action - and every one of them says something the page has already said.
+ *
+ * WHAT MAY NEVER LEAVE THIS BLOCK is the Yahoo attribution: the string is
+ * fixed by the Yahoo API Access and Use Agreement and is asserted character
+ * for character on every page. The virtual-credit disclaimer moved rather than
+ * vanished - it is the first paragraph of the Virtual credits section and an
+ * FAQ answer on the homepage, and its own clause in the Terms. */
+.footer {
+  padding: 18px 0 22px;
+  color: var(--ink-fine); font-size: var(--t-fine);
+  border-top: 1px solid var(--hairline);
+}
+.footer__links { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 12px; }
+.footer__links a { text-decoration: none; color: var(--ink-link); font-weight: 700; font-size: var(--t-fine); }
+.footer__links a:hover, .footer__links a:focus-visible { color: var(--ivory); text-decoration: underline; }
+.footer__bottom {
+  margin-top: 0; padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between;
+}
+/* The Yahoo attribution is a contractual string. It states a data source and
+   nothing else - no mark, no logo, no endorsement language. */
+.attribution a { color: var(--ink-link); }
+
+/* -- Legal and content pages --------------------------------------------- */
+.doc { padding: 44px 0 56px; }
+.doc h1 { font-size: var(--t-h2); line-height: 1.04; letter-spacing: -.025em; }
+.doc h2 { font-size: var(--t-card-title); margin-top: 40px; }
+.doc p { margin-top: 16px; color: var(--ink-body); font-size: var(--t-card); }
+.doc ul { margin-top: 16px; }
+.doc li {
+  position: relative; padding-left: 18px; margin-top: 8px;
+  color: var(--ink-body); font-size: var(--t-card);
+}
+.doc li::before {
+  content: ""; position: absolute; left: 0; top: .62em;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--gold);
+}
+.doc code { font-family: var(--font-num); font-size: .875em; color: var(--gold2); }
+.doc__stamp {
+  margin-top: 18px; padding: 18px 20px;
+  border-left: 3px solid var(--gold);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: linear-gradient(90deg, rgba(200, 162, 77, .09), transparent);
+  color: var(--ink-body); font-size: var(--t-card);
+}
+.doc__stamp strong { color: var(--gold2); }
+
+/* -- The POR's one breakpoint -------------------------------------------- *
+ * 700px: wider gutters, two-up cards, intrinsic buttons. Everything else is
+ * fluid by clamp, which is why the POR needs no other. */
+@media (min-width: 700px) {
+  .wrap { padding: 0 28px; }
+  .card-grid { grid-template-columns: 1fr 1fr; }
+  .figures { grid-template-columns: repeat(3, 1fr); }
+  .btn { width: auto; }
+}
+
+/* The navigation disclosure is the one thing the POR does not have, so it is
+   the one thing needing a breakpoint of its own: at 900px the five links fit
+   beside the brand and the toggle goes away. */
+@media (min-width: 900px) {
+  /* THE ONE PLACE THE 760px MEASURE IS RELAXED, and only for the bar's inner
+     row. The wordmark, five section links and the demo link do not fit inside
+     760px at any readable size, and a wrapped topbar is a 110px bar that
+     pushes the hero down the page. The bar itself is already full-bleed, so
+     widening its row changes nothing about the POR composition below it; every
+     other `.wrap` on the site keeps the POR measure. */
+  .topbar .wrap { width: min(100%, 1120px); }
+  .nav,
+  .nav[data-open="false"] {
+    display: flex; align-items: center; gap: 20px;
+    order: 2; flex: 0 1 auto; width: auto; margin: 0 auto 0 8px;
+    padding: 0; border-top: 0;
+  }
+  /* The list itself has to become the row. `.nav` going flex only lays out its
+     single <ul> child; without this the five links stay stacked and the topbar
+     grows to three times its height. */
+  .nav ul { display: flex; align-items: center; gap: 20px; }
+  .mini-brand { margin-right: 0; }
+  .mini-link { order: 3; }
+  .nav__link { padding: 4px 0; border-bottom: 0; font-size: .875rem; white-space: nowrap; }
+  .nav__toggle { display: none; }
+}
+</style>
+<script>window.FS_SITE_CONFIG = { demoUrl: 'https://fantasystakes-app-staging-staging.up.railway.app/app/index.html', demoOpensInNewTab: false };</script>
+<script>/* ==========================================================================
+ * FantasyStakes marketing site - behaviour
+ *
+ * TWO JOBS AND NO MORE:
+ *   1. point every "Try the Demo" control at the single configured URL;
+ *   2. run the mobile navigation disclosure.
+ *
+ * Everything else on this page - the FAQ, anchor scrolling, every layout
+ * response - is HTML and CSS. A marketing page that cannot render without
+ * JavaScript is a marketing page that sometimes does not render.
+ *
+ * NO MODULE, NO BUILD, NO DEPENDENCY. Deferred so it never blocks paint.
+ * ========================================================================== */
+
+(function () {
+  'use strict';
+
+  /* -- 1. The demo destination -------------------------------------------- */
+
+  /**
+   * Point every `data-fs-demo-link` control at `config.demoUrl`.
+   *
+   * The markup already carries `href="https://fantasystakes-app-staging-staging.up.railway.app/app/index.html"`, so a reader with JavaScript
+   * turned off still gets a working control that lands on the demo section.
+   * This only ever REPLACES that fallback - it never creates a link, and it
+   * never leaves one pointing at nothing.
+   */
+  function applyDemoDestination() {
+    var config = window.FS_SITE_CONFIG || {};
+    var url = typeof config.demoUrl === 'string' ? config.demoUrl.trim() : '';
+    if (!url) return;
+
+    var links = document.querySelectorAll('[data-fs-demo-link]');
+    for (var i = 0; i < links.length; i += 1) {
+      links[i].setAttribute('href', url);
+
+      // An off-site demo opened in a new tab needs `noopener`, and a same-page
+      // anchor must never be given `target` at all.
+      var offSite = url.charAt(0) !== '#';
+      if (offSite && config.demoOpensInNewTab) {
+        links[i].setAttribute('target', '_blank');
+        links[i].setAttribute('rel', 'noopener');
+      } else {
+        links[i].removeAttribute('target');
+        links[i].removeAttribute('rel');
+      }
+    }
+  }
+
+  /* -- 2. Mobile navigation ------------------------------------------------ */
+
+  /**
+   * A disclosure, not a menu widget.
+   *
+   * The panel is a plain list of links that the stylesheet lays out as a row on
+   * wide viewports and as a stack on narrow ones. The button flips
+   * `data-open` and mirrors it in `aria-expanded`.
+   *
+   * `data-open` RATHER THAN THE `hidden` PROPERTY, because the HTML rendering
+   * spec gives `[hidden]` `display: none !important` in the user-agent sheet.
+   * A panel closed that way could not be re-shown as a desktop row by any
+   * author rule, so a reader who opened the menu on a phone and then rotated
+   * into a tablet layout would lose the navigation entirely.
+   */
+  function initNavigation() {
+    var toggle = document.querySelector('[data-fs-nav-toggle]');
+    var panel = document.getElementById('site-nav');
+    if (!toggle || !panel) return;
+
+    // The panel starts closed only once scripting is confirmed present. Without
+    // this, a no-JavaScript reader would get a permanently collapsed navigation
+    // and a button that does nothing - so the markup ships the panel open and
+    // the toggle hidden, and both are corrected here.
+    toggle.removeAttribute('hidden');
+
+    function setOpen(open) {
+      panel.setAttribute('data-open', open ? 'true' : 'false');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    }
+
+    toggle.addEventListener('click', function () {
+      setOpen(panel.getAttribute('data-open') !== 'true');
+    });
+
+    // Following an in-page anchor should reveal the destination, not leave the
+    // panel covering it.
+    panel.addEventListener('click', function (event) {
+      var link = event.target.closest ? event.target.closest('a') : null;
+      if (link) setOpen(false);
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape' || panel.getAttribute('data-open') !== 'true') return;
+      setOpen(false);
+      toggle.focus();
+    });
+
+    setOpen(false);
+  }
+
+  function init() {
+    applyDemoDestination();
+    initNavigation();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+}());
+</script>
 </head>
 <body>
-
 <a class="skip" href="#main">Skip to content</a>
-
 <!-- ── Topbar ───────────────────────────────────────────────────────────────
      POR geometry: 62px, blurred near-black, one faint hairline, the brand on
      the left and a single gold text link on the right. The five locked section
      links sit behind a disclosure rather than being dropped. -->
 <header class="topbar">
-  <div class="wrap topbar__inner">
-    <a class="mini-brand" href="/" aria-label="FantasyStakes home">
-      <span class="fantasy">FANTASY</span><span class="stakes">STAKES</span>
-    </a>
-
-    <a class="mini-link" href="#demo" data-fs-demo-link>Try the Demo</a>
-
-    <button class="nav__toggle" type="button" hidden
-            data-fs-nav-toggle
-            aria-controls="site-nav" aria-expanded="true" aria-label="Open menu">
-      <span aria-hidden="true"></span>
-    </button>
-
-    <nav class="nav" id="site-nav" aria-label="Primary">
-      <ul>
-        <li><a class="nav__link" href="#what-is">What is FantasyStakes</a></li>
-        <li><a class="nav__link" href="#how-to-play">How to Play</a></li>
-        <li><a class="nav__link" href="#commissioners">For Commissioners</a></li>
-        <li><a class="nav__link" href="#players">For Players</a></li>
-        <li><a class="nav__link" href="#faq">FAQ</a></li>
-      </ul>
-    </nav>
-  </div>
+<div class="wrap topbar__inner">
+<a aria-label="FantasyStakes home" class="mini-brand" href="/">
+<span class="fantasy">FANTASY</span><span class="stakes">STAKES</span>
+</a>
+<a class="mini-link" data-fs-demo-link="" href="https://fantasystakes-app-staging-staging.up.railway.app/app/index.html">Try the Demo</a>
+<button aria-controls="site-nav" aria-expanded="true" aria-label="Open menu" class="nav__toggle" data-fs-nav-toggle="" hidden="" type="button">
+<span aria-hidden="true"></span>
+</button>
+<nav aria-label="Primary" class="nav" id="site-nav">
+<ul>
+<li><a class="nav__link" href="#what-is">What is FantasyStakes</a></li>
+<li><a class="nav__link" href="#why-play">Why Play</a></li>
+<li><a class="nav__link" href="#how-to-play">How to Play</a></li>
+<li><a class="nav__link" href="#testers">For Testers</a></li>
+<li><a class="nav__link" href="#faq">FAQ</a></li>
+</ul>
+</nav>
+</div>
 </header>
-
 <main id="main">
-
-  <!-- ── 1 · Hero ─────────────────────────────────────────────────────────── -->
-  <section class="hero" id="top" aria-labelledby="hero-title">
-    <div class="wrap">
-      <!-- POR lockup: the wordmark at display size, then the descriptor. It is
+<!-- ── 1 · Hero ─────────────────────────────────────────────────────────── -->
+<section aria-labelledby="hero-title" class="hero" id="top">
+<div class="wrap">
+<!-- POR lockup: the wordmark at display size, then the descriptor. It is
            the brand mark rather than the page heading, so the locked headline
            below is the h1 and this is not. -->
-      <div class="lockup">
-        <p class="brand"><span class="fantasy">FANTASY</span><span class="stakes">STAKES</span></p>
-        <p class="descriptor">Fantasy Stakes for Fantasy Leagues</p>
-      </div>
-
-      <div class="hero__copy">
-        <h1 id="hero-title">Add a <span class="gold">Vegas-style</span> sportsbook game to your fantasy league.</h1>
-        <p class="lede">FantasyStakes adds a Vegas-style sportsbook game layer to the fantasy league you already play. Go head-to-head with anyone in your league using calculated moneylines, spreads and over/unders, or take on everyone through league-wide FantasyStakes Prop Pools. All with virtual credits.</p>
-
-        <div class="cta-row">
-          <a class="btn btn--primary" href="#demo" data-fs-demo-link>Try the Demo</a>
-          <a class="btn btn--secondary" href="#how-to-play">See How to Play</a>
-        </div>
-
-        <p class="trust">No deposits. No payouts. No house. No vig.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── 2 · What is FantasyStakes ────────────────────────────────────────── -->
-  <section class="section" id="what-is" aria-labelledby="what-is-title">
-    <div class="wrap">
-      <p class="eyebrow">What is FantasyStakes</p>
-      <h2 id="what-is-title">A new game built on the league you already play.</h2>
-      <p class="copy">FantasyStakes modernizes the fantasy sports experience by adding a sportsbook-style game layer to the league you already play. Your league stays intact, but every week brings more ways to compete through calculated odds, head-to-head FantasyStakes Matchups and league-wide FantasyStakes Prop Pools.</p>
-      <p class="copy">FantasyStakes uses your league’s settings, scoring system and player projections to simulate head-to-head outcomes and generate calculated moneylines, spreads and over/unders for matchups throughout your league. The result is a sportsbook-style market built around the teams and players you actually compete with every week.</p>
-      <p class="copy">Your regular fantasy matchups, standings and playoffs remain the foundation. FantasyStakes adds its own virtual-credit competition, season-long standings and FantasyStakes Championship alongside them.</p>
-      <div class="quote"><strong>Your league. Your projections. Calculated odds for every matchup.</strong></div>
-    </div>
-  </section>
-
-  <!-- ── 3 · Two ways to compete ──────────────────────────────────────────── -->
-  <section class="section" id="two-ways" aria-labelledby="two-ways-title">
-    <div class="wrap">
-      <p class="eyebrow">More ways to win</p>
-      <h2 id="two-ways-title">Two new ways to compete</h2>
-      <p class="copy">Go head-to-head. Or take on the whole league.</p>
-
-      <div class="card-grid">
-        <article class="card">
-          <p class="pill">Matchups</p>
-          <h3>Go head-to-head with anyone in your league.</h3>
-          <p>Every opponent in your league becomes another matchup opportunity. FantasyStakes uses your league’s projections and scoring environment to generate calculated moneylines, spreads and over/unders for each pairing.</p>
-          <div class="odds" role="img" aria-label="Illustration of the three markets a FantasyStakes Matchup is played on: moneyline, spread and over/under.">
-            <span class="chip">Moneyline</span>
-            <span class="chip">Spread</span>
-            <span class="chip">Over/Under</span>
-          </div>
-          <p class="card__note">Calculated for your league.</p>
-        </article>
-
-        <article class="card">
-          <p class="pill">Prop Pools</p>
-          <h3>Take on the whole league.</h3>
-          <p>Every week in your league becomes another prop pool opportunity. FantasyStakes uses your league’s projections, scoring environment and weekly storylines to create fun, league-wide FantasyStakes Prop Pools.</p>
-          <div class="odds" role="img" aria-label="Illustration of three weekly FantasyStakes Prop Pools: Bench Boss, Bad Beat and Punter Points.">
-            <span class="chip">Bench Boss</span>
-            <span class="chip">Bad Beat</span>
-            <span class="chip">Punter Points</span>
-          </div>
-          <p class="card__note">Powered by your league’s action.</p>
-        </article>
-      </div>
-
-      <div class="quote"><strong>More competition. More action. More ways to win.</strong></div>
-    </div>
-  </section>
-
-  <!-- ── 4 · Commissioner ─────────────────────────────────────────────────── -->
-  <section class="section" id="commissioners" aria-labelledby="commissioners-title">
-    <div class="wrap">
-      <p class="eyebrow">For Commissioners</p>
-      <h2 id="commissioners-title">Don’t replace your league. Modernize it.</h2>
-      <p class="copy">Keep the history, rivalries and traditions that make your league yours, then add a new layer of weekly competition with calculated odds, head-to-head FantasyStakes Matchups and league-wide FantasyStakes Prop Pools.</p>
-      <p class="copy">FantasyStakes sits on top of the league you already run. No new draft room. No new waiver system. No need to abandon your league history. Just more ways for everyone to compete.</p>
-      <p class="copy">FantasyStakes also keeps track of the action for you. Its ledger records virtual-credit movements as competitions are opened, settled and scored, while standings and season results update along the way. Commissioners spend more time playing and competing, and less time tracking who won what or reconciling credits.</p>
-      <div class="quote"><strong>More action. Less to manage.</strong></div>
-    </div>
-  </section>
-
-  <!-- ── 5 · Player ───────────────────────────────────────────────────────── -->
-  <section class="section" id="players" aria-labelledby="players-title">
-    <div class="wrap">
-      <p class="eyebrow">For Players</p>
-      <h2 id="players-title">More ways to win every week.</h2>
-      <p class="copy">FantasyStakes gives you new ways to compete throughout the season. Go head-to-head with anyone in your league using calculated moneylines, spreads and over/unders, or take on everyone through league-wide FantasyStakes Prop Pools, all built around your league’s weekly action and projections.</p>
-      <p class="copy">Every settled Matchup and Prop Pool also builds a separate FantasyStakes season, giving you another set of standings and another FantasyStakes Championship to chase.</p>
-
-      <div class="ledger" role="img" aria-label="Illustration of a FantasyStakes season standings table ranking three teams by Championship Score.">
-        <div class="ledger__row ledger__row--lead">
-          <span class="ledger__pos">1</span>
-          <span>Gridiron Sons</span>
-          <span class="ledger__val">1,485</span>
-        </div>
-        <div class="ledger__row">
-          <span class="ledger__pos">2</span>
-          <span>Waiver Wolves</span>
-          <span class="ledger__val">1,240</span>
-        </div>
-        <div class="ledger__row">
-          <span class="ledger__pos">3</span>
-          <span>Bye Week Bandits</span>
-          <span class="ledger__val">1,105</span>
-        </div>
-      </div>
-
-      <div class="quote"><strong>Real odds. Sportsbook action. More ways to win.</strong></div>
-    </div>
-  </section>
-
-  <!-- ── 6 · Virtual credits ──────────────────────────────────────────────── -->
-  <section class="section" id="credits" aria-labelledby="credits-title">
-    <div class="wrap">
-      <p class="eyebrow">Virtual credits</p>
-      <h2 id="credits-title">The odds are real. The action is fast. Stakes are virtual credits. FantasyStakes keeps score.</h2>
-      <p class="copy">FantasyStakes is played entirely with virtual credits. Credits have no cash value and cannot be purchased, deposited, withdrawn or redeemed.</p>
-      <p class="copy">Virtual credits are how FantasyStakes tracks competition. Each GM starts the season with a preset allocation and puts those credits into action through FantasyStakes Matchups and FantasyStakes Prop Pools.</p>
-      <p class="copy">Wins, losses and settled competitions shape your FantasyStakes results throughout the season, creating standings and ultimately determining the FantasyStakes Championship.</p>
-      <p class="copy">When your league uses the combined championship format, the FantasyStakes Championship result and Yahoo Championship result determine the Grand Championship.</p>
-
-      <div class="figures" role="img" aria-label="Illustration of a season of virtual credits: a preset starting allocation, credits currently in action, and a FantasyStakes Championship Score.">
-        <div class="figure">
-          <p class="figure__k">Season start</p>
-          <p class="figure__v">1,000</p>
-          <p class="figure__n">Virtual credits</p>
-        </div>
-        <div class="figure">
-          <p class="figure__k">In action</p>
-          <p class="figure__v">250</p>
-          <p class="figure__n">Across Matchups and Prop Pools</p>
-        </div>
-        <div class="figure">
-          <p class="figure__k">Championship Score</p>
-          <p class="figure__v">1,485</p>
-          <p class="figure__n">Determines the standings</p>
-        </div>
-      </div>
-
-      <div class="quote"><strong>Virtual credits track the action. The ledger keeps the score.</strong></div>
-    </div>
-  </section>
-
-  <!-- ── 7 · How to Play ──────────────────────────────────────────────────── -->
-  <section class="section" id="how-to-play" aria-labelledby="how-to-play-title">
-    <div class="wrap">
-      <p class="eyebrow">How to Play</p>
-      <h2 id="how-to-play-title">Connect your league. Find your action. Compete all season.</h2>
-
-      <ol class="steps">
-        <li class="step">
-          <span class="num" aria-hidden="true">1</span>
-          <div>
-            <h3>Connect your league.</h3>
-            <p>Your commissioner connects the league. FantasyStakes uses its teams, settings, scoring system and projections to build the game around the league you already play.</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="num" aria-hidden="true">2</span>
-          <div>
-            <h3>Find your action.</h3>
-            <p>Choose a FantasyStakes Matchup against another GM or enter one of the week’s FantasyStakes Prop Pools.</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="num" aria-hidden="true">3</span>
-          <div>
-            <h3>Pick your market and credits.</h3>
-            <p>Play a calculated moneyline, spread or over/under in a Matchup, or make your selection in a Prop Pool using virtual credits.</p>
-          </div>
-        </li>
-        <li class="step">
-          <span class="num" aria-hidden="true">4</span>
-          <div>
-            <h3>Follow the season.</h3>
-            <p>Every settled Matchup and Prop Pool shapes the FantasyStakes standings as you compete throughout the season for the FantasyStakes Championship.</p>
-          </div>
-        </li>
-      </ol>
-    </div>
-  </section>
-
-  <!-- ── 8 · Demo ─────────────────────────────────────────────────────────── -->
-  <section class="section" id="demo" aria-labelledby="demo-title">
-    <div class="wrap">
-      <p class="eyebrow">The demo</p>
-      <h2 id="demo-title">See FantasyStakes in action.</h2>
-      <p class="copy">Explore a complete FantasyStakes sample league with head-to-head Matchups, calculated odds, FantasyStakes Prop Pools, standings, virtual-credit activity and championship results.</p>
-      <p class="trust">No Yahoo account required. No real money. Just a fully playable FantasyStakes demo.</p>
-      <div class="cta-row">
-        <a class="btn btn--primary" href="#demo" data-fs-demo-link>Try the Demo</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── 9 · FAQ ──────────────────────────────────────────────────────────── -->
-  <section class="section faq" id="faq" aria-labelledby="faq-title">
-    <div class="wrap">
-      <p class="eyebrow">FAQ</p>
-      <h2 id="faq-title">Quick answers.</h2>
-
-      <details open>
-        <summary>Does FantasyStakes handle real money?</summary>
-        <p>No. FantasyStakes does not accept deposits, process payments or make payouts. The game is played entirely with virtual credits. Any separate arrangements between league members happen independently of FantasyStakes.</p>
-      </details>
-
-      <details>
-        <summary>Does FantasyStakes replace Yahoo?</summary>
-        <p>No. Yahoo remains your fantasy league platform. FantasyStakes sits alongside it and adds new Matchups, Prop Pools, standings and championships without replacing your draft, waivers, league standings or history.</p>
-      </details>
-
-      <details>
-        <summary>How are the odds created?</summary>
-        <p>FantasyStakes uses your league’s scoring settings and player projections to simulate matchups and generate calculated moneylines, spreads and over/unders for your league.</p>
-      </details>
-
-      <details>
-        <summary>What are virtual credits?</summary>
-        <p>Virtual credits are how FantasyStakes keeps score. They track competition results and have no cash value. They cannot be purchased, deposited, withdrawn or redeemed.</p>
-      </details>
-
-      <details>
-        <summary>What can I play?</summary>
-        <p>You can go head-to-head with other GMs using moneylines, spreads and over/unders, or take on the whole league through weekly FantasyStakes Prop Pools.</p>
-      </details>
-
-      <details>
-        <summary>Does the demo require Yahoo?</summary>
-        <p>No. The demo uses a fictional sample league and does not require Yahoo authentication.</p>
-      </details>
-
-      <details>
-        <summary>How do I use FantasyStakes with my league?</summary>
-        <p>The commissioner connects the league, and FantasyStakes builds the experience around that league’s teams, settings, scoring and projections.</p>
-      </details>
-    </div>
-  </section>
-
-  <!-- ── 10 · Final CTA ───────────────────────────────────────────────────── -->
-  <section class="close" id="get-started" aria-labelledby="get-started-title">
-    <div class="wrap">
-      <h2 id="get-started-title">Your league already has the rivalries. FantasyStakes gives you more ways to settle them.</h2>
-      <p class="copy">Bring sportsbook-style action to the fantasy league you already play with additional head-to-head FantasyStakes Matchups, weekly FantasyStakes Prop Pools and a season-long FantasyStakes Championship.</p>
-      <p class="tagline">Real odds. Sportsbook action. More ways to win.</p>
-      <div class="cta-row">
-        <a class="btn btn--primary" href="#demo" data-fs-demo-link>Try the Demo</a>
-      </div>
-    </div>
-  </section>
-
+<div class="lockup">
+<p class="brand"><span class="fantasy">FANTASY</span><span class="stakes">STAKES</span></p>
+<p class="descriptor">Fantasy Stakes for Fantasy Leagues</p>
+</div>
+<div class="hero__copy">
+<h1 id="hero-title">Add a <span class="gold">new championship race</span> to your fantasy leagues.</h1>
+<p class="lede">FantasyStakes adds head-to-head competition, calculated odds and Vegas-style action to the teams, scoring system and rivalries already built into your league.</p>
+<div class="cta-row">
+<a class="btn btn--primary" data-fs-demo-link="" href="https://fantasystakes-app-staging-staging.up.railway.app/app/index.html">Try the Demo</a>
+<a class="btn btn--secondary" href="#how-to-play">See How to Play</a>
+</div>
+<p class="trust">No house. No vig. No cash. Only FantasyStakes.</p>
+</div>
+</div>
+</section>
+<!-- ── 2 · What is FantasyStakes ────────────────────────────────────────── -->
+<section aria-labelledby="what-is-title" class="section" id="what-is">
+<div class="wrap">
+<p class="eyebrow">What is FantasyStakes</p>
+<h2 id="what-is-title">A new championship built inside your fantasy league.</h2>
+<p class="copy">FantasyStakes adds a separate virtual-credit competition alongside the league you already play, with its own standings race and FantasyStakes Championship.</p>
+<p class="copy">FantasyStakes uses your league’s scoring settings and lineups together with player projections to simulate outcomes and generate calculated moneylines, spreads and over/unders for head-to-head Matchups and league-wide Prop Pools.</p>
+<p class="copy">Every result moves the larger FantasyStakes race — changing your competitive position, the standings and the championship picture.</p>
+<div class="quote"><strong>Every week is part of a bigger game.</strong></div>
+</div>
+</section><section aria-labelledby="why-play-title" class="section" id="why-play"><div class="wrap"><p class="eyebrow">Why play FantasyStakes</p><h2 id="why-play-title">More reasons to care about every week.</h2><p class="copy">Your scheduled fantasy matchup is only one part of the week. FantasyStakes lets you challenge rivals you are not scheduled to play, take positions on calculated markets and compete in custom league pools built around that week’s action.</p><p class="copy">That means more teams matter, more outcomes matter and more league rivalries stay active. A bad start in your regular matchup does not have to mean your week is over.</p><div class="quote"><strong>More competition. More rivalry. More ways to win.</strong></div></div></section><section aria-labelledby="sportsbook-title" class="section" id="sportsbook-style"><div class="wrap"><p class="eyebrow">Sportsbook-style action. Fantasy competition.</p><h2 id="sportsbook-title">Familiar mechanics. A very different game.</h2><p class="copy">FantasyStakes uses familiar sportsbook-style mechanics: calculated odds, moneylines, spreads and over/unders. But FantasyStakes is not a real-money sportsbook.</p><p class="copy">There is no house taking the other side, no vig, no cash wagering, no deposits and no payouts through FantasyStakes. You compete directly with other GMs in your league using virtual credits.</p><p class="copy">The objective is not to cash out a wager. Your results accumulate inside the FantasyStakes game, shape the standings and drive a separate championship race.</p><div class="quote"><strong>Use virtual credits to compete. Build your position. Chase the championship.</strong></div></div></section>
+<!-- ── 3 · Two ways to compete ──────────────────────────────────────────── -->
+<section aria-labelledby="two-ways-title" class="section" id="two-ways">
+<div class="wrap">
+<p class="eyebrow">How you compete</p>
+<h2 id="two-ways-title">Two ways to put your week in play.</h2>
+<p class="copy">FantasyStakes Matchups are one-vs-one. FantasyStakes Prop Pools are one-vs-everyone. Both use virtual credits and feed the larger FantasyStakes game.</p>
+<div class="card-grid">
+<article class="card">
+<p class="pill">Matchups</p>
+<h3>Go head-to-head with anyone in your league.</h3>
+<p>Every opponent in your league becomes another matchup opportunity. FantasyStakes generates calculated moneylines, spreads and over/unders from modeled matchup probabilities, creating peer-to-peer odds-based competition between league rivals.</p>
+<div aria-label="Illustration of the three markets a FantasyStakes Matchup is played on: moneyline, spread and over/under." class="odds" role="img">
+<span class="chip">Moneyline</span>
+<span class="chip">Spread</span>
+<span class="chip">Over/Under</span>
+</div>
+<p class="card__note">Peer-to-peer. No house. No vig.</p>
+</article>
+<article class="card">
+<p class="pill">Prop Pools</p>
+<h3>Go one-vs-everyone within your league.</h3>
+<p>Every week brings new league-wide FantasyStakes Prop Pools built around the teams, players and storylines in your league. Make your selection, commit virtual credits and compete against the field under the same governed rules.</p>
+<div aria-label="Illustration of three weekly FantasyStakes Prop Pools: Bench Boss, Bad Beat and Punter Points." class="odds" role="img">
+<span class="chip">Bench Boss</span>
+<span class="chip">Bad Beat</span>
+<span class="chip">Punter Points</span>
+</div>
+<p class="card__note">Custom league pools built around your week’s action.</p>
+</article>
+</div>
+<div class="quote"><strong>Real odds. Pure action. More ways to win.</strong></div>
+</div>
+</section>
+<!-- ── 4 · Commissioner ─────────────────────────────────────────────────── -->
+<section aria-labelledby="game-works-title" class="section" id="game-works">
+<div class="wrap">
+<p class="eyebrow">How the game works</p>
+<h2 id="game-works-title">Start equal. Compete every week. Chase the championship.</h2>
+<p class="copy">Every GM starts with the same Season Opening Allocation of virtual credits. Those credits are the game resource you use to compete in FantasyStakes Matchups, Prop Pools and other governed league competition.</p>
+<p class="copy">As results settle, your FantasyStakes performance changes with them. Every week can move the standings, change the championship picture and create new opportunities to compete.</p>
+<p class="copy">The FantasyStakes Championship is the title everyone is chasing. At season end, FantasyStakes Reconciliation provides the complete record of how the league-wide virtual-credit economy finished.</p>
+<div class="quote"><strong>Every week matters. Every result can move the race.</strong></div>
+</div>
+</section>
+<!-- ── 5 · Player ───────────────────────────────────────────────────────── -->
+<section aria-labelledby="know-your-game-title" class="section" id="know-your-game">
+<div class="wrap">
+<p class="eyebrow">Know your game</p>
+<h2 id="know-your-game-title">A few terms make the whole game easier to follow.</h2>
+<p class="copy">Your Wallet is the virtual credits you still have available to use. In Play is the amount currently committed to unresolved action. Your Weekly Minimum keeps everyone participating in qualifying competition.</p>
+<p class="copy">Standings show the FantasyStakes championship race. FantasyStakes Reconciliation is the final accounting of where the league-wide virtual-credit economy ended after all governed results.</p>
+<div aria-label="Illustration of FantasyStakes season standings ranking three teams by FantasyStakes Score." class="ledger" role="img">
+<div class="ledger__row ledger__row--lead">
+<span class="ledger__pos">1</span>
+<span>Gridiron Sons</span>
+<span class="ledger__val">+65</span>
+</div>
+<div class="ledger__row">
+<span class="ledger__pos">2</span>
+<span>Waiver Wolves</span>
+<span class="ledger__val">+42</span>
+</div>
+<div class="ledger__row">
+<span class="ledger__pos">3</span>
+<span>Bye Week Bandits</span>
+<span class="ledger__val">+18</span>
+</div>
+</div>
+<div class="quote"><strong>Virtual credits are what you compete with. The standings show how the race is going.</strong></div>
+</div>
+</section>
+<!-- ── 6 · Virtual credits ──────────────────────────────────────────────── -->
+<section aria-labelledby="getting-started-title" class="section" id="getting-started">
+<div class="wrap">
+<p class="eyebrow">Getting started</p>
+<h2 id="getting-started-title">Your commissioner connects the league. You join the competition.</h2>
+<p class="copy">Your commissioner connects the fantasy league and configures the FantasyStakes game. FantasyStakes then builds the experience around your league’s teams, scoring system and weekly schedule.</p>
+<p class="copy">You do not need a new draft, waiver system or fantasy roster. FantasyStakes works alongside the fantasy league you already play.</p>
+<p class="copy">When you enter FantasyStakes, the app gives you four simple areas: one for competition, one for standings, one for weekly results and one for your account.</p>
+<p class="copy">The guided player walkthrough shows exactly where to go, what the main screens mean and how to make your first FantasyStakes play.</p>
+<div aria-label="Illustration of a season of virtual credits: a preset starting allocation, credits currently in action, and a FantasyStakes Championship Score." class="figures" role="img">
+<div class="figure">
+<p class="figure__k">Compete</p>
+<p class="figure__v">Action</p>
+<p class="figure__n">Matchups and Prop Pools</p>
+</div>
+<div class="figure">
+<p class="figure__k">Follow</p>
+<p class="figure__v">Standings</p>
+<p class="figure__n">See the championship race</p>
+</div>
+<div class="figure">
+<p class="figure__k">Review</p>
+<p class="figure__v">Wrap Up</p>
+<p class="figure__n">See what changed after the week</p>
+</div>
+</div>
+<div class="quote"><strong>The website explains the game. The guided walkthrough shows you how to play it.</strong></div>
+</div>
+</section>
+<!-- ── 7 · How to Play ──────────────────────────────────────────────────── -->
+<section aria-labelledby="how-to-play-title" class="section" id="how-to-play">
+<div class="wrap">
+<p class="eyebrow">How to play</p>
+<h2 id="how-to-play-title">The basic loop is simple.</h2>
+<ol class="steps"><li class="step"><span aria-hidden="true" class="num">1</span><div><h3>Start with virtual credits.</h3><p>Every GM begins from the same configured starting point.</p></div></li><li class="step"><span aria-hidden="true" class="num">2</span><div><h3>Choose how to compete.</h3><p>Go head-to-head through FantasyStakes Matchups or go one-vs-everyone through FantasyStakes Prop Pools.</p></div></li><li class="step"><span aria-hidden="true" class="num">3</span><div><h3>Put credits into action.</h3><p>Make your selection and commit virtual credits to the competition.</p></div></li><li class="step"><span aria-hidden="true" class="num">4</span><div><h3>Follow the result.</h3><p>FantasyStakes tracks the competition as it moves from open to live to settled.</p></div></li><li class="step"><span aria-hidden="true" class="num">5</span><div><h3>Watch the race move.</h3><p>Settled results change your FantasyStakes performance, standings and championship picture.</p></div></li></ol>
+</div>
+</section>
+<!-- ── 8 · Demo ─────────────────────────────────────────────────────────── -->
+<section aria-labelledby="demo-title" class="section" id="demo">
+<div class="wrap">
+<p class="eyebrow">See it in action</p>
+<h2 id="demo-title">Explore the game. Then connect your league.</h2>
+<p class="copy">New here? Try the demo first. It shows Matchups, Prop Pools, standings, weekly results and the championship race together in one sample league.</p>
+<p class="copy"><strong>Ready to test your league?</strong> Sign in with Yahoo using the same account you use for fantasy football. Think of FantasyStakes like a companion app that connects to the league you already play.</p>
+<p class="trust">No Yahoo account required for the demo. No real money. Just a complete FantasyStakes sample league.</p>
+<div class="cta-row">
+<a class="btn btn--primary" data-fs-demo-link="" href="https://fantasystakes-app-staging-staging.up.railway.app/app/index.html">Try the Demo</a>
+</div>
+</div>
+</section>
+<!-- ── 9 · FAQ ──────────────────────────────────────────────────────────── -->
+<section aria-labelledby="testers-title" class="section" id="testers"><div class="wrap"><p class="eyebrow">For testers</p><h2 id="testers-title">First set up FantasyStakes. Then help us break it.</h2><p class="copy"><strong>FantasyStakes complements Yahoo Fantasy Sports — it doesn’t replace it.</strong> Keep using Yahoo to manage your roster, set your lineup and make player transactions. FantasyStakes uses your league and lineup data to power the game.</p><p class="copy">For Phase 1, there are four things we need you to do:</p><ol class="steps"><li class="step"><span aria-hidden="true" class="num">1</span><div><h3>Sign in with Yahoo.</h3><p>Use the same Yahoo account you use for your fantasy football league.</p></div></li><li class="step"><span aria-hidden="true" class="num">2</span><div><h3>Add FantasyStakes to your Home Screen.</h3><p><strong>iPhone:</strong> Safari → Share → Add to Home Screen. <strong>Android:</strong> Chrome → Menu → Add to Home screen or Install app.</p></div></li><li class="step"><span aria-hidden="true" class="num">3</span><div><h3>Set your lineup in Yahoo.</h3><p>Keep using Yahoo Fantasy Sports to manage your team and set your starting lineup. FantasyStakes needs those starting lineups to unlock its Sportsbook market pricing.</p></div></li><li class="step"><span aria-hidden="true" class="num">4</span><div><h3>Then help us break FantasyStakes.</h3><p>Explore Standings, Action, Wrap Up, Account and Gear. If anything looks wrong, shows incorrect league data, feels confusing or does not work the way you expect, send us a screenshot and tell us what you were trying to do.</p></div></li></ol><div class="quote"><strong>The best feedback tells us what you expected to happen, what actually happened and whether the game still made sense.</strong></div></div></section><section aria-labelledby="faq-title" class="section faq" id="faq">
+<div class="wrap">
+<p class="eyebrow">FAQ</p>
+<h2 id="faq-title">Quick answers.</h2>
+<details open="">
+<summary>Is FantasyStakes gambling?</summary>
+<p>FantasyStakes uses sportsbook-style mechanics such as calculated moneylines, spreads and over/unders, but FantasyStakes itself is played with virtual credits. There is no house, no vig, no cash wagering, no deposits and no payouts through FantasyStakes.</p>
+</details>
+<details>
+<summary>Does FantasyStakes replace my fantasy league?</summary>
+<p>No. Yahoo remains where you manage your fantasy team. FantasyStakes adds a separate gaming layer using the league, teams, scoring system and weekly schedule you already have.</p>
+</details>
+<details>
+<summary>What am I trying to win?</summary>
+<p>You are competing in a separate FantasyStakes standings race for the FantasyStakes Championship.</p>
+</details>
+<details>
+<summary>What are virtual credits?</summary>
+<p>Virtual credits are the game resources used to compete in FantasyStakes. Every GM begins from the same configured starting point. Credits have no cash value and cannot be purchased, deposited, withdrawn or redeemed.</p>
+</details>
+<details>
+<summary>What are FantasyStakes Matchups?</summary>
+<p>FantasyStakes Matchups are one-vs-one competitions between GMs using calculated moneylines, spreads and over/unders.</p>
+</details>
+<details>
+<summary>What are FantasyStakes Prop Pools?</summary>
+<p>FantasyStakes Prop Pools are one-vs-everyone competitions built around your league’s teams, players and weekly action.</p>
+</details>
+<details>
+<summary>How do I learn the app itself?</summary>
+<p>Players and testers use a separate guided walkthrough that introduces the main screens and shows how to make a first FantasyStakes play. The website focuses on understanding the game and why you would want to play it.</p>
+</details>
+</div>
+</section>
+<!-- ── 10 · Final CTA ───────────────────────────────────────────────────── -->
+<section aria-labelledby="get-started-title" class="close" id="get-started">
+<div class="wrap">
+<h2 id="get-started-title">Your league already has the rivalries. Add another championship race.</h2>
+<p class="copy">Keep the fantasy league you already know and add calculated odds, head-to-head Matchups, one-vs-everyone Prop Pools, virtual credits and a separate FantasyStakes Championship.</p>
+<p class="tagline">Real odds. Pure action. More ways to win.</p>
+<div class="cta-row">
+<a class="btn btn--primary" data-fs-demo-link="" href="https://fantasystakes-app-staging-staging.up.railway.app/app/index.html">Try the Demo</a>
+</div>
+</div>
+</section>
 </main>
-
 <!-- ── 11 · Footer ──────────────────────────────────────────────────────── -->
 <footer class="footer">
-  <div class="wrap">
-    <nav class="footer__links" aria-label="Footer">
-      <a href="#how-to-play">How to Play</a>
-      <a href="#faq">FAQ</a>
-      <a href="/terms/">Terms</a>
-      <a href="/privacy/">Privacy</a>
-      <a href="/contact/">Contact</a>
-    </nav>
-
-    <div class="footer__bottom">
-      <!-- CONTRACTUAL ATTRIBUTION. The string is fixed by the Yahoo API Access
+<div class="wrap">
+<nav aria-label="Footer" class="footer__links">
+<a href="#how-to-play">How to Play</a>
+<a href="#faq">FAQ</a>
+<a href="/terms/">Terms</a>
+<a href="/privacy/">Privacy</a>
+<a href="/contact/">Contact</a>
+</nav>
+<div class="footer__bottom">
+<!-- CONTRACTUAL ATTRIBUTION. The string is fixed by the Yahoo API Access
            and Use Agreement and is reproduced character for character. No mark,
            no logo, no "powered by", no endorsement language of any kind. -->
-      <p class="attribution">Fantasy data provided by <a href="https://football.fantasysports.yahoo.com/" rel="noopener nofollow">Yahoo Fantasy</a></p>
-      <p>&copy; 2026 FantasyStakes</p>
-    </div>
-  </div>
+<p class="attribution">Fantasy data provided by <a href="https://football.fantasysports.yahoo.com/" rel="noopener nofollow">Yahoo Fantasy</a></p>
+<p>© 2026 FantasyStakes</p>
+</div>
+</div>
 </footer>
-
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Does FantasyStakes handle real money?","acceptedAnswer":{"@type":"Answer","text":"No. FantasyStakes does not accept deposits, process payments or make payouts. The game is played entirely with virtual credits. Any separate arrangements between league members happen independently of FantasyStakes."}},{"@type":"Question","name":"Does FantasyStakes replace Yahoo?","acceptedAnswer":{"@type":"Answer","text":"No. Yahoo remains your fantasy league platform. FantasyStakes sits alongside it and adds new Matchups, Prop Pools, standings and championships without replacing your draft, waivers, league standings or history."}},{"@type":"Question","name":"How are the odds created?","acceptedAnswer":{"@type":"Answer","text":"FantasyStakes uses your league’s scoring settings and player projections to simulate matchups and generate calculated moneylines, spreads and over/unders for your league."}},{"@type":"Question","name":"What are virtual credits?","acceptedAnswer":{"@type":"Answer","text":"Virtual credits are how FantasyStakes keeps score. They track competition results and have no cash value. They cannot be purchased, deposited, withdrawn or redeemed."}},{"@type":"Question","name":"What can I play?","acceptedAnswer":{"@type":"Answer","text":"You can go head-to-head with other GMs using moneylines, spreads and over/unders, or take on the whole league through weekly FantasyStakes Prop Pools."}},{"@type":"Question","name":"Does the demo require Yahoo?","acceptedAnswer":{"@type":"Answer","text":"No. The demo uses a fictional sample league and does not require Yahoo authentication."}},{"@type":"Question","name":"How do I use FantasyStakes with my league?","acceptedAnswer":{"@type":"Answer","text":"The commissioner connects the league, and FantasyStakes builds the experience around that league’s teams, settings, scoring and projections."}}]}</script>
-
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Does FantasyStakes handle real money?","acceptedAnswer":{"@type":"Answer","text":"No. FantasyStakes does not accept deposits, process payments or make payouts. The game is played entirely with virtual credits. Any separate arrangements between league members happen independently of FantasyStakes."}},{"@type":"Question","name":"Does FantasyStakes replace Yahoo?","acceptedAnswer":{"@type":"Answer","text":"No. Yahoo remains your fantasy league platform. FantasyStakes sits alongside it and adds Matchups, Prop Pools, FantasyStakes Score, standings, championships and reconciliation without replacing your draft, waivers, league standings or history."}},{"@type":"Question","name":"What does sportsbook-style mean?","acceptedAnswer":{"@type":"Answer","text":"It means FantasyStakes uses odds-based game mechanics such as calculated moneylines, spreads and over/unders for peer-to-peer competition. Those markets are generated from FantasyStakes simulations and modeled probabilities. It does not mean real-money wagering, a house, vig or FantasyStakes taking the other side."}},{"@type":"Question","name":"What are virtual credits?","acceptedAnswer":{"@type":"Answer","text":"Virtual credits are the game resources that make up the FantasyStakes economy. Every GM begins with the same Season Opening Allocation. Credits have no cash value and cannot be purchased, deposited, withdrawn or redeemed."}},{"@type":"Question","name":"What is FantasyStakes Score?","acceptedAnswer":{"@type":"Answer","text":"FantasyStakes Score is the running measure of competitive performance across the FantasyStakes game. Settled Matchups, Prop Pools and governed Skunk results move the score, which drives the FantasyStakes Standings and championship race."}},{"@type":"Question","name":"What is FantasyStakes Reconciliation?","acceptedAnswer":{"@type":"Answer","text":"FantasyStakes Reconciliation is the complete economic record of the season. It shows how each GM’s identical opening allocation was redistributed across the league through weekly competition, Skunk results, championships and all governed adjustments — and where each GM ultimately finished within the league-wide FantasyStakes economy."}},{"@type":"Question","name":"How do I use FantasyStakes with my league?","acceptedAnswer":{"@type":"Answer","text":"The commissioner connects the league, and FantasyStakes builds the experience around that league’s teams, settings and scoring environment. The commissioner also sets the FantasyStakes game balance before the season begins."}}]}</script>
 </body>
 </html>
