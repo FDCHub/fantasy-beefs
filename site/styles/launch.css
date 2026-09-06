@@ -1,0 +1,76 @@
+/* ==========================================================================
+ * FantasyStakes - player launch memo (/launch)
+ *
+ * LIFTED VERBATIM from the locked v10 memo. The site serves
+ * `Content-Security-Policy: style-src 'self'` with no 'unsafe-inline', so an
+ * inline <style> block and inline style="" attributes are both refused by the
+ * browser and the page would render entirely unstyled. Moving the CSS to a
+ * served file is what makes the locked design render as designed - it is a
+ * hosting change, not a redesign. Not one declaration was altered.
+ *
+ * The final rules replace the memo's five inline style attributes and carry
+ * their declarations character for character.
+ * ========================================================================== */
+:root{--bg:#07101d;--panel:#0c1828;--panel2:#101f32;--ink:#f6f2e8;--muted:#aeb8c7;--gold:#d8ae58;--gold2:#f1cf87;--line:#27384e;--green:#81c995;--max:1040px}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 50% -10%,rgba(216,174,88,.15),transparent 38%),var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}.wrap{width:min(var(--max),calc(100% - 32px));margin:auto}.hero{min-height:88vh;display:grid;place-items:center;text-align:center;padding:72px 0 56px;border-bottom:1px solid var(--line)}.eyebrow{color:var(--gold2);font-size:.78rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;margin-bottom:18px}.brand{font-size:clamp(2.1rem,8vw,4.9rem);line-height:.94;font-weight:950;letter-spacing:-.055em}.brand span{color:var(--gold)}.subbrand{margin-top:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;font-weight:700;font-size:.74rem}h1{font-size:clamp(2.2rem,6vw,4.6rem);line-height:1.02;letter-spacing:-.045em;max-width:900px;margin:42px auto 22px}.hero p{color:#d9e0e9;max-width:800px;margin:0 auto 16px;font-size:clamp(1.02rem,2vw,1.25rem)}.callout{color:var(--gold2)!important;font-weight:800;margin-top:22px!important}.cta{display:inline-flex;align-items:center;justify-content:center;min-height:50px;margin-top:28px;padding:0 28px;border:1px solid var(--gold);border-radius:999px;background:var(--gold);color:#0b111c;font-weight:900;letter-spacing:.06em;text-decoration:none}.tiny{font-size:.82rem;color:var(--muted);margin-top:10px}section{padding:68px 0;border-bottom:1px solid var(--line)}.section-title{margin:0 0 12px;font-size:clamp(1.65rem,3vw,2.6rem);line-height:1.08;letter-spacing:-.025em}.lead{font-size:1.1rem;color:#d9e0e9;max-width:820px;margin:0 0 28px}.grid{display:grid;gap:14px}.three{grid-template-columns:repeat(3,minmax(0,1fr))}.two{grid-template-columns:repeat(2,minmax(0,1fr))}.card{background:linear-gradient(180deg,rgba(16,31,50,.98),rgba(11,23,39,.98));border:1px solid var(--line);border-radius:18px;padding:22px}.card h3{margin:0 0 8px;color:var(--gold2);font-size:.88rem;letter-spacing:.09em;text-transform:uppercase}.card p{margin:0;color:#d9e0e9}.big{font-size:1.45rem;font-weight:900;color:var(--ink)!important;margin-bottom:6px!important}.league{border-left:3px solid var(--gold);padding-left:18px}.terms{display:grid;grid-template-columns:180px 1fr;margin-top:20px;border:1px solid var(--line);border-radius:16px;overflow:hidden}.terms div{padding:14px 16px;border-bottom:1px solid var(--line)}.terms .label{color:var(--muted);font-weight:750;background:rgba(255,255,255,.018)}.optional{background:linear-gradient(135deg,rgba(216,174,88,.13),rgba(16,31,50,.75));border:1px solid rgba(216,174,88,.55);border-radius:22px;padding:28px}.optional h2{margin-top:0}.choice{display:flex;flex-wrap:wrap;gap:10px;margin:20px 0 4px}.choice span{border:1px solid var(--line);border-radius:999px;padding:8px 13px;font-weight:750;color:#e5eaf0;background:rgba(0,0,0,.12)}.economy{display:grid;gap:12px;margin-top:24px}.econ-row{display:grid;grid-template-columns:190px 1fr;gap:20px;align-items:start;padding:18px 0;border-top:1px solid var(--line)}.econ-row strong{color:var(--gold2)}.econ-row p{margin:0;color:#d9e0e9}.note{border-left:3px solid var(--green);padding:4px 0 4px 16px;color:#dce8df;margin-top:22px}
+    .play-note{
+      margin-top:24px;
+      padding:18px 20px;
+      border-top:1px solid var(--line);
+      border-bottom:1px solid var(--line);
+      background:rgba(255,255,255,.018);
+      color:#d9e0e9;
+      font-size:.92rem;
+    }
+    .play-note__title{
+      color:var(--gold2);
+      font-weight:900;
+      letter-spacing:.05em;
+      text-transform:uppercase;
+      margin-bottom:10px;
+      font-size:.78rem;
+    }
+    .play-note p{margin:0 0 10px}
+    .play-note p:last-child{margin-bottom:0}
+
+    .steps{counter-reset:step}.step{counter-increment:step;position:relative;padding:20px 20px 20px 64px;border-top:1px solid var(--line)}.step:before{content:counter(step);position:absolute;left:12px;top:18px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--gold);color:#09101a;font-weight:950}.step h3{margin:0 0 5px;font-size:1rem}.step p{margin:0;color:#d9e0e9}.center{text-align:center}.closing{padding:82px 0;text-align:center;background:linear-gradient(180deg,transparent,rgba(216,174,88,.06))}.closing h2{font-size:clamp(2rem,5vw,4rem);margin:0 auto 18px;max-width:850px;letter-spacing:-.04em;line-height:1.02}.tagline{color:var(--gold2);font-weight:900;font-size:1.1rem}footer{padding:26px 0 38px;color:var(--muted);font-size:.78rem;text-align:center}.preview-flag{position:fixed;right:12px;bottom:12px;z-index:5;padding:7px 10px;border-radius:999px;background:#151f2c;border:1px solid var(--line);color:var(--muted);font-size:.7rem}@media(max-width:760px){.three,.two{grid-template-columns:1fr}section{padding:52px 0}.terms,.econ-row{grid-template-columns:1fr}.terms .label{padding-bottom:4px}.econ-row{gap:5px}.hero{min-height:auto}}
+
+.league-econ-block { display:grid; gap:7px; }
+.league-econ-kicker {
+  font-size:.72rem;
+  letter-spacing:.16em;
+  font-weight:800;
+  color:var(--gold, #d9ad4a);
+  margin-bottom:2px;
+}
+.card.league .league-econ-block p {
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:16px;
+  margin:0;
+  line-height:1.3;
+}
+.card.league .league-econ-block p strong {
+  font-weight:700;
+  min-width:0;
+}
+.card.league .league-econ-block p span {
+  white-space:nowrap;
+  text-align:right;
+}
+.card.league .league-econ-note span {
+  white-space:normal;
+  max-width:47%;
+}
+@media (max-width: 560px) {
+  .card.league .league-econ-block p { gap:10px; }
+  .card.league .league-econ-block p strong { font-size:.96rem; }
+  .card.league .league-econ-block p span { font-size:.96rem; }
+  .card.league .league-econ-note span { max-width:52%; }
+}
+
+
+
+.league-econ-divider{border-top:1px dotted rgba(255,255,255,.35); margin:14px 0;}
+.lead-centered{margin-left:auto;margin-right:auto}
+.card p.feedback-note{margin-top:12px}
