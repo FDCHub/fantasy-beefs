@@ -116,6 +116,23 @@ await withBrowser(async ({ cdp, origin }) => {
   check(c.inline === 0, 'no inline style attributes remain', String(c.inline));
   check(c.title.startsWith('FantasyStakes'), 'locked title', c.title);
 
+  section('No preview scaffolding remains');
+  /* The memo was authored as a preview and carried three markers that would be
+     wrong in front of players. They were removed on instruction; this is the
+     guard that keeps them from coming back with the next rebuild. */
+  const text = await evaluate(cdp,
+    'return (document.body.innerText || "").replace(/\\s+/g, " ");');
+  for (const phrase of ['PLAYER LAUNCH PAGE', 'PREVIEW',
+    'preview anchor', 'Official launch preview']) {
+    check(!text.includes(phrase), 'no "' + phrase + '" on the page',
+      text.includes(phrase) ? 'still present' : 'absent');
+  }
+  check(!(await evaluate(cdp,
+    'return String(!!document.querySelector(".preview-flag"));')).includes('true'),
+    'preview badge element is gone');
+  check(text.includes('League economy amounts reflect the current'),
+    'footer keeps its neutral final-launch sentence');
+
   section('CTA destinations');
   const hrefs = JSON.parse(await evaluate(cdp,
     'return JSON.stringify([...document.querySelectorAll("a.cta")].map(a => a.href));'));
